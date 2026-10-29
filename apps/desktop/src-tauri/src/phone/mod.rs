@@ -55,8 +55,9 @@ fn new_token() -> Result<String> {
     Ok(chars.chunks(4).map(|c| c.iter().collect::<String>()).collect::<Vec<_>>().join("-"))
 }
 
-fn host(app: &AppHandle) -> Host {
-    Host {
+fn host(app: &AppHandle) -> Result<Host> {
+    Ok(Host {
+        capture_ids: crate::clip_capture::index_path(app)?,
         root: Arc::new({
             let app = app.clone();
             move || vault::current(&app)
@@ -71,13 +72,13 @@ fn host(app: &AppHandle) -> Host {
             let app = app.clone();
             move |path| vault::clips_changed(&app, &path)
         }),
-    }
+    })
 }
 
 /// Starts the server, replacing one that is already running.
 async fn listen(app: &AppHandle, token: &str) -> Result<()> {
     stop(app);
-    let stop = server::start(host(app), token, PORT).await?;
+    let stop = server::start(host(app)?, token, PORT).await?;
     *app.state::<Phone>().0.lock().unwrap() = Some(stop);
     Ok(())
 }
