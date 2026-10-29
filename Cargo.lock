@@ -2065,7 +2065,9 @@ name = "kintsugi-vault"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "tempfile",
+ "url",
 ]
 
 [[package]]
