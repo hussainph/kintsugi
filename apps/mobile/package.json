@@ -7,6 +7,7 @@
     "expo": "~58.0.21",
     "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.14",
+    "expo-crypto": "~58.0.7",
     "expo-font": "~58.0.11",
     "expo-linking": "~58.0.15",
     "expo-router": "~58.0.28",

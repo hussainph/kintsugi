@@ -1,48 +1,22 @@
 import type { ClipCapture } from '@kintsugi/core/clips';
-import { localStamp, Offline, type Remote, Unpaired } from '@kintsugi/core/remote';
+import { HttpError, isPermanentCaptureStatus, localStamp, Offline, type Remote, Unpaired } from '@kintsugi/core/remote';
+import { randomUUID } from 'expo-crypto';
 import Storage from 'expo-sqlite/kv-store';
 import { useSyncExternalStore } from 'react';
 
 import { KintsugiCapture as Capture } from '../../modules/capture';
 import { captureURL } from './capture-input';
+import { CaptureRetry } from './capture-retry';
 import { postClip } from './clip-capture';
 import { drainCaptures } from './drain-captures';
+import { loadLegacyOutbox, type Note, OUTBOX_KEY } from './legacy-outbox';
 
-/** Legacy inbox notes remain valid. Only URLs go to the inspiration API. */
-export type Note = { id: string; text: string; capturedAt: string; clip?: ClipCapture; error?: string };
+export type { Note } from './legacy-outbox';
 type Waiting = { id: string; capturedAt: string; error?: string };
-const KEY = 'outbox';
-
-export let outboxWarning: string | null = null;
-let storageBlocked: unknown = null;
-function read(): Note[] {
-  let raw: string | null = null;
-  try {
-    raw = Storage.getItemSync(KEY);
-    const value: unknown = JSON.parse(raw ?? '[]');
-    if (!Array.isArray(value) || value.some((note) => !note || typeof note.id !== 'string' ||
-      typeof note.text !== 'string' || typeof note.capturedAt !== 'string')) {
-      throw new Error('The capture outbox could not be read.');
-    }
-    return value as Note[];
-  } catch (error) {
-    if (raw !== null) {
-      try {
-        // Quarantine before resetting: keep the exact bytes for recovery.
-        const backup = `${KEY}.recovery.${Date.now()}`;
-        Storage.setItemSync(backup, raw);
-        Storage.setItemSync(KEY, '[]');
-        outboxWarning = `An older outbox could not be read. Its contents are preserved on this phone (${backup}).`;
-        return [];
-      } catch { /* Storage itself failed: never overwrite the original queue. */ }
-    }
-    storageBlocked = error;
-    outboxWarning = 'The phone’s outbox is unavailable. Existing captures are preserved; restart the app to retry.';
-    return [];
-  }
-}
-
-let notes = read();
+const loaded = loadLegacyOutbox(Storage, randomUUID);
+export const outboxWarning = loaded.warning;
+const storageBlocked = loaded.blocked;
+let notes = loaded.notes;
 let shared: Waiting[] = [];
 let waiting: Waiting[] = notes;
 const listeners = new Set<() => void>();
@@ -52,7 +26,7 @@ function notify() {
 }
 function save(next: Note[]) {
   if (storageBlocked) throw storageBlocked;
-  Storage.setItemSync(KEY, JSON.stringify(next));
+  Storage.setItemSync(OUTBOX_KEY, JSON.stringify(next));
   notes = next;
   notify();
 }
@@ -63,10 +37,10 @@ export async function refreshOutbox() {
   notify();
 }
 
-export async function capture(text: string): Promise<void> {
+export async function capture(text: string, captureID?: string): Promise<void> {
   const capturedAt = localStamp();
   const url = captureURL(text);
-  const clip: ClipCapture | undefined = url ? { url, capturedAt, via: 'phone' } : undefined;
+  const clip: ClipCapture | undefined = url ? { id: captureID ?? randomUUID(), url, capturedAt, via: 'phone' } : undefined;
   if (clip && Capture) {
     const id = await Capture.enqueue(JSON.stringify(clip));
     // The write has succeeded. A later listing failure must not make Save
@@ -78,6 +52,7 @@ export async function capture(text: string): Promise<void> {
   }
 }
 
+const retry = new CaptureRetry();
 let sending: Promise<void> | null = null;
 /** Sends disk-backed captures oldest first. Failed requests never remove an item.
  * Claims exclude the extension's background uploads and expire after process death. */
@@ -86,22 +61,30 @@ export function send(client: Remote, api = 2): Promise<void> {
     try {
       await refreshOutbox();
       const failures: unknown[] = [];
+      if (storageBlocked) throw storageBlocked;
       for (const note of notes) {
-        if (note.error) continue;
+        if (note.error || !retry.ready(note.id)) continue;
         try {
           if (note.clip && api < 2) continue;
           if (note.clip) await postClip(client, note.clip);
           else await client.capture(note.text, note.capturedAt);
           save(notes.filter((n) => n.id !== note.id));
+          retry.clear(note.id);
         } catch (error) {
-          if (error instanceof Offline || error instanceof Unpaired) throw error;
-          if (note.clip) save(notes.map((item) => item.id === note.id ? { ...item, error: String(error) } : item));
+          if (error instanceof Unpaired) throw error;
+          if (note.clip && error instanceof HttpError && isPermanentCaptureStatus(error.status)) {
+            save(notes.map((item) => item.id === note.id ? { ...item, error: String(error) } : item));
+            retry.clear(note.id);
+          } else {
+            retry.failed(note.id);
+          }
+          if (error instanceof Offline) throw error;
           failures.push(error);
         }
       }
       if (Capture && api >= 2) {
         try {
-          await drainCaptures(Capture, (payload) => postClip(client, payload));
+          await drainCaptures(Capture, (payload) => postClip(client, payload), retry);
         } catch (error) {
           if (error instanceof Offline || error instanceof Unpaired) throw error;
           failures.push(error);

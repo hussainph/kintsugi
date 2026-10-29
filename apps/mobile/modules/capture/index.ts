@@ -1,6 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 
-/** One queued capture, as `pending()` lists it (oldest first). */
+/** One queued capture, as `pending()` lists it (oldest first). `id` is the
+ *  queue's own sortable id, not the payload's KI-10 capture UUID. */
 export type CaptureSummary = { id: string; capturedAt: string; error?: string };
 
 /** The App Group capture queue shared with the share extension
@@ -11,11 +12,15 @@ export type KintsugiCaptureModule = {
    *  with the extension; null removes it. Synchronous; throws on failure. */
   setPairing(pairingJSON: string | null): void;
   /** Durably queues a POST /v1/clips body (must carry `capturedAt`, at most
-   *  22 MiB of UTF-8); resolves its id. */
+   *  22 MiB of UTF-8 once committed); resolves its queue id. A valid UUID `id`
+   *  in the body is kept byte for byte; a missing or null one is generated
+   *  once and stored in the payload; any other `id` rejects (invalid payload). */
   enqueue(payloadJSON: string): Promise<string>;
   /** JSON `CaptureSummary[]` of every queued capture, leased or not. */
   pending(): Promise<string>;
-  /** One capture's payload JSON. Rejects if it is gone or damaged (damaged ones are set aside). */
+  /** One capture's payload JSON, always carrying the same UUID `id` (captures
+   *  queued before ids get theirs once, persisted, on first claim or read).
+   *  Rejects if it is gone or damaged (damaged ones are set aside). */
   read(id: string): Promise<string>;
   /** Leases a capture for 120 s; false when it is gone or someone else is sending it. */
   claim(id: string): Promise<boolean>;

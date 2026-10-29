@@ -3,6 +3,8 @@
 // The binary doubles as a child process for the cross-process cases:
 //   capture-tests claim <dir> <id>    exits 0 if it won the claim, 1 if not
 //   capture-tests die-locked <dir>    SIGKILLs itself while holding the lock
+//   capture-tests claim-read <dir> <id>  claims (win or lose), then prints the
+//                                     payload's id as read; exits 4 on failure
 import Foundation
 
 let arguments = CommandLine.arguments
@@ -11,6 +13,14 @@ if arguments.count >= 3 {
   switch arguments[1] {
   case "claim":
     exit((try? store.claim(arguments[3])) == true ? 0 : 1)
+  case "claim-read":
+    _ = try? store.claim(arguments[3])
+    guard let json = try? store.read(arguments[3]),
+          let object = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
+          let id = object["id"] as? String
+    else { exit(4) }
+    print(id)
+    exit(0)
   case "die-locked":
     _ = try? store.withLock { kill(getpid(), SIGKILL) }
     exit(2)
@@ -69,7 +79,39 @@ func runChild(_ args: [String]) throws -> Process {
   return process
 }
 
-let payload = #"{"url":"https://example.com/a","note":"é ✨","capturedAt":"2026-10-29T14:05","via":"share"}"#
+// Carries its own capture id (KI-10), so it is queued byte for byte.
+let suppliedID = "0f5e1c2a-9b3d-4e8f-a1b2-c3d4e5f60718"
+let payload = #"{"id":"\#(suppliedID)","url":"https://example.com/a","note":"é ✨","capturedAt":"2026-10-29T14:05","via":"share"}"#
+// Without one, as callers queued before KI-10 (and may still) do.
+let bare = #"{"url":"https://example.com/a","note":"é ✨","capturedAt":"2026-10-29T14:05","via":"share"}"#
+
+func isUUID(_ value: String?) -> Bool {
+  guard let value, value.count == 36 else { return false }
+  return UUID(uuidString: value) != nil
+}
+
+/// The `id` fields at the top level of a payload, as JSON sees them.
+func payloadID(_ json: String) -> String? {
+  (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])?["id"] as? String
+}
+
+func fileBytes(_ store: CaptureStore, _ id: String) throws -> Data {
+  try Data(contentsOf: store.payloadURL(id))
+}
+
+func meta(_ dir: URL, _ id: String) throws -> [String: String] {
+  try JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("captures/\(id)/meta.json"))) as! [String: String]
+}
+
+/// A capture as the queue committed it before KI-10: payload verbatim, meta
+/// with capturedAt only.
+func legacy(_ dir: URL, _ body: String, capturedAt: String = "2026-10-29T14:05", id: String = CaptureStore.newID(Date())) throws -> String {
+  let capture = dir.appendingPathComponent("captures/\(id)", isDirectory: true)
+  try FileManager.default.createDirectory(at: capture, withIntermediateDirectories: true)
+  try Data(body.utf8).write(to: capture.appendingPathComponent("payload.json"))
+  try JSONSerialization.data(withJSONObject: ["capturedAt": capturedAt]).write(to: capture.appendingPathComponent("meta.json"))
+  return id
+}
 
 test("enqueue writes one committed directory per capture, read returns it verbatim") { dir in
   let store = CaptureStore(directory: dir)
@@ -349,8 +391,13 @@ test("captures over the size bound are refused up front") { dir in
   let store = CaptureStore(directory: dir)
   let filler = String(repeating: "a", count: CaptureStore.maxPayloadBytes)
   check(throwsError(.tooLarge) { _ = try store.enqueue(#"{"capturedAt":"x","text":"\#(filler)"}"#) }, "too large")
-  let fits = String(repeating: "a", count: CaptureStore.maxPayloadBytes - 64)
+  // The bound covers what is committed, so leave room for a generated id too.
+  let fits = String(repeating: "a", count: CaptureStore.maxPayloadBytes - 128)
   check(try !store.enqueue(#"{"capturedAt":"x","text":"\#(fits)"}"#).isEmpty, "just under fits")
+  let edge = String(repeating: "a", count: CaptureStore.maxPayloadBytes - 29 - 20)
+  let body = #"{"capturedAt":"x","text":"\#(edge)"}"#
+  check(body.utf8.count < CaptureStore.maxPayloadBytes, "fits only without an id")
+  check(throwsError(.tooLarge) { _ = try store.enqueue(body) }, "too large once its id is added")
 }
 
 test("each launch uploads on its own session identifier") { _ in
@@ -414,6 +461,267 @@ test("start refuses a leased capture and releases when unpaired") { dir in
   check(try store.claim(id), "released after the failed start")
   check(throwsError(.busy) { try unpaired.start(id: id) }, "busy while leased elsewhere")
   check(try !store.claim(id), "the other sender's lease is untouched")
+}
+
+// MARK: - Capture ids (KI-10)
+
+test("both enqueues give an id-less capture one UUID, spliced in front, rest verbatim") { dir in
+  let store = CaptureStore(directory: dir)
+  let fromString = try store.enqueue(bare)
+  let fromData = try store.enqueue(Data(bare.utf8), capturedAt: "2026-10-29T14:05")
+  var seen: [String] = []
+  for queueID in [fromString, fromData] {
+    let json = try store.read(queueID)
+    let captureID = payloadID(json)
+    check(isUUID(captureID), "a UUID id: \(json.prefix(60))")
+    check(captureID == captureID?.lowercased(), "generated lowercase")
+    check(captureID != queueID && !json.contains(queueID), "the queue id never stands in for the capture id")
+    check(json == #"{"id":"\#(captureID ?? "")","# + bare.dropFirst(), "only the id was added")
+    check(try fileBytes(store, queueID) == Data(json.utf8), "the upload body carries it")
+    check(try store.captureID(queueID) == captureID, "captureID agrees")
+    check(try meta(dir, queueID) == ["capturedAt": "2026-10-29T14:05", "captureId": captureID ?? ""], "meta records it")
+    seen.append(captureID ?? "")
+  }
+  check(Set(seen).count == 2, "each capture gets its own")
+  check(try summaries(store).map { $0.keys.sorted() } == [["capturedAt", "id"], ["capturedAt", "id"]], "pending is unchanged in shape")
+}
+
+test("a supplied UUID is kept byte for byte, in either case, by both enqueues") { dir in
+  let store = CaptureStore(directory: dir)
+  let upper = suppliedID.uppercased()
+  let shouting = payload.replacingOccurrences(of: suppliedID, with: upper)
+  let spaced = "\n { \"capturedAt\" : \"2026-10-29T14:05\" , \"id\" : \"\(suppliedID)\" }\n"
+  for (body, expected) in [(payload, suppliedID), (shouting, upper), (spaced, suppliedID)] {
+    for queueID in [try store.enqueue(body), try store.enqueue(Data(body.utf8), capturedAt: "2026-10-29T14:05")] {
+      check(try fileBytes(store, queueID) == Data(body.utf8), "verbatim: \(body.prefix(40))")
+      check(try store.captureID(queueID) == expected, "kept as given")
+    }
+  }
+}
+
+test("a null id counts as missing and is replaced in place") { dir in
+  let store = CaptureStore(directory: dir)
+  let body = #"{"capturedAt":"2026-10-29T14:05","id":null,"via":"phone"}"#
+  for queueID in [try store.enqueue(body), try store.enqueue(Data(body.utf8), capturedAt: "2026-10-29T14:05")] {
+    let json = try store.read(queueID)
+    let captureID = try store.captureID(queueID) ?? ""
+    check(isUUID(captureID), json)
+    check(json == #"{"capturedAt":"2026-10-29T14:05","id":"\#(captureID)","via":"phone"}"#, json)
+  }
+}
+
+test("ids that aren't hyphenated UUIDs are refused by both enqueues, leaving nothing") { dir in
+  let store = CaptureStore(directory: dir)
+  let bad = [
+    #""not-a-uuid""#, #""""#, "42", "true", #"{"id":"x"}"#, #"["\#(suppliedID)"]"#,
+    #""\#(suppliedID.replacingOccurrences(of: "-", with: ""))""#,
+    #""{\#(suppliedID)}""#, #""urn:uuid:\#(suppliedID)""#, #"" \#(suppliedID)""#,
+    #""\#(suppliedID.dropLast())g""#,
+  ]
+  for value in bad {
+    let body = #"{"capturedAt":"2026-10-29T14:05","id":\#(value)}"#
+    check(throwsError(.invalidPayload) { _ = try store.enqueue(body) }, "String: \(value)")
+    check(throwsError(.invalidPayload) { _ = try store.enqueue(Data(body.utf8), capturedAt: "2026-10-29T14:05") }, "Data: \(value)")
+  }
+  // An escaped key is still `id`; two ids are ambiguous even if both are valid.
+  let escaped = #"{"capturedAt":"2026-10-29T14:05","\u0069d":"nope"}"#
+  check(throwsError(.invalidPayload) { _ = try store.enqueue(Data(escaped.utf8), capturedAt: "2026-10-29T14:05") }, "escaped key")
+  let twice = #"{"id":"\#(suppliedID)","capturedAt":"2026-10-29T14:05","id":"\#(suppliedID)"}"#
+  check(throwsError(.invalidPayload) { _ = try store.enqueue(twice) }, "duplicate id")
+  check(try store.pending() == "[]", "nothing queued")
+  check(names(dir.appendingPathComponent("captures")).isEmpty, "no files")
+}
+
+test("the trusted Data enqueue checks its structure and capturedAt cheaply") { dir in
+  let store = CaptureStore(directory: dir)
+  for body in ["", "[]", "{", #"{"capturedAt":"2026-10-29T14:05"} x"#, #"{"capturedAt":"2026-10-29T14:05",}"#] {
+    check(throwsError(.invalidPayload) { _ = try store.enqueue(Data(body.utf8), capturedAt: "2026-10-29T14:05") }, "structure: \(body)")
+  }
+  check(throwsError(.invalidPayload) { _ = try store.enqueue(Data(bare.utf8), capturedAt: "2026-10-29T14:06") }, "capturedAt differs")
+  check(throwsError(.invalidPayload) { _ = try store.enqueue(Data(#"{"via":"share"}"#.utf8), capturedAt: "x") }, "no capturedAt")
+  check(try store.pending() == "[]", "nothing queued")
+}
+
+test("only top-level id keys count; nested ones and lookalikes in strings are left alone") { dir in
+  let store = CaptureStore(directory: dir)
+  let body = #"{"capturedAt":"2026-10-29T14:05","text":"\"id\":\"x\" {[ \\","extra":{"id":"nested","list":[{"id":1},"]}"]},"n":-1.5e3,"ok":true,"none":null}"#
+  check((try? JSONSerialization.jsonObject(with: Data(body.utf8))) != nil, "fixture is JSON")
+  for queueID in [try store.enqueue(body), try store.enqueue(Data(body.utf8), capturedAt: "2026-10-29T14:05")] {
+    let json = try store.read(queueID)
+    let object = try JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
+    check(isUUID(object["id"] as? String), "top-level id added")
+    check(((object["extra"] as? [String: Any])?["id"] as? String) == "nested", "nested id untouched")
+    check(json.hasSuffix(String(body.dropFirst())), "rest verbatim")
+  }
+}
+
+test("a 15 MiB image payload gets its id without a re-encode") { dir in
+  let store = CaptureStore(directory: dir)
+  let image = Data(count: 15 * 1024 * 1024).base64EncodedString()
+  let built = try JSONSerialization.data(withJSONObject: [
+    "capturedAt": "2026-10-29T14:05", "via": "share", "image": image, "imageType": "image/png",
+  ])
+  let started = Date()
+  let queueID = try store.enqueue(built, capturedAt: "2026-10-29T14:05")
+  let elapsed = Date().timeIntervalSince(started)
+  let written = try fileBytes(store, queueID)
+  let captureID = try store.captureID(queueID) ?? ""
+  check(isUUID(captureID), "id")
+  check(written == Data(#"{"id":"\#(captureID)","#.utf8) + built.dropFirst(), "spliced, not re-encoded")
+  print("     (15 MiB image enqueue: \(Int(elapsed * 1000)) ms)")
+}
+
+test("one id across reopen, claim, release, retry and read") { dir in
+  let store = CaptureStore(directory: dir)
+  let queueID = try store.enqueue(bare)
+  let first = try fileBytes(store, queueID)
+  let captureID = payloadID(try store.read(queueID))
+  check(isUUID(captureID), "has one")
+  for attempt in 0..<3 {
+    let reopened = CaptureStore(directory: dir) // as after a relaunch, or in the other process
+    check(try reopened.claim(queueID), "claim \(attempt)")
+    check(payloadID(try reopened.read(queueID)) == captureID, "same id on attempt \(attempt)")
+    try reopened.release(queueID)
+  }
+  check(try fileBytes(store, queueID) == first, "the payload was never rewritten")
+}
+
+test("retryable statuses release the capture to be resent with the same id; 400/413/422 keep it rejected") { dir in
+  let store = CaptureStore(directory: dir)
+  let delivery = CaptureDelivery(identifier: "test", store: store, pairing: { nil })
+  for status in [408, 429, 500, 502, 503, 504, 401, 409] {
+    let queueID = try store.enqueue(bare)
+    let bytes = try fileBytes(store, queueID)
+    check(try store.claim(queueID, owner: "task"), "claimed")
+    delivery.complete(task: "\(queueID) task", status: status, body: Data(#"{"error":"later"}"#.utf8), error: nil)
+    check(try summaries(store).first { $0["id"] == queueID }?["error"] == nil, "\(status) isn't a rejection")
+    check(try CaptureStore(directory: dir).claim(queueID), "\(status) released for retry")
+    check(try fileBytes(store, queueID) == bytes, "\(status) retries the same bytes, the same id")
+    try store.acknowledge(queueID)
+  }
+  let offline = try store.enqueue(bare)
+  let captureID = try store.captureID(offline)
+  check(try store.claim(offline, owner: "task"), "claimed")
+  delivery.complete(task: "\(offline) task", status: nil, body: Data(), error: URLError(.notConnectedToInternet))
+  check(try store.claim(offline) && store.captureID(offline) == captureID, "network failure retries with the same id")
+  for status in [400, 413, 422] {
+    let queueID = try store.enqueue(bare)
+    let bytes = try fileBytes(store, queueID)
+    check(try store.claim(queueID, owner: "task"), "claimed")
+    delivery.complete(task: "\(queueID) task", status: status, body: Data(), error: nil)
+    check(try !CaptureStore(directory: dir).claim(queueID), "\(status) not retried")
+    check(try fileBytes(store, queueID) == bytes, "\(status) kept, id included")
+  }
+}
+
+test("a legacy capture without an id gets one, once, before it is claimed") { dir in
+  let store = CaptureStore(directory: dir)
+  let queueID = try legacy(dir, bare)
+  check(try summaries(store) == [["id": queueID, "capturedAt": "2026-10-29T14:05"]], "listed as before")
+  check(try store.claim(queueID), "claimable")
+  let migrated = try String(decoding: fileBytes(store, queueID), as: UTF8.self)
+  let captureID = payloadID(migrated)
+  check(isUUID(captureID) && captureID != queueID, "persisted a UUID before the lease: \(migrated.prefix(60))")
+  check(migrated == #"{"id":"\#(captureID ?? "")","# + bare.dropFirst(), "only the id was added")
+  check(try meta(dir, queueID)["captureId"] == captureID, "recorded")
+  try store.release(queueID)
+  let reopened = CaptureStore(directory: dir)
+  check(try reopened.claim(queueID) && payloadID(reopened.read(queueID)) == captureID, "kept after reopening")
+  check(names(dir.appendingPathComponent("captures/\(queueID)")) == ["lease", "meta.json", "payload.json"], "no temp files: \(names(dir.appendingPathComponent("captures/\(queueID)")))")
+}
+
+test("a legacy capture is given its id by read and by the native upload's claim") { dir in
+  let store = CaptureStore(directory: dir)
+  let read = try legacy(dir, bare, id: "1700000000000-aaaaaaaaaaaa")
+  check(isUUID(payloadID(try store.read(read))), "read hands over a payload with an id")
+  check(payloadID(try store.read(read)) == payloadID(try store.read(read)), "the same each time")
+
+  let uploaded = try legacy(dir, bare, id: "1700000000000-bbbbbbbbbbbb")
+  let delivery = CaptureDelivery(identifier: "test", store: store, pairing: { nil })
+  check(throwsError(.unpaired) { try delivery.start(id: uploaded) }, "start stops before uploading")
+  let body = try String(decoding: Data(contentsOf: store.payloadURL(uploaded)), as: UTF8.self)
+  check(isUUID(payloadID(body)), "the file start would upload already has its id")
+  check(try store.captureID(uploaded) == payloadID(body), "and keeps it")
+}
+
+test("a legacy payload that already has a UUID keeps it and its bytes") { dir in
+  let store = CaptureStore(directory: dir)
+  let queueID = try legacy(dir, payload)
+  check(try store.claim(queueID), "claimable")
+  check(try fileBytes(store, queueID) == Data(payload.utf8), "payload untouched")
+  check(try meta(dir, queueID)["captureId"] == suppliedID, "recorded")
+}
+
+test("a crash between the payload and meta writes keeps the id already written") { dir in
+  let store = CaptureStore(directory: dir)
+  let other = "11111111-2222-4333-8444-555555555555"
+  // payload.json carries an id, meta.json doesn't record it yet.
+  let queueID = try legacy(dir, #"{"id":"\#(other)","capturedAt":"2026-10-29T14:05"}"#)
+  check(try store.claim(queueID), "claimable")
+  check(try store.captureID(queueID) == other, "not replaced")
+  check(try meta(dir, queueID)["captureId"] == other, "now recorded")
+}
+
+test("a legacy capture with an invalid id is kept rejected, not re-identified") { dir in
+  let store = CaptureStore(directory: dir)
+  let body = #"{"id":"0001","capturedAt":"2026-10-29T14:05"}"#
+  let queueID = try legacy(dir, body)
+  check(try !store.claim(queueID), "not claimable")
+  check(try store.read(queueID) == body, "still readable, bytes kept")
+  check(try store.captureID(queueID) == nil, "no id")
+  check(try summaries(store).first?["error"] != nil, "visible rejection")
+}
+
+test("a legacy capture keeps its historical rejection and stays unclaimed") { dir in
+  let store = CaptureStore(directory: dir)
+  let queueID = try legacy(dir, bare)
+  let reason = "The Mac rejected this capture (HTTP 422). Its contents are preserved on this iPhone."
+  try Data(reason.utf8).write(to: dir.appendingPathComponent("captures/\(queueID)/rejection"))
+  check(try !store.claim(queueID), "rejected captures aren't claimed")
+  check(try fileBytes(store, queueID) == Data(bare.utf8), "claim refused before touching it")
+  check(isUUID(payloadID(try store.read(queueID))), "read gives it an id for whoever resends it")
+  check(try summaries(store).first?["error"] == reason, "rejection kept verbatim")
+  check(try !store.claim(queueID), "still not claimed")
+}
+
+test("a damaged legacy capture is set aside when claimed") { dir in
+  let store = CaptureStore(directory: dir)
+  let queueID = try legacy(dir, "{oops")
+  check(try !store.claim(queueID), "not claimable")
+  check(names(dir.appendingPathComponent("malformed")) == [queueID], "kept aside")
+  check(try String(contentsOf: dir.appendingPathComponent("malformed/\(queueID)/payload.json"), encoding: .utf8) == "{oops", "bytes kept")
+}
+
+test("processes and threads racing for a legacy capture all see one id") { dir in
+  let store = CaptureStore(directory: dir)
+  let queueID = try legacy(dir, bare)
+  let children = try (0..<8).map { _ -> (Process, Pipe) in
+    let pipe = Pipe()
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+    process.arguments = ["claim-read", dir.path, queueID]
+    process.standardOutput = pipe
+    try process.run()
+    return (process, pipe)
+  }
+  let lock = NSLock()
+  var threadIDs: [String?] = []
+  DispatchQueue.concurrentPerform(iterations: 8) { _ in
+    let id = try? store.captureID(queueID)
+    lock.lock(); threadIDs.append(id ?? nil); lock.unlock()
+  }
+  var printed: [String] = []
+  for (process, pipe) in children {
+    let output = pipe.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    check(process.terminationStatus == 0, "child read a payload with an id")
+    printed.append(String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
+  }
+  let all = Set(printed + threadIDs.map { $0 ?? "nil" })
+  check(all.count == 1 && isUUID(all.first), "one id: \(all)")
+  check(payloadID(try store.read(queueID)) == all.first, "and it is the persisted one")
+  let leases = names(dir.appendingPathComponent("captures/\(queueID)")).filter { $0 == "lease" }
+  check(leases.count == 1, "one claim won")
 }
 
 print(failures == 0 ? "\nall passed" : "\n\(failures) failure(s)")

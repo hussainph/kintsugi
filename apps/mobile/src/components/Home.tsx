@@ -1,7 +1,8 @@
 import { Offline, type Remote, Unpaired } from '@kintsugi/core/remote';
 import { displayName, type Doc, type Entry } from '@kintsugi/core/vault';
+import { randomUUID } from 'expo-crypto';
 import { router, Stack, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { StatusDot } from '@/components/StatusDot';
@@ -39,6 +40,7 @@ export function Home({ client }: { client: Remote }) {
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const captureDraft = useRef<{ text: string; id: string } | null>(null);
   const [query, setQuery] = useState('');
 
   const fail = useCallback(
@@ -95,7 +97,13 @@ export function Home({ client }: { client: Remote }) {
     if (!text || saving || !pairing) return;
     setSaving(true);
     try {
-      await capture(text);
+      if (captureURL(text) && captureDraft.current?.text !== text) {
+        captureDraft.current = { text, id: randomUUID() };
+      }
+      // An uncertain disk-write failure followed by Save again is still the
+      // same URL capture, not a new UUID and a possible duplicate on the Mac.
+      await capture(text, captureDraft.current?.text === text ? captureDraft.current.id : undefined);
+      captureDraft.current = null;
       setNote('');
       send(client, api).then(() => client.tree().then(setTree)).catch(fail);
     } catch (error) {

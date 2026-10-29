@@ -46,6 +46,8 @@ private final class ShareModel: ObservableObject {
   @Published var loading = true
   @Published var saving = false
   @Published var error: String?
+  // A Save retry is the same capture, even after an uncertain local-write error.
+  private let captureID = UUID().uuidString
   private var image: Data?
   private var imageType: String?
   private let context: NSExtensionContext?
@@ -132,14 +134,15 @@ private final class ShareModel: ObservableObject {
     saving = true
     error = nil
     let capturedAt = CaptureStore.localStamp()
+    let payloadID = captureID
     let sharedURL = url, sharedText = text, sharedImage = image, mimeType = imageType
     let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
     Task {
       do {
         // Encode once, off the main thread. Avoid a 20 MB JSON String roundtrip
         // and a second full parse when sharing an image near the 15 MB limit.
-        let id = try await Task.detached {
-          var payload: [String: Any] = ["capturedAt": capturedAt, "via": "share"]
+        let queueID = try await Task.detached {
+          var payload: [String: Any] = ["id": payloadID, "capturedAt": capturedAt, "via": "share"]
           if let sharedURL { payload["url"] = sharedURL }
           if !sharedText.isEmpty { payload["text"] = sharedText }
           if let sharedImage {
@@ -151,7 +154,7 @@ private final class ShareModel: ObservableObject {
           return try CaptureStore().enqueue(data, capturedAt: capturedAt)
         }.value
         // The system owns this upload after resume. Any error leaves the outbox intact.
-        try? CaptureDelivery.shared.start(id: id)
+        try? CaptureDelivery.shared.start(id: queueID)
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         context?.completeRequest(returningItems: nil)
       } catch {

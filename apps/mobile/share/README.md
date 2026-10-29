@@ -38,7 +38,10 @@ References reviewed:
   Each capture is an atomically committed directory with a flushed payload and
   small metadata file. Image bytes are base64 in the payload (API limit: 15 MB
   before encoding; only the API's raster MIME allowlist is accepted). There is
-  no shared read-modify-write array to lose captures.
+  no shared read-modify-write array to lose captures. The POST payload carries
+  a separate UUID `id` (not the sortable queue-directory ID). Swift uses
+  `UUID().uuidString`; phone capture uses SDK 58 `expo-crypto.randomUUID()`.
+  It is generated before persistence, never in the delivery callback.
 - Only a successful local write allows Save to dismiss. Storage failure keeps
   the sheet open. No pairing or network connection is required to save.
 - `CaptureDelivery` claims the saved item and resumes a background URLSession
@@ -57,14 +60,23 @@ References reviewed:
   marker: bytes remain in place, the app shows a warning, and automatic claims
   stop. Other captures keep sending. Connectivity and authorization failures
   stop the current pass and remain retryable.
-- The main app uses `Remote.captureClip` and `ClipCapture` from core (KI-1).
-  Core currently discards the HTTP status on generic errors, so the main outbox
-  conservatively preserves **all** non-Offline/non-Unpaired failures with that
-  same rejection marker instead of risking an endless 400/413/422 retry. This
-  also pauses generic server errors such as 500 for manual recovery. A typed
-  core error carrying status would allow a more selective retry policy.
-  Rejected payloads are at `Captures/captures/<id>/payload.json` in the App Group;
-  they are never deleted or silently retried, including after app restart.
+- The main app uses `Remote.captureClip`, `HttpError`,
+  `isPermanentCaptureStatus` and `ClipCapture` from core (KI-1/KI-10). Only
+  400/413/422 mark a capture rejected. 500/503/408/429, unknown errors and
+  malformed success acknowledgements preserve the bytes and release the lease
+  for another attempt. Retries back off while the app is open (30 seconds up to
+  30 minutes); restart may retry sooner, always with the same persisted UUID.
+  `Offline` remains retryable; `Unpaired` pauses delivery for pairing again.
+  Rejected payloads are at `Captures/captures/<queue-id>/payload.json` in the App
+  Group; they are never deleted or silently retried, including after restart.
+- Old native captures missing a UUID are migrated atomically under the queue
+  lock before claim/read/upload handoff. A crash after updating the payload but
+  before metadata keeps that same UUID on recovery. The native Data overload
+  scans top-level fields without copying the large image string; the app's
+  String entry point still validates JSON fully. Private SQLite URL captures
+  migrate in a single value write at load, before sending; a failed write blocks
+  delivery instead of creating an ephemeral per-attempt ID. Existing rejection
+  flags stay paused: their historical generic HTTP status cannot be recovered.
 - Pairing stays in `expo-secure-store` and is mirrored at launch/pair/unpair to
   a separate shared Keychain item. Its access group is expanded from
   `$(AppIdentifierPrefix)dev.phalasiya.kintsugi.capture` in both targets. The
@@ -79,10 +91,14 @@ References reviewed:
   to an `outbox.recovery.<timestamp>` key before resetting it, with a visible
   warning; a storage failure never overwrites the original queue.
 
-Delivery is **at least once**, not exactly once: the API has no idempotency key.
-A crash after the Mac commits but before the phone records its reply, or a late
-background completion after lease expiry, can create a duplicate. Queue data is
-never discarded on an HTTP error. Damaged native captures are moved to
+Delivery is **at least once**, with bounded server-side deduplication. Deploy
+KI-10 on the Mac: it remembers the latest 1024 distinct capture UUIDs per vault
+and returns the original path without another clip/media/event, including after
+trash. The same payload UUID survives extension-to-app handoff, process restart,
+lost-response retries and lease expiry. Older in-flight requests sent without
+an ID cannot be deduplicated retroactively; receipt eviction/deletion or sending
+to a different vault ends that deduplication guarantee. Queue data is never
+discarded on an HTTP error. Damaged native captures are moved to
 `Captures/malformed/` in the App Group for recovery rather than overwritten.
 
 Apple signing must provision the App Group and shared Keychain entitlement for
@@ -105,8 +121,13 @@ xcrun simctl runtime list
 xcrun simctl list devices available
 ```
 
-With a compatible Simulator installed, use the **actual device UUID** from that
-list (not an assumed model name):
+Use a **standard iPhone on iOS 27.1**, not the iPhone Duo (its simulator does not
+support most app extensions). Keep all acceptance runs headless: do not open
+Device Hub or Simulator.app. Use the **actual device UUID** from that list, not
+an assumed model name. Build with `xcodebuild`, boot via `xcrun simctl boot`, and
+install/launch/open URLs via `simctl`. Screenshots use `simctl io … screenshot`.
+The Expo command below is for interactive development only, not the owner's
+headless acceptance run:
 
 ```sh
 pnpm --filter @kintsugi/mobile exec expo run:ios --device <UUID>
@@ -126,6 +147,11 @@ Manual acceptance on Simulator/device:
    create a clip; ordinary prose still says **Save to inbox**.
 6. Exercise light/dark mode, larger Dynamic Type, provider errors, repeated Save,
    cancellation, failed API replies, and a cold app launch during background upload.
+7. Drop a successful response after the Mac commits. Retry the queued capture:
+   its payload UUID and returned path must match, with one clip and one event.
+   Retry again after trash: do not recreate the clip. Check 400/413/422 pause
+   and preserve, whereas 500/503/408/429 release and retry with the same UUID.
+   A malformed 2xx body must not acknowledge/remove the capture.
 
 For a supplemental syntax/API check when only the macOS SDK is available,
 `Shared/*.swift` and `ShareViewController.swift` can be typechecked against
