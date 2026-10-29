@@ -1,0 +1,9 @@
+@import "@kintsugi/ui/styles.css";
+@source "../../../packages";
+
+/* A window, not a page: no rubber-band scrolling or stray text selection. */
+@layer base {
+  body {
+    @apply overflow-hidden select-none cursor-default;
+  }
+}

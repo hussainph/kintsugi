@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": { "@kintsugi/ui/*": ["./src/*"] }
+  },
+  "include": ["src"]
+}

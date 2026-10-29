@@ -1,0 +1,13 @@
+{
+  "name": "kintsugi",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "desktop": "pnpm --filter @kintsugi/desktop tauri dev",
+    "ios": "pnpm --filter @kintsugi/mobile tauri ios dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "cargo test --workspace && pnpm --filter @kintsugi/core test"
+  },
+  "packageManager": "pnpm@9.12.0"
+}

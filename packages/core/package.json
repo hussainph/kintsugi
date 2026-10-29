@@ -1,0 +1,18 @@
+{
+  "name": "@kintsugi/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./frontmatter": "./src/frontmatter.ts",
+    "./remote": "./src/remote.ts",
+    "./vault": "./src/vault.ts"
+  },
+  "scripts": {
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  }
+}

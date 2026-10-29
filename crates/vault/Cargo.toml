@@ -1,0 +1,12 @@
+[package]
+name = "kintsugi-vault"
+description = "A Kintsugi vault: a plain folder of Markdown and MDX files"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

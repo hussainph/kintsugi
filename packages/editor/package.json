@@ -1,0 +1,28 @@
+{
+  "name": "@kintsugi/editor",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./Editor": "./src/Editor.tsx",
+    "./theme": "./src/theme.ts"
+  },
+  "dependencies": {
+    "@codemirror/commands": "catalog:",
+    "@codemirror/lang-markdown": "catalog:",
+    "@codemirror/lang-yaml": "catalog:",
+    "@codemirror/language": "catalog:",
+    "@codemirror/language-data": "catalog:",
+    "@codemirror/search": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
+    "@kintsugi/core": "workspace:*",
+    "@lezer/highlight": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "*"
+  },
+  "devDependencies": {
+    "@types/react": "catalog:",
+    "react": "catalog:"
+  }
+}
