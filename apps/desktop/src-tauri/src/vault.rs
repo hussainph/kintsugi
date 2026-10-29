@@ -75,6 +75,7 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
         config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
     }
     *app.state::<Vault>().0.lock().unwrap() = Some(path.to_path_buf());
+    crate::enrich::wake(app);
     Ok(())
 }
 
