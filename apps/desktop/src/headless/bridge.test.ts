@@ -378,6 +378,13 @@ describe("binary channel messages", () => {
   });
   afterEach(() => bridge.close());
 
+  test("raw invoke responses are ArrayBuffers without per-command adapters", async () => {
+    backend.handlers["new_raw_command"] = () => ({ ok: true, value: { __headlessBytes: [137, 80, 78, 71] } });
+    const bytes = await invoke<ArrayBuffer>("new_raw_command");
+    assert.ok(bytes instanceof ArrayBuffer);
+    assert.deepEqual([...new Uint8Array(bytes)], [137, 80, 78, 71]);
+  });
+
   test("the byte envelope arrives as an ArrayBuffer, as from native Tauri", () => {
     const got: unknown[] = [];
     const channel = new Channel<ArrayBuffer>((m) => got.push(m));

@@ -38,7 +38,9 @@ type Clients = Arc<Mutex<HashMap<String, Client>>>;
 // The test helper accepts AsRef<Webview>, which Webview itself doesn't implement.
 struct IpcIdentity(Webview<Runtime>);
 impl AsRef<Webview<Runtime>> for IpcIdentity {
-    fn as_ref(&self) -> &Webview<Runtime> { &self.0 }
+    fn as_ref(&self) -> &Webview<Runtime> {
+        &self.0
+    }
 }
 
 struct Client {
@@ -64,7 +66,7 @@ pub(crate) fn ai_enabled() -> bool {
 
 /// Guard both startup overrides and the folder prompt. Never allow an ancestor,
 /// child or symlink of the owner's standard vault/config, even with a valid token.
-pub(crate) fn scratch_path(path: &Path) -> Result<PathBuf> {
+fn checked_directory(path: &Path) -> Result<PathBuf> {
     let path = path.canonicalize().map_err(|e| e.to_string())?;
     if !path.is_dir() {
         return Err("scratch path must be a directory".into());
@@ -73,6 +75,9 @@ pub(crate) fn scratch_path(path: &Path) -> Result<PathBuf> {
     for forbidden in [
         home.join("Documents/Kintsugi"),
         home.join("Library/Application Support/dev.phalasiya.kintsugi"),
+        home.join("Library/Application Support/Kintsugi"),
+        home.join(".ssh"),
+        home.join(".pi"),
     ] {
         let forbidden = forbidden.canonicalize().unwrap_or(forbidden);
         if path.starts_with(&forbidden) || forbidden.starts_with(&path) {
@@ -86,7 +91,25 @@ fn required_dir(name: &str) -> Result<PathBuf> {
     let path = std::env::var_os(name)
         .filter(|p| !p.is_empty())
         .ok_or_else(|| format!("{name} is required; use pnpm desktop:headless"))?;
-    scratch_path(Path::new(&path))
+    checked_directory(Path::new(&path))
+}
+
+/// A token grants access to this run's vault, not arbitrary folders on disk.
+/// Pick a different top-level scratch vault by restarting with the env override.
+pub(crate) fn scratch_path(path: &Path) -> Result<PathBuf> {
+    let path = checked_directory(path)?;
+    if !path.starts_with(required_dir("KINTSUGI_VAULT")?) {
+        return Err("headless only opens folders inside this run's scratch vault".into());
+    }
+    Ok(path)
+}
+
+pub(crate) fn scratch_file(path: &Path) -> Result<PathBuf> {
+    let path = path.canonicalize().map_err(|e| e.to_string())?;
+    if !path.is_file() || !path.starts_with(required_dir("KINTSUGI_VAULT")?) {
+        return Err("file is outside this run's scratch vault".into());
+    }
+    Ok(path)
 }
 
 fn random_token() -> Result<String> {
@@ -283,7 +306,9 @@ impl Drop for Connection {
         {
             return; // An old stream must not remove its replacement.
         }
-        if let Some(client) = clients.remove(&self.client) {
+        let removed = clients.remove(&self.client);
+        drop(clients);
+        if let Some(client) = removed {
             for id in client.listeners.values() {
                 self.bridge.app.unlisten(*id);
             }
@@ -440,7 +465,7 @@ async fn dispatch(bridge: &Bridge, call: Call) -> std::result::Result<Value, Val
             if call.cmd == "plugin:event|emit_to" {
                 let mut target = call.args["target"].clone();
                 if target["label"] == "main" {
-                    target["label"] = json!(call.client);
+                    target["label"] = json!(webview.label());
                 }
                 let target: tauri::EventTarget =
                     serde_json::from_value(target).map_err(|_| json!("invalid event target"))?;
@@ -491,9 +516,11 @@ async fn dispatch(bridge: &Bridge, call: Call) -> std::result::Result<Value, Val
         invoke_key: tauri::test::INVOKE_KEY.into(),
     };
     tokio::task::spawn_blocking(move || {
-        tauri::test::get_ipc_response(&IpcIdentity(webview), request).and_then(|body| {
-            body.deserialize::<Value>()
-                .map_err(|e| json!(e.to_string()))
+        tauri::test::get_ipc_response(&IpcIdentity(webview), request).and_then(|body| match body {
+            InvokeResponseBody::Json(text) => {
+                serde_json::from_str(&text).map_err(|e| json!(e.to_string()))
+            }
+            InvokeResponseBody::Raw(bytes) => Ok(json!({ "__headlessBytes": bytes })),
         })
     })
     .await
@@ -527,6 +554,9 @@ async fn asset(State(bridge): State<Bridge>, Query(asset): Query<Asset>) -> Resp
     let Ok(path) = asset_path(&bridge.app, &asset.path) else {
         return StatusCode::FORBIDDEN.into_response();
     };
+    if !std::fs::metadata(&path).is_ok_and(|m| m.len() <= 16 * 1024 * 1024) {
+        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    }
     let mime = match path.extension().and_then(|e| e.to_str()).unwrap_or("") {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
@@ -770,10 +800,26 @@ mod tests {
             assert!(config.join("clip-capture-ids.json").exists());
             assert!(asset_path(app.handle(), "/etc/hosts").is_err());
             assert!(asset_path(app.handle(), "test.md").is_ok());
-            assert_eq!(call(&client, &bridge, "plugin:event|listen", json!({"event":"invalid event!","handler":1})).await["ok"], false);
+            assert_eq!(
+                call(
+                    &client,
+                    &bridge,
+                    "plugin:event|listen",
+                    json!({"event":"invalid event!","handler":1})
+                )
+                .await["ok"],
+                false
+            );
             // Reconnect before old TCP teardown; the old stream must not
             // remove the new identity, and mock registrations stay bounded.
-            let reconnected = client.get(format!("{base}/events?token={}&client=test-client", bridge.token)).send().await.unwrap();
+            let reconnected = client
+                .get(format!(
+                    "{base}/events?token={}&client=test-client",
+                    bridge.token
+                ))
+                .send()
+                .await
+                .unwrap();
             assert!(reconnected.status().is_success());
             let mut reconnected = reconnected.bytes_stream();
             assert_eq!(packet(&mut reconnected).await, json!({"ready":true}));
@@ -782,7 +828,10 @@ mod tests {
             assert_eq!(bridge.clients.lock().unwrap().len(), 1);
             assert_eq!(app.webviews().len(), 1);
             assert_eq!(app.windows().len(), 1); // mock host, never an OS window
-            assert_eq!(call(&client, &bridge, "doc_read", json!({"path":"test.md"})).await["ok"], true);
+            assert_eq!(
+                call(&client, &bridge, "doc_read", json!({"path":"test.md"})).await["ok"],
+                true
+            );
             server.abort();
         });
     }

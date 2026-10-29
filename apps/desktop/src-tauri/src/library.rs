@@ -255,6 +255,8 @@ pub async fn clip_capture_image(
     captured_at: String,
 ) -> Result<String> {
     let root = vault.root()?;
+    #[cfg(feature = "headless")]
+    crate::headless::scratch_file(Path::new(&path))?;
     tauri::async_runtime::spawn_blocking(move || {
         let capture = image_capture(Path::new(&path), captured_at)?;
         let path = vault::clip_create(&root, &capture)?;

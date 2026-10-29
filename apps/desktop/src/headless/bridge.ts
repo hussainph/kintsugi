@@ -306,7 +306,7 @@ export function createHeadlessBridge(config: HeadlessConfig, deps: BridgeDeps) {
       throw failure(`${cmd} got HTTP ${res.status} without a {ok, …} reply`);
     }
     if (!reply.ok) throw reply.error;
-    return reply.value;
+    return decodeBody(reply.value);
   }
 
   async function invoke(cmd: string, args: Record<string, unknown> = {}, _options?: unknown): Promise<unknown> {
@@ -425,13 +425,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** Turns the backend's byte envelope in a channel message back into the
- *  ArrayBuffer native Tauri delivers for raw channel bodies. */
+/** Raw invoke responses and Channel bodies use the same byte envelope. */
+function decodeBody(value: unknown): unknown {
+  if (!isRecord(value) || !Array.isArray(value.__headlessBytes)) return value;
+  return Uint8Array.from(value.__headlessBytes as number[]).buffer;
+}
+
 function decodeBytes(payload: unknown): unknown {
-  if (!isRecord(payload) || !("index" in payload) || !isRecord(payload.message)) return payload;
-  const bytes = payload.message.__headlessBytes;
-  if (!Array.isArray(bytes)) return payload;
-  return { ...payload, message: Uint8Array.from(bytes as number[]).buffer };
+  if (!isRecord(payload) || !("index" in payload)) return payload;
+  return { ...payload, message: decodeBody(payload.message) };
 }
 
 function safeProtocol(url: string): string {

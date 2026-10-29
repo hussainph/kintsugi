@@ -16,7 +16,7 @@ function canonical(path) {
 const contains = (parent, child) => child === parent || child.startsWith(parent + sep);
 export function scratchPath(path, home = homedir()) {
   const target = canonical(resolve(path));
-  for (const forbidden of ['Documents/Kintsugi', 'Library/Application Support/dev.phalasiya.kintsugi'].map(p => canonical(resolve(home, p)))) {
+  for (const forbidden of ['Documents/Kintsugi', 'Library/Application Support/dev.phalasiya.kintsugi', 'Library/Application Support/Kintsugi', '.ssh', '.pi'].map(p => canonical(resolve(home, p)))) {
     if (contains(target, forbidden) || contains(forbidden, target)) {
       throw new Error('Refusing the owner’s vault/config or their ancestors; choose a scratch directory');
     }

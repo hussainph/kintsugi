@@ -42,10 +42,47 @@ A pnpm + Cargo monorepo:
 
 ```sh
 pnpm install
-pnpm desktop          # the Mac app
+pnpm desktop          # the Mac app; opens a native window (humans only)
+pnpm desktop:headless # the Mac app in a browser tab against the real backend
+pnpm desktop:seed <dir> # a deterministic scratch vault for screenshots
 pnpm ios              # the phone app in the iOS Simulator (a development build)
 pnpm test             # Rust and TypeScript tests
 pnpm typecheck
 ```
 
 To pair the Simulator with a development build of the Mac app, turn on phone access and click **Simulator link**, then open it in the Simulator: `xcrun simctl openurl booted "<link>"`.
+
+### Testing without windows
+
+Agents must not put the Mac app, Device Hub or Simulator on the owner's
+screen. `pnpm desktop:headless` runs the real Rust command handlers on Tauri's
+`MockRuntime` — no OS runtime, native window, Dock icon or focus — beside the
+Vite frontend. It creates a fresh, gitignored
+`.headless/run-<random>/{vault,config}` in this worktree, seeds the default
+vault, and prints a per-run URL shaped like
+`http://127.0.0.1:1422/#headless=http://127.0.0.1:1423&token=…`. Open exactly
+that URL in a Volli Browser Tab; the fragment token is a local capability and
+is removed from the address bar after load.
+
+The frontend defaults to `1422` and the backend to `1423`; set
+`KINTSUGI_FRONTEND_PORT` and `KINTSUGI_BACKEND_PORT` per worktree. Both bind
+`127.0.0.1` only. The runner creates its scratch dirs (and any supplied
+`KINTSUGI_VAULT`/`KINTSUGI_CONFIG_DIR`) when missing. Its config directory is
+separate from the real app's, so the owner's vault choice, phone token and
+clip receipts are untouched; `KINTSUGI_VAULT` is never persisted. Supplying
+`KINTSUGI_VAULT` uses that vault as-is and does not seed it, so seed it first:
+
+```sh
+VAULT="$PWD/.headless/my-vault-$(date +%s)"
+pnpm desktop:seed "$VAULT"
+KINTSUGI_VAULT="$VAULT" pnpm desktop:headless
+```
+
+`desktop:seed` refuses any existing nonempty directory (there is no overwrite
+flag) and never writes into the owner's real vault or config. AI is off by
+default in headless mode; `KINTSUGI_HEADLESS_PI_READONLY=1` opts into read-only
+Pi credentials for an AI check. For the phone app, build with
+`expo run:ios --device generic` and drive the Simulator with `xcrun simctl`;
+never run `pnpm ios` or `expo run:ios` against a device. See
+[Testing without windows](AGENTS.md#testing-without-windows) for the exact
+commands, and [docs/headless.md](docs/headless.md) for the transport.
