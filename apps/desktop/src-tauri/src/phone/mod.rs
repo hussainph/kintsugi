@@ -4,6 +4,7 @@
 mod server;
 mod tailscale;
 
+use crate::AppHandle;
 use crate::config;
 use crate::vault;
 use serde::Serialize;
@@ -11,7 +12,7 @@ use server::{Changed, Host};
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use tailscale::Tailnet;
-use tauri::{async_runtime, AppHandle, Emitter, Manager, State};
+use tauri::{async_runtime, Emitter, Manager, State};
 use tokio::sync::oneshot;
 
 /// The same on both sides of `tailscale serve`, so the URL is easy to read.
@@ -90,6 +91,7 @@ fn stop(app: &AppHandle) {
 }
 
 /// Picks phone access back up when the app starts, if it was left on.
+#[cfg(not(feature = "headless"))]
 pub fn restore(app: &AppHandle) {
     let phone = config::load(app).phone;
     if let (true, Some(token)) = (phone.enabled, phone.token) {
@@ -140,6 +142,9 @@ pub async fn phone_status(app: AppHandle) -> PhoneStatus {
 /// server can stay up while the writer fixes them.
 #[tauri::command]
 pub async fn phone_enable(app: AppHandle, enabled: bool) -> Result<PhoneStatus> {
+    if cfg!(feature = "headless") {
+        return Err("Phone access is unavailable in headless mode (Tailscale settings are shared)".into());
+    }
     if !enabled {
         stop(&app);
         config::update(&app, |c| c.phone.enabled = false)?;

@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use crate::AppHandle;
+#[cfg(not(feature = "headless"))]
+use tauri::Manager;
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -40,8 +42,23 @@ pub fn isolated_dev() -> bool {
     dev_vault().is_some()
 }
 
+/// Fail closed in headless mode: even missing overrides cannot select the
+/// owner's real app config. KI-7's isolated vault logic below remains shared.
+pub fn directory(app: &AppHandle) -> Result<PathBuf> {
+    #[cfg(feature = "headless")]
+    { let _ = app; crate::headless::config_directory() }
+    #[cfg(not(feature = "headless"))]
+    {
+        #[cfg(debug_assertions)]
+        if let Some(path) = std::env::var_os("KINTSUGI_CONFIG_DIR").filter(|p| !p.is_empty()) {
+            return Ok(PathBuf::from(path));
+        }
+        app.path().app_config_dir().map_err(|e| e.to_string())
+    }
+}
+
 fn path(app: &AppHandle) -> Result<PathBuf> {
-    Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("config.json"))
+    Ok(directory(app)?.join("config.json"))
 }
 
 pub fn load(app: &AppHandle) -> Config {

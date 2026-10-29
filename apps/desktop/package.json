@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc",
+    "test:headless": "node --test src/headless/*.test.ts",
     "test": "node --test src/inspiration/*.test.ts",
     "test:references": "node --test test/reference-*.test.ts",
     "preview": "vite preview",

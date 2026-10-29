@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use crate::AppHandle;
+#[cfg(not(feature = "headless"))]
+use tauri::Manager;
 
 const MAX_RECEIPTS: usize = 1024;
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
@@ -83,14 +85,15 @@ struct Receipt {
 }
 
 pub fn index_path(app: &AppHandle) -> Result<PathBuf, String> {
-    if crate::config::isolated_dev() {
-        return Ok(app.state::<crate::vault::Vault>().root()?.join(".kintsugi/clip-capture-ids.json"));
+    #[cfg(feature = "headless")]
+    { Ok(crate::config::directory(app)?.join("clip-capture-ids.json")) }
+    #[cfg(not(feature = "headless"))]
+    {
+        if crate::config::isolated_dev() {
+            return Ok(app.state::<crate::vault::Vault>().root()?.join(".kintsugi/clip-capture-ids.json"));
+        }
+        Ok(crate::config::directory(app)?.join("clip-capture-ids.json"))
     }
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("clip-capture-ids.json"))
 }
 
 fn capture_id(value: &str) -> Result<String, Error> {
