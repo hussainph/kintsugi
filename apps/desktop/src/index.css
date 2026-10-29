@@ -7,3 +7,14 @@
     @apply overflow-hidden select-none cursor-default;
   }
 }
+
+/* Quiet, theme-aware scrollbars for the library's own scroll regions. */
+.inspiration-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.inspiration-scroll::-webkit-scrollbar { width: 6px; }
+.inspiration-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}

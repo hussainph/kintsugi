@@ -44,8 +44,11 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
     if let Ok(root) = vault.root() {
         return Ok(root);
     }
-    let path = match config::vault_override().or_else(|| config::load(app).vault.filter(|p| p.is_dir())) {
+    let path = match config::load(app).vault.filter(|p| p.is_dir()) {
         Some(path) => path,
+        None if config::isolated_dev() => {
+            return Err("scratch config must specify an existing vault".into());
+        }
         None => {
             let path = app.path().document_dir().map_err(|e| e.to_string())?.join("Kintsugi");
             if !path.exists() {

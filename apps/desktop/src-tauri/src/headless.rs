@@ -104,12 +104,8 @@ pub(crate) fn scratch_path(path: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
-pub(crate) fn scratch_file(path: &Path) -> Result<PathBuf> {
-    let path = path.canonicalize().map_err(|e| e.to_string())?;
-    if !path.is_file() || !path.starts_with(required_dir("KINTSUGI_VAULT")?) {
-        return Err("file is outside this run's scratch vault".into());
-    }
-    Ok(path)
+pub(crate) fn config_directory() -> Result<PathBuf> {
+    required_dir("KINTSUGI_CONFIG_DIR")
 }
 
 fn random_token() -> Result<String> {

@@ -3,6 +3,8 @@ mod clip_capture;
 mod config;
 mod enrich;
 mod library;
+#[cfg(not(feature = "headless"))]
+mod navigation;
 mod phone;
 mod references;
 mod vault;
@@ -27,7 +29,16 @@ fn builder() -> tauri::Builder<Runtime> {
     #[cfg(feature = "headless")]
     let builder = tauri::test::mock_builder();
     #[cfg(not(feature = "headless"))]
+    use tauri::Manager;
+    #[cfg(not(feature = "headless"))]
     let builder = tauri::Builder::default()
+        .plugin(tauri::plugin::Builder::<Runtime, ()>::new("app-navigation")
+            .on_navigation(|webview, url| {
+                let config = webview.app_handle().config();
+                let dev = if cfg!(debug_assertions) { config.build.dev_url.as_ref() } else { None };
+                navigation::allowed(url, dev)
+            })
+            .build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init());
     builder
@@ -54,7 +65,6 @@ fn builder() -> tauri::Builder<Runtime> {
             vault::clip_trash,
             library::clip_search,
             library::clip_image,
-            library::clip_capture_image,
             ai::ai_providers,
             ai::ai_stream,
             ai::ai_cancel,
@@ -69,8 +79,10 @@ fn builder() -> tauri::Builder<Runtime> {
 pub fn run() {
     builder()
         .setup(|app| {
-            enrich::start(app.handle());
-            phone::restore(app.handle());
+            if !config::isolated_dev() {
+                enrich::start(app.handle());
+                phone::restore(app.handle());
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
