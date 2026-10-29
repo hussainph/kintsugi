@@ -26,7 +26,7 @@ The Kintsugi phone app reads, edits and captures into your vault while Kintsugi 
 2. In Kintsugi on the Mac, click **Connect your phone** at the bottom of the sidebar and turn on phone access. Kintsugi runs `tailscale serve` to publish `https://<your-mac>.<tailnet>.ts.net:47474`.
 3. Scan the QR code with the phone's camera, or click **Copy link** and paste it into the app.
 
-Captures go to `inbox/` as new drafts. If the Mac is asleep, they wait on the phone and send when it's back. Edits carry the version they started from, so the phone never overwrites something you changed on the Mac; you'll be asked which copy to keep. **Unpair phones** makes a new pairing code and signs out every phone that used the old one.
+Ideas captured as text go to `inbox/` as new drafts. Paste a URL, or share a URL, text, image or screenshot into Kintsugi from another iPhone app, to save inspiration in `inspiration/`. Shares save on the phone first, then send to your Mac. If the Mac is asleep, they wait on the phone and send when it's back. Edits carry the version they started from, so the phone never overwrites something you changed on the Mac; you'll be asked which copy to keep. **Unpair phones** makes a new pairing code and signs out every phone that used the old one.
 
 ## Develop
 
