@@ -1,5 +1,6 @@
 /** A client for the phone API the desktop app serves over Tailscale.
  *  Mirrors apps/desktop/src-tauri/src/phone/server.rs. */
+import type { Clip, ClipCapture, ClipSummary } from "./clips";
 import type { Entry } from "./vault";
 
 export type Pairing = { url: string; token: string };
@@ -82,6 +83,9 @@ export function remote({ url, token }: Pairing) {
     create: (dir: string, title: string) => call<{ path: string }>("POST", "/v1/docs", { dir, title }),
     capture: (text: string, capturedAt: string) =>
       call<{ path: string }>("POST", "/v1/capture", { text, capturedAt }),
+    clips: () => call<ClipSummary[]>("GET", "/v1/clips"),
+    clip: (path: string) => call<Clip>("GET", "/v1/clip" + query(path)),
+    captureClip: (capture: ClipCapture) => call<{ path: string }>("POST", "/v1/clips", capture),
   };
 }
 
