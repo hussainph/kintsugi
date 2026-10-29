@@ -8,7 +8,11 @@ use std::path::{Component, Path, PathBuf};
 
 mod clip_frontmatter;
 mod clips;
+mod references;
 pub use clips::*;
+pub use references::{
+    ReferenceDocument, ReferenceIndex, ReferenceLink, Wikilink, reference_index, wikilinks,
+};
 
 const DOC_EXTENSIONS: [&str; 2] = ["md", "mdx"];
 

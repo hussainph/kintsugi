@@ -6,6 +6,7 @@
     "./clips": "./src/clips.ts",
     "./frontmatter": "./src/frontmatter.ts",
     "./remote": "./src/remote.ts",
+    "./references": "./src/references.ts",
     "./vault": "./src/vault.ts"
   },
   "scripts": {
