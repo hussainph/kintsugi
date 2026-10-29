@@ -1,5 +1,6 @@
 mod ai;
 mod config;
+mod enrich;
 mod phone;
 mod vault;
 
@@ -10,8 +11,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(vault::Vault::default())
         .manage(ai::Ai::default())
+        .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .setup(|app| {
+            enrich::start(app.handle());
             phone::restore(app.handle());
             Ok(())
         })

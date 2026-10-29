@@ -141,11 +141,26 @@ launch, and when a vault opens), one at a time:
    share sheet sent (text, screenshot).
 2. **Think**: one AI call (the `edit`-quality model via the existing
    harness) given the metadata, own text and source text, plus the vault's
-   existing tags. It returns a title if missing, a one-sentence summary, 2 to 5
-   tags, and a corrected `kind`.
+   existing tags from both writing documents and clips. Prefer that shared
+   vocabulary so the writer's own work and outside inspiration meet in search.
+   It returns a title if missing, a one-sentence summary, 2 to 5 tags, and a
+   corrected `kind`.
 3. **Write back**: the frontmatter fields and the `## Source` section, with
    `enriched` set. The writer's own text is never touched. Failures retry
    with backoff, then set `enrich_error`.
+
+The worker makes three attempts, waiting 2 then 10 seconds between them.
+A clip with `enrich_error` stays available but is not retried on every scan;
+remove that field to try again. Captures wake the worker, and a five-second
+scan also finds clips added by plain-file tools. Only HTTP(S) URLs without
+embedded credentials are fetched, including redirects. Downloads are capped
+at 2 MB for HTML, 256 KB for oEmbed and 8 MB for hero images, with a 15-second
+request timeout and a 45-second overall fetch deadline. Image failures are
+best-effort; existing capture images are never replaced. A shared passage or
+existing source text can still be summarized and tagged if fetching fails;
+that clip completes with the text already available, rather than waiting for
+connectivity. A bare URL with no usable text retries instead of asking the AI
+to guess what the page says.
 
 ## Library (Mac)
 
