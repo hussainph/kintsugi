@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, Folder, Smartphone } from "lucide-react";
+import { Bookmark, ChevronRight, FileText, Folder, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
 import {
@@ -30,6 +30,8 @@ type Props = {
   tree: Entry[];
   vaultName: string;
   active: string | null;
+  libraryOpen: boolean;
+  onLibrary: () => void;
   selectedDir: string;
   onOpen: (path: string) => void;
   onSelectDir: (path: string) => void;
@@ -146,6 +148,17 @@ export function Sidebar(props: Props) {
       {/* Room for the traffic lights; the whole strip drags the window. */}
       <SidebarHeader className="h-10" data-tauri-drag-region />
       <SidebarContent>
+        <SidebarGroup>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} title="Inspiration (⇧⌘I)">
+                <Bookmark />
+                <span>Inspiration</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘I</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel
             className={cn("cursor-default", props.selectedDir === "" && "text-sidebar-foreground")}

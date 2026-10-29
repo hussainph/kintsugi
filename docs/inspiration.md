@@ -279,6 +279,67 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
   reference this clip.
 - Paste or drop anywhere in the library to capture.
 
+### Library implementation and shared seams
+
+`clip_search({ query?, tags?, offset?, limit? })` is the reusable desktop
+lexical search command, including for the editor's `[[` picker. It returns
+`{ clips: (ClipSummary & { text: string })[], total, tags: string[] }`.
+`text` is an own-text preview of at most 600 Unicode characters, never the
+extracted source. Search itself uses the full own text and source, plus title,
+summary, tags, site and URL. Terms are whitespace-separated, case-insensitive
+substrings, ANDed across those fields. Tags are trimmed/lowercased exact AND
+filters. Results keep `clip_list` ordering (newest captured first, then path
+ascending); returned tags cover the whole vault, not just matching clips.
+Pagination defaults to offset 0 and limit 60 (clamped to 1–120).
+
+The Rust index is cached per canonical vault root and invalidated per path by
+`clips:changed`, including enrichment. First indexing, search and media reads
+run off the main thread. A lightweight file metadata snapshot on search also
+picks up external edits, captures and deletions without reopening the app.
+Live refresh retains the already-loaded window rather than resetting to page
+one, and returning from detail restores grid position/focus. The grid pages results and
+virtualizes the masonry viewport, mounting only nearby cards and freeing their
+image object URLs as they leave. Fixed, varied thumbnail frames avoid layout
+jumps during enrichment; detail shows the uncropped image.
+
+Images use **binary IPC, not an asset-protocol filesystem scope**:
+`clip_image({ path })` takes a clip path and returns an `ArrayBuffer` containing
+only that clip's primary image. Rust validates the clip and its media path
+under `inspiration/media/`, rejects symlinks, non-regular files, unsupported
+extensions/signatures (including SVG) and files over 15 MiB. The frontend
+creates a short-lived Blob URL. No arbitrary vault path is exposed to the
+webview. Missing, corrupt or unsupported images get a quiet fallback.
+The window disables Tauri's native drag interception so HTML drops receive
+both Finder files and browser URLs/text. Clipboard and dropped files use
+`clip_create` with `via: mac`; there is no arbitrary local-file-read command.
+Raster files with an empty browser MIME type use an extension allowlist.
+
+Paste/drop listeners are active only while the library is open, including its
+detail view. Pasting into an input or editable note remains normal editing;
+**Keep something** also accepts a link, text or an image explicitly. Whole
+HTTP(S) URLs become links; other text stays intact as a note. Each capture
+is persisted before the UI reports success. Title, quote/note and tag edits
+save field patches on blur, navigation and window blur, with a retry/discard
+choice on failure. App navigation, vault switching and window close await
+pending clip edits, preventing a queued edit from crossing vaults. They never
+replace source text or unrelated enrichment fields.
+
+UI lives in `apps/desktop/src/inspiration/`. `Library` accepts
+`renderUsedIn?: (clip: Clip) => ReactNode` for KI-8's shared backlink index;
+the default slot is deliberately not a second index or an assertion that no
+backlinks exist. App connects it to KI-8's shared `UsedIn` component, and
+Writing's clip-open callback to the same library detail. To open a clip from
+the editor, dispatch
+`new CustomEvent("kintsugi:open-clip", { detail: { path } })` on `window`.
+App flushes the document, switches views and opens the detail. The editor
+stays mounted while hidden so switching views preserves its current state.
+
+For isolated development, debug builds accept `KINTSUGI_VAULT` pointing to
+an existing scratch vault (see README). This mode never reads or persists the
+normal app config, requires the specified folder to exist, and skips starting
+enrichment and phone services. Capture receipts also stay under the scratch
+vault's hidden `.kintsugi/` folder. Release builds ignore the variable.
+
 ## Referencing in writing
 
 - A reference is an Obsidian wikilink to a file name: a clip
@@ -298,6 +359,37 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
   own documents first, then clips. Drag one in to quote it.
 - Backlinks come from scanning documents for wikilinks; the library's
   **Used in**, a document's own backlinks and the margin share one index.
+
+### Reference lookup and interaction
+
+`reference_index` returns `{ documents, clips, links }`. Documents have
+`path`, nullable `title` and `status`, and their Markdown body as `text`.
+Clips are `ClipSummary` values; their extracted source does not cross this
+interface. Each link has the containing document's `source` path, a file
+`target` (without alias or heading), and the canonical `resolved` path or
+`null`. Repeated links to one file produce one backlink. The desktop shares
+this snapshot between the margin, document backlinks and library **Used in**,
+refreshing after document saves/create/rename/trash, phone writes and
+`clips:changed`. Scanning runs off the UI thread.
+
+Names are case-sensitive. Explicit vault-relative paths and `.md`/`.mdx`
+extensions are accepted, as are Obsidian aliases and heading/block fragments.
+A root document disambiguates same-named nested documents; otherwise an
+ambiguous basename stays unresolved and the picker inserts an explicit path.
+Frontmatter, code fences, inline code, HTML comments and escaped openers do
+not create backlinks. Hidden files and symlinks are not indexed.
+
+Use ↑/↓ and Enter in the picker; Shift+Enter quotes a clip with a captured
+passage, and Escape dismisses. Clicking a chip exposes the plain link for
+editing. Command-click (Control-click too) opens its target. Margin clips can
+be dragged in as attributed blockquotes; documents drag in as references.
+The margin button remembers its visibility; on narrow windows it starts
+closed, and an empty margin takes no space.
+
+Renaming a document or folder refreshes resolution but does **not** rewrite
+existing links yet. Offering a reviewed link update on rename is follow-up
+work; unresolved links remain visible, never silently rebound to an
+arbitrary duplicate.
 
 ## Publishing (to be designed)
 
