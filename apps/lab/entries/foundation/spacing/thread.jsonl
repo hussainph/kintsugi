@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-foundation-spacing", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Explore the editor’s current 88px top inset and 32px gutters. There is no product spacing-token scale to invent here."}}

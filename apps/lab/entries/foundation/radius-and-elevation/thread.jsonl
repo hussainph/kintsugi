@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-foundation-radius-and-elevation", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Use --radius and the real dialog ring/overlay recipe. No shared elevation-token scale exists in the source."}}

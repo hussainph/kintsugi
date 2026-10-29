@@ -38,6 +38,8 @@ A pnpm + Cargo monorepo:
 | `apps/mobile` | The phone app: Expo (React Native) + Expo Router |
 | `packages/core` | Shared TypeScript: vault types, frontmatter, the phone API client |
 | `packages/editor` | The CodeMirror editor |
+| `packages/lab` | Extractable browser design-workbench framework |
+| `apps/lab` | Kintsugi's catalog, fixtures and experiments (never part of the app build) |
 | `packages/ui` | shadcn/ui components and the theme (`pnpm exec shadcn add …` from here) |
 | `crates/vault` | The vault on disk: reading, versioned writes, captures |
 
@@ -49,7 +51,26 @@ pnpm desktop:seed <dir> # a deterministic scratch vault for screenshots
 pnpm ios              # the phone app in the iOS Simulator (a development build)
 pnpm test             # Rust and TypeScript tests
 pnpm typecheck
+pnpm lab             # design workbench at http://127.0.0.1:4315 (no native window)
+pnpm lab:check       # strict entry/source/state validation
+pnpm lab:boot        # every story + screenshots; start pnpm lab first
 ```
+
+### Design workbench
+
+Kintsugi Lab keeps live foundations, components, pages and experiments in one
+searchable place. Tune typed dials, compare named states or saved snapshots,
+annotate a preview, and copy an agent brief with the exact source targets.
+Each entry's notes, decisions, critiques and snapshots live beside it in a
+small committed `thread.jsonl`; `pnpm lab:cli list|show|note|status|snapshot`
+uses the same reducer and atomic store as the UI. Unknown Tauri commands fail
+closed and fixtures never read the real vault or config.
+
+See [docs/lab.md](docs/lab.md) for the architecture and licensing boundaries,
+and [packages/lab/README.md](packages/lab/README.md) for commands and authoring.
+Agents use Volli Browser Tabs; `pnpm lab --open` is an owner-only convenience.
+The optional Agentation adapter is source-available under PolyForm Shield,
+not an unrestricted open-source dependency.
 
 To pair the Simulator with a development build of the Mac app, turn on phone access and click **Simulator link**, then open it in the Simulator: `xcrun simctl openurl booted "<link>"`.
 

@@ -1,0 +1,54 @@
+@import "@kintsugi/ui/styles.css";
+@import "@kintsugi/lab/styles.css";
+/* Tailwind must see every live import, not just utilities used by the shell. */
+@source "./entries";
+@source "../desktop/src";
+@source "../../packages/ui/src";
+@source "../../packages/editor/src";
+@source not "./entries/**/thread.jsonl";
+@source not "./entries/**/*.tmp";
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  width: 100%;
+}
+body {
+  margin: 0;
+}
+body.is-lab-preview,
+body.is-lab-preview #root {
+  height: 100vh;
+  overflow: auto;
+}
+.lab-preview-root {
+  height: 100vh;
+  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
+  overflow: auto;
+}
+/* Existing product editor uses a px base; apply the scenario without editing it. */
+.lab-preview-root .cm-editor {
+  font-size: calc(19px * var(--lab-text-scale, 1));
+}
+html[data-lab-density="compact"] .lab-preview-root {
+  --spacing: 0.2rem;
+}
+html[data-lab-density="compact"] .reference-card {
+  padding-block: 0.4rem;
+}
+html[data-lab-reduced-motion="true"] *,
+html[data-lab-reduced-motion="true"] *::before,
+html[data-lab-reduced-motion="true"] *::after {
+  animation-duration: 0s !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lab-preview-root * {
+    scroll-behavior: auto !important;
+  }
+}

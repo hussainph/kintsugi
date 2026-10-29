@@ -9,8 +9,13 @@
     "test:headless": "node --test scripts/*.test.mjs && pnpm --filter @kintsugi/desktop test:headless && cargo test -p kintsugi --no-default-features --features headless -j ${VOLLI_CONCURRENCY_HINT:-1}",
     "ios": "pnpm --filter @kintsugi/mobile ios",
     "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "test": "cargo test --workspace && pnpm --filter @kintsugi/core test && pnpm --filter @kintsugi/editor test && pnpm --filter @kintsugi/desktop test:references && pnpm --filter @kintsugi/desktop test"
+    "typecheck": "pnpm -r --workspace-concurrency=${VOLLI_CONCURRENCY_HINT:-1} typecheck",
+    "test": "cargo test --workspace -j ${VOLLI_CONCURRENCY_HINT:-1} && pnpm --filter @kintsugi/core test && pnpm --filter @kintsugi/editor test && pnpm --filter @kintsugi/desktop test:references && pnpm --filter @kintsugi/desktop test && pnpm --filter @kintsugi/lab test && pnpm --filter @kintsugi/lab-app test && pnpm lab:check",
+    "lab": "pnpm --filter @kintsugi/lab-app dev",
+    "lab:cli": "pnpm --filter @kintsugi/lab exec tsx src/cli.ts --root ../.. --entries apps/lab/entries",
+    "lab:check": "pnpm lab:cli check",
+    "lab:boot": "pnpm --filter @kintsugi/lab exec tsx src/boot.ts --url http://127.0.0.1:4315 --out ../../.lab-artifacts",
+    "lab:shots": "pnpm lab:boot"
   },
   "packageManager": "pnpm@9.12.0"
 }

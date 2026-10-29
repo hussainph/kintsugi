@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-component-dialog", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Keep the real dialog primitives so keyboard, focus trap and Escape can be evaluated. Confirmation creates no files and deletes nothing."}}

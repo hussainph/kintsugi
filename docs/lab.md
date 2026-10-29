@@ -24,7 +24,7 @@ Lifecycle: `idea → exploring → refining → ready → shipped`, or `archived
 
 ## State and persistence
 
-Each entry has one small, human-readable `thread.jsonl`. Every line is a versioned immutable event `{ version, id, at, action }`. Actions add notes, critiques or decisions; update lifecycle; save named control snapshots; or add/update/delete/resolve annotations. Annotation changes append history rather than erase earlier critique. The derived open-critique view folds annotation IDs, retaining the full audit trail. Snapshots capture values and scenario, not source commits or image baselines.
+Each entry has one small, human-readable `thread.jsonl`. Every line is a versioned immutable event `{ version, id, at, action }`. Actions add notes, critiques or decisions; update lifecycle; save named control snapshots; or add/update/delete/resolve annotations. Annotation changes append history rather than erase earlier critique. The derived open-critique view folds annotation IDs, retaining the full audit trail. Snapshots capture values and scenario, not source commits or image baselines. They are story-independent dial settings: Restore and Compare apply them to the selected story, which Compare names explicitly. Old settings remain readable if controls are renamed or tightened; preview reconciliation reports incompatible values and uses current defaults without rewriting history. Both annotation critiques and text critiques can be resolved with a new event.
 
 One pure reducer and action validator serve both CLI and UI. The framework store validates the complete log on read, serializes writes, and atomically replaces a same-directory temporary file. Optimistic revision checks reject stale browser edits; failures remain visible and can be retried. Inputs and entry paths are bounded/validated; middleware is loopback-only, checks origin/host and JSON requests, and exposes no arbitrary filesystem write. Schema versions are explicit, with in-code migration dispatch; unknown/future versions fail closed. Migrations replace the existing file on its next write, leaving no legacy sidecars. There is no global state blob.
 
@@ -44,5 +44,7 @@ One pure reducer and action validator serve both CLI and UI. The framework store
 ## Extraction and non-goals
 
 The framework receives registry modules, branding and analysis source configuration. It has no Kintsugi imports, vault knowledge or app aliases. Public entry/schema/state APIs and server/CLI/adapter entry points are separate exports. The instance owns all real components, tokens, fixtures and source roots. Extraction means publishing the package, choosing adapters with suitable licenses and installing it into another Vite/React workspace—not untangling app-internal scaffolding.
+
+Follow-ups: KI-16 (Lab MCP server), KI-17 (live-build/reference comparison), KI-18 (explicit real-headless transport).
 
 No review clearance/send-back pipeline, commit attempts, baseline server, verdict buckets or global-fix tracing. A Lab MCP server, live-build comparison, remote collaboration and real-backend embedded transport are follow-up work, not reasons to grow this slice into infrastructure.
