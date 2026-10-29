@@ -3,6 +3,7 @@
 //! the pairing token, so other local processes and web pages get nothing.
 //! Mirrored by packages/core/src/remote.ts.
 
+use crate::clip_capture;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::extract::{DefaultBodyLimit, Query, Request, State};
 use axum::http::{header, StatusCode};
@@ -30,6 +31,7 @@ pub struct Changed {
 /// What the server needs from the app, kept abstract so tests can run it bare.
 #[derive(Clone)]
 pub struct Host {
+    pub capture_ids: PathBuf,
     pub root: Arc<dyn Fn() -> Result<PathBuf, String> + Send + Sync>,
     pub changed: Arc<dyn Fn(Changed) + Send + Sync>,
     pub clip_changed: Arc<dyn Fn(String) + Send + Sync>,
@@ -208,6 +210,7 @@ const MAX_ENCODED_IMAGE_BYTES: usize = MAX_CLIP_IMAGE_BYTES.div_ceil(3) * 4;
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ClipBody {
+    id: Option<String>,
     url: Option<String>,
     text: Option<String>,
     note: Option<String>,
@@ -219,7 +222,7 @@ struct ClipBody {
 }
 
 impl ClipBody {
-    fn capture(self) -> Result<vault::ClipCapture, Error> {
+    fn capture(self) -> Result<clip_capture::Capture, Error> {
         let image = self
             .image
             .map(|encoded| {
@@ -246,15 +249,18 @@ impl ClipBody {
                 Ok(bytes)
             })
             .transpose()?;
-        Ok(vault::ClipCapture {
-            url: self.url,
-            text: self.text,
-            note: self.note,
-            title: self.title,
-            image,
-            image_type: self.image_type,
-            captured_at: self.captured_at,
-            via: self.via,
+        Ok(clip_capture::Capture {
+            id: self.id,
+            clip: vault::ClipCapture {
+                url: self.url,
+                text: self.text,
+                note: self.note,
+                title: self.title,
+                image,
+                image_type: self.image_type,
+                captured_at: self.captured_at,
+                via: self.via,
+            },
         })
     }
 }
@@ -273,9 +279,17 @@ async fn create_clip(
         Error(e.status(), message.into())
     })?;
     let capture = body.capture()?;
-    let path = vault::clip_create(&ctx.root()?, &capture)?;
-    (ctx.host.clip_changed)(path.clone());
-    Ok(Json(json!({ "path": path })))
+    let created = clip_capture::create(&ctx.root()?, &ctx.host.capture_ids, &capture).map_err(|e| {
+        let status = match &e {
+            clip_capture::Error::Invalid(_) => StatusCode::BAD_REQUEST,
+            clip_capture::Error::Storage => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        Error(status, e.to_string())
+    })?;
+    if created.created {
+        (ctx.host.clip_changed)(created.path.clone());
+    }
+    Ok(Json(json!({ "path": created.path })))
 }
 
 async fn clips(State(ctx): State<Ctx>) -> Reply<Vec<vault::ClipSummary>> {
@@ -321,10 +335,12 @@ mod tests {
         ),
     ) {
         let dir = tempfile::tempdir().unwrap();
+        let config = tempfile::tempdir().unwrap();
         let root = dir.path().to_path_buf();
         let changes = Arc::new(Mutex::new(Vec::new()));
         let clip_changes = Arc::new(Mutex::new(Vec::new()));
         let host = Host {
+            capture_ids: config.path().join("clip-capture-ids.json"),
             root: Arc::new({
                 let root = root.clone();
                 move || Ok(root.clone())
@@ -530,6 +546,51 @@ mod tests {
     }
 
     #[test]
+    fn retrying_a_clip_id_returns_the_original_path_without_writes_or_events() {
+        with_server(async |base, http, root, changes, clip_changes| {
+            let body = json!({
+                "id": "6d329d64-6bda-4ca9-81d4-3a7e6fbcbcef",
+                "title": "Window light", "image": PNG, "imageType": "image/png",
+                "capturedAt": "2026-10-29T09:14", "via": "share"
+            });
+            let post = || http.post(format!("{base}/v1/clips")).bearer_auth(TOKEN).json(&body).send();
+            let (a, b) = futures_util::future::join(post(), post()).await;
+            let a = a.unwrap();
+            let b = b.unwrap();
+            assert_eq!(a.status(), 200);
+            assert_eq!(b.status(), 200);
+            let original: serde_json::Value = a.json().await.unwrap();
+            assert_eq!(b.json::<serde_json::Value>().await.unwrap(), original);
+            let path = original["path"].as_str().unwrap();
+            assert_eq!(vault::clip_list(&root).unwrap().len(), 1);
+            vault::clip_trash(&root, path, |paths| {
+                for path in paths { std::fs::remove_file(path).map_err(|e| e.to_string())?; }
+                Ok(())
+            }).unwrap();
+            let retry = post().await.unwrap();
+            assert_eq!(retry.status(), 200);
+            assert_eq!(retry.json::<serde_json::Value>().await.unwrap(), original);
+            assert!(vault::clip_list(&root).unwrap().is_empty());
+            assert_eq!(std::fs::read_dir(root.join("inspiration/media")).unwrap().count(), 0);
+            assert_eq!(*clip_changes.lock().unwrap(), vec![path.to_string()]);
+            assert!(changes.lock().unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    fn clip_storage_failures_are_retryable_and_do_not_echo_capture_content() {
+        with_server(async |base, http, root, _, clip_changes| {
+            std::fs::write(root.join("inspiration"), "blocks clip storage").unwrap();
+            let response = http.post(format!("{base}/v1/clips")).bearer_auth(TOKEN)
+                .json(&json!({ "id": "6d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "text": "PRIVATE-CAPTURE-CONTENT", "capturedAt": "2026-10-29T09:14", "via": "phone" }))
+                .send().await.unwrap();
+            assert_eq!(response.status(), 500);
+            assert_eq!(response.json::<serde_json::Value>().await.unwrap()["error"], "Could not save the clip capture. Please retry.");
+            assert!(clip_changes.lock().unwrap().is_empty());
+        });
+    }
+
+    #[test]
     fn clips_list_newest_first_and_stay_out_of_the_document_tree() {
         with_server(async |base, http, root, changes, clip_changes| {
             let empty = http
@@ -642,6 +703,7 @@ mod tests {
                 json!({ "text": "A note", "capturedAt": 42, "via": "phone" }),
                 json!({ "image": false, "capturedAt": "2026-10-29T10:00", "via": "phone" }),
                 json!({ "url": [], "capturedAt": "2026-10-29T10:00", "via": "phone" }),
+                json!({ "id": 42, "text": "A note", "capturedAt": "2026-10-29T10:00", "via": "phone" }),
             ] {
                 let response = http
                     .post(format!("{base}/v1/clips"))
@@ -693,6 +755,7 @@ mod tests {
                 json!({}),
                 json!({ "text": " \n ", "url": " ", "note": " " }),
                 json!({ "title": "A title without content" }),
+                json!({ "id": "PRIVATE-INVALID-ID", "text": "A note" }),
                 json!({ "image": "private-image-invalid-base64!", "imageType": "image/png" }),
                 json!({ "image": "", "imageType": "image/png" }),
                 json!({ "image": PNG }),
@@ -718,6 +781,7 @@ mod tests {
                 assert!(!error.is_empty());
                 assert!(!error.contains(PNG));
                 assert!(!error.contains("private-image-invalid-base64"));
+                assert!(!error.contains("PRIVATE-INVALID-ID"));
             }
             assert_eq!(std::fs::read_dir(root).unwrap().count(), 0);
             assert!(changes.lock().unwrap().is_empty());

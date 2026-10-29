@@ -64,6 +64,7 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     }
     config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
     *app.state::<Vault>().0.lock().unwrap() = Some(path.to_path_buf());
+    crate::enrich::wake(app);
     Ok(())
 }
 
@@ -157,10 +158,21 @@ pub fn clip_read(vault: State<Vault>, path: String) -> Result<vault::Clip> {
 }
 
 #[tauri::command]
-pub fn clip_create(app: AppHandle, vault: State<Vault>, capture: vault::ClipCapture) -> Result<String> {
-    let path = vault::clip_create(&vault.root()?, &capture)?;
-    clips_changed(&app, &path);
-    Ok(path)
+pub fn clip_create(
+    app: AppHandle,
+    vault: State<Vault>,
+    capture: crate::clip_capture::Capture,
+) -> Result<String> {
+    let created = crate::clip_capture::create(
+        &vault.root()?,
+        &crate::clip_capture::index_path(&app)?,
+        &capture,
+    )
+    .map_err(|e| e.to_string())?;
+    if created.created {
+        clips_changed(&app, &created.path);
+    }
+    Ok(created.path)
 }
 
 /// Editing a clip never renames its stable file or replaces extracted source.
@@ -183,9 +195,11 @@ pub fn clip_update(
 /// The Markdown and its primary image go to the macOS Trash, not an unlink.
 #[tauri::command]
 pub fn clip_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<()> {
-    vault::clip_trash(&vault.root()?, &path, |targets| {
-        trash::delete_all(targets).map_err(|_| "could not move clip to Trash".into())
-    })?;
+    crate::clip_capture::trash(
+        &vault.root()?, &crate::clip_capture::index_path(&app)?, &path, |targets| {
+            trash::delete_all(targets).map_err(|_| "could not move clip to Trash".into())
+        },
+    )?;
     clips_changed(&app, &path);
     Ok(())
 }

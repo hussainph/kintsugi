@@ -14,6 +14,28 @@ fn capture(text: &str) -> ClipCapture {
 }
 
 #[test]
+fn receipt_reservation_happens_before_media_and_markdown_are_written() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let capture = ClipCapture {
+        image: Some(vec![1, 2, 3]),
+        image_type: Some("image/png".into()),
+        ..capture("A note")
+    };
+    let error = clip_create_with_receipt(root, &capture, &[], |path| {
+        assert_eq!(path, "inspiration/a-note.md");
+        assert!(!root.join(path).exists());
+        assert!(!root.join("inspiration/media").exists());
+        Err("could not persist receipt".into())
+    })
+    .unwrap_err();
+    assert_eq!(error, "could not persist receipt");
+    assert!(clip_list(root).unwrap().is_empty());
+    assert!(!root.join("inspiration/media").exists());
+    assert_eq!(clip_create(root, &capture).unwrap(), "inspiration/a-note.md");
+}
+
+#[test]
 fn captures_links_quotes_notes_and_images_without_enrichment() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
