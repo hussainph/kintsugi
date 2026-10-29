@@ -15,6 +15,7 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 | ⇧⌘D | Toggle draft / complete |
 | ⌘F | Find in document |
 | ⇧⌘O | Open a different vault |
+| ⇧⌘I | Open the Inspiration library |
 | F2, ⌘⌫ (in the sidebar) | Rename, move to Trash |
 
 ## Your phone
@@ -47,5 +48,18 @@ pnpm ios              # the phone app in the iOS Simulator (a development build)
 pnpm test             # Rust and TypeScript tests
 pnpm typecheck
 ```
+
+For an isolated desktop run, use an existing scratch folder:
+
+```sh
+mkdir -p target/scratch-vault
+KINTSUGI_VAULT="$PWD/target/scratch-vault" pnpm desktop
+```
+
+Debug builds open that vault without reading or persisting the normal app
+config, and skip phone/enrichment services. An invalid scratch path fails
+instead of falling back to `~/Documents/Kintsugi`. Release builds ignore the
+override. If another dev server is on port 1420, pass a Tauri `--config`
+override with a different `build.devUrl` and `build.beforeDevCommand` port.
 
 To pair the Simulator with a development build of the Mac app, turn on phone access and click **Simulator link**, then open it in the Simulator: `xcrun simctl openurl booted "<link>"`.

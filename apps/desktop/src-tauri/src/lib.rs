@@ -3,13 +3,22 @@ mod clip_capture;
 mod config;
 mod enrich;
 mod library;
+mod navigation;
 mod phone;
 mod references;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Manager;
     tauri::Builder::default()
+        .plugin(tauri::plugin::Builder::<tauri::Wry, ()>::new("app-navigation")
+            .on_navigation(|webview, url| {
+                let config = webview.app_handle().config();
+                let dev = if cfg!(debug_assertions) { config.build.dev_url.as_ref() } else { None };
+                navigation::allowed(url, dev)
+            })
+            .build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(vault::Vault::default())
@@ -18,8 +27,11 @@ pub fn run() {
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .setup(|app| {
-            enrich::start(app.handle());
-            phone::restore(app.handle());
+            // Scratch visual reviews never start network/AI/phone services.
+            if !config::isolated_dev() {
+                enrich::start(app.handle());
+                phone::restore(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -40,7 +52,6 @@ pub fn run() {
             vault::clip_trash,
             library::clip_search,
             library::clip_image,
-            library::clip_capture_image,
             ai::ai_providers,
             ai::ai_stream,
             ai::ai_cancel,

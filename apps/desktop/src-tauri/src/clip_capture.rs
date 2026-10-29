@@ -83,6 +83,9 @@ struct Receipt {
 }
 
 pub fn index_path(app: &AppHandle) -> Result<PathBuf, String> {
+    if crate::config::isolated_dev() {
+        return Ok(app.state::<crate::vault::Vault>().root()?.join(".kintsugi/clip-capture-ids.json"));
+    }
     Ok(app
         .path()
         .app_config_dir()

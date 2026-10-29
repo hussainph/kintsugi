@@ -1,16 +1,17 @@
 //! Reusable lexical clip search and a narrow, byte-only image boundary.
-//! Clip contents are read once per vault, then only for paths invalidated by a
-//! clip mutation. Source text is searchable, but never returned in a card preview.
+//! Each search checks cheap file metadata; only changed clip contents are read.
+//! Source text is searchable, but never returned in a card preview.
 
 use crate::vault::Vault;
-use kintsugi_vault::{self as vault, Clip, ClipCapture, ClipSummary, ClipVia};
+use kintsugi_vault::{self as vault, Clip, ClipSummary};
 use serde::Serialize;
 use std::collections::{BTreeSet, HashMap};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, State};
+use std::time::SystemTime;
+use tauri::State;
 
 type Result<T> = std::result::Result<T, String>;
 const PREVIEW_CHARS: usize = 600;
@@ -60,33 +61,111 @@ impl IndexedClip {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct FileStamp {
+    modified: SystemTime,
+    bytes: u64,
+    // Detect atomic replacements and writes that preserve mtime/size too.
+    #[cfg(unix)]
+    identity_and_change: (u64, u64, i64, i64),
+}
+
+/// Include malformed clips in the metadata snapshot so fixing one externally
+/// makes it discoverable. Do not follow symlinks or inspect the media folder.
+fn clip_files(root: &Path) -> Result<HashMap<String, FileStamp>> {
+    #[cfg(unix)]
+    use std::os::unix::fs::MetadataExt;
+
+    let dir = root.join(vault::INSPIRATION);
+    let metadata = match fs::symlink_metadata(&dir) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        Err(_) => return Err("could not inspect library folder".into()),
+    };
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("library folder must be a directory without symlinks".into());
+    }
+    let mut files = HashMap::new();
+    for entry in fs::read_dir(dir).map_err(|_| "could not list library files")? {
+        let entry = entry.map_err(|_| "could not inspect library file")?;
+        let name = entry.file_name();
+        let Some(name) = name
+            .to_str()
+            .filter(|name| !name.starts_with('.') && name.ends_with(".md"))
+        else {
+            continue;
+        };
+        let metadata = match fs::symlink_metadata(entry.path()) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return Err("could not inspect library file".into()),
+        };
+        if metadata.is_file() {
+            files.insert(
+                format!("{}/{name}", vault::INSPIRATION),
+                FileStamp {
+                    modified: metadata
+                        .modified()
+                        .map_err(|_| "could not inspect library file time")?,
+                    bytes: metadata.len(),
+                    #[cfg(unix)]
+                    identity_and_change: (
+                        metadata.dev(),
+                        metadata.ino(),
+                        metadata.ctime(),
+                        metadata.ctime_nsec(),
+                    ),
+                },
+            );
+        }
+    }
+    Ok(files)
+}
+
 #[derive(Default)]
 struct Index {
     clips: Vec<IndexedClip>,
     tags: Vec<String>,
     dirty: BTreeSet<String>,
+    files: HashMap<String, FileStamp>,
+    #[cfg(test)]
+    reads: usize,
 }
 
 impl Index {
-    fn load(root: &Path) -> Result<Self> {
-        // Use the storage layer's validation and malformed-file tolerance. The
-        // extra read is a one-time cost; cached searches don't reread clips.
-        let clips = vault::clip_list(root)?
-            .into_iter()
-            .filter_map(|summary| vault::clip_read(root, &summary.path).ok())
-            .map(IndexedClip::new)
-            .collect();
-        let mut index = Self {
-            clips,
-            ..Self::default()
-        };
-        index.sort_and_tags();
-        Ok(index)
+    fn sync(&mut self, root: &Path) -> Result<()> {
+        let files = clip_files(root)?;
+        self.dirty.extend(
+            files
+                .iter()
+                .filter(|(path, stamp)| self.files.get(*path) != Some(*stamp))
+                .map(|(path, _)| path.clone()),
+        );
+        self.dirty.extend(
+            self.files
+                .keys()
+                .filter(|path| !files.contains_key(*path))
+                .cloned(),
+        );
+        self.files = files;
+        if !self.dirty.is_empty() {
+            self.refresh(root);
+        }
+        Ok(())
     }
 
     fn refresh(&mut self, root: &Path) {
-        for path in std::mem::take(&mut self.dirty) {
-            self.clips.retain(|clip| clip.preview.summary.path != path);
+        let dirty = std::mem::take(&mut self.dirty);
+        self.clips
+            .retain(|clip| !dirty.contains(&clip.preview.summary.path));
+        for path in dirty {
+            if !self.files.contains_key(&path) {
+                continue;
+            }
+            #[cfg(test)]
+            {
+                self.reads += 1;
+            }
             if let Ok(clip) = vault::clip_read(root, &path) {
                 self.clips.push(IndexedClip::new(clip));
             }
@@ -184,13 +263,8 @@ impl Library {
         for index in indexes.values_mut() {
             index.dirty.extend(changed.iter().cloned());
         }
-        if !indexes.contains_key(&root) {
-            indexes.insert(root.clone(), Index::load(&root)?);
-        }
-        let index = indexes.get_mut(&root).expect("inserted vault index");
-        if !index.dirty.is_empty() {
-            index.refresh(&root);
-        }
+        let index = indexes.entry(root.clone()).or_default();
+        index.sync(&root)?;
         Ok(index.search(
             query,
             tags,
@@ -242,40 +316,6 @@ fn primary_image(root: &Path, path: &str) -> Result<Vec<u8>> {
     let image = clip.summary.image.ok_or("clip has no primary image")?;
     let target = vault::clip_media_path(&root, path, &image)?;
     read_raster(&target).map(|(bytes, _)| bytes)
-}
-
-/// Native file drops are read by Rust, never by an asset-protocol permission.
-/// The normal capture path owns naming, writes and the shared change event.
-#[tauri::command]
-pub async fn clip_capture_image(
-    app: AppHandle,
-    vault: State<'_, Vault>,
-    path: String,
-    captured_at: String,
-) -> Result<String> {
-    let root = vault.root()?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let capture = image_capture(Path::new(&path), captured_at)?;
-        let path = vault::clip_create(&root, &capture)?;
-        crate::vault::clips_changed(&app, &path);
-        Ok(path)
-    })
-    .await
-    .map_err(|_| "image capture task failed")?
-}
-
-fn image_capture(path: &Path, captured_at: String) -> Result<ClipCapture> {
-    let (bytes, mime) = read_raster(path)?;
-    Ok(ClipCapture {
-        url: None,
-        text: None,
-        note: None,
-        title: None,
-        image: Some(bytes),
-        image_type: Some(mime.into()),
-        captured_at,
-        via: ClipVia::Mac,
-    })
 }
 
 fn extension_mime(path: &Path) -> Result<&'static str> {
@@ -349,34 +389,14 @@ fn read_raster(path: &Path) -> Result<(Vec<u8>, &'static str)> {
 
 /// Walk from an open directory descriptor, refusing symlinks at every step.
 /// Unlike a check-then-open sequence this also resists symlink replacement
-/// between validation and reading. O_NONBLOCK prevents a dropped FIFO hanging
-/// the command before its regular-file check.
-#[cfg(any(target_os = "macos", target_os = "linux"))]
+/// between validation and reading. O_NONBLOCK prevents a FIFO hanging the
+/// command before its regular-file check. libc supplies architecture-correct
+/// flags (notably Linux arm64's O_DIRECTORY and O_NOFOLLOW).
+#[cfg(unix)]
 fn open_regular_file(path: &Path) -> Result<File> {
-    use std::ffi::{CString, c_char, c_int};
+    use std::ffi::CString;
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::os::unix::ffi::OsStrExt;
-
-    #[cfg(target_os = "macos")]
-    const NOFOLLOW: c_int = 0x100;
-    #[cfg(target_os = "macos")]
-    const CLOEXEC: c_int = 0x1000000;
-    #[cfg(target_os = "macos")]
-    const DIRECTORY: c_int = 0x100000;
-    #[cfg(target_os = "macos")]
-    const NONBLOCK: c_int = 0x4;
-    #[cfg(target_os = "linux")]
-    const NOFOLLOW: c_int = 0o400000;
-    #[cfg(target_os = "linux")]
-    const CLOEXEC: c_int = 0o2000000;
-    #[cfg(target_os = "linux")]
-    const DIRECTORY: c_int = 0o200000;
-    #[cfg(target_os = "linux")]
-    const NONBLOCK: c_int = 0o4000;
-
-    unsafe extern "C" {
-        fn openat(fd: c_int, path: *const c_char, flags: c_int, ...) -> c_int;
-    }
 
     let parts = path.components().collect::<Vec<_>>();
     if !path.is_absolute()
@@ -395,10 +415,17 @@ fn open_regular_file(path: &Path) -> Result<File> {
         };
         let name = CString::new(name.as_bytes()).map_err(|_| "invalid image path")?;
         let last = index == parts.len() - 2;
-        let flags = NOFOLLOW | CLOEXEC | if last { NONBLOCK } else { DIRECTORY };
+        let flags = libc::O_RDONLY
+            | libc::O_NOFOLLOW
+            | libc::O_CLOEXEC
+            | if last {
+                libc::O_NONBLOCK
+            } else {
+                libc::O_DIRECTORY
+            };
         // SAFETY: file owns a live directory fd, name is NUL-terminated, and
         // flags never create a file (so openat needs no mode argument).
-        let fd = unsafe { openat(file.as_raw_fd(), name.as_ptr(), flags) };
+        let fd = unsafe { libc::openat(file.as_raw_fd(), name.as_ptr(), flags) };
         if fd < 0 {
             return Err("could not open image without following symlinks".into());
         }
@@ -415,7 +442,7 @@ fn open_regular_file(path: &Path) -> Result<File> {
     Ok(file)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(unix))]
 fn open_regular_file(_path: &Path) -> Result<File> {
     Err("secure image file loading is unavailable on this platform".into())
 }
@@ -423,7 +450,7 @@ fn open_regular_file(_path: &Path) -> Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use kintsugi_vault::{ClipCapture, ClipVia};
 
     fn capture(text: &str) -> ClipCapture {
         ClipCapture {
@@ -595,11 +622,6 @@ mod tests {
             },
         )
         .unwrap();
-        assert_eq!(
-            search(&library, a.path(), "updated", &[]).total,
-            0,
-            "search reuses its index until invalidation"
-        );
         library.invalidate(&path);
         library.invalidate(&path);
         assert_eq!(
@@ -617,6 +639,150 @@ mod tests {
         let result = search(&library, a.path(), "", &[]);
         assert_eq!(result.total, 1);
         assert!(result.tags.is_empty());
+    }
+
+    #[test]
+    fn external_edits_creates_deletes_and_reopening_refresh_only_changed_files() {
+        use std::time::Duration;
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let library = Library::default();
+        let path = vault::clip_create(a.path(), &capture("Original")).unwrap();
+        let stable = vault::clip_create(a.path(), &capture("Stable")).unwrap();
+        assert_eq!(
+            vault::clip_create(b.path(), &capture("Original")).unwrap(),
+            path
+        );
+        assert_eq!(search(&library, a.path(), "", &[]).total, 2);
+        assert_eq!(search(&library, b.path(), "original", &[]).total, 1);
+        assert_eq!(read_count(&library, a.path()), 2);
+
+        // Obsidian-style in-place, same-length edit, without clips_changed.
+        let target = a.path().join(&path);
+        let modified = fs::metadata(&target).unwrap().modified().unwrap();
+        let raw = fs::read_to_string(&target)
+            .unwrap()
+            .replace("Original", "Modified");
+        fs::write(&target, raw).unwrap();
+        File::options()
+            .write(true)
+            .open(&target)
+            .unwrap()
+            .set_modified(modified + Duration::from_secs(1))
+            .unwrap();
+        assert_eq!(search(&library, a.path(), "modified", &[]).total, 1);
+        assert_eq!(search(&library, a.path(), "original", &[]).total, 0);
+        assert_eq!(read_count(&library, a.path()), 3);
+
+        // Finder-style new file and rename are discovered by their names.
+        let added = a.path().join("inspiration/external.md");
+        fs::write(&added, "---\nkind: note\ntitle: External\ncaptured: 2026-10-30T12:00\ntags: [outside]\n---\nAdded from outside\n").unwrap();
+        let result = search(&library, a.path(), "", &[]);
+        assert_eq!(result.total, 3);
+        assert_eq!(result.clips[0].summary.path, "inspiration/external.md");
+        assert_eq!(result.tags, ["outside"]);
+        assert_eq!(read_count(&library, a.path()), 4);
+        fs::rename(&added, a.path().join("inspiration/renamed.md")).unwrap();
+        assert_eq!(
+            search(&library, a.path(), "external", &[]).clips[0]
+                .summary
+                .path,
+            "inspiration/renamed.md"
+        );
+        assert_eq!(read_count(&library, a.path()), 5);
+
+        // Switch away, delete files, then reopen the already-cached root.
+        assert_eq!(search(&library, b.path(), "original", &[]).total, 1);
+        fs::remove_file(&target).unwrap();
+        fs::remove_file(a.path().join("inspiration/renamed.md")).unwrap();
+        let result = search(&library, a.path(), "", &[]);
+        assert_eq!(result.total, 1);
+        assert_eq!(result.clips[0].summary.path, stable);
+        assert!(result.tags.is_empty());
+        assert_eq!(
+            read_count(&library, a.path()),
+            5,
+            "deletions do not reread unchanged clips"
+        );
+        assert_eq!(search(&library, b.path(), "original", &[]).total, 1);
+        assert_eq!(
+            read_count(&library, b.path()),
+            1,
+            "other roots keep their own content cache"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn external_atomic_replacement_with_preserved_size_and_mtime_is_detected() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::default();
+        let path = vault::clip_create(dir.path(), &capture("Original")).unwrap();
+        assert_eq!(search(&library, dir.path(), "original", &[]).total, 1);
+        let target = dir.path().join(&path);
+        let before = fs::metadata(&target).unwrap();
+        let replacement = dir.path().join("replacement.md");
+        fs::write(
+            &replacement,
+            fs::read_to_string(&target)
+                .unwrap()
+                .replace("Original", "Repaired"),
+        )
+        .unwrap();
+        File::options()
+            .write(true)
+            .open(&replacement)
+            .unwrap()
+            .set_modified(before.modified().unwrap())
+            .unwrap();
+        fs::rename(replacement, &target).unwrap();
+        assert_eq!(fs::metadata(&target).unwrap().len(), before.len());
+        assert_eq!(
+            fs::metadata(&target).unwrap().modified().unwrap(),
+            before.modified().unwrap()
+        );
+        assert_eq!(search(&library, dir.path(), "repaired", &[]).total, 1);
+        assert_eq!(read_count(&library, dir.path()), 2);
+    }
+
+    #[test]
+    fn externally_repaired_invalid_files_are_discovered_without_reloading_valid_clips() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::default();
+        let path = vault::clip_create(dir.path(), &capture("Valid")).unwrap();
+        let broken = dir.path().join("inspiration/broken.md");
+        fs::write(&broken, "not a clip yet").unwrap();
+        assert_eq!(search(&library, dir.path(), "", &[]).total, 1);
+        assert_eq!(read_count(&library, dir.path()), 2);
+        fs::write(&broken, fs::read(dir.path().join(&path)).unwrap()).unwrap();
+        assert_eq!(search(&library, dir.path(), "valid", &[]).total, 2);
+        assert_eq!(read_count(&library, dir.path()), 3);
+    }
+
+    fn read_count(library: &Library, root: &Path) -> usize {
+        library
+            .indexes
+            .lock()
+            .unwrap()
+            .get(&root.canonicalize().unwrap())
+            .unwrap()
+            .reads
+    }
+
+    #[test]
+    fn unchanged_metadata_retains_cached_content_but_events_can_force_a_refresh() {
+        let dir = tempfile::tempdir().unwrap();
+        let library = Library::default();
+        let path = vault::clip_create(dir.path(), &capture("Cached")).unwrap();
+        assert_eq!(search(&library, dir.path(), "cached", &[]).total, 1);
+        assert_eq!(read_count(&library, dir.path()), 1);
+        for _ in 0..3 {
+            assert_eq!(search(&library, dir.path(), "cached", &[]).total, 1);
+        }
+        assert_eq!(read_count(&library, dir.path()), 1);
+        library.invalidate(&path);
+        assert_eq!(search(&library, dir.path(), "cached", &[]).total, 1);
+        assert_eq!(read_count(&library, dir.path()), 2);
     }
 
     #[test]
@@ -719,53 +885,33 @@ mod tests {
     }
 
     #[test]
-    fn dropped_images_are_signature_checked_bounded_and_captured_via_mac() {
+    fn primary_images_are_signature_checked_bounded_regular_files() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
-        let file = root.join("dropped.PNG");
-        fs::write(&file, PNG).unwrap();
-        let capture = image_capture(&file, "2026-10-29T14:05".into()).unwrap();
-        assert_eq!(capture.via, ClipVia::Mac);
-        assert_eq!(capture.image_type.as_deref(), Some("image/png"));
-        let path = vault::clip_create(&root, &capture).unwrap();
-        assert_eq!(primary_image(&root, &path).unwrap(), PNG);
-        let invalid = image_capture(&file, "not a timestamp".into()).unwrap();
-        assert!(vault::clip_create(&root, &invalid).is_err());
-        assert!(image_capture(Path::new("relative.png"), "2026-10-29T14:05".into()).is_err());
-        assert!(image_capture(&root.join("../outside.png"), "2026-10-29T14:05".into()).is_err());
-        let svg = root.join("dropped.svg");
-        fs::write(&svg, PNG).unwrap();
-        assert!(read_raster(&svg).is_err());
-        fs::write(&file, b"<svg/>").unwrap();
-        assert!(read_raster(&file).is_err());
-        fs::write(&file, []).unwrap();
-        assert!(read_raster(&file).is_err());
+        let path = image_clip(&root);
+        let media = root.join("inspiration/media/image.png");
+        fs::write(&media, b"<svg/>").unwrap();
+        assert!(primary_image(&root, &path).is_err());
+        fs::write(&media, []).unwrap();
+        assert!(primary_image(&root, &path).is_err());
         let mut bytes = vec![0; vault::MAX_CLIP_IMAGE_BYTES];
         bytes[..PNG.len()].copy_from_slice(PNG);
-        fs::write(&file, &bytes).unwrap();
+        fs::write(&media, &bytes).unwrap();
         assert_eq!(
-            read_raster(&file).unwrap().0.len(),
+            primary_image(&root, &path).unwrap().len(),
             vault::MAX_CLIP_IMAGE_BYTES
         );
         bytes.push(0);
-        fs::write(&file, bytes).unwrap();
-        assert!(read_raster(&file).is_err());
-        let media = root.join("inspiration/media/image.png");
-        File::options()
-            .write(true)
-            .open(&media)
-            .unwrap()
-            .set_len(vault::MAX_CLIP_IMAGE_BYTES as u64 + 1)
-            .unwrap();
+        fs::write(&media, bytes).unwrap();
         assert!(primary_image(&root, &path).is_err());
-        let directory = root.join("directory.png");
-        fs::create_dir(&directory).unwrap();
-        assert!(read_raster(&directory).is_err());
+        fs::remove_file(&media).unwrap();
+        fs::create_dir(&media).unwrap();
+        assert!(primary_image(&root, &path).is_err());
     }
 
     #[cfg(unix)]
     #[test]
-    fn refuses_symlinked_clip_media_directories_and_native_drops() {
+    fn refuses_symlinked_clip_media_and_directories() {
         use std::os::unix::fs::symlink;
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
