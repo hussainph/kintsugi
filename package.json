@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "desktop": "pnpm --filter @kintsugi/desktop tauri dev",
-    "ios": "pnpm --filter @kintsugi/mobile tauri ios dev",
+    "ios": "pnpm --filter @kintsugi/mobile ios",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "cargo test --workspace && pnpm --filter @kintsugi/core test"
