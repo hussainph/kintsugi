@@ -1,0 +1,47 @@
+{
+  "name": "@kintsugi/lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "An extractable React design workbench with file-backed exploration history",
+  "exports": {
+    ".": "./src/index.ts",
+    "./shell": "./src/Shell.tsx",
+    "./preview": "./src/Preview.tsx",
+    "./discovery": "./src/discovery.ts",
+    "./styles.css": "./src/styles.css",
+    "./adapters": "./src/adapters/index.ts",
+    "./adapters/dialkit": "./src/adapters/dialkit.tsx",
+    "./adapters/agentation": "./src/adapters/agentation.tsx",
+    "./server": "./src/server.ts",
+    "./analysis": "./src/analysis.ts",
+    "./state": "./src/state.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "test": "node --import tsx --test --test-concurrency=${VOLLI_CONCURRENCY_HINT:-1} test/*.test.ts"
+  },
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19",
+    "vite": ">=7"
+  },
+  "dependencies": {
+    "typescript": "catalog:"
+  },
+  "optionalDependencies": {
+    "dialkit": "2.1.0",
+    "agentation": "3.1.2",
+    "motion": "^12.23.24"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "vite": "catalog:",
+    "tsx": "^4.21.0",
+    "playwright": "^1.58.2"
+  }
+}

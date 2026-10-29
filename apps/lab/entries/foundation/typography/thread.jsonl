@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-foundation-typography", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Keep this specimen in the live editor so heading ratios, prose, marks and frontmatter follow the real theme. The 19px/1.7 body values are source literals, not named tokens."}}

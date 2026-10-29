@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-component-clip-card", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Exercise private card implementations through exported Masonry and Writing. Raster images come through clip_image fixture bytes, never the real vault or remote artwork."}}

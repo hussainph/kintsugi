@@ -1,0 +1,33 @@
+{
+  "name": "@kintsugi/lab-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc",
+    "test": "node --import tsx --test --test-concurrency=${VOLLI_CONCURRENCY_HINT:-1} bridge/*.test.ts entries/page/inspiration-library/*.test.ts",
+    "check": "tsx ../../packages/lab/src/cli.ts --root ../.. --entries apps/lab/entries check"
+  },
+  "dependencies": {
+    "@kintsugi/lab": "workspace:*",
+    "@kintsugi/ui": "workspace:*",
+    "@kintsugi/editor": "workspace:*",
+    "@kintsugi/core": "workspace:*",
+    "@tauri-apps/api": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "motion": "^12.23.24",
+    "sonner": "catalog:"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "tsx": "^4.21.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"],
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": { "@/*": ["../desktop/src/*"] }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../../packages/lab/src"]
+}

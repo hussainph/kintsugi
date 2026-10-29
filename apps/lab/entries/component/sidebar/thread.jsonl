@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-component-sidebar", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Use the product tree and responsive provider beside a real editor. Phone pairing remains unavailable; tree changes are frame-local."}}

@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-component-wikilink-chip", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Exercise private ReferenceChip widgets through the editor rather than duplicating their markup. Include documents, captured clips, an alias and an unresolved link."}}

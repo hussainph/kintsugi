@@ -1,0 +1,1 @@
+{"version": 1, "id": "seed-component-editor", "at": "2026-10-29T15:07:07.322Z", "action": {"type": "note", "kind": "decision", "text": "Use the actual CodeMirror Editor through Writing. Editing, search and undo remain live, with document state kept in memory."}}
