@@ -27,6 +27,10 @@ pub struct Phone {
 /// Serializes read-modify-write cycles; commands run on several threads.
 static LOCK: Mutex<()> = Mutex::new(());
 
+pub fn isolated_dev() -> bool {
+    cfg!(debug_assertions) && std::env::var_os("KINTSUGI_DEV_CONFIG_DIR").is_some()
+}
+
 fn path(app: &AppHandle) -> Result<PathBuf> {
     // Isolate a development run (including phone settings) from the real vault.
     // Release builds never consult this environment variable.

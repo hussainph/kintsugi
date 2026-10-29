@@ -1,5 +1,6 @@
 mod ai;
 mod config;
+mod enrich;
 mod library;
 mod phone;
 mod vault;
@@ -12,9 +13,14 @@ pub fn run() {
         .manage(vault::Vault::default())
         .manage(library::Library::default())
         .manage(ai::Ai::default())
+        .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .setup(|app| {
-            phone::restore(app.handle());
+            // Scratch visual reviews never start network/AI/phone services.
+            if !config::isolated_dev() {
+                enrich::start(app.handle());
+                phone::restore(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

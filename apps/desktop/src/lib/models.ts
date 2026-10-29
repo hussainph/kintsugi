@@ -1,24 +1,14 @@
 import { ModelRef, providers, ProviderStatus } from "./ai";
+import preferences from "./models.json";
 
 /** What a model is used for decides how fast and how strong it needs to be. */
 export type Task = "edit" | "complete";
 
-/** First usable entry wins. Edits want quality; completions want speed. */
-const PREFERENCES: Record<Task, ModelRef[]> = {
-  edit: [
-    { provider: "openai-codex", model: "gpt-6-luna", reasoning: "low" },
-    { provider: "anthropic", model: "claude-sonnet-5-5" },
-    { provider: "zai", model: "glm-5.3" },
-    { provider: "openrouter", model: "~anthropic/claude-haiku-latest" },
-  ],
-  complete: [
-    { provider: "zai", model: "glm-5.3-flash" },
-    { provider: "anthropic", model: "claude-haiku-5-5" },
-    { provider: "openrouter", model: "~google/gemini-flash-latest" },
-    { provider: "openai-codex", model: "gpt-6-luna", reasoning: "none" },
-  ],
-};
+/** First usable entry wins. Edits want quality; completions want speed.
+ *  Shared with Rust (`ai::model_for`), so background work picks the same model. */
+const PREFERENCES: Record<Task, ModelRef[]> = preferences;
 
+/** Mirrors `ai::usable` in src-tauri/src/ai/mod.rs. */
 const usable = (p: ProviderStatus) => p.auth !== "none" && p.auth !== "unsupported_login" && p.auth !== "local";
 
 let cached: Promise<ProviderStatus[]> | null = null;

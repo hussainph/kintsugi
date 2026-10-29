@@ -45,6 +45,9 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
     }
     let path = match config::load(app).vault.filter(|p| p.is_dir()) {
         Some(path) => path,
+        None if config::isolated_dev() => {
+            return Err("scratch config must specify an existing vault".into());
+        }
         None => {
             let path = app.path().document_dir().map_err(|e| e.to_string())?.join("Kintsugi");
             if !path.exists() {
@@ -64,6 +67,7 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     }
     config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
     *app.state::<Vault>().0.lock().unwrap() = Some(path.to_path_buf());
+    crate::enrich::wake(app);
     Ok(())
 }
 
