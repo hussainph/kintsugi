@@ -3,7 +3,12 @@
 
 use serde::Serialize;
 use std::fs;
+use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
+
+mod clip_frontmatter;
+mod clips;
+pub use clips::*;
 
 const DOC_EXTENSIONS: [&str; 2] = ["md", "mdx"];
 
@@ -128,7 +133,7 @@ fn tree_in(root: &Path, dir: &Path) -> Result<Vec<Entry>> {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        if name.starts_with('.') {
+        if name.starts_with('.') || (dir == root && name.eq_ignore_ascii_case(INSPIRATION)) {
             continue;
         }
         if path.is_dir() {
@@ -191,10 +196,40 @@ fn unique(dir: &Path, stem: &str, ext: Option<&str>) -> PathBuf {
 /// Writes via a sibling temp file and a rename, so a crash mid-save never
 /// leaves a half-written document.
 pub fn write_atomic(path: &Path, contents: &str) -> Result<()> {
-    let name = path.file_name().ok_or("not a file path")?.to_string_lossy();
-    let tmp = path.with_file_name(format!(".{name}.kintsugi-tmp"));
-    fs::write(&tmp, contents).map_err(err)?;
-    fs::rename(&tmp, path).map_err(err)
+    write_bytes_atomic(path, contents.as_bytes())
+}
+
+fn write_bytes_atomic(path: &Path, contents: &[u8]) -> Result<()> {
+    write_bytes(path, contents, true)
+}
+
+fn write_bytes_new_atomic(path: &Path, contents: &[u8]) -> Result<()> {
+    write_bytes(path, contents, false)
+}
+
+fn write_bytes(path: &Path, contents: &[u8], replace: bool) -> Result<()> {
+    let parent = path.parent().ok_or("not a file path")?;
+    // Unique sibling files keep simultaneous saves from sharing a temp name.
+    let mut builder = tempfile::Builder::new();
+    builder.prefix(".kintsugi-");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // New vault files follow the writer's umask, as ordinary files do.
+        builder.permissions(fs::Permissions::from_mode(0o666));
+    }
+    let mut tmp = builder.tempfile_in(parent).map_err(err)?;
+    tmp.write_all(contents).map_err(err)?;
+    if let Ok(metadata) = fs::metadata(path) {
+        tmp.as_file().set_permissions(metadata.permissions()).map_err(err)?;
+    }
+    tmp.as_file().sync_all().map_err(err)?;
+    if replace {
+        tmp.persist(path).map_err(err)?;
+    } else {
+        tmp.persist_noclobber(path).map_err(err)?;
+    }
+    Ok(())
 }
 
 pub fn read(root: &Path, path: &str) -> Result<Versioned> {
@@ -305,6 +340,22 @@ mod tests {
         assert!(resolve(root, "../etc/passwd").is_err());
         assert!(resolve(root, "a/../../x").is_err());
         assert!(resolve(root, "/etc/passwd").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_saves_keep_existing_permissions_and_new_files_follow_the_umask() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("writing.md");
+        let ordinary = dir.path().join("ordinary.md");
+        fs::write(&ordinary, "ordinary").unwrap();
+        write_atomic(&path, "first").unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().permissions().mode(), fs::metadata(&ordinary).unwrap().permissions().mode());
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+        write_atomic(&path, "second").unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o640);
+        assert_eq!(fs::read_to_string(path).unwrap(), "second");
     }
 
     #[test]

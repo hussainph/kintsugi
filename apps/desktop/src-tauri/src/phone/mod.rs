@@ -67,6 +67,10 @@ fn host(app: &AppHandle) -> Host {
                 let _ = app.emit("vault:changed", change);
             }
         }),
+        clip_changed: Arc::new({
+            let app = app.clone();
+            move |path| vault::clips_changed(&app, &path)
+        }),
     }
 }
 
