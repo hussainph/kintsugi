@@ -236,6 +236,37 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
 - Backlinks come from scanning documents for wikilinks; the library's
   **Used in**, a document's own backlinks and the margin share one index.
 
+### Reference lookup and interaction
+
+`reference_index` returns `{ documents, clips, links }`. Documents have
+`path`, nullable `title` and `status`, and their Markdown body as `text`.
+Clips are `ClipSummary` values; their extracted source does not cross this
+interface. Each link has the containing document's `source` path, a file
+`target` (without alias or heading), and the canonical `resolved` path or
+`null`. Repeated links to one file produce one backlink. The desktop shares
+this snapshot between the margin, document backlinks and library **Used in**,
+refreshing after document saves/create/rename/trash, phone writes and
+`clips:changed`. Scanning runs off the UI thread.
+
+Names are case-sensitive. Explicit vault-relative paths and `.md`/`.mdx`
+extensions are accepted, as are Obsidian aliases and heading/block fragments.
+A root document disambiguates same-named nested documents; otherwise an
+ambiguous basename stays unresolved and the picker inserts an explicit path.
+Frontmatter, code fences, inline code, HTML comments and escaped openers do
+not create backlinks. Hidden files and symlinks are not indexed.
+
+Use ↑/↓ and Enter in the picker; Shift+Enter quotes a clip with a captured
+passage, and Escape dismisses. Clicking a chip exposes the plain link for
+editing. Command-click (Control-click too) opens its target. Margin clips can
+be dragged in as attributed blockquotes; documents drag in as references.
+The margin button remembers its visibility; on narrow windows it starts
+closed, and an empty margin takes no space.
+
+Renaming a document or folder refreshes resolution but does **not** rewrite
+existing links yet. Offering a reviewed link update on rename is follow-up
+work; unresolved links remain visible, never silently rebound to an
+arbitrary duplicate.
+
 ## Publishing (to be designed)
 
 Most complete documents end up on the blog: hussain.ph, an Astro + MDX site

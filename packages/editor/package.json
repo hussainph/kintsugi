@@ -6,6 +6,10 @@
     "./Editor": "./src/Editor.tsx",
     "./theme": "./src/theme.ts"
   },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc"
+  },
   "dependencies": {
     "@codemirror/commands": "catalog:",
     "@codemirror/lang-markdown": "catalog:",

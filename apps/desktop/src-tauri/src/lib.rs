@@ -1,6 +1,7 @@
 mod ai;
 mod config;
 mod phone;
+mod references;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -12,13 +13,16 @@ pub fn run() {
         .manage(ai::Ai::default())
         .manage(phone::Phone::default())
         .setup(|app| {
-            phone::restore(app.handle());
+            if vault::scratch_root().is_none() {
+                phone::restore(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             vault::vault_current,
             vault::vault_open,
             vault::vault_tree,
+            references::reference_index,
             vault::doc_read,
             vault::doc_write,
             vault::doc_create,

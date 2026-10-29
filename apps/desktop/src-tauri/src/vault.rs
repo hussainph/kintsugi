@@ -43,6 +43,15 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
     if let Ok(root) = vault.root() {
         return Ok(root);
     }
+    // A dev run can exercise a scratch vault without changing the writer's
+    // saved vault or touching their documents. Ignored in release builds.
+    if let Some(path) = scratch_root() {
+        if !path.is_dir() {
+            return Err("scratch vault is not a folder".into());
+        }
+        *vault.0.lock().unwrap() = Some(path.clone());
+        return Ok(path);
+    }
     let path = match config::load(app).vault.filter(|p| p.is_dir()) {
         Some(path) => path,
         None => {
@@ -62,9 +71,18 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     if !path.is_dir() {
         return Err(format!("not a folder: {}", path.display()));
     }
-    config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
+    if scratch_root().is_none() {
+        config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
+    }
     *app.state::<Vault>().0.lock().unwrap() = Some(path.to_path_buf());
     Ok(())
+}
+
+pub fn scratch_root() -> Option<PathBuf> {
+    #[cfg(debug_assertions)]
+    { std::env::var_os("KINTSUGI_SCRATCH_VAULT").map(PathBuf::from) }
+    #[cfg(not(debug_assertions))]
+    { None }
 }
 
 #[tauri::command]
@@ -90,16 +108,20 @@ pub fn doc_read(vault: State<Vault>, path: String) -> Result<String> {
 
 /// The desktop editor holds the document, so its saves don't check versions.
 #[tauri::command]
-pub fn doc_write(vault: State<Vault>, path: String, contents: String) -> Result<()> {
+pub fn doc_write(app: AppHandle, vault: State<Vault>, path: String, contents: String) -> Result<()> {
     writing_path(&path)?;
-    vault::write(&vault.root()?, &path, &contents, None).map(drop)
+    vault::write(&vault.root()?, &path, &contents, None)?;
+    references_changed(&app);
+    Ok(())
 }
 
 /// Creates a draft in `dir` named after `title`; returns its path.
 #[tauri::command]
-pub fn doc_create(vault: State<Vault>, dir: String, title: String) -> Result<String> {
+pub fn doc_create(app: AppHandle, vault: State<Vault>, dir: String, title: String) -> Result<String> {
     writing_path(&dir)?;
-    vault::create_doc(&vault.root()?, &dir, &title)
+    let path = vault::create_doc(&vault.root()?, &dir, &title)?;
+    references_changed(&app);
+    Ok(path)
 }
 
 #[tauri::command]
@@ -111,21 +133,30 @@ pub fn folder_create(vault: State<Vault>, dir: String, name: String) -> Result<S
 
 /// Renames in place (same folder); returns the new path.
 #[tauri::command]
-pub fn entry_rename(vault: State<Vault>, path: String, name: String) -> Result<String> {
+pub fn entry_rename(app: AppHandle, vault: State<Vault>, path: String, name: String) -> Result<String> {
     writing_path(&path)?;
     writing_path(&std::path::Path::new(&path).with_file_name(&name).to_string_lossy())?;
-    vault::rename(&vault.root()?, &path, &name)
+    let renamed = vault::rename(&vault.root()?, &path, &name)?;
+    references_changed(&app);
+    Ok(renamed)
 }
 
 /// Moves to the macOS Trash rather than deleting, so it can be undone in Finder.
 #[tauri::command]
-pub fn entry_trash(vault: State<Vault>, path: String) -> Result<()> {
+pub fn entry_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<()> {
     writing_path(&path)?;
     if path.is_empty() {
         return Err("refusing to trash the vault itself".into());
     }
     let target = vault::resolve(&vault.root()?, &path)?;
-    trash::delete(target).map_err(|e| e.to_string())
+    trash::delete(target).map_err(|e| e.to_string())?;
+    references_changed(&app);
+    Ok(())
+}
+
+/// A single invalidation for the margin, document backlinks and Used in.
+fn references_changed(app: &AppHandle) {
+    let _ = app.emit("references:changed", ());
 }
 
 fn writing_path(path: &str) -> Result<()> {
