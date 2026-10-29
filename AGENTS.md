@@ -71,9 +71,13 @@ reports native window count, Dock policy and focus.
   the runner creates either one if it is missing, and they must be separate.
   The config directory holds the scratch `config.json`, phone token and clip
   receipt journal, so the real app's vault choice, phone pairing and
-  credentials are untouched. `KINTSUGI_VAULT` is never persisted to
-  `config.json`. The runner and the backend both refuse the owner's standard
-  vault/config, their ancestors, descendants and symlink aliases.
+  credentials are untouched. KI-7's isolated-vault override skips config
+  reads/writes, and headless config lookup never falls back to the real app
+  directory even if the override is missing. `KINTSUGI_VAULT` is never persisted
+  to `config.json`. The runner and backend refuse the owner's standard
+  vault/config and credential folders, their ancestors, descendants and symlink
+  aliases. The path prompt only opens folders inside the initial scratch vault;
+  restart with another override to change the top-level scratch folder.
 - AI is disabled by default: no Pi credentials are read and providers report
   no auth. Set `KINTSUGI_HEADLESS_PI_READONLY=1` only for a read-only AI check;
   Pi credentials are then read without lock, refresh or write, so an expired
@@ -94,8 +98,10 @@ reports native window count, Dock policy and focus.
 - Native-only behaviour adapts inside the tab: the folder picker becomes an
   in-page path prompt; `open_url`/`open_path` open a browser tab through the
   validated backend, while `reveal_item_in_dir` reports that Finder is
-  unavailable; phone settings are unavailable, and window drag is a no-op. Use
-  only scratch files for trash tests.
+  unavailable; phone settings are unavailable, and window drag is a no-op.
+  Trash commands move scratch files into `$KINTSUGI_CONFIG_DIR/trash/<batch>/`
+  with an `original-paths.json` recovery manifest. They never invoke Finder,
+  request Automation permission, play a sound or touch the owner's Trash.
 
 ### Phone app
 

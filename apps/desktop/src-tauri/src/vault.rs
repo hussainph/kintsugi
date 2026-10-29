@@ -46,7 +46,7 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
     }
     let path = match config::load(app).vault.filter(|p| p.is_dir()) {
         Some(path) => path,
-        None if config::isolated_dev() => {
+        None if config::isolated_dev() || cfg!(feature = "headless") => {
             return Err("scratch config must specify an existing vault".into());
         }
         None => {
@@ -138,9 +138,18 @@ pub fn entry_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<
         return Err("refusing to trash the vault itself".into());
     }
     let target = vault::resolve(&vault.root()?, &path)?;
-    trash::delete(target).map_err(|e| e.to_string())?;
+    move_to_trash(&[target])?;
     references_changed(&app);
     Ok(())
+}
+
+/// The native trash crate defaults to Finder AppleScript on macOS. Headless
+/// must never request Automation permission, play a sound, or launch Finder.
+fn move_to_trash(targets: &[PathBuf]) -> Result<()> {
+    #[cfg(feature = "headless")]
+    { crate::headless::trash(targets) }
+    #[cfg(not(feature = "headless"))]
+    { trash::delete_all(targets).map_err(|e| e.to_string()) }
 }
 
 /// A single invalidation for the margin, document backlinks and Used in.
@@ -217,7 +226,7 @@ pub fn clip_update(
 pub fn clip_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<()> {
     crate::clip_capture::trash(
         &vault.root()?, &crate::clip_capture::index_path(&app)?, &path, |targets| {
-            trash::delete_all(targets).map_err(|_| "could not move clip to Trash".into())
+            move_to_trash(targets)
         },
     )?;
     clips_changed(&app, &path);

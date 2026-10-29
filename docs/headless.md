@@ -39,7 +39,8 @@ imports, only if Tauri is absent. The React/editor code uses the same `invoke`,
 - Native Rust `Listener` registrations back the event adapter. Tauri's channel
   interceptor forwards `{index,message}` directly, including large payloads
   (avoiding the native JS eval/fetch optimization). Binary channel messages use
-  a byte envelope decoded to `ArrayBuffer` by the shim.
+  a byte envelope decoded to `ArrayBuffer` by the shim. Raw invoke responses
+  (including `clip_image`) use that same generic envelope.
 - Each tab has its own mock webview, callback namespace, bounded SSE queue and
   listeners. Disconnect tears down listeners and the identity. Overflow closes
   the stream rather than silently dropping ordered channel messages.
@@ -53,9 +54,15 @@ imports, only if Tauri is absent. The React/editor code uses the same `invoke`,
 The runner creates `.headless/run-*/vault` and `config` inside this worktree and
 seeds the default vault. Explicit vault/config overrides must be separate
 scratch directories. `KINTSUGI_VAULT` is never persisted into `config.json`.
-`KINTSUGI_CONFIG_DIR` covers config and capture receipt files. Both the launcher
-and Rust startup reject the owner's standard vault/config, descendants,
-ancestors and symlink aliases; the folder prompt rechecks this guard.
+`KINTSUGI_CONFIG_DIR` covers config and capture receipt files. KI-7's shared
+`isolated_dev` override skips app-config reads/writes altogether; headless config
+and receipt lookup also fails closed if its config override is absent. Tests
+point Tauri's normal config location at a synthetic owner sentinel and verify
+it is never read or modified, even with missing overrides. Both the launcher
+and Rust startup reject the owner's standard vault/config and credential
+directories, descendants, ancestors and symlink aliases. The folder prompt can
+only open subdirectories of this run's initial vault; restart with another
+`KINTSUGI_VAULT` to choose a different top-level scratch folder.
 
 AI is disabled by default, including environment-provider credentials. No Pi
 credential file is read. `KINTSUGI_HEADLESS_PI_READONLY=1` opts into real AI and
@@ -68,7 +75,11 @@ Folder dialogs become path prompts. The opener adapter validates URLs/paths in
 Rust and opens only within the headless browser, never via LaunchServices or
 Finder. File previews/assets are confined to canonical files in the current
 scratch vault; executable formats are served as plain text with `nosniff`.
-Trash commands remain the real backend commands (use scratch files only).
+Trash still goes through the real document/clip handlers and emits their
+normal events, but the filesystem adapter moves files into
+`$KINTSUGI_CONFIG_DIR/trash/<batch>/` with an `original-paths.json` recovery
+manifest. It never invokes the trash crate's Finder AppleScript default,
+requests Automation permission, plays a sound, or touches the owner's Trash.
 Window dragging is a no-op. Other unsupported platform APIs fail explicitly.
 
 The backend accepts only its exact loopback Host and frontend Origin, never

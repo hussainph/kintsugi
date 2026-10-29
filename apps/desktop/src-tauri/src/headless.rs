@@ -108,6 +108,51 @@ pub(crate) fn config_directory() -> Result<PathBuf> {
     required_dir("KINTSUGI_CONFIG_DIR")
 }
 
+/// Reversible dev trash stays entirely inside this run's config directory.
+/// In particular, never call trash-rs's Finder/AppleScript default in headless.
+pub(crate) fn trash(targets: &[PathBuf]) -> Result<()> {
+    let root = required_dir("KINTSUGI_VAULT")?;
+    let sources = targets
+        .iter()
+        .map(|path| {
+            let source = path.canonicalize().map_err(|e| e.to_string())?;
+            if source == root || !source.starts_with(&root) {
+                return Err(
+                    "refusing to trash outside the scratch vault or the vault itself".into(),
+                );
+            }
+            Ok(source)
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let trash = config_directory()?.join("trash");
+    if std::fs::symlink_metadata(&trash).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err("scratch trash must not be a symlink".into());
+    }
+    std::fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
+    let batch = trash.join(random_token()?);
+    std::fs::create_dir(&batch).map_err(|e| e.to_string())?;
+    std::fs::write(
+        batch.join("original-paths.json"),
+        serde_json::to_vec_pretty(&sources).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    let mut moved = Vec::new();
+    for (index, source) in sources.iter().enumerate() {
+        let target = batch.join(format!(
+            "{index}-{}",
+            source.file_name().unwrap().to_string_lossy()
+        ));
+        if let Err(error) = std::fs::rename(source, &target) {
+            for (source, target) in moved.iter().rev() {
+                let _ = std::fs::rename(target, source);
+            }
+            return Err(format!("could not move to scratch trash: {error}"));
+        }
+        moved.push((source, target));
+    }
+    Ok(())
+}
+
 fn random_token() -> Result<String> {
     let mut bytes = [0u8; 32];
     std::fs::File::open("/dev/urandom")
@@ -181,6 +226,16 @@ pub fn run() -> Result<()> {
 }
 
 fn build_app(clients: Clients) -> Result<tauri::App<Runtime>> {
+    build_app_with_context(
+        clients,
+        tauri::test::mock_context(tauri::test::noop_assets()),
+    )
+}
+
+fn build_app_with_context(
+    clients: Clients,
+    context: tauri::Context<Runtime>,
+) -> Result<tauri::App<Runtime>> {
     let channels = clients.clone();
     let app = crate::builder()
         .channel_interceptor(move |webview, callback, index, body| {
@@ -197,7 +252,7 @@ fn build_app(clients: Clients) -> Result<tauri::App<Runtime>> {
             }
             true
         })
-        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .build(context)
         .map_err(|e| e.to_string())?;
     // One permanent mock host; child Webview::close synchronously unregisters
     // IPC identities even without an event loop (Window::close does not).
@@ -581,6 +636,25 @@ mod tests {
 
     #[test]
     fn real_dispatcher_over_authenticated_http_sse() {
+        if std::env::var_os("KINTSUGI_HEADLESS_TEST_CHILD").is_none() {
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "headless::tests::real_dispatcher_over_authenticated_http_sse",
+                    "--nocapture",
+                    "--test-threads=1",
+                ])
+                .env("KINTSUGI_HEADLESS_TEST_CHILD", "1")
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+            return;
+        }
         let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
         std::fs::create_dir_all(workspace.join(".headless")).unwrap();
         let scratch = tempfile::tempdir_in(workspace.join(".headless")).unwrap();
@@ -594,15 +668,40 @@ mod tests {
             r#"{"vault":"previous-vault","phone":{"enabled":false,"token":"scratch-token"}}"#,
         )
         .unwrap();
-        // This is the only test changing env in the headless suite. No native
-        // app/config is ever loaded; the override precedes building the app.
+        // Give Tauri a synthetic "real app config" location, never the owner's
+        // actual directory. Missing headless overrides MUST NOT fall back here.
+        let owner_config = scratch.path().join("synthetic-owner-config");
+        std::fs::create_dir(&owner_config).unwrap();
+        let sentinel = b"{\"vault\":\"owner-writing\",\"phone\":{\"enabled\":false,\"token\":\"owner-token\"}}";
+        std::fs::write(owner_config.join("config.json"), sentinel).unwrap();
+        let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+        context.config_mut().app.app_directories_override = Some(
+            tauri::utils::config::AppDirectoriesOverride::Root(owner_config.clone()),
+        );
+        // Isolate this env-mutating test in its own single-test process below.
         unsafe {
-            std::env::set_var("KINTSUGI_VAULT", &vault);
-            std::env::set_var("KINTSUGI_CONFIG_DIR", &config);
+            std::env::remove_var("KINTSUGI_VAULT");
+            std::env::remove_var("KINTSUGI_CONFIG_DIR");
             std::env::remove_var("KINTSUGI_HEADLESS_PI_READONLY");
         }
         let clients = Clients::default();
-        let app = build_app(clients.clone()).unwrap();
+        let app = build_app_with_context(clients.clone(), context).unwrap();
+        assert!(crate::config::directory(app.handle()).is_err());
+        assert!(
+            crate::config::update(app.handle(), |c| c.phone.token =
+                Some("must-not-write".into()))
+            .is_err()
+        );
+        assert!(crate::clip_capture::index_path(app.handle()).is_err());
+        assert!(crate::config::load(app.handle()).vault.is_none());
+        assert_eq!(
+            std::fs::read(owner_config.join("config.json")).unwrap(),
+            sentinel
+        );
+        unsafe {
+            std::env::set_var("KINTSUGI_VAULT", &vault);
+            std::env::set_var("KINTSUGI_CONFIG_DIR", &config);
+        }
         tauri::async_runtime::block_on(async {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
@@ -760,6 +859,46 @@ mod tests {
                     .listeners
                     .is_empty()
             );
+            // Commands merged from KI-7/KI-8 need no bridge routes. In
+            // particular, clip_image's Raw body must not turn into JSON text.
+            let png = b"\x89PNG\r\n\x1a\nimage fixture";
+            let image = call(&client, &bridge, "clip_create", json!({"capture":{"image":png.to_vec(),"imageType":"image/png","capturedAt":"2026-10-29T15:01","via":"mac"}})).await;
+            assert_eq!(image["ok"], true, "{image}");
+            let raw = call(
+                &client,
+                &bridge,
+                "clip_image",
+                json!({"path":image["value"]}),
+            )
+            .await;
+            assert_eq!(
+                raw["value"]["__headlessBytes"],
+                json!(png.to_vec()),
+                "{raw}"
+            );
+            assert_eq!(
+                call(&client, &bridge, "clip_search", json!({})).await["value"]["total"],
+                2
+            );
+            assert_eq!(
+                call(&client, &bridge, "reference_index", json!({})).await["ok"],
+                true
+            );
+            assert_eq!(
+                call(
+                    &client,
+                    &bridge,
+                    "vault_open",
+                    json!({"path":scratch.path().to_string_lossy()})
+                )
+                .await["ok"],
+                false
+            );
+            assert_eq!(
+                std::fs::read(owner_config.join("config.json")).unwrap(),
+                sentinel
+            );
+            assert!(!owner_config.join("clip-capture-ids.json").exists());
             let ai = call(&client, &bridge, "ai_providers", json!({})).await;
             assert!(
                 ai["value"]
@@ -806,6 +945,40 @@ mod tests {
                 .await["ok"],
                 false
             );
+            let disposable = call(
+                &client,
+                &bridge,
+                "doc_create",
+                json!({"dir":"","title":"Trash regression"}),
+            )
+            .await;
+            assert_eq!(
+                call(
+                    &client,
+                    &bridge,
+                    "entry_trash",
+                    json!({"path":disposable["value"]})
+                )
+                .await["ok"],
+                true
+            );
+            assert!(!vault.join(disposable["value"].as_str().unwrap()).exists());
+            assert_eq!(
+                call(&client, &bridge, "entry_trash", json!({"path":"."})).await["ok"],
+                false
+            );
+            assert_eq!(
+                call(
+                    &client,
+                    &bridge,
+                    "clip_trash",
+                    json!({"path":image["value"]})
+                )
+                .await["ok"],
+                true
+            );
+            assert!(!vault.join(image["value"].as_str().unwrap()).exists());
+            assert_eq!(std::fs::read_dir(config.join("trash")).unwrap().count(), 2);
             // Reconnect before old TCP teardown; the old stream must not
             // remove the new identity, and mock registrations stay bounded.
             let reconnected = client

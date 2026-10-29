@@ -20,7 +20,7 @@ fn every_app_command_is_in_the_shared_registry() {
                 check(&path, registry, count);
             } else if path.extension().is_some_and(|e| e == "rs") {
                 let source = fs::read_to_string(&path).unwrap();
-                for command in source.split("#[tauri::command]").skip(1) {
+                for command in source.split("#[tauri::command").skip(1) {
                     let name = command
                         .split("fn ")
                         .nth(1)
