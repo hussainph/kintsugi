@@ -13,7 +13,7 @@ import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
 import { Editor, External } from "@kintsugi/editor/Editor";
 import { Refine } from "@/refine/Refine";
-import { Library } from "@/inspiration/Library";
+import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Entry, flatten, parentDir, renamedPath, vault } from "@/lib/vault";
@@ -59,6 +59,7 @@ export default function App() {
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
 
   const viewRef = useRef<EditorView | null>(null);
+  const libraryRef = useRef<LibraryHandle>(null);
   const pending = useRef(new Map<string, string>());
   const known = useRef(new Map<string, string>());
   const metaChanged = useRef(false);
@@ -124,6 +125,7 @@ export default function App() {
 
   const openDoc = useCallback(
     async (path: string) => {
+      if (await libraryRef.current?.flush() === false) return;
       setPalette(null);
       await flush();
       setLibraryOpen(false);
@@ -184,7 +186,10 @@ export default function App() {
 
   // Never lose the last few keystrokes: save on blur and before the window closes.
   useEffect(() => {
-    const unlisten = getCurrentWindow().onCloseRequested(() => flush());
+    const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
+      if (await libraryRef.current?.flush() === false) { event.preventDefault(); return; }
+      await flush();
+    });
     window.addEventListener("blur", flush);
     return () => {
       unlisten.then((off) => off());
@@ -266,6 +271,7 @@ export default function App() {
   const openVault = async () => {
     const picked = await pickFolder({ directory: true, title: "Open a vault" });
     if (typeof picked !== "string") return;
+    if (await libraryRef.current?.flush() === false) return;
     await flush();
     try {
       await loadVault(await vault.open(picked));
@@ -275,7 +281,9 @@ export default function App() {
   };
 
   const showLibrary = useCallback(async () => {
+    if (await libraryRef.current?.showGrid() === false) return;
     await flush();
+    viewRef.current?.contentDOM.blur();
     setRefine(null);
     setOpenClip(undefined);
     setLibraryOpen(true);
@@ -286,7 +294,9 @@ export default function App() {
     const open = async (event: Event) => {
       const path = (event as CustomEvent<{ path: string }>).detail?.path;
       if (typeof path !== "string") return;
+      if (await libraryRef.current?.flush() === false) return;
       await flush();
+      viewRef.current?.contentDOM.blur();
       setRefine(null);
       setOpenClip({ path, seq: Date.now() });
       setLibraryOpen(true);
@@ -294,6 +304,20 @@ export default function App() {
     window.addEventListener("kintsugi:open-clip", open);
     return () => window.removeEventListener("kintsugi:open-clip", open);
   }, [flush]);
+
+  // HTML drops must never navigate the webview to a Finder file. Components
+  // still receive the event (the library captures images; CodeMirror edits text).
+  useEffect(() => {
+    const stayHere = (event: DragEvent) => {
+      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+    };
+    document.addEventListener("dragover", stayHere);
+    document.addEventListener("drop", stayHere);
+    return () => {
+      document.removeEventListener("dragover", stayHere);
+      document.removeEventListener("drop", stayHere);
+    };
+  }, []);
 
   // App shortcuts run in the capture phase so they win over the editor's keymap.
   const shortcuts = useRef<(e: KeyboardEvent) => void>(() => {});
@@ -309,7 +333,7 @@ export default function App() {
     else if (key === "n") run(() => setPalette({ kind: e.shiftKey ? "new-folder" : "new-doc", dir: selectedDir }));
     else if (key === "i" && e.shiftKey) run(showLibrary);
     else if (key === "d" && e.shiftKey && !libraryOpen) run(toggleStatus);
-    else if (key === "s" && !e.shiftKey) run(flush);
+    else if (key === "s" && !e.shiftKey) run(() => { if (libraryOpen) void libraryRef.current?.flush(); else void flush(); });
     else if (key === "o" && e.shiftKey) run(openVault);
     else if (key === "k" && !e.shiftKey && doc && !libraryOpen) run(openRefine);
   };
@@ -342,8 +366,8 @@ export default function App() {
       />
       <SidebarInset className="relative h-svh min-w-0">
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
-        {libraryOpen && <Library key={root} openClip={openClip} />}
-        <div className={libraryOpen ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
+        {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} />}
+        <div inert={libraryOpen} className={libraryOpen ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
         {doc ? (
           <Editor
             key={root}

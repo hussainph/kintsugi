@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ArrowUpRight, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { toast } from "sonner";
 import type { Clip, ClipChanged, ClipEdit } from "@kintsugi/core/clips";
 import { Button } from "@kintsugi/ui/components/button";
@@ -15,7 +15,10 @@ import { ClipImage } from "./ClipImage";
 type Patch = Omit<ClipEdit, "path">;
 type Draft = { title: string; note: string; tags: string };
 
+export type DetailHandle = { flush: () => Promise<boolean> };
+
 type Props = {
+  ref?: Ref<DetailHandle>;
   path: string;
   onClose: () => void;
   onChanged: () => void;
@@ -23,7 +26,7 @@ type Props = {
   renderUsedIn?: (clip: Clip) => ReactNode;
 };
 
-export function Detail({ path, onClose, onChanged, renderUsedIn }: Props) {
+export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
   const [clip, setClip] = useState<Clip>();
   const [draft, setDraft] = useState<Draft>({ title: "", note: "", tags: "" });
   const [status, setStatus] = useState("Saved");
@@ -33,6 +36,7 @@ export function Detail({ path, onClose, onChanged, renderUsedIn }: Props) {
   const edits = useRef<Patch>({});
   const queue = useRef(Promise.resolve());
   const mounted = useRef(true);
+  const readSeq = useRef(0);
   const changed = useRef(onChanged);
   changed.current = onChanged;
 
@@ -52,6 +56,7 @@ export function Detail({ path, onClose, onChanged, renderUsedIn }: Props) {
       if (mounted.current) setStatus("Saving…");
       try {
         const next = await clips.update({ path, ...patch });
+        readSeq.current++; // A read started before this save cannot roll it back.
         for (const key of Object.keys(patch) as (keyof Patch)[]) {
           if (JSON.stringify(edits.current[key]) === JSON.stringify(patch[key])) delete edits.current[key];
         }
@@ -70,10 +75,16 @@ export function Detail({ path, onClose, onChanged, renderUsedIn }: Props) {
 
   const load = useCallback(() => {
     setError(undefined);
-    clips.read(path).then((next) => { if (mounted.current) receive(next); }).catch((e) => {
-      if (mounted.current) setError(String(e));
+    const seq = ++readSeq.current;
+    clips.read(path).then((next) => { if (mounted.current && seq === readSeq.current) receive(next); }).catch((e) => {
+      if (mounted.current && seq === readSeq.current) setError(String(e));
     });
   }, [path, receive]);
+
+  useImperativeHandle(ref, () => ({ flush: async () => {
+    await save();
+    return !Object.keys(edits.current).length;
+  } }), [save]);
 
   useEffect(() => {
     mounted.current = true;
@@ -83,7 +94,6 @@ export function Detail({ path, onClose, onChanged, renderUsedIn }: Props) {
     window.addEventListener("blur", blur);
     return () => {
       mounted.current = false;
-      void save(); // Sidebar navigation must not discard a field still being edited.
       off.then((stop) => stop());
       window.removeEventListener("blur", blur);
     };
@@ -105,11 +115,11 @@ export function Detail({ path, onClose, onChanged, renderUsedIn }: Props) {
   return (
     <div className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">
       <div className="mb-8 flex items-center justify-between gap-3">
-        <Button variant="ghost" className="-ml-2 text-muted-foreground" onClick={async () => { await save(); if (!Object.keys(edits.current).length) onClose(); }}><ArrowLeft />All inspiration</Button>
+        <Button autoFocus variant="ghost" className="-ml-2 text-muted-foreground" onClick={async () => { await save(); if (!Object.keys(edits.current).length) onClose(); }}><ArrowLeft />All inspiration</Button>
         <span className={`text-xs ${status.startsWith("Not saved") ? "text-destructive" : "text-muted-foreground"}`} role="status">{status}</span>
       </div>
       {error && <p className="mb-4 text-sm text-destructive" role="alert">{error}</p>}
-      <div className={`grid gap-10 ${clip.image ? "xl:grid-cols-[minmax(0,1.3fr)_minmax(280px,1fr)]" : "mx-auto max-w-2xl"}`}>
+      <div className={`grid gap-10 ${clip.image ? "lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,1fr)]" : "mx-auto max-w-2xl"}`}>
         {clip.image && <div className="flex min-h-48 items-start justify-center rounded-xl bg-muted/40 p-2"><ClipImage path={clip.path} image={clip.image} alt={clipLabel(clip)} className="max-h-[68vh] w-full rounded-lg object-contain" /></div>}
         <div className="min-w-0 space-y-8 select-text">
           <div className="space-y-3">
@@ -134,7 +144,10 @@ export function Detail({ path, onClose, onChanged, renderUsedIn }: Props) {
           </section>
           <div className="flex items-center justify-between gap-4">
             <Button variant="ghost" size="sm" onClick={() => setConfirmTrash(true)} className="text-muted-foreground"><Trash2 />Move to Trash</Button>
-            <Button variant="outline" size="sm" onClick={() => void save()} disabled={status === "Saved" || status === "Saving…"}>Save changes</Button>
+            <div className="flex gap-2">
+              {status.startsWith("Not saved") && <Button variant="ghost" size="sm" onClick={() => { edits.current = {}; onClose(); }}>Discard changes</Button>}
+              <Button variant="outline" size="sm" onClick={() => void save()} disabled={status === "Saved" || status === "Saving…"}>Save changes</Button>
+            </div>
           </div>
         </div>
       </div>

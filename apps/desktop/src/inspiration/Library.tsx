@@ -1,23 +1,27 @@
 import { listen } from "@tauri-apps/api/event";
 import { Bookmark, Plus, Search, SlidersHorizontal, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import type { Clip, ClipChanged } from "@kintsugi/core/clips";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@kintsugi/ui/components/popover";
 import { clips, type ClipSearch } from "./api";
 import { CaptureDialog } from "./CaptureDialog";
-import { Detail } from "./Detail";
+import { Detail, type DetailHandle } from "./Detail";
+import { searchWindow } from "./pagination";
 import { Masonry } from "./Masonry";
 import { useCapture } from "./useCapture";
 
+export type LibraryHandle = { flush: () => Promise<boolean>; showGrid: () => Promise<boolean> };
+
 type Props = {
+  ref?: Ref<LibraryHandle>;
   openClip?: { path: string; seq: number };
   renderUsedIn?: (clip: Clip) => ReactNode;
 };
 
 /** A self-contained sibling of the editor; no editor state or backlink index here. */
-export function Library({ openClip, renderUsedIn }: Props) {
+export function Library({ ref, openClip, renderUsedIn }: Props) {
   const [query, setQuery] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [data, setData] = useState<ClipSearch>({ clips: [], total: 0, tags: [] });
@@ -26,27 +30,51 @@ export function Library({ openClip, renderUsedIn }: Props) {
   const [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState<string>();
   const [adding, setAdding] = useState(false);
+  const detailRef = useRef<DetailHandle>(null);
+  const grid = useRef<HTMLDivElement>(null);
+  const loaded = useRef(60);
+  loaded.current = Math.max(60, data.clips.length);
+  const filter = JSON.stringify([query, tags]);
+  const previousFilter = useRef(filter);
   const request = useRef(0);
   const morePending = useRef(false);
   const refresh = useCallback(() => setRevision((n) => n + 1), []);
   const { capture, dragging } = useCapture(refresh);
 
+  const closeDetail = useCallback(() => {
+    setDetail(undefined);
+    requestAnimationFrame(() => {
+      const card = detail && grid.current?.querySelector<HTMLButtonElement>(`[data-clip-path="${CSS.escape(detail)}"]`);
+      (card || grid.current)?.focus();
+    });
+  }, [detail]);
+  useImperativeHandle(ref, () => ({
+    flush: async () => (await detailRef.current?.flush()) ?? true,
+    showGrid: async () => {
+      if (await detailRef.current?.flush() === false) return false;
+      closeDetail();
+      return true;
+    },
+  }), [closeDetail]);
+  useEffect(() => { grid.current?.focus(); }, []);
   useEffect(() => { if (openClip) setDetail(openClip.path); }, [openClip]);
 
   useEffect(() => {
     const seq = ++request.current;
     setLoading(true);
     morePending.current = false;
+    const count = previousFilter.current === filter ? loaded.current : 60;
+    previousFilter.current = filter;
     const timer = window.setTimeout(() => {
-      clips.search({ query, tags, limit: 60 }).then((next) => {
-        if (seq !== request.current) return;
+      searchWindow(clips.search, { query, tags }, count, () => seq === request.current).then((next) => {
+        if (!next || seq !== request.current) return;
         setData(next);
         setError(undefined);
       }).catch((e) => { if (seq === request.current) setError(String(e)); })
         .finally(() => { if (seq === request.current) setLoading(false); });
     }, 120);
     return () => { window.clearTimeout(timer); request.current++; };
-  }, [query, tags, revision]);
+  }, [query, tags, filter, revision]);
 
   useEffect(() => {
     const off = listen<ClipChanged>("clips:changed", refresh);
@@ -71,7 +99,8 @@ export function Library({ openClip, renderUsedIn }: Props) {
 
   return (
     <section className="relative flex h-full min-h-0 flex-col px-7 pt-14 pb-2 lg:px-10" aria-label="Inspiration library">
-      {detail ? <Detail key={detail} path={detail} onClose={() => setDetail(undefined)} onChanged={refresh} renderUsedIn={renderUsedIn} /> : <>
+      {detail && <Detail ref={detailRef} key={detail} path={detail} onClose={closeDetail} onChanged={refresh} renderUsedIn={renderUsedIn} />}
+      <div ref={grid} tabIndex={-1} inert={!!detail} className={detail ? "hidden" : "flex min-h-0 flex-1 flex-col outline-none"}>
         <header className="mb-7 shrink-0 space-y-5">
           <div className="flex items-start justify-between gap-5">
             <div>
@@ -96,14 +125,14 @@ export function Library({ openClip, renderUsedIn }: Props) {
           <span>Newest first</span>
         </div>
         {error && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-destructive/5 p-3 text-sm text-destructive"><span>{error}</span><Button variant="ghost" size="sm" onClick={refresh}>Try again</Button></div>}
-        {data.clips.length ? <Masonry key={JSON.stringify([query, tags])} items={data.clips} total={data.total} loading={loading} onOpen={setDetail} onMore={more} /> : <div className="flex flex-1 flex-col items-center justify-center pb-20 text-center">
+        {data.clips.length ? <Masonry active={!detail} key={JSON.stringify([query, tags])} items={data.clips} total={data.total} loading={loading} onOpen={setDetail} onMore={more} /> : <div className="flex flex-1 flex-col items-center justify-center pb-20 text-center">
           <Bookmark className="mb-6 size-7 stroke-1 text-muted-foreground/40" />
           <h2 className="font-[family-name:var(--font-prose)] text-2xl">{query || tags.length ? "Nothing here just yet." : "Good things find their way here."}</h2>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{query || tags.length ? "Try another word, or let a tag go." : "Paste a link, drop an image, or keep a passing thought. It’s all welcome."}</p>
           {(query || tags.length > 0) ? <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => { setQuery(""); setTags([]); }}>Clear filters</Button> : <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => setAdding(true)}><Plus />Keep your first inspiration</Button>}
         </div>}
         <p className="shrink-0 pt-2 pb-3 text-center text-[11px] text-muted-foreground/65">Paste or drop a link, image, or text anywhere here.</p>
-      </>}
+      </div>
       {dragging && <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-2xl border border-dashed border-foreground/30 bg-background/95"><div className="text-center"><Plus className="mx-auto mb-4 size-6 stroke-1" /><p className="font-[family-name:var(--font-prose)] text-2xl">Let it land here.</p><p className="mt-2 text-sm text-muted-foreground">A link, an image, a little inspiration.</p></div></div>}
       <CaptureDialog open={adding} onClose={() => setAdding(false)} capture={capture} />
     </section>

@@ -22,10 +22,12 @@ export function textCapture(value: string): DesktopClipCapture | null {
 }
 
 export async function imageCapture(file: File): Promise<DesktopClipCapture> {
-  if (!IMAGE_TYPES.includes(file.type)) throw new Error("Choose a JPEG, PNG, GIF, WebP, HEIC, HEIF or AVIF image.");
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  const type = file.type || ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", heic: "image/heic", heif: "image/heif", avif: "image/avif" }[extension ?? ""]);
+  if (!type || !IMAGE_TYPES.includes(type)) throw new Error("Choose a JPEG, PNG, GIF, WebP, HEIC, HEIF or AVIF image.");
   if (file.size > MAX_IMAGE_BYTES) throw new Error("Images can be up to 15 MiB.");
   if (!file.size) throw new Error("That image is empty.");
-  return { image: Array.from(new Uint8Array(await file.arrayBuffer())), imageType: file.type, capturedAt: capturedAt(), via: "mac" };
+  return { image: Array.from(new Uint8Array(await file.arrayBuffer())), imageType: type, capturedAt: capturedAt(), via: "mac" };
 }
 
 export function parseTags(text: string): string[] {

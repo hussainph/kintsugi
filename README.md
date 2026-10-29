@@ -49,4 +49,17 @@ pnpm test             # Rust and TypeScript tests
 pnpm typecheck
 ```
 
+For an isolated desktop run, use an existing scratch folder:
+
+```sh
+mkdir -p target/scratch-vault
+KINTSUGI_VAULT="$PWD/target/scratch-vault" pnpm desktop
+```
+
+Debug builds open that vault without reading or persisting the normal app
+config, and skip phone/enrichment services. An invalid scratch path fails
+instead of falling back to `~/Documents/Kintsugi`. Release builds ignore the
+override. If another dev server is on port 1420, pass a Tauri `--config`
+override with a different `build.devUrl` and `build.beforeDevCommand` port.
+
 To pair the Simulator with a development build of the Mac app, turn on phone access and click **Simulator link**, then open it in the Simulator: `xcrun simctl openurl booted "<link>"`.

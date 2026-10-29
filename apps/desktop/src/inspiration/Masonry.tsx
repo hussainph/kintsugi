@@ -1,11 +1,12 @@
 import { ArrowUpRight, Quote } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@kintsugi/ui/components/button";
 import { clipLabel, clipSite, type ClipPreview } from "./api";
 import { ClipImage } from "./ClipImage";
 import { masonry, type Tile } from "./layout";
 
 type Props = {
+  active: boolean;
   items: ClipPreview[];
   total: number;
   loading: boolean;
@@ -13,12 +14,16 @@ type Props = {
   onMore: () => void;
 };
 
-export function Masonry({ items, total, loading, onOpen, onMore }: Props) {
+export function Masonry({ active, items, total, loading, onOpen, onMore }: Props) {
   const scroll = useRef<HTMLDivElement>(null);
+  const position = useRef(0);
+  useLayoutEffect(() => { if (active && scroll.current) scroll.current.scrollTop = position.current; }, [active]);
   const [viewport, setViewport] = useState({ width: 0, height: 800, top: 0 });
   useEffect(() => {
     const el = scroll.current!;
-    const observer = new ResizeObserver(() => setViewport((v) => ({ ...v, width: el.clientWidth - 2, height: el.clientHeight })));
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth) setViewport((v) => ({ ...v, width: el.clientWidth - 2, height: el.clientHeight }));
+    });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
@@ -30,6 +35,8 @@ export function Masonry({ items, total, loading, onOpen, onMore }: Props) {
   return (
     <div ref={scroll} className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-px pb-8" onScroll={(e) => {
       const el = e.currentTarget;
+      if (!active || !el.clientWidth) return;
+      position.current = el.scrollTop;
       setViewport((v) => ({ ...v, top: el.scrollTop }));
       if (el.scrollHeight - el.scrollTop - el.clientHeight < 600 && !loading && items.length < total) onMore();
     }} aria-label="Inspiration clips">
@@ -54,7 +61,7 @@ function Card({ tile, onOpen, onFocus, onBlur }: { tile: Tile; onOpen: (path: st
   const { clip, bodyHeight } = tile;
   const own = clip.text.replace(/^> ?/gm, "").trim();
   return (
-    <button type="button" onClick={() => onOpen(clip.path)} onFocus={onFocus} onBlur={onBlur} className="group block w-full rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4" aria-label={`Open ${clipLabel(clip)}`}>
+    <button type="button" onClick={() => onOpen(clip.path)} onFocus={onFocus} onBlur={onBlur} className="group block w-full rounded-xl text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4" data-clip-path={clip.path} aria-label={`Open ${clipLabel(clip)}`}>
       <div className="overflow-hidden rounded-xl bg-muted/70" style={{ height: bodyHeight }}>
         {clip.image ? (
           <ClipImage path={clip.path} image={clip.image} alt={clip.title ?? "Saved inspiration"} className="size-full object-cover" />
@@ -62,7 +69,7 @@ function Card({ tile, onOpen, onFocus, onBlur }: { tile: Tile; onOpen: (path: st
           <div className="flex h-full flex-col justify-center gap-3 overflow-hidden p-6">
             {clip.kind === "quote" && <Quote className="size-4 shrink-0 text-muted-foreground/50" />}
             {own || clip.summary ? (
-              <p className="line-clamp-6 whitespace-pre-wrap break-words font-[family-name:var(--font-prose)] text-[19px] leading-relaxed">{own || clip.summary}</p>
+              <p className="line-clamp-6 whitespace-pre-wrap break-words font-[family-name:var(--font-prose)] text-[19px] leading-relaxed" style={{ WebkitLineClamp: Math.max(2, Math.floor((bodyHeight - 48 - (clip.kind === "quote" ? 28 : 0)) / 31)) }}>{own || clip.summary}</p>
             ) : (
               <div className="space-y-3 break-words">
                 <ArrowUpRight className="size-5 text-muted-foreground/60" />

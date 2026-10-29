@@ -23,7 +23,7 @@ export function ClipImage({ path, image, className, alt }: { path: string; image
     };
   }, [path, image]);
   return url && !failed ? (
-    <img src={url} alt={alt} className={className} decoding="async" onError={() => setFailed(true)} />
+    <img draggable={false} src={url} alt={alt} className={className} decoding="async" onError={() => setFailed(true)} />
   ) : (
     <div className={`${className ?? ""} flex items-center justify-center bg-muted text-muted-foreground`} role="img" aria-label={failed ? "Image unavailable" : "Loading image"}>
       {failed && <ImageOff className="size-5 opacity-50" />}

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import type { ClipPreview } from "./api.ts";
 import { capturedAt, imageCapture, MAX_IMAGE_BYTES, parseTags, textCapture } from "./capture.ts";
 import { masonry } from "./layout.ts";
+import { searchWindow } from "./pagination.ts";
 
 const preview = (path: string, image: string | null = null): ClipPreview => ({
   path, kind: image ? "image" : "note", captured: "2026-10-29T12:00", tags: [], title: null, url: null,
@@ -32,6 +33,7 @@ test("image capture passes bytes, rejects SVG, empty and oversized images", asyn
   const capture = await imageCapture(new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" }));
   assert.deepEqual(capture.image, [1, 2, 3]);
   assert.equal(capture.imageType, "image/png");
+  assert.equal((await imageCapture(new File(["bytes"], "photo.HEIC"))).imageType, "image/heic");
   await assert.rejects(imageCapture(new File(["<svg/>"], "x.svg", { type: "image/svg+xml" })), /Choose/);
   await assert.rejects(imageCapture(new File([], "x.png", { type: "image/png" })), /empty/);
   await assert.rejects(imageCapture(new File([new Uint8Array(MAX_IMAGE_BYTES + 1)], "x.png", { type: "image/png" })), /15 MiB/);
@@ -53,4 +55,19 @@ test("masonry is stable, retains newest-first DOM order, and never overlaps", ()
     assert.deepEqual(masonry(items, width), result);
   }
   assert.equal(masonry([], 900).height, 0);
+});
+
+test("live refresh retains the loaded window within server pagination limits", async () => {
+  const items = Array.from({ length: 301 }, (_, i) => preview(`inspiration/${i}.md`));
+  const calls: { offset: number; limit: number }[] = [];
+  const search = async ({ offset = 0, limit = 60 }) => {
+    calls.push({ offset, limit });
+    return { clips: items.slice(offset, offset + limit), total: items.length, tags: ["craft"] };
+  };
+  const result = await searchWindow(search, {}, 240);
+  assert.equal(result?.clips.length, 240);
+  assert.equal(result?.total, 301);
+  assert.deepEqual(calls, [{ offset: 0, limit: 120 }, { offset: 120, limit: 120 }]);
+  assert.deepEqual((await searchWindow(search, {}, 400))?.clips, items);
+  assert.equal(await searchWindow(search, {}, 240, () => false), undefined);
 });

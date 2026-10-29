@@ -13,7 +13,6 @@ export const clips = {
   update: (edit: ClipEdit) => invoke<Clip>("clip_update", edit),
   trash: (path: string) => invoke<void>("clip_trash", { path }),
   image: (path: string) => invoke<ArrayBuffer>("clip_image", { path }),
-  captureImage: (path: string, capturedAt: string) => invoke<string>("clip_capture_image", { path, capturedAt }),
 };
 
 export function clipLabel(clip: Pick<ClipSummary, "title" | "url" | "kind">) {

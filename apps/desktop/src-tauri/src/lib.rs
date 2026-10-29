@@ -2,12 +2,21 @@ mod ai;
 mod config;
 mod enrich;
 mod library;
+mod navigation;
 mod phone;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    use tauri::Manager;
     tauri::Builder::default()
+        .plugin(tauri::plugin::Builder::new("app-navigation")
+            .on_navigation(|webview, url| {
+                let config = webview.app_handle().config();
+                let dev = if cfg!(debug_assertions) { config.build.dev_url.as_ref() } else { None };
+                navigation::allowed(url, dev)
+            })
+            .build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(vault::Vault::default())
@@ -40,7 +49,6 @@ pub fn run() {
             vault::clip_trash,
             library::clip_search,
             library::clip_image,
-            library::clip_capture_image,
             ai::ai_providers,
             ai::ai_stream,
             ai::ai_cancel,

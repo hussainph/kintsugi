@@ -246,8 +246,10 @@ Pagination defaults to offset 0 and limit 60 (clamped to 1–120).
 
 The Rust index is cached per canonical vault root and invalidated per path by
 `clips:changed`, including enrichment. First indexing, search and media reads
-run off the main thread. External edits made by another app require a restart
-or a clip mutation event to refresh this cache. The grid pages results and
+run off the main thread. A lightweight file metadata snapshot on search also
+picks up external edits, captures and deletions without reopening the app.
+Live refresh retains the already-loaded window rather than resetting to page
+one, and returning from detail restores grid position/focus. The grid pages results and
 virtualizes the masonry viewport, mounting only nearby cards and freeing their
 image object URLs as they leave. Fixed, varied thumbnail frames avoid layout
 jumps during enrichment; detail shows the uncropped image.
@@ -259,17 +261,20 @@ under `inspiration/media/`, rejects symlinks, non-regular files, unsupported
 extensions/signatures (including SVG) and files over 15 MiB. The frontend
 creates a short-lived Blob URL. No arbitrary vault path is exposed to the
 webview. Missing, corrupt or unsupported images get a quiet fallback.
-`clip_capture_image({ path, capturedAt })` accepts a native dropped raster
-file, validates/reads bounded bytes, and saves through `clip_create` with
-`via: mac`; clipboard/browser-file captures use `clip_create` directly.
+The window disables Tauri's native drag interception so HTML drops receive
+both Finder files and browser URLs/text. Clipboard and dropped files use
+`clip_create` with `via: mac`; there is no arbitrary local-file-read command.
+Raster files with an empty browser MIME type use an extension allowlist.
 
 Paste/drop listeners are active only while the library is open, including its
 detail view. Pasting into an input or editable note remains normal editing;
 **Keep something** also accepts a link, text or an image explicitly. Whole
 HTTP(S) URLs become links; other text stays intact as a note. Each capture
 is persisted before the UI reports success. Title, quote/note and tag edits
-save field patches on blur, navigation and window blur, with a retry button on
-failure. They never replace source text or unrelated enrichment fields.
+save field patches on blur, navigation and window blur, with a retry/discard
+choice on failure. App navigation, vault switching and window close await
+pending clip edits, preventing a queued edit from crossing vaults. They never
+replace source text or unrelated enrichment fields.
 
 UI lives in `apps/desktop/src/inspiration/`. `Library` accepts
 `renderUsedIn?: (clip: Clip) => ReactNode` for KI-8's shared backlink index;
@@ -279,11 +284,9 @@ backlinks exist. To open a clip from the editor, dispatch
 App flushes the document, switches views and opens the detail. The editor
 stays mounted while hidden so switching views preserves its current state.
 
-For isolated development, debug builds accept `KINTSUGI_DEV_CONFIG_DIR`.
-Seed `<that directory>/config.json` with an explicit scratch `vault` path
-and `phone: { enabled: false }` before `pnpm desktop`; this keeps both vault
-selection and phone settings away from the normal app config and personal
-vault. Scratch mode requires an existing configured vault and skips starting
+For isolated development, debug builds accept `KINTSUGI_VAULT` pointing to
+an existing scratch vault (see README). This mode never reads or persists the
+normal app config, requires the specified folder to exist, and skips starting
 enrichment and phone services. Release builds ignore the variable.
 
 ## Referencing in writing
