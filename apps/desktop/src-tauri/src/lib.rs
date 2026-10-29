@@ -1,4 +1,5 @@
 mod ai;
+mod clip_capture;
 mod config;
 mod enrich;
 mod phone;

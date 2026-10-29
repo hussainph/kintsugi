@@ -22,6 +22,25 @@ export class Unpaired extends Error {
   }
 }
 
+/** The Mac answered, but with a status the call didn't expect. `status` lets a
+ *  caller tell a permanent refusal from one worth retrying, and `message` is
+ *  the server's own message, or a safe stand-in when it sent none. */
+export class HttpError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message?: unknown) {
+    super(typeof message === "string" && message.trim() !== "" ? message : `Kintsugi answered ${status}.`);
+    this.status = status;
+  }
+}
+
+/** Capture failures a retry can't fix: the capture itself is invalid (400),
+ *  too large (413), or has a field of the wrong type (422). Every other status
+ *  is transient or handled as its own error (401 Unpaired, 502/504 Offline). */
+export function isPermanentCaptureStatus(status: number): boolean {
+  return status === 400 || status === 413 || status === 422;
+}
+
 /** Reads `kintsugi://pair?url=…&token=…`, as shown in the desktop's QR code. */
 export function parsePairLink(link: string): Pairing | null {
   const query = link.trim().match(/^kintsugi:\/\/+pair\/?\?(.*)$/)?.[1];
@@ -66,7 +85,7 @@ export function remote({ url, token }: Pairing) {
     if (response.status === 502 || response.status === 504) throw new Offline();
     const json = await response.json().catch(() => null);
     if (!response.ok && !accept.includes(response.status)) {
-      throw new Error(json?.error ?? `Kintsugi answered ${response.status}.`);
+      throw new HttpError(response.status, json?.error);
     }
     return json as T;
   }

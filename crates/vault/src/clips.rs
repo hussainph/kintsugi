@@ -508,7 +508,7 @@ fn save_media(root: &Path, path: &str, bytes: &[u8], mime: &str) -> Result<Strin
     Ok(image)
 }
 
-fn unique_clip(dir: &Path, stem: &str) -> Result<PathBuf> {
+fn unique_clip(dir: &Path, stem: &str, reserved: &[String]) -> Result<PathBuf> {
     for n in 1.. {
         let name = if n == 1 {
             stem.into()
@@ -516,6 +516,9 @@ fn unique_clip(dir: &Path, stem: &str) -> Result<PathBuf> {
             format!("{stem}-{n}")
         };
         let path = dir.join(format!("{name}.md"));
+        if reserved.iter().any(|p| p == &format!("{INSPIRATION}/{name}.md")) {
+            continue;
+        }
         let media_taken = IMAGE_FORMATS
             .iter()
             .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("media/{name}.{ext}"))).is_ok());
@@ -536,15 +539,14 @@ fn protect_boundary(text: &str) -> String {
     text.replace(SOURCE_MARKER, "&lt;!-- kintsugi:source --&gt;")
 }
 
-/// Saves what arrived immediately; naming and media writes do no network work.
-pub fn clip_create(root: &Path, capture: &ClipCapture) -> Result<String> {
-    let _create_guard = CREATES.lock().map_err(|_| "clip storage unavailable")?;
+/// Checks a capture without writing, so API boundaries can distinguish a
+/// permanent rejection from a storage failure.
+pub fn clip_validate_capture(capture: &ClipCapture) -> Result<()> {
     stamp(&capture.captured_at)?;
     let url = nonempty(capture.url.as_deref());
-    let parsed_url = url.map(source_url).transpose()?;
+    url.map(source_url).transpose()?;
     let text = nonempty(capture.text.as_deref());
     let note = nonempty(capture.note.as_deref());
-    let title = nonempty(capture.title.as_deref());
     if url.is_none() && text.is_none() && note.is_none() && capture.image.is_none() {
         return Err("nothing to capture".into());
     }
@@ -556,6 +558,32 @@ pub fn clip_create(root: &Path, capture: &ClipCapture) -> Result<String> {
         (None, Some(_)) => return Err("clip image type needs an image".into()),
         _ => {}
     }
+    Ok(())
+}
+
+/// Saves what arrived immediately; naming and media writes do no network work.
+pub fn clip_create(root: &Path, capture: &ClipCapture) -> Result<String> {
+    clip_create_with_receipt(root, capture, &[], |_| Ok(()))
+}
+
+/// Reserves the selected path in an application-owned receipt journal before
+/// writing media or Markdown. The callback runs under the naming/path locks;
+/// an error aborts the capture. `reserved` paths are skipped during naming,
+/// so another capture cannot take a pending receipt's path after a crash.
+/// No delivery metadata is added to the vault's plain files.
+pub fn clip_create_with_receipt(
+    root: &Path,
+    capture: &ClipCapture,
+    reserved: &[String],
+    receipt: impl FnOnce(&str) -> Result<()>,
+) -> Result<String> {
+    let _create_guard = CREATES.lock().map_err(|_| "clip storage unavailable")?;
+    clip_validate_capture(capture)?;
+    let url = nonempty(capture.url.as_deref());
+    let parsed_url = url.map(source_url).transpose()?;
+    let text = nonempty(capture.text.as_deref());
+    let note = nonempty(capture.note.as_deref());
+    let title = nonempty(capture.title.as_deref());
     let fallback = parsed_url
         .as_ref()
         .map(|u| format!("{}{}", u.host_str().unwrap_or_default(), u.path()));
@@ -569,7 +597,7 @@ pub fn clip_create(root: &Path, capture: &ClipCapture) -> Result<String> {
         });
     let dir = contained(root, Path::new(INSPIRATION))?;
     fs::create_dir_all(&dir).map_err(|_| "could not create inspiration folder")?;
-    let path = relative(root, &unique_clip(&dir, &slugify(&name))?);
+    let path = relative(root, &unique_clip(&dir, &slugify(&name), reserved)?);
     let lock = clip_lock(root, &path)?;
     let _guard = lock.lock().map_err(|_| "clip storage unavailable")?;
     let target = clip_path(root, &path)?;
@@ -611,6 +639,7 @@ pub fn clip_create(root: &Path, capture: &ClipCapture) -> Result<String> {
     }
     body = protect_boundary(&body);
     body.push_str(&format!("\n\n{SOURCE_MARKER}\n"));
+    receipt(&path)?;
     let image = if let (Some(bytes), Some(mime)) = (&capture.image, &capture.image_type) {
         let image = save_media(root, &path, bytes, mime)?;
         fm.set("image", Some(Value::Scalar(image.clone())));
