@@ -10,6 +10,7 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+*.tsbuildinfo
 *.local
 
 # Editor directories and files
@@ -25,3 +26,6 @@ dist-ssr
 
 # Rust
 /target/
+
+# Isolated browser-mode vaults, config and tokens
+/.headless/

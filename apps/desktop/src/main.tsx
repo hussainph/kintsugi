@@ -1,3 +1,6 @@
+// First, so a dev build in a plain browser tab has its Tauri runtime stand-in
+// before any app module runs. A no-op in `tauri dev` and in production.
+import "./headless/install";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "@/App";

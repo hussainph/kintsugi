@@ -5,6 +5,20 @@ import path from "node:path";
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 
+// Headless dev (KI-12): the app runs in a browser tab against a headless
+// backend, beside any `tauri dev` on 1420, and only on loopback.
+const headless = process.env.KINTSUGI_HEADLESS === "1";
+const port = frontendPort(process.env.KINTSUGI_FRONTEND_PORT, headless ? 1422 : 1420);
+
+function frontendPort(value: string | undefined, fallback: number) {
+  if (value === undefined || value === "") return fallback;
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`KINTSUGI_FRONTEND_PORT must be a port number, got ${value}`);
+  }
+  return port;
+}
+
 // https://vite.dev/config/
 export default defineConfig(() => ({
   plugins: [react(), tailwindcss()],
@@ -18,10 +32,10 @@ export default defineConfig(() => ({
   clearScreen: false,
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
-    port: 1420,
+    port,
     strictPort: true,
-    host: host || false,
-    hmr: host
+    host: headless ? "127.0.0.1" : host || false,
+    hmr: !headless && host
       ? {
           protocol: "ws",
           host,

@@ -4,6 +4,7 @@
 mod pi_auth;
 mod wire;
 
+use crate::AppHandle;
 use pi_auth::{Auth, Kind, Store};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -13,7 +14,7 @@ use std::sync::{Mutex, OnceLock};
 use std::task::Poll;
 use std::time::Duration;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State, async_runtime};
+use tauri::{Manager, State, async_runtime};
 use wire::{Event, PROVIDERS, Provider, Request, Wire};
 
 type Result<T> = std::result::Result<T, String>;
@@ -38,6 +39,10 @@ pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
 }
 
 fn statuses() -> Result<Vec<ProviderStatus>> {
+    #[cfg(feature = "headless")]
+    if !crate::headless::ai_enabled() {
+        return Ok(PROVIDERS.iter().map(|p| ProviderStatus { id: p.id, name: p.name, auth: "none" }).collect());
+    }
     let kinds: HashMap<String, Kind> = Store::default_location()?.list()?.into_iter().collect();
     Ok(PROVIDERS
         .iter()
@@ -277,6 +282,10 @@ pub fn ai_cancel(ai: State<Ai>, id: String) {
 }
 
 async fn resolve(provider: &Provider) -> Result<Option<Auth>> {
+    #[cfg(feature = "headless")]
+    if !crate::headless::ai_enabled() {
+        return Err("AI is disabled in headless mode".into());
+    }
     let env = || provider.env_key.and_then(|k| std::env::var(k).ok()).filter(|v| !v.is_empty());
     match Store::default_location()?.auth(provider.id).await? {
         Some(Auth::Bearer { .. }) if provider.wire == Wire::Anthropic => match env() {
