@@ -12,6 +12,7 @@ use tokio::sync::Notify;
 
 type Result<T> = std::result::Result<T, String>;
 const BACKOFF: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(10)];
+const CHANGED: &str = "clips:changed";
 
 #[derive(Default)]
 pub struct Worker {
@@ -30,7 +31,7 @@ pub fn start(app: &AppHandle) {
     // KI-1 emits this for local and phone changes. Scanning remains a fallback
     // for captures from an older client or a plain-file tool such as Obsidian.
     let handle = app.clone();
-    app.listen("clips-changed", move |_| wake(&handle));
+    app.listen(CHANGED, move |_| wake(&handle));
     tauri::async_runtime::spawn(async move {
         // Initializes the last/default vault even before the webview asks.
         let _ = crate::vault::current(&app);
@@ -52,8 +53,8 @@ pub fn start(app: &AppHandle) {
                     &root,
                     &BACKOFF,
                     || app.state::<crate::vault::Vault>().root().ok().as_deref() == Some(root.as_path()),
-                    || {
-                        let _ = app.emit("clips-changed", ());
+                    |path| {
+                        let _ = app.emit(CHANGED, serde_json::json!({ "path": path }));
                     },
                 )
                 .await
@@ -135,7 +136,7 @@ async fn drain<S: Store, E: Engine>(
     root: &Path,
     delays: &[Duration],
     still_current: impl Fn() -> bool,
-    changed: impl Fn(),
+    changed: impl Fn(&str),
 ) -> Result<()> {
     for clip in store.pending(root)? {
         // Finish an in-flight clip, but don't drain a vault the writer has left.
@@ -144,7 +145,7 @@ async fn drain<S: Store, E: Engine>(
         }
         // An unreadable/deleted clip must not starve every other capture.
         if process(store, engine, root, &clip, delays).await.is_ok() {
-            changed();
+            changed(&clip.path);
         } else {
             eprintln!("Could not save clip enrichment or its error.");
         }
@@ -276,7 +277,7 @@ mod tests {
         run(async {
             let store = Memory::default();
             let engine = Serial(Mutex::new(vec![]));
-            drain(&store, &engine, Path::new("."), &[], || true, || {}).await.unwrap();
+            drain(&store, &engine, Path::new("."), &[], || true, |_| {}).await.unwrap();
             assert_eq!(
                 *engine.0.lock().unwrap(),
                 [
@@ -295,7 +296,7 @@ mod tests {
             let store = Memory::default();
             let engine = Flaky(Mutex::new(0));
             let current = std::cell::Cell::new(true);
-            drain(&store, &engine, Path::new("."), &[], || current.get(), || current.set(false))
+            drain(&store, &engine, Path::new("."), &[], || current.get(), |_| current.set(false))
                 .await
                 .unwrap();
             assert_eq!(*store.applied.lock().unwrap(), ["inspiration/note.md"]);
