@@ -10,5 +10,7 @@ Judge every feature by whether it makes writing and publishing a blog post
 easier or more pleasant. The AI helps in the margins and never writes for
 him.
 
+- The blog: hussain.ph, an Astro + MDX site at `~/Desktop/code/3d-portfolio`
+  (github.com/hussainph/hussain.ph)
 - Product and contracts: `README.md`, `docs/inspiration.md`
 - Phone app conventions: `apps/mobile/AGENTS.md`
