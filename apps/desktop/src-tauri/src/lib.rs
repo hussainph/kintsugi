@@ -12,7 +12,7 @@ mod vault;
 pub fn run() {
     use tauri::Manager;
     tauri::Builder::default()
-        .plugin(tauri::plugin::Builder::new("app-navigation")
+        .plugin(tauri::plugin::Builder::<tauri::Wry, ()>::new("app-navigation")
             .on_navigation(|webview, url| {
                 let config = webview.app_handle().config();
                 let dev = if cfg!(debug_assertions) { config.build.dev_url.as_ref() } else { None };

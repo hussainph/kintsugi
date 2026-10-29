@@ -327,7 +327,9 @@ replace source text or unrelated enrichment fields.
 UI lives in `apps/desktop/src/inspiration/`. `Library` accepts
 `renderUsedIn?: (clip: Clip) => ReactNode` for KI-8's shared backlink index;
 the default slot is deliberately not a second index or an assertion that no
-backlinks exist. To open a clip from the editor, dispatch
+backlinks exist. App connects it to KI-8's shared `UsedIn` component, and
+Writing's clip-open callback to the same library detail. To open a clip from
+the editor, dispatch
 `new CustomEvent("kintsugi:open-clip", { detail: { path } })` on `window`.
 App flushes the document, switches views and opens the detail. The editor
 stays mounted while hidden so switching views preserves its current state.
@@ -335,7 +337,8 @@ stays mounted while hidden so switching views preserves its current state.
 For isolated development, debug builds accept `KINTSUGI_VAULT` pointing to
 an existing scratch vault (see README). This mode never reads or persists the
 normal app config, requires the specified folder to exist, and skips starting
-enrichment and phone services. Release builds ignore the variable.
+enrichment and phone services. Capture receipts also stay under the scratch
+vault's hidden `.kintsugi/` folder. Release builds ignore the variable.
 
 ## Referencing in writing
 
