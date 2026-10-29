@@ -13,6 +13,7 @@ import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
 import { Editor, External } from "@kintsugi/editor/Editor";
 import { Refine } from "@/refine/Refine";
+import { Library } from "@/inspiration/Library";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Entry, flatten, parentDir, renamedPath, vault } from "@/lib/vault";
@@ -52,6 +53,8 @@ export default function App() {
   const [save, setSave] = useState<SaveState>("saved");
   const [refine, setRefine] = useState<{ from: number; to: number } | null>(null);
   const [external, setExternal] = useState<External | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [openClip, setOpenClip] = useState<{ path: string; seq: number }>();
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
 
@@ -123,6 +126,7 @@ export default function App() {
     async (path: string) => {
       setPalette(null);
       await flush();
+      setLibraryOpen(false);
       try {
         const contents = await vault.read(path);
         known.current.set(path, meta(contents));
@@ -142,6 +146,8 @@ export default function App() {
       rootRef.current = path;
       setRoot(path);
       setDoc(null);
+      setOpenClip(undefined);
+      setLibraryOpen(false);
       setText("");
       setSelectedDir("");
       const all = flatten(await refresh());
@@ -268,6 +274,27 @@ export default function App() {
     }
   };
 
+  const showLibrary = useCallback(async () => {
+    await flush();
+    setRefine(null);
+    setOpenClip(undefined);
+    setLibraryOpen(true);
+  }, [flush]);
+
+  // The editor can open a clip without coupling its state to the library.
+  useEffect(() => {
+    const open = async (event: Event) => {
+      const path = (event as CustomEvent<{ path: string }>).detail?.path;
+      if (typeof path !== "string") return;
+      await flush();
+      setRefine(null);
+      setOpenClip({ path, seq: Date.now() });
+      setLibraryOpen(true);
+    };
+    window.addEventListener("kintsugi:open-clip", open);
+    return () => window.removeEventListener("kintsugi:open-clip", open);
+  }, [flush]);
+
   // App shortcuts run in the capture phase so they win over the editor's keymap.
   const shortcuts = useRef<(e: KeyboardEvent) => void>(() => {});
   shortcuts.current = (e) => {
@@ -280,10 +307,11 @@ export default function App() {
     const key = e.key.toLowerCase();
     if (key === "p" && !e.shiftKey) run(() => setPalette({ kind: "open" }));
     else if (key === "n") run(() => setPalette({ kind: e.shiftKey ? "new-folder" : "new-doc", dir: selectedDir }));
-    else if (key === "d" && e.shiftKey) run(toggleStatus);
+    else if (key === "i" && e.shiftKey) run(showLibrary);
+    else if (key === "d" && e.shiftKey && !libraryOpen) run(toggleStatus);
     else if (key === "s" && !e.shiftKey) run(flush);
     else if (key === "o" && e.shiftKey) run(openVault);
-    else if (key === "k" && !e.shiftKey && doc) run(openRefine);
+    else if (key === "k" && !e.shiftKey && doc && !libraryOpen) run(openRefine);
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => shortcuts.current(e);
@@ -299,7 +327,9 @@ export default function App() {
       <Sidebar
         tree={tree}
         vaultName={vaultName}
-        active={doc?.path ?? null}
+        active={libraryOpen ? null : doc?.path ?? null}
+        libraryOpen={libraryOpen}
+        onLibrary={showLibrary}
         selectedDir={selectedDir}
         onOpen={openDoc}
         onSelectDir={setSelectedDir}
@@ -312,6 +342,8 @@ export default function App() {
       />
       <SidebarInset className="relative h-svh min-w-0">
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
+        {libraryOpen && <Library key={root} openClip={openClip} />}
+        <div className={libraryOpen ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
         {doc ? (
           <Editor
             key={root}
@@ -331,7 +363,8 @@ export default function App() {
             </p>
           </div>
         )}
-        {doc && (
+        </div>
+        {doc && !libraryOpen && (
           <footer className="absolute right-4 bottom-3 flex items-center gap-3 text-xs text-muted-foreground opacity-60 transition-opacity hover:opacity-100">
             <Badge asChild variant={status === "complete" ? "default" : "outline"}>
               <button onClick={toggleStatus} title="Toggle status (⇧⌘D)">

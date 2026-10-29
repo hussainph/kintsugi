@@ -216,6 +216,60 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
   reference this clip.
 - Paste or drop anywhere in the library to capture.
 
+### Library implementation and shared seams
+
+`clip_search({ query?, tags?, offset?, limit? })` is the reusable desktop
+lexical search command, including for the editor's `[[` picker. It returns
+`{ clips: (ClipSummary & { text: string })[], total, tags: string[] }`.
+`text` is an own-text preview of at most 600 Unicode characters, never the
+extracted source. Search itself uses the full own text and source, plus title,
+summary, tags, site and URL. Terms are whitespace-separated, case-insensitive
+substrings, ANDed across those fields. Tags are trimmed/lowercased exact AND
+filters. Results keep `clip_list` ordering (newest captured first, then path
+ascending); returned tags cover the whole vault, not just matching clips.
+Pagination defaults to offset 0 and limit 60 (clamped to 1–120).
+
+The Rust index is cached per canonical vault root and invalidated per path by
+`clips:changed`, including enrichment. First indexing, search and media reads
+run off the main thread. External edits made by another app require a restart
+or a clip mutation event to refresh this cache. The grid pages results and
+virtualizes the masonry viewport, mounting only nearby cards and freeing their
+image object URLs as they leave. Fixed, varied thumbnail frames avoid layout
+jumps during enrichment; detail shows the uncropped image.
+
+Images use **binary IPC, not an asset-protocol filesystem scope**:
+`clip_image({ path })` takes a clip path and returns an `ArrayBuffer` containing
+only that clip's primary image. Rust validates the clip and its media path
+under `inspiration/media/`, rejects symlinks, non-regular files, unsupported
+extensions/signatures (including SVG) and files over 15 MiB. The frontend
+creates a short-lived Blob URL. No arbitrary vault path is exposed to the
+webview. Missing, corrupt or unsupported images get a quiet fallback.
+`clip_capture_image({ path, capturedAt })` accepts a native dropped raster
+file, validates/reads bounded bytes, and saves through `clip_create` with
+`via: mac`; clipboard/browser-file captures use `clip_create` directly.
+
+Paste/drop listeners are active only while the library is open, including its
+detail view. Pasting into an input or editable note remains normal editing;
+**Keep something** also accepts a link, text or an image explicitly. Whole
+HTTP(S) URLs become links; other text stays intact as a note. Each capture
+is persisted before the UI reports success. Title, quote/note and tag edits
+save field patches on blur, navigation and window blur, with a retry button on
+failure. They never replace source text or unrelated enrichment fields.
+
+UI lives in `apps/desktop/src/inspiration/`. `Library` accepts
+`renderUsedIn?: (clip: Clip) => ReactNode` for KI-8's shared backlink index;
+the default slot is deliberately not a second index or an assertion that no
+backlinks exist. To open a clip from the editor, dispatch
+`new CustomEvent("kintsugi:open-clip", { detail: { path } })` on `window`.
+App flushes the document, switches views and opens the detail. The editor
+stays mounted while hidden so switching views preserves its current state.
+
+For isolated development, debug builds accept `KINTSUGI_DEV_CONFIG_DIR`.
+Seed `<that directory>/config.json` with an explicit scratch `vault` path
+and `phone: { enabled: false }` before `pnpm desktop`; this keeps both vault
+selection and phone settings away from the normal app config and personal
+vault. Release builds ignore the variable.
+
 ## Referencing in writing
 
 - A reference is an Obsidian wikilink to a file name: a clip

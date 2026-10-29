@@ -143,6 +143,7 @@ struct ClipChanged<'a> {
 /// The library and enrichment listen to one event for Mac and phone captures.
 /// Only paths cross this boundary, never the image bytes or source text.
 pub fn clips_changed(app: &AppHandle, path: &str) {
+    app.state::<crate::library::Library>().invalidate(path);
     let _ = app.emit("clips:changed", ClipChanged { path });
 }
 

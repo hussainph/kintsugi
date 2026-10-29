@@ -28,6 +28,12 @@ pub struct Phone {
 static LOCK: Mutex<()> = Mutex::new(());
 
 fn path(app: &AppHandle) -> Result<PathBuf> {
+    // Isolate a development run (including phone settings) from the real vault.
+    // Release builds never consult this environment variable.
+    #[cfg(debug_assertions)]
+    if let Some(dir) = std::env::var_os("KINTSUGI_DEV_CONFIG_DIR") {
+        return Ok(PathBuf::from(dir).join("config.json"));
+    }
     Ok(app.path().app_config_dir().map_err(|e| e.to_string())?.join("config.json"))
 }
 

@@ -15,6 +15,7 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 | ⇧⌘D | Toggle draft / complete |
 | ⌘F | Find in document |
 | ⇧⌘O | Open a different vault |
+| ⇧⌘I | Open the Inspiration library |
 | F2, ⌘⌫ (in the sidebar) | Rename, move to Trash |
 
 ## Your phone
