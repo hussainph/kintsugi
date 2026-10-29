@@ -5,20 +5,34 @@ mod enrich;
 mod phone;
 mod vault;
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    tauri::Builder::default()
+#[cfg(all(feature = "headless", not(debug_assertions)))]
+compile_error!("headless is a debug-only development feature");
+#[cfg(all(feature = "headless", feature = "native"))]
+compile_error!("headless must be built with --no-default-features (no native runtime)");
+
+#[cfg(feature = "headless")]
+type Runtime = tauri::test::MockRuntime;
+#[cfg(not(feature = "headless"))]
+type Runtime = tauri::Wry;
+type AppHandle = tauri::AppHandle<Runtime>;
+
+#[cfg(feature = "headless")]
+mod headless;
+
+/// One registry and state setup for native and headless. New commands cannot
+/// silently go missing from a second HTTP command table.
+fn builder() -> tauri::Builder<Runtime> {
+    #[cfg(feature = "headless")]
+    let builder = tauri::test::mock_builder();
+    #[cfg(not(feature = "headless"))]
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+    builder
         .manage(vault::Vault::default())
         .manage(ai::Ai::default())
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
-        .setup(|app| {
-            enrich::start(app.handle());
-            phone::restore(app.handle());
-            Ok(())
-        })
         .invoke_handler(tauri::generate_handler![
             vault::vault_current,
             vault::vault_open,
@@ -41,6 +55,22 @@ pub fn run() {
             phone::phone_enable,
             phone::phone_reset,
         ])
+}
+
+#[cfg(not(feature = "headless"))]
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    builder()
+        .setup(|app| {
+            enrich::start(app.handle());
+            phone::restore(app.handle());
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(feature = "headless")]
+pub fn run() {
+    headless::run().expect("headless backend failed");
 }

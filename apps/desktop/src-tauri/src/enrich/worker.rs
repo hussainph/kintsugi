@@ -1,13 +1,14 @@
 //! One task owns all enrichment. Captures wake it; periodic scans also pick up
 //! clips written by other apps without requiring a filesystem watcher.
 
+use crate::AppHandle;
 use super::{
     fetch,
     storage::{Clip, Store, Update, VaultStore},
     think,
 };
 use std::{future::Future, path::Path, time::Duration};
-use tauri::{AppHandle, Listener, Manager};
+use tauri::{Listener, Manager};
 use tokio::sync::Notify;
 
 type Result<T> = std::result::Result<T, String>;

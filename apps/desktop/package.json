@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc",
+    "test:headless": "node --test src/headless/*.test.ts",
     "preview": "vite preview",
     "tauri": "tauri"
   },

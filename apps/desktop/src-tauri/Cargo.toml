@@ -15,8 +15,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[features]
+default = ["native"]
+native = ["tauri/wry", "tauri/compression", "tauri/dynamic-acl", "tauri/x11", "tauri/dbus", "tauri/common-controls-v6"]
+# Debug-only; use --no-default-features so no OS runtime is even linked.
+headless = ["tauri/test", "tauri/unstable"]
+
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", default-features = false, features = [] }
 tauri-plugin-opener = "2"
 serde.workspace = true
 serde_json.workspace = true

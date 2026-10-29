@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "desktop": "pnpm --filter @kintsugi/desktop tauri dev",
+    "desktop:headless": "node scripts/desktop-headless.mjs",
+    "desktop:seed": "node scripts/seed-desktop.mjs",
+    "test:headless": "node --test scripts/*.test.mjs && pnpm --filter @kintsugi/desktop test:headless && cargo test -p kintsugi --no-default-features --features headless -j ${VOLLI_CONCURRENCY_HINT:-1}",
     "ios": "pnpm --filter @kintsugi/mobile ios",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",

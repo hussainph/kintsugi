@@ -1,12 +1,12 @@
 //! Delivery receipts belong to the app, not the vault's plain clip files.
 //! Both desktop and phone captures use this one lock and persisted journal.
 
+use crate::AppHandle;
 use kintsugi_vault as vault;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
 
 const MAX_RECEIPTS: usize = 1024;
 const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
@@ -83,11 +83,7 @@ struct Receipt {
 }
 
 pub fn index_path(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|e| e.to_string())?
-        .join("clip-capture-ids.json"))
+    Ok(crate::config::directory(app)?.join("clip-capture-ids.json"))
 }
 
 fn capture_id(value: &str) -> Result<String, Error> {

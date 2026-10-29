@@ -67,15 +67,19 @@ pub fn agent_dir() -> Result<PathBuf> {
 
 pub struct Store {
     path: PathBuf,
+    read_only: bool,
 }
 
 impl Store {
     pub fn new(dir: &Path) -> Self {
-        Self { path: dir.join(AUTH_FILE) }
+        Self { path: dir.join(AUTH_FILE), read_only: false }
     }
 
     pub fn default_location() -> Result<Self> {
-        Ok(Self::new(&agent_dir()?))
+        let mut store = Self::new(&agent_dir()?);
+        // Headless never locks, refreshes, rotates or writes Pi credentials.
+        store.read_only = cfg!(feature = "headless");
+        Ok(store)
     }
 
     fn read(&self) -> Result<Map<String, Value>> {
@@ -147,6 +151,7 @@ impl Store {
         match kind(&cred) {
             Some(Kind::ApiKey) => Ok(str_field(&cred, "key").map(Auth::ApiKey)),
             Some(Kind::Oauth) if fresh(&cred) => Ok(Some(bearer(&cred)?)),
+            Some(Kind::Oauth) if self.read_only => Err("Pi login expired; refresh it outside headless mode".into()),
             Some(Kind::Oauth) => self.refresh(provider).await.map(Some),
             None => Err(format!("unrecognised credential for {provider}")),
         }
@@ -155,7 +160,7 @@ impl Store {
     /// Refresh under Pi's lock, re-reading inside it: another process may
     /// already have refreshed, in which case its token is used as-is.
     async fn refresh(&self, provider: &str) -> Result<Auth> {
-        let store = Store { path: self.path.clone() };
+        let store = Store { path: self.path.clone(), read_only: self.read_only };
         let provider = provider.to_string();
         let (lock, mut map) = tokio::task::spawn_blocking(move || {
             let lock = store.lock()?;
@@ -174,7 +179,7 @@ impl Store {
             other => return Err(format!("Kintsugi can't refresh {other} logins yet; use an API key")),
         };
         map.insert(provider, updated.clone());
-        let store = Store { path: self.path.clone() };
+        let store = Store { path: self.path.clone(), read_only: self.read_only };
         tokio::task::spawn_blocking(move || {
             let result = store.write(&map);
             drop(lock);
@@ -302,6 +307,18 @@ mod tests {
             Some(Auth::Bearer { token: "a".into(), account_id: Some("acct".into()) })
         );
         assert_eq!(block_on(store.auth("missing")).unwrap(), None);
+        assert_eq!(fs::read(dir.path().join(AUTH_FILE)).unwrap(), before);
+        assert!(!dir.path().join("auth.json.lock").exists());
+    }
+
+    #[test]
+    fn read_only_store_never_locks_or_refreshes_expired_oauth() {
+        let (dir, mut store) = store_with(json!({
+            "openai-codex": { "type": "oauth", "access": "expired", "refresh": "unused", "expires": 0 }
+        }));
+        store.read_only = true;
+        let before = fs::read(dir.path().join(AUTH_FILE)).unwrap();
+        assert!(block_on(store.auth("openai-codex")).unwrap_err().contains("outside headless"));
         assert_eq!(fs::read(dir.path().join(AUTH_FILE)).unwrap(), before);
         assert!(!dir.path().join("auth.json.lock").exists());
     }

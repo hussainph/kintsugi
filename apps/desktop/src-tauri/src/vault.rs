@@ -1,12 +1,13 @@
 //! The desktop's view of the vault: which folder is open, and the commands
 //! the webview calls. The vault itself lives in `kintsugi_vault`.
 
+use crate::AppHandle;
 use crate::config;
 use kintsugi_vault::{self as vault, Entry};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{Emitter, Manager, State};
 
 const WELCOME: &str = "---
 title: Welcome to Kintsugi
@@ -43,7 +44,7 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
     if let Ok(root) = vault.root() {
         return Ok(root);
     }
-    let path = match config::load(app).vault.filter(|p| p.is_dir()) {
+    let path = match config::vault_override().or_else(|| config::load(app).vault.filter(|p| p.is_dir())) {
         Some(path) => path,
         None => {
             let path = app.path().document_dir().map_err(|e| e.to_string())?.join("Kintsugi");
@@ -59,6 +60,8 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
 }
 
 fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
+    #[cfg(feature = "headless")]
+    crate::headless::scratch_path(path)?;
     if !path.is_dir() {
         return Err(format!("not a folder: {}", path.display()));
     }
