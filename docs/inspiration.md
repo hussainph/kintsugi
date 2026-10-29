@@ -70,10 +70,16 @@ enriched: "2026-10-29T14:06"
 
 The writer's own note, if any.
 
+<!-- kintsugi:source -->
 ## Source
 
 Readable text extracted from the page, for search and the AI. Up to ~20k
-characters. Everything above this heading is the clip's own text.
+characters. Everything above the invisible boundary comment is the clip's
+own text. New captures keep the comment even before a source is available,
+so a captured note can itself contain `## Source` or an unfinished code
+fence without losing words. The exact `<!-- kintsugi:source -->` comment is
+reserved (escaped on capture if supplied as text). Legacy files without the
+comment use the first `## Source` heading outside a fenced code block.
 ```
 
 Frontmatter fields. All optional except `kind` and `captured`:
@@ -99,8 +105,10 @@ Readers also accept block lists (`tags:\n  - a`), because Obsidian writes them.
 ## Capture
 
 A capture carries any of: `url`, `text` (a shared passage or a note), `note`,
-one image (bytes + MIME type), plus `capturedAt` and `via`. The receiver
-writes the clip at once:
+one image (bytes + MIME type), plus `capturedAt` and `via`. An optional
+`title` is used when the capturing app already knows it. URLs must be HTTP
+or HTTPS; empty captures are rejected. `capturedAt` is required local time
+in `YYYY-MM-DDTHH:MM` form. The receiver writes the clip at once:
 
 - the `kind` guessed from what arrived (a known social host → `post`, a
   video host → `video`, an image without a URL → `image`, text with a URL →
@@ -123,11 +131,59 @@ writes the clip at once:
 Added to the server in `apps/desktop/src-tauri/src/phone/server.rs` and its
 client in `packages/core/src/remote.ts`; `hello` reports `api: 2`.
 
-- `POST /v1/clips`: `{ url?, text?, note?, image?: base64, imageType?,
-  capturedAt, via }` → `{ path }`. Images up to 15 MB.
-- `GET /v1/clips` → `ClipSummary[]`, newest first.
-- `GET /v1/clip?path=…` → the clip (summary fields + own text + whether it
-  has source text).
+- `POST /v1/clips`: `{ url?, text?, note?, title?, image?: base64, imageType?,
+  capturedAt, via }` → `{ path }`. Images up to 15 MiB decoded; `imageType`
+  is required with image bytes. Supported types: JPEG, PNG, GIF, WebP, HEIC,
+  HEIF and AVIF. SVG is not accepted. Invalid captures return 400 without
+  writing a clip (422 for a JSON field/type error, 413 for an oversized image
+  or request). Errors never echo capture content. The request body limit
+  allows base64's encoding overhead.
+- `GET /v1/clips` → `ClipSummary[]`, newest first (path breaks timestamp ties).
+  A summary has `path`, `kind`, `captured`, `tags`, and nullable `title`,
+  `url`, `site`, `author`, `image`, `via`, `summary`, `enriched`, `enrichError`.
+  `path` is vault-relative; `image` remains relative to the clip file.
+- `GET /v1/clip?path=…` → the summary fields plus `text` (own text, without
+  frontmatter or source) and `hasSource`. Extracted source is kept on disk,
+  not sent to the phone. Missing clips return 404; non-clip paths return 400.
+
+The shared types live in `@kintsugi/core/clips`. The remote client exposes
+`captureClip(capture)`, `clips()` and `clip(path)`. Existing document and
+inbox-capture API calls remain compatible.
+
+### Desktop and storage API
+
+The desktop commands are `clip_list`, `clip_read`, `clip_create({ capture })`,
+`clip_update({ path, title?, tags?, note? })` and `clip_trash({ path })`.
+Desktop captures carry image bytes rather than base64 (`DesktopClipCapture`
+uses a JSON number array; convert a `Uint8Array` with `Array.from`).
+`ClipEdit` and `ClipChanged` type the edit arguments and event payload.
+Updating `note` replaces the whole own-text section (including a shared quote, if present),
+not the extracted source. An omitted edit field is unchanged; an empty title
+clears it and an empty tag array clears tags. Trash includes the primary
+image. Generic desktop/phone document mutation commands reject paths in
+`inspiration/`; clip names stay stable and all clip writes share their lock.
+Successful desktop and phone mutations emit `clips:changed` with
+`{ path }`; enrichment uses that event too.
+
+The vault crate exports `clip_list`, `clip_read`, `clip_create`, `clip_update`,
+`clip_enrich`, `clip_save_media`, `clip_trash`, and `clips_needing_enrichment`.
+Metadata updates are patches against the latest file. `ClipUpdate` also accepts `kind`, `url`,
+`site`, `author`, `image`, `summary`, `enriched`, `enrich_error`, and `source`;
+an absent field is untouched, an empty optional scalar clears it. Source
+updates are limited to 20,000 characters and preserve the own-text prefix;
+metadata-only updates preserve the entire body byte-for-byte. Writer edits,
+enrichment, media saves and trash share one in-process mutex per clip path;
+unique capture names are selected serially. `clip_enrich` compares against
+the pre-fetch summary under that lock: it fills only a still-missing title,
+leaves concurrently edited tags alone,
+and cannot change own text. `clip_save_media` fills a missing primary image
+and sets its field; if an image already exists, it returns that path without
+replacing the screenshot. Media writes never overwrite an existing file.
+Capture naming also avoids orphan media names. `clip_trash` takes the
+desktop's OS Trash callback under the same lock, so enrichment cannot
+resurrect a trashed clip. Pending enrichment
+excludes clips with either `enriched` or `enrich_error` set. Invalid external
+clip files are skipped by listing, while reading one reports an error.
 
 ## Enrichment (on the Mac)
 
