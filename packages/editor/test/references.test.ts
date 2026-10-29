@@ -106,3 +106,48 @@ test("link generation still sees collisions beyond the first forty picker rows",
   e.key("Enter");
   assert.equal(e.text(), "[[inspiration/craft]]");
 });
+
+test("large document collections still leave clip choices within reach", () => {
+  const references: References = { ...config, sources: [...Array.from({ length: 50 }, (_, index) => ({ kind: "document" as const, path: `a${index}.md`, title: `A ${index}` })), clip] };
+  const e = editor("", references);
+  e.type("[[");
+  for (let index = 0; index < 24; index++) e.key("ArrowDown");
+  e.key("Enter");
+  assert.equal(e.text(), "[[craft]]");
+});
+
+test("thumbnail and metadata refreshes preserve the keyboard choice", () => {
+  const references: References = { ...config };
+  const e = editor("", references);
+  e.type("[["); e.key("ArrowDown");
+  references.sources = references.sources.map((source) => ({ ...source, image: "blob:updated" }));
+  e.view.dispatch({ effects: refreshReferences.of(null) });
+  e.key("Enter");
+  assert.equal(e.text(), "[[inspiration/craft]]");
+});
+
+test("quote completion separates the next line from Markdown lazy blockquote continuation", () => {
+  const text = "Before [[\nFollowing prose";
+  const e = editor(text);
+  e.view.dispatch({ selection: EditorSelection.cursor(text.indexOf("\n")) });
+  e.key("ArrowDown"); e.key("Shift-Enter");
+  assert.equal(e.text(), "Before \n\n> Shared passage\n>\n> [[inspiration/craft]]\n\nFollowing prose");
+});
+
+test("quotes read the full own text instead of the card preview", async () => {
+  const passage = "The complete passage. ".repeat(80);
+  const e = editor("", { ...config, readClipText: async () => passage });
+  e.type("[["); e.key("ArrowDown"); e.key("Shift-Enter");
+  await Promise.resolve();
+  assert.equal(e.text(), `> ${passage.trim()}\n>\n> [[inspiration/craft]]`);
+});
+
+test("a delayed quote cannot insert after the writer changes documents or moves the cursor", async () => {
+  let resolve!: (text: string) => void;
+  const e = editor("", { ...config, readClipText: () => new Promise<string>((done) => { resolve = done; }) });
+  e.type("[["); e.key("ArrowDown"); e.key("Shift-Enter");
+  e.view.dispatch({ changes: { from: 0, to: e.view.state.doc.length, insert: "A different thought" }, selection: EditorSelection.cursor(2) });
+  resolve("Should not appear");
+  await Promise.resolve();
+  assert.equal(e.text(), "A different thought");
+});

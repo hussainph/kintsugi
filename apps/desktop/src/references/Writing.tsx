@@ -1,3 +1,4 @@
+import { isolateHistory } from "@codemirror/commands";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { PanelRight } from "lucide-react";
@@ -95,7 +96,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, ...editor }: Props) {
     const before = block && from > 0 && view.state.sliceDoc(0, from).slice(-2) !== "\n\n" ? "\n\n" : "";
     const after = block ? "\n\n" : "";
     const replacement = before + text + after;
-    view.dispatch({ changes: { from, to, insert: replacement }, selection: { anchor: from + replacement.length }, userEvent: "input.reference" });
+    view.dispatch({ changes: { from, to, insert: replacement }, selection: { anchor: from + replacement.length }, annotations: isolateHistory.of("full"), userEvent: "input.reference" });
     view.focus();
   }, [editor.viewRef]);
   const quote = useCallback(async (source: ReferenceSource) => {
@@ -110,7 +111,9 @@ export function Writing({ root, onOpenDoc, onOpenClip, ...editor }: Props) {
     } catch (error) { toast.error(String(error)); }
   }, [sources, insert]);
   const hasMargin = referenced.length + related.length + backlinks.length + unresolved.length > 0;
-  const options = useMemo(() => ({ sources, search, onOpen: open, onParagraph: setParagraph }), [sources, search, open]);
+  const readClipText = useCallback(async (source: ReferenceSource) => (await invoke<Clip>("clip_read", { path: source.path })).text, []);
+  const onReferenceError = useCallback((error: unknown) => toast.error(String(error)), []);
+  const options = useMemo(() => ({ sources, search, readClipText, onError: onReferenceError, onOpen: open, onParagraph: setParagraph }), [sources, search, readClipText, onReferenceError, open]);
 
   return (
     <div className="reference-writing">

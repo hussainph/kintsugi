@@ -48,7 +48,7 @@ export class IndexStore {
     const generation = ++this.generation;
     const events = ["references:changed", "vault:changed", "clips:changed"];
     const stops = events.map((event) => this.watch(event, () => this.refresh()));
-    this.stop = () => { stops.forEach((stop) => { void stop.then((off) => off()); }); };
+    this.stop = () => { stops.forEach((stop) => { void stop.then((off) => off()).catch(() => {}); }); };
     // Register first so a save during the initial scan schedules another pass.
     void Promise.all(stops).then(() => {
       if (generation === this.generation) this.refresh();

@@ -6,8 +6,13 @@ import { splitFrontmatter } from "@kintsugi/core/frontmatter";
 
 export type References = {
   sources: ReferenceSource[];
+  /** The editor supplies this; a file need not suggest itself as a source. */
+  currentPath?: string;
   /** May return additional full-source lexical matches. Stale results are ignored. */
   search?: (query: string) => Promise<ReferenceSource[]>;
+  /** Search cards may carry a truncated preview. Quotes always read own text in full. */
+  readClipText?: (source: ReferenceSource) => Promise<string>;
+  onError?: (error: unknown) => void;
   onOpen: (source: ReferenceSource) => void;
   onParagraph?: (text: string) => void;
 };
@@ -17,6 +22,11 @@ const referenceMime = "application/x-kintsugi-reference";
 type Picker = { from: number; to: number; query: string; results: ReferenceSource[]; index: number; loading: boolean };
 const setPicker = StateEffect.define<Picker | null>();
 const searchResults = StateEffect.define<{ from: number; query: string; sources: ReferenceSource[] }>();
+// Keep clips within reach even in a large writing vault. Documents still lead.
+const pickerResults = (sources: ReferenceSource[]) => [
+  ...sources.filter((source) => source.kind === "document").slice(0, 24),
+  ...sources.filter((source) => source.kind === "clip").slice(0, 16),
+];
 
 function pickerAt(state: EditorState, config: References | undefined): Picker | null {
   if (!config || !state.selection.main.empty) return null;
@@ -32,7 +42,7 @@ function pickerAt(state: EditorState, config: References | undefined): Picker | 
   const tail = state.sliceDoc(head, line.to);
   const closing = /^[^\[\]]*\]\]/.exec(tail);
   const to = closing ? head + closing[0].length : head;
-  return { from, to, query: match[1], results: searchReferences(match[1], config.sources).slice(0, 40), index: 0, loading: !!config.search };
+  return { from, to, query: match[1], results: pickerResults(searchReferences(match[1], config.sources.filter((source) => source.path !== config.currentPath))), index: 0, loading: !!config.search };
 }
 
 function merged(local: readonly ReferenceSource[], remote: readonly ReferenceSource[]): ReferenceSource[] {
@@ -45,10 +55,12 @@ function merged(local: readonly ReferenceSource[], remote: readonly ReferenceSou
  *  document state or grouping the insertion with the next typed paragraph. */
 function insert(view: EditorView, from: number, to: number, text: string, quote = false) {
   if (quote) {
-    const before = view.state.sliceDoc(view.state.doc.lineAt(from).from, from);
-    const after = view.state.sliceDoc(to, view.state.doc.lineAt(to).to);
-    if (before.trim()) text = "\n\n" + text;
-    if (after.trim()) text += "\n\n";
+    const before = view.state.sliceDoc(0, from);
+    const after = view.state.sliceDoc(to);
+    if (before.trim() && !/\n[\t ]*\n[\t ]*$/.test(before)) text = (before.endsWith("\n") ? "\n" : "\n\n") + text;
+    // The next line can otherwise become Markdown's lazy continuation of the
+    // attribution blockquote, even when the current line has no remainder.
+    if (after.trim() && !/^\n[\t ]*\n/.test(after)) text += after.startsWith("\n") ? "\n" : "\n\n";
   }
   view.dispatch({
     changes: { from, to, insert: text },
@@ -105,12 +117,19 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
   const pickerField = StateField.define<Picker | null>({
     create: () => null,
     update(value, tr) {
-      if (tr.docChanged || tr.selection || tr.effects.some((effect) => effect.is(refreshReferences))) value = pickerAt(tr.state, getConfig());
+      if (tr.docChanged || tr.selection || tr.effects.some((effect) => effect.is(refreshReferences))) {
+        const previous = value;
+        value = pickerAt(tr.state, getConfig());
+        if (value && previous && value.from === previous.from && value.query === previous.query) {
+          const selected = previous.results[previous.index]?.path;
+          value = { ...value, index: Math.max(0, value.results.findIndex((source) => source.path === selected)) };
+        }
+      }
       for (const effect of tr.effects) {
         if (effect.is(setPicker)) value = effect.value;
         if (effect.is(searchResults) && value && effect.value.from === value.from && effect.value.query === value.query) {
           const selected = value.results[value.index]?.path;
-          const results = merged(value.results, effect.value.sources).slice(0, 40);
+          const results = pickerResults(merged(value.results, effect.value.sources).filter((source) => source.path !== getConfig()?.currentPath));
           value = { ...value, results, index: Math.max(0, results.findIndex((source) => source.path === selected)), loading: false };
         }
       }
@@ -126,10 +145,23 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
     source ??= picker.results[picker.index];
     if (!source) return true;
     const link = linkFor(source, merged(config.sources, picker.results));
-    const text = quote && source.kind === "clip" ? attributedQuote(source.text ?? "", link) : link;
-    if (!text) return true;
-    insert(view, picker.from, picker.to, text, quote && source.kind === "clip");
+    if (quote && source.kind === "clip") {
+      insertQuote(view, source, picker.from, picker.to, link);
+    } else insert(view, picker.from, picker.to, link);
     return true;
+  }
+
+  function insertQuote(view: EditorView, source: ReferenceSource, from: number, to: number, link: string) {
+    const config = getConfig();
+    const doc = view.state.doc;
+    const selection = view.state.selection;
+    const apply = (passage: string) => {
+      if (view.dom?.isConnected === false || view.state.doc !== doc || !view.state.selection.eq(selection)) return;
+      const quote = attributedQuote(passage, link);
+      if (quote) insert(view, from, to, quote, true);
+    };
+    if (config?.readClipText) void config.readClipText(source).then(apply).catch((error) => config.onError?.(error));
+    else apply(source.text ?? "");
   }
 
   function createPicker(view: EditorView) {
@@ -270,7 +302,7 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
           button.type = "button";
           button.addEventListener("click", () => {
             // Do not replace a stale range if the document changed while hovering.
-            if (view.state.sliceDoc(link.from, link.to).startsWith("[[")) insert(view, link.from, link.to, quote, true);
+            if (view.state.sliceDoc(link.from, link.to).startsWith("[[")) insertQuote(view, source, link.from, link.to, linkFor(source, config.sources));
           });
           actions.append(button);
         }

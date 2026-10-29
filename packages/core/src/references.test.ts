@@ -40,6 +40,28 @@ test("ambiguous same-kind basenames require paths instead of resolving to an arb
   assert.equal(linkFor(root, [...sources, root]), "[[on-craft]]");
 });
 
+test("same-stem md/mdx collisions require exact extensions, at the root and in folders", () => {
+  const rootMd = { ...document, path: "craft.md" };
+  const rootMdx = { ...document, path: "craft.mdx" };
+  const nestedMd = { ...document, path: "notes/craft.md" };
+  const nestedMdx = { ...document, path: "notes/craft.mdx" };
+  const collisions = [rootMd, rootMdx, nestedMd, nestedMdx];
+  for (const candidates of [collisions, [...collisions].reverse()]) {
+    assert.equal(resolveReference("craft", candidates), null);
+    assert.equal(resolveReference("notes/craft", candidates), null);
+    for (const source of collisions) {
+      assert.equal(resolveReference(source.path, candidates), source);
+      assert.equal(linkFor(source, candidates), `[[${source.path}]]`);
+      assert.equal(resolveReference(linkFor(source, candidates), candidates), source);
+    }
+  }
+  assert.equal(resolveReference("craft", [nestedMd, nestedMdx]), null);
+  assert.equal(resolveReference("notes/craft.md", [nestedMdx]), nestedMdx, "a unique stem still tolerates the other extension");
+  assert.equal(resolveReference("craft", [rootMd, nestedMd, nestedMdx]), rootMd, "a single root match still disambiguates");
+  assert.equal(linkFor(nestedMd, [rootMd, nestedMd, nestedMdx]), "[[notes/craft.md]]");
+  assert.equal(linkFor(nestedMd, [rootMd, nestedMd]), "[[notes/craft]]");
+});
+
 test("lexical matches require every token and keep documents first", () => {
   assert.deepEqual(searchReferences("craft", sources), [document, clip]);
   assert.deepEqual(searchReferences("complete repair", sources), [document]);
@@ -53,18 +75,21 @@ test("quotes strip existing nested quote markers and attribute only the clip's o
   assert.equal(attributedQuote("> A beautiful repair\n> > A second line\n>\n> My note", "[[inspiration/on-craft]]"), "> A beautiful repair\n> A second line\n>\n> My note\n>\n> [[inspiration/on-craft]]");
   assert.equal(attributedQuote("  \n> \n", "[[x]]"), "");
   assert.equal(attributedQuote("Passage", "x"), "> Passage\n>\n> [[x]]");
-  assert.equal(attributedQuote("---\ntitle: X\n---\n\n> Passage\n\n<!-- kintsugi:source -->\n## Source\nEXTRACTED", "[[x]]"), "> Passage\n>\n> [[x]]");
-  assert.equal(attributedQuote("---\ntitle: Legacy\n---\nNote\n\n## Source\nEXTRACTED", "[[x]]"), "> Note\n>\n> [[x]]");
-  assert.ok(attributedQuote("---\ntitle: Legacy\n---\n```md\n## Source\n```\nMy note\n## Source\nEXTRACTED", "[[x]]").includes("> ## Source"));
-  assert.ok(!attributedQuote("---\ntitle: Legacy\n---\n```md\n## Source\n```\nMy note\n## Source\nEXTRACTED", "[[x]]").includes("EXTRACTED"));
+  assert.equal(attributedQuote("> Passage\n\n<!-- kintsugi:source -->\n## Source\nEXTRACTED", "[[x]]"), "> Passage\n>\n> [[x]]");
 });
 
-test("quoting own text preserves legitimate Source headings, including in modern complete files", () => {
-  const own = "Note\n\n## Source\nMy own source notes";
-  const quoted = "> Note\n>\n> ## Source\n> My own source notes\n>\n> [[x]]";
-  assert.equal(attributedQuote(own, "[[x]]"), quoted);
-  assert.equal(attributedQuote(`---\nkind: note\n---\n${own}\n\n<!-- kintsugi:source -->\n## Source\nEXTRACTED`, "[[x]]"), quoted);
-  assert.equal(attributedQuote(`${own}\n<!-- kintsugi:source -->\nEXTRACTED`, "[[x]]"), quoted);
+test("quoting own text preserves apparent frontmatter and legitimate Source headings", () => {
+  for (const own of [
+    "---\nCaptured passage",
+    "---\ninside\n---\nafter",
+    "---\nkind: note\n---\nNote\n\n## Source\nMy own source notes",
+    "Note\n\n## Source\nMy own source notes",
+    "```md\n## Source\n```\nMy note\n## Source\nMore of my note",
+  ]) {
+    const quoted = own.split("\n").map((line) => line ? `> ${line}` : ">").join("\n") + "\n>\n> [[x]]";
+    assert.equal(attributedQuote(own, "[[x]]"), quoted);
+    assert.equal(attributedQuote(`${own}\n<!-- kintsugi:source -->\nEXTRACTED`, "[[x]]"), quoted);
+  }
 });
 
 test("parses prose wikilinks, preserving offsets, targets and aliases", () => {
@@ -90,6 +115,24 @@ test("ignores frontmatter, fenced and inline code, comments and escaped links", 
   assert.equal(isReferenceContext(text, text.indexOf("yaml")), false);
   assert.equal(isReferenceContext(text, text.indexOf("real")), true);
   assert.equal(isReferenceContext(text, text.indexOf("unclosed-fence")), false);
+});
+
+test("ordered-list fences hide code without hiding prose after the list", () => {
+  for (const delimiter of [".", ")"]) {
+    for (const number of ["1", "12", "123456789"]) {
+      const marker = `${number}${delimiter} `;
+      const indent = " ".repeat(marker.length);
+      for (const fence of ["```", "~~~"]) {
+        for (const quote of ["", "> "]) {
+          const text = `${quote}${marker}${fence}md\n${quote}${indent}[[code]]\n${quote}${indent}${fence}\n\n[[real]]`;
+          assert.deepEqual(parseWikilinks(text).map((link) => link.target), ["real"], text);
+          assert.equal(isReferenceContext(text, text.indexOf("code")), false, text);
+          assert.equal(isReferenceContext(text, text.indexOf("real")), true, text);
+        }
+      }
+    }
+  }
+  assert.deepEqual(parseWikilinks("1234567890. ~~~md\n[[real]]").map((link) => link.target), ["real"], "ordered markers are limited to nine digits");
 });
 
 test("unmatched inline backticks do not hide prose, empty or multiline links are not references", () => {

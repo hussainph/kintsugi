@@ -22,22 +22,24 @@ function targetOf(link: string): string {
 }
 
 /** Exact vault paths win; otherwise documents take precedence over clips.
- *  Ambiguous same-kind basenames remain unresolved rather than opening the
- *  wrong file. Aliases and heading/block fragments do not affect resolution. */
+ *  Ambiguous stems and same-kind basenames remain unresolved rather than
+ *  opening the wrong file. A single root name disambiguates a basename.
+ *  Aliases and heading/block fragments do not affect resolution. */
 export function resolveReference(target: string, sources: readonly ReferenceSource[]): ReferenceSource | null {
   const raw = targetOf(target);
   if (!raw || /[\\\0]/.test(raw) || raw.split("/").some((part) => !part || part === "." || part === "..")) return null;
   const path = sansExtension(raw);
   if (raw.includes("/") || /\.mdx?$/i.test(raw)) {
-    return sources.find((source) => source.path === raw)
-      ?? sources.find((source) => sansExtension(source.path) === path)
-      ?? null;
+    const exact = sources.find((source) => source.path === raw);
+    if (exact) return exact;
+    const stems = sources.filter((source) => sansExtension(source.path) === path);
+    return stems.length === 1 ? stems[0] : null;
   }
   const matches = sources.filter((source) => basename(source.path) === path);
   const documents = matches.filter((source) => source.kind === "document");
   const preferred = documents.length ? documents : matches;
-  return preferred.find((source) => sansExtension(source.path) === path)
-    ?? (preferred.length === 1 ? preferred[0] : null);
+  const roots = preferred.filter((source) => sansExtension(source.path) === path);
+  return roots.length === 1 ? roots[0] : preferred.length === 1 ? preferred[0] : null;
 }
 
 /** Obsidian-compatible, short when unambiguous. A document keeps its short
@@ -45,8 +47,10 @@ export function resolveReference(target: string, sources: readonly ReferenceSour
 export function linkFor(source: ReferenceSource, sources: readonly ReferenceSource[]): string {
   const name = basename(source.path);
   const candidates = sources.some((candidate) => candidate.path === source.path) ? sources : [...sources, source];
-  const resolved = resolveReference(name, candidates);
-  return `[[${resolved?.path === source.path ? name : sansExtension(source.path)}]]`;
+  for (const target of [name, sansExtension(source.path), source.path]) {
+    if (resolveReference(target, candidates)?.path === source.path) return `[[${target}]]`;
+  }
+  return `[[${source.path}]]`;
 }
 
 /** Simple lexical matches for the picker/margin. Full-source search can add
@@ -80,21 +84,38 @@ const escaped = (text: string, pos: number) => {
   return count % 2 === 1;
 };
 
+/** Strip quote/list containers, allowing a list's continuation indentation
+ *  on closing fences (ordered markers can be up to nine digits wide). */
+function fenceLine(line: string, listIndent: number): { text: string; indent: number } {
+  let spaces: number;
+  for (;;) {
+    const trimmed = line.replace(/^ +/, "");
+    spaces = line.length - trimmed.length;
+    if (spaces > 3 && !(listIndent > 0 && spaces >= listIndent && spaces <= listIndent + 3)) return { text: "", indent: 0 };
+    line = trimmed;
+    if (!line.startsWith(">")) break;
+    line = line.slice(1).replace(/^ /, "");
+  }
+  const marker = /^(?:[-*+]|[0-9]{1,9}[.)]) +/.exec(line);
+  return marker ? { text: line.slice(marker[0].length), indent: spaces + marker[0].length } : { text: line, indent: 0 };
+}
+
 /** Markdown regions that must not become references. Offsets are UTF-16,
  *  shared by JavaScript strings and CodeMirror. */
 function ignoredSpans(text: string): Span[] {
   const spans: Span[] = [];
   const pos = yamlEnd(text);
   if (pos) spans.push({ from: 0, to: pos });
-  let fence: { char: string; length: number; from: number } | null = null;
+  let fence: { char: string; length: number; from: number; indent: number } | null = null;
   for (let start = pos; start < text.length;) {
     const nl = text.indexOf("\n", start);
     const end = nl === -1 ? text.length : nl + 1;
     const line = text.slice(start, nl === -1 ? end : nl).replace(/\r$/, "");
-    const marker = /^ {0,3}(?:> ? {0,3})*(?:[-*+] +)?(`{3,}|~{3,})(.*)$/.exec(line);
+    const container = fenceLine(line, fence?.indent ?? 0);
+    const marker = /^(`{3,}|~{3,})(.*)$/.exec(container.text);
     if (marker) {
       if (!fence && !(marker[1][0] === "`" && marker[2].includes("`"))) {
-        fence = { char: marker[1][0], length: marker[1].length, from: start };
+        fence = { char: marker[1][0], length: marker[1].length, from: start, indent: container.indent };
       } else if (fence && marker[1][0] === fence.char && marker[1].length >= fence.length && !marker[2].trim()) {
         spans.push({ from: fence.from, to: end });
         fence = null;
@@ -160,32 +181,13 @@ export function parseWikilinks(text: string): Wikilink[] {
   return links;
 }
 
-/** clip_read.text is already own text, where ## Source is a legitimate note
- *  heading. Only complete legacy files use that heading as a source boundary;
- *  modern files use the reserved comment and preserve headings before it. */
-function ownText(text: string): string {
-  const start = yamlEnd(text);
-  const raw = text.slice(start);
-  const boundary = raw.indexOf("<!-- kintsugi:source -->");
-  const content = boundary === -1 ? raw : raw.slice(0, boundary);
-  if (!start || boundary !== -1) return content;
-  let fence: { char: string; length: number } | null = null;
-  let offset = 0;
-  for (const line of content.split("\n")) {
-    const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
-    if (marker) {
-      if (!fence) fence = { char: marker[1][0], length: marker[1].length };
-      else if (marker[1][0] === fence.char && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
-    } else if (!fence && /^## Source\s*$/.test(line.replace(/\r$/, ""))) return content.slice(0, offset);
-    offset += line.length + 1;
-  }
-  return content;
-}
-
-/** A passage plus attribution, never the extracted source. Empty own text
- *  returns an empty string so callers can omit/disable the quote action. */
-export function attributedQuote(text: string, link: string): string {
-  const passage = ownText(text).split(/\r?\n/).map((line) => line.replace(/^\s*(?:>\s*)+/, "")).join("\n").trim();
+/** Accepts clip_read.text (own text only), not a raw clip file. Apparent
+ *  frontmatter and Source headings are prose; only the reserved source boundary
+ *  is guarded defensively. Empty own text lets callers disable quoting. */
+export function attributedQuote(ownText: string, link: string): string {
+  const boundary = ownText.indexOf("<!-- kintsugi:source -->");
+  const content = boundary === -1 ? ownText : ownText.slice(0, boundary);
+  const passage = content.split(/\r?\n/).map((line) => line.replace(/^\s*(?:>\s*)+/, "")).join("\n").trim();
   if (!passage) return "";
   const attribution = link.startsWith("[[") ? link : `[[${link}]]`;
   return passage.split("\n").map((line) => line ? `> ${line}` : ">").join("\n") + `\n>\n> ${attribution}`;

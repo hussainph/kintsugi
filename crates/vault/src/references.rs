@@ -247,13 +247,15 @@ fn mask(bytes: &mut [u8]) {
     }
 }
 
-fn fence_line(mut line: &str) -> &str {
-    // Fences can live inside a blockquote or a list, as quoted examples often
-    // do. The 0–3-space rule still applies to the fence within its container.
+fn fence_line(mut line: &str, list_indent: usize) -> (&str, usize) {
+    // Fences can live inside a blockquote or a list. Closing fences may use
+    // the list's continuation indentation, plus the usual 0–3 spaces.
+    let mut spaces;
     loop {
         let trimmed = line.trim_start_matches(' ');
-        if line.len() - trimmed.len() > 3 {
-            return "";
+        spaces = line.len() - trimmed.len();
+        if spaces > 3 && !(list_indent > 0 && spaces >= list_indent && spaces <= list_indent + 3) {
+            return ("", 0);
         }
         line = trimmed;
         if let Some(rest) = line.strip_prefix('>') {
@@ -264,19 +266,32 @@ fn fence_line(mut line: &str) -> &str {
     }
     for mark in ["- ", "* ", "+ "] {
         if let Some(rest) = line.strip_prefix(mark) {
-            return rest.trim_start_matches(' ');
+            let rest = rest.trim_start_matches(' ');
+            return (rest, spaces + line.len() - rest.len());
         }
     }
-    line
+    let bytes = line.as_bytes();
+    let digits = bytes.iter().take_while(|b| b.is_ascii_digit()).count();
+    if (1..=9).contains(&digits)
+        && matches!(bytes.get(digits), Some(b'.' | b')'))
+        && bytes.get(digits + 1) == Some(&b' ')
+    {
+        let rest = line[digits + 2..].trim_start_matches(' ');
+        return (rest, spaces + line.len() - rest.len());
+    }
+    (line, 0)
 }
 
 fn mask_fences(text: &str, prose: &mut [u8]) -> Vec<std::ops::Range<usize>> {
-    let mut fence: Option<(u8, usize)> = None;
+    let mut fence: Option<(u8, usize, usize)> = None;
     let mut ranges = Vec::new();
     let mut start = 0;
     let mut offset = 0;
     for line in text.split_inclusive('\n') {
-        let plain = fence_line(line.trim_end_matches(['\r', '\n']));
+        let (plain, indent) = fence_line(
+            line.trim_end_matches(['\r', '\n']),
+            fence.map_or(0, |(_, _, indent)| indent),
+        );
         let bytes = plain.as_bytes();
         let marker = bytes.first().copied().unwrap_or_default();
         let length = bytes.iter().take_while(|b| **b == marker).count();
@@ -284,8 +299,10 @@ fn mask_fences(text: &str, prose: &mut [u8]) -> Vec<std::ops::Range<usize>> {
         if matches!(marker, b'`' | b'~') && length >= 3 {
             let rest = &plain[length..];
             match fence {
-                None if marker != b'`' || !rest.contains('`') => fence = Some((marker, length)),
-                Some((mark, size))
+                None if marker != b'`' || !rest.contains('`') => {
+                    fence = Some((marker, length, indent))
+                }
+                Some((mark, size, _))
                     if marker == mark && length >= size && rest.trim().is_empty() =>
                 {
                     fence = None;
@@ -371,7 +388,7 @@ struct Target {
 struct Resolver {
     basenames: HashMap<String, Vec<Target>>,
     paths: HashMap<String, Target>,
-    stems: HashMap<String, Target>,
+    stems: HashMap<String, Vec<Target>>,
 }
 
 impl Resolver {
@@ -405,7 +422,7 @@ impl Resolver {
             .or_default()
             .push(target.clone());
         self.paths.insert(path.into(), target.clone());
-        self.stems.entry(stem.into()).or_insert(target);
+        self.stems.entry(stem.into()).or_default().push(target);
     }
 
     fn resolve(&self, target: &str) -> Option<&Target> {
@@ -421,18 +438,23 @@ impl Resolver {
         }
         let stem = without_extension(target);
         if target.contains('/') || stem != target {
-            return self.paths.get(target).or_else(|| self.stems.get(stem));
+            return self.paths.get(target).or_else(|| {
+                let stems = self.stems.get(stem)?;
+                (stems.len() == 1).then(|| &stems[0])
+            });
         }
         let candidates = self.basenames.get(target)?;
         let documents = candidates.iter().any(|target| target.document);
         let mut preferred = candidates
             .iter()
             .filter(|target| target.document == documents);
-        // A root-level same-kind file is the exact name, even if another folder
-        // contains that basename. Otherwise multiple candidates stay unresolved.
-        if let Some(root) = preferred
+        // Only a single root-level same-kind file disambiguates a basename.
+        // Both root.md and root.mdx must stay unresolved without an extension.
+        let mut roots = preferred
             .clone()
-            .find(|target| without_extension(&target.path) == stem)
+            .filter(|target| without_extension(&target.path) == stem);
+        if let Some(root) = roots.next()
+            && roots.next().is_none()
         {
             return Some(root);
         }
@@ -552,6 +574,25 @@ mod tests {
     }
 
     #[test]
+    fn ordered_list_fences_do_not_hide_following_prose() {
+        for delimiter in [".", ")"] {
+            for number in ["1", "12", "123456789"] {
+                let marker = format!("{number}{delimiter} ");
+                let indent = " ".repeat(marker.len());
+                for fence in ["```", "~~~"] {
+                    for quote in ["", "> "] {
+                        let text = format!(
+                            "{quote}{marker}{fence}md\n{quote}{indent}[[code]]\n{quote}{indent}{fence}\n\n[[real]]"
+                        );
+                        assert_eq!(targets(&text), ["real"], "{text}");
+                    }
+                }
+            }
+        }
+        assert_eq!(targets("1234567890. ~~~md\n[[real]]"), ["real"]);
+    }
+
+    #[test]
     fn resolves_documents_first_explicit_clips_and_deterministic_duplicates() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -658,6 +699,52 @@ mod tests {
                 ("café", Some("café.md")),
                 ("CAFÉ", None),
             ]
+        );
+    }
+
+    #[test]
+    fn same_stem_md_mdx_collisions_require_exact_extensions() {
+        let paths = ["craft.md", "craft.mdx", "notes/craft.md", "notes/craft.mdx"];
+        let mut documents: Vec<_> = paths
+            .iter()
+            .map(|path| ReferenceDocument {
+                path: (*path).into(),
+                title: None,
+                status: None,
+                text: String::new(),
+            })
+            .collect();
+        for _ in 0..2 {
+            let resolver = Resolver::new(&documents, &[]);
+            assert!(resolver.resolve("craft").is_none());
+            assert!(resolver.resolve("notes/craft").is_none());
+            for path in paths {
+                assert_eq!(
+                    resolver.resolve(path).map(|target| target.path.as_str()),
+                    Some(path)
+                );
+            }
+            documents.reverse();
+        }
+        let nested = &documents[2..];
+        let resolver = Resolver::new(nested, &[]);
+        assert!(resolver.resolve("craft").is_none());
+        let resolver = Resolver::new(&documents[3..], &[]);
+        assert_eq!(
+            resolver
+                .resolve("notes/craft.md")
+                .map(|target| target.path.as_str()),
+            Some("notes/craft.mdx")
+        );
+        let single_root = [
+            documents[0].clone(),
+            documents[2].clone(),
+            documents[3].clone(),
+        ];
+        let resolver = Resolver::new(&single_root, &[]);
+        assert_eq!(
+            resolver.resolve("craft").map(|target| target.path.as_str()),
+            Some("craft.md")
         );
     }
 

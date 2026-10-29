@@ -53,7 +53,7 @@ export function Editor({ path, text, onChange, external, viewRef, references }: 
         frontmatterLines,
         theme,
         placeholder("Start writing…"),
-        referenceExtensions(() => referencesRef.current),
+        referenceExtensions(() => referencesRef.current && { ...referencesRef.current, currentPath: docPath }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged) return;
