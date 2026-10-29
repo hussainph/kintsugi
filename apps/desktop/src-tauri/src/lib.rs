@@ -1,9 +1,11 @@
 mod ai;
+mod clip_capture;
 mod config;
 mod enrich;
 mod library;
 mod navigation;
 mod phone;
+mod references;
 mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,6 +38,7 @@ pub fn run() {
             vault::vault_current,
             vault::vault_open,
             vault::vault_tree,
+            references::reference_index,
             vault::doc_read,
             vault::doc_write,
             vault::doc_create,

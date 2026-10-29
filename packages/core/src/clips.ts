@@ -1,4 +1,4 @@
-/** Mirrors the clip types in crates/vault, serialized with camelCase fields. */
+/** Vault clip types and the app's capture envelope, using camelCase fields. */
 export type ClipKind = "link" | "post" | "video" | "image" | "quote" | "note";
 export type ClipVia = "mac" | "phone" | "share";
 
@@ -25,6 +25,10 @@ export type Clip = ClipSummary & {
 };
 
 export type ClipCapture = {
+  /** A UUID the caller generates once and repeats on every retry, so a
+   *  capture delivered twice answers with the original clip's path instead
+   *  of writing a duplicate. */
+  id?: string;
   url?: string;
   text?: string;
   note?: string;

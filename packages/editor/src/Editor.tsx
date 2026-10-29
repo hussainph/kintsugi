@@ -9,6 +9,9 @@ import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view
 import { RefObject, useEffect, useRef } from "react";
 import { frontmatter } from "@kintsugi/core/frontmatter";
 import { frontmatterLines, highlight, theme } from "./theme";
+import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
+
+export type { References } from "./references";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -21,16 +24,19 @@ type Props = {
   onChange: (path: string, text: string, external: boolean) => void;
   external?: External | null;
   viewRef: RefObject<EditorView | null>;
+  references?: References;
 };
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const referencesRef = useRef(references);
+  referencesRef.current = references;
 
   const create = (docPath: string, doc: string) =>
     EditorState.create({
@@ -47,7 +53,9 @@ export function Editor({ path, text, onChange, external, viewRef }: Props) {
         frontmatterLines,
         theme,
         placeholder("Start writing…"),
+        referenceExtensions(() => referencesRef.current && { ...referencesRef.current, currentPath: docPath }),
         EditorView.updateListener.of((update) => {
+          if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged) return;
           const fromElsewhere = update.transactions.some((tr) => tr.annotation(Transaction.remote));
           onChangeRef.current(docPath, update.state.doc.toString(), fromElsewhere);
@@ -71,10 +79,24 @@ export function Editor({ path, text, onChange, external, viewRef }: Props) {
     if (current.current) states.current.set(current.current, view.state);
     view.setState(states.current.get(path) ?? create(path, text));
     current.current = path;
+    view.dispatch({ effects: refreshReferences.of(null) });
+    referencesRef.current?.onParagraph?.(currentParagraph(view.state));
     view.focus();
     // `text` only seeds a document the first time it is opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);
+
+  // Refresh labels/search without reconfiguring the state or its undo history.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch({ effects: refreshReferences.of(null) });
+  }, [references?.sources, references?.search, viewRef]);
+
+  // A wrapper may attach the paragraph callback after the editor mounts.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) references?.onParagraph?.(currentParagraph(view.state));
+  }, [references?.onParagraph, viewRef]);
 
   // Apply outside edits as a normal, undoable change to just the part that
   // differs, so the cursor and scroll position stay put.

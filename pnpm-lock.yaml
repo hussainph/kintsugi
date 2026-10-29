@@ -82,6 +82,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@codemirror/commands':
+        specifier: 'catalog:'
+        version: 6.11.1
       '@codemirror/state':
         specifier: 'catalog:'
         version: 6.7.6

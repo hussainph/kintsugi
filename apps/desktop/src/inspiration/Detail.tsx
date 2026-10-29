@@ -138,9 +138,8 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
             <Input id="clip-tags" placeholder="attention, craft, things to revisit" value={draft.tags} onChange={(e) => edit("tags", e.target.value)} onBlur={() => void save()} className="border-0 bg-muted/35 shadow-none" />
             <p className="text-[11px] text-muted-foreground">Separate tags with commas.</p>
           </div>
-          <section aria-labelledby="used-in-heading" data-clip-used-in={clip.path} className="space-y-3 border-t pt-6">
-            <h2 id="used-in-heading" className="text-xs text-muted-foreground">Used in</h2>
-            {renderUsedIn ? renderUsedIn(clip) : <p className="text-sm text-muted-foreground/70">References from your writing will appear here.</p>}
+          <section aria-label="Clip backlinks" data-clip-used-in={clip.path} className="space-y-3 border-t pt-6">
+            {renderUsedIn ? renderUsedIn(clip) : <><h2 className="text-xs text-muted-foreground">Used in</h2><p className="text-sm text-muted-foreground/70">References from your writing will appear here.</p></>}
           </section>
           <div className="flex items-center justify-between gap-4">
             <Button variant="ghost" size="sm" onClick={() => setConfirmTrash(true)} className="text-muted-foreground"><Trash2 />Move to Trash</Button>

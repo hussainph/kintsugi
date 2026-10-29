@@ -11,7 +11,9 @@ import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
-import { Editor, External } from "@kintsugi/editor/Editor";
+import { External } from "@kintsugi/editor/Editor";
+import { Writing } from "@/references/Writing";
+import { UsedIn } from "@/references/UsedIn";
 import { Refine } from "@/refine/Refine";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
@@ -19,6 +21,7 @@ import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Entry, flatten, parentDir, renamedPath, vault } from "@/lib/vault";
 
 const SAVE_DELAY = 400;
+const requestClip = (path: string) => window.dispatchEvent(new CustomEvent("kintsugi:open-clip", { detail: { path } }));
 
 type SaveState = "saved" | "editing" | "error";
 
@@ -366,11 +369,14 @@ export default function App() {
       />
       <SidebarInset className="relative h-svh min-w-0">
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
-        {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} />}
+        {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} renderUsedIn={(clip) => <UsedIn root={root} path={clip.path} onOpen={openDoc} />} />}
         <div inert={libraryOpen} className={libraryOpen ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
         {doc ? (
-          <Editor
+          <Writing
             key={root}
+            root={root}
+            onOpenDoc={openDoc}
+            onOpenClip={requestClip}
             path={doc.path}
             text={doc.text}
             onChange={onChange}
