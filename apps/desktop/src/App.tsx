@@ -11,7 +11,8 @@ import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
-import { Editor, External } from "@kintsugi/editor/Editor";
+import { External } from "@kintsugi/editor/Editor";
+import { Writing } from "@/references/Writing";
 import { Refine } from "@/refine/Refine";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
@@ -313,8 +314,10 @@ export default function App() {
       <SidebarInset className="relative h-svh min-w-0">
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
         {doc ? (
-          <Editor
+          <Writing
             key={root}
+            root={root}
+            onOpenDoc={openDoc}
             path={doc.path}
             text={doc.text}
             onChange={onChange}

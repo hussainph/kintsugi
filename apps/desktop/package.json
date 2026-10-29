@@ -8,10 +8,12 @@
     "build": "tsc && vite build",
     "typecheck": "tsc",
     "test:headless": "node --test src/headless/*.test.ts",
+    "test:references": "node --test test/reference-*.test.ts",
     "preview": "vite preview",
     "tauri": "tauri"
   },
   "dependencies": {
+    "@codemirror/commands": "catalog:",
     "@codemirror/state": "catalog:",
     "@codemirror/view": "catalog:",
     "@kintsugi/core": "workspace:*",

@@ -10,7 +10,7 @@
     "ios": "pnpm --filter @kintsugi/mobile ios",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
-    "test": "cargo test --workspace && pnpm --filter @kintsugi/core test"
+    "test": "cargo test --workspace && pnpm --filter @kintsugi/core test && pnpm --filter @kintsugi/editor test && pnpm --filter @kintsugi/desktop test:references"
   },
   "packageManager": "pnpm@9.12.0"
 }
