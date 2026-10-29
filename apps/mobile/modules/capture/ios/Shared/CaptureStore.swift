@@ -130,7 +130,11 @@ public final class CaptureStore: @unchecked Sendable {
         try? quarantine(id)
         continue
       }
-      items.append(["id": id, "capturedAt": capturedAt])
+      var item = ["id": id, "capturedAt": capturedAt]
+      if let rejection = try? String(contentsOf: dir.appendingPathComponent("rejection"), encoding: .utf8) {
+        item["error"] = rejection
+      }
+      items.append(item)
     }
     let data = try JSONSerialization.data(withJSONObject: items)
     return String(decoding: data, as: UTF8.self)
@@ -163,7 +167,7 @@ public final class CaptureStore: @unchecked Sendable {
   func claim(_ id: String, owner: String) throws -> Bool {
     let dir = try captureDirectory(id)
     return try withLock {
-      guard Self.exists(dir) else { return false }
+      guard Self.exists(dir), !Self.exists(dir.appendingPathComponent("rejection")) else { return false }
       let lease = dir.appendingPathComponent("lease")
       if liveLease(lease) != nil { return false }
       let text = "\(now().timeIntervalSince1970 + Self.leaseDuration)\n\(owner)"
@@ -183,6 +187,17 @@ public final class CaptureStore: @unchecked Sendable {
       return true
     }
     if moved { try? FileManager.default.removeItem(at: trash) }
+  }
+
+  /// Preserves a rejected capture in place, visible in pending(), but excludes
+  /// it from automatic claims. Never delete bytes because the server rejected them.
+  public func reject(_ id: String, reason: String) throws {
+    let dir = try captureDirectory(id)
+    try withLock {
+      guard Self.exists(dir) else { return }
+      try Self.write(Data(reason.prefix(512).utf8), to: dir.appendingPathComponent("rejection"), durable: true)
+      try Self.syncDirectory(dir)
+    }
   }
 
   /// Gives up this process's lease so the capture can be sent again. Leaves

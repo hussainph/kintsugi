@@ -1,15 +1,16 @@
-import { localStamp, Offline, type Pairing, type Remote, Unpaired } from '@kintsugi/core/remote';
+import type { ClipCapture } from '@kintsugi/core/clips';
+import { localStamp, Offline, type Remote, Unpaired } from '@kintsugi/core/remote';
 import Storage from 'expo-sqlite/kv-store';
 import { useSyncExternalStore } from 'react';
 
 import { KintsugiCapture as Capture } from '../../modules/capture';
 import { captureURL } from './capture-input';
-import { type ClipCapture, postClip } from './clip-capture';
-import { type CaptureRetries, drainCaptures } from './drain-captures';
+import { postClip } from './clip-capture';
+import { drainCaptures } from './drain-captures';
 
 /** Legacy inbox notes remain valid. Only URLs go to the inspiration API. */
-export type Note = { id: string; text: string; capturedAt: string; clip?: ClipCapture };
-type Waiting = { id: string; capturedAt: string };
+export type Note = { id: string; text: string; capturedAt: string; clip?: ClipCapture; error?: string };
+type Waiting = { id: string; capturedAt: string; error?: string };
 const KEY = 'outbox';
 
 export let outboxWarning: string | null = null;
@@ -77,34 +78,30 @@ export async function capture(text: string): Promise<void> {
   }
 }
 
-const clipRetries: CaptureRetries = new Map();
-let retryPairing: Pairing | null = null;
 let sending: Promise<void> | null = null;
 /** Sends disk-backed captures oldest first. Failed requests never remove an item.
  * Claims exclude the extension's background uploads and expire after process death. */
-export function send(client: Remote, pairing: Pairing, api = 2): Promise<void> {
-  if (retryPairing !== pairing) {
-    clipRetries.clear();
-    retryPairing = pairing;
-  }
+export function send(client: Remote, api = 2): Promise<void> {
   sending ??= (async () => {
     try {
       await refreshOutbox();
       const failures: unknown[] = [];
       for (const note of notes) {
+        if (note.error) continue;
         try {
           if (note.clip && api < 2) continue;
-          if (note.clip) await postClip(pairing, note.clip);
+          if (note.clip) await postClip(client, note.clip);
           else await client.capture(note.text, note.capturedAt);
           save(notes.filter((n) => n.id !== note.id));
         } catch (error) {
           if (error instanceof Offline || error instanceof Unpaired) throw error;
+          if (note.clip) save(notes.map((item) => item.id === note.id ? { ...item, error: String(error) } : item));
           failures.push(error);
         }
       }
       if (Capture && api >= 2) {
         try {
-          await drainCaptures(Capture, (payload) => postClip(pairing, payload), clipRetries);
+          await drainCaptures(Capture, (payload) => postClip(client, payload));
         } catch (error) {
           if (error instanceof Offline || error instanceof Unpaired) throw error;
           failures.push(error);

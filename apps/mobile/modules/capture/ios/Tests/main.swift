@@ -279,6 +279,22 @@ test("a finished upload acknowledges on success and releases its own lease on fa
   check(try store.claim(failed), "failed one released for retry")
 }
 
+test("400, 413 and 422 preserve rejected captures without automatic retry") { dir in
+  let store = CaptureStore(directory: dir)
+  let delivery = CaptureDelivery(identifier: "test", store: store, pairing: { nil })
+  for status in [400, 413, 422] {
+    let id = try store.enqueue(payload)
+    check(try store.claim(id, owner: "task"), "claimed")
+    delivery.complete(task: "\(id) task", status: status, body: Data(), error: nil)
+    let reopened = CaptureStore(directory: dir)
+    check(try reopened.read(id) == payload, "original bytes preserved")
+    check(try !reopened.claim(id), "no retry after reopening")
+    check(try summaries(reopened).first { $0["id"] == id }?["error"] != nil, "visible rejection")
+  }
+  let valid = try store.enqueue(payload)
+  check(try store.claim(valid), "later captures aren't blocked")
+}
+
 test("response bodies are kept to 64 KiB") { dir in
   let delivery = CaptureDelivery(identifier: "test", store: CaptureStore(directory: dir), pairing: { nil })
   let session = URLSession(configuration: .ephemeral)

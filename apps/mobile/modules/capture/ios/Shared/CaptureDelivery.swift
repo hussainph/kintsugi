@@ -127,6 +127,9 @@ public final class CaptureDelivery: NSObject, URLSessionDataDelegate, @unchecked
     if Self.delivered(status: status, body: body, error: error) {
       try? store.acknowledge(parts[0])
     } else {
+      if error == nil, let status, [400, 413, 422].contains(status) {
+        try? store.reject(parts[0], reason: "The Mac rejected this capture (HTTP \(status)). Its contents are preserved on this iPhone.")
+      }
       try? store.release(parts[0], owner: parts[1])
     }
   }

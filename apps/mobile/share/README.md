@@ -37,7 +37,8 @@ References reviewed:
 - The app and extension have App Group `group.dev.phalasiya.kintsugi.capture`.
   Each capture is an atomically committed directory with a flushed payload and
   small metadata file. Image bytes are base64 in the payload (API limit: 15 MB
-  before encoding). There is no shared read-modify-write array to lose captures.
+  before encoding; only the API's raster MIME allowlist is accepted). There is
+  no shared read-modify-write array to lose captures.
 - Only a successful local write allows Save to dismiss. Storage failure keeps
   the sheet open. No pairing or network connection is required to save.
 - `CaptureDelivery` claims the saved item and resumes a background URLSession
@@ -46,15 +47,24 @@ References reviewed:
   Each extension launch uses its own session identifier; the app reconnects only
   for that callback and invalidates the session once its events are settled.
 - Background uploads use 8-second request / 30-second resource timeouts. Only a
-  2xx response with `{path: string}` removes the item. Any failure leaves it for
-  the main app, which drains at launch/foreground, pull-to-refresh, and every
+  2xx response with `{path: string}` removes the item. Connectivity failures leave
+  it for the main app, which drains at launch/foreground, pull-to-refresh, and every
   30 seconds while Home is active. A 120-second lease excludes simultaneous
   app/extension delivery and expires if a sender dies. Queue listings contain
   metadata only; the app reads one image payload at a time. The extension encodes
   directly to JSON bytes off the main thread, without a JSON String roundtrip or
-  another full parse. Rejected items stay queued with exponential backoff during
-  the app session (30 seconds to 30 minutes); they never block later valid items.
-  Connectivity and authorization failures stop the current pass.
+  another full parse. Native HTTP 400/413/422 replies write a durable `rejection`
+  marker: bytes remain in place, the app shows a warning, and automatic claims
+  stop. Other captures keep sending. Connectivity and authorization failures
+  stop the current pass and remain retryable.
+- The main app uses `Remote.captureClip` and `ClipCapture` from core (KI-1).
+  Core currently discards the HTTP status on generic errors, so the main outbox
+  conservatively preserves **all** non-Offline/non-Unpaired failures with that
+  same rejection marker instead of risking an endless 400/413/422 retry. This
+  also pauses generic server errors such as 500 for manual recovery. A typed
+  core error carrying status would allow a more selective retry policy.
+  Rejected payloads are at `Captures/captures/<id>/payload.json` in the App Group;
+  they are never deleted or silently retried, including after app restart.
 - Pairing stays in `expo-secure-store` and is mirrored at launch/pair/unpair to
   a separate shared Keychain item. Its access group is expanded from
   `$(AppIdentifierPrefix)dev.phalasiya.kintsugi.capture` in both targets. The
@@ -63,6 +73,7 @@ References reviewed:
   is after-first-unlock, this-device-only, to permit background delivery.
 - Plain text from the phone capture box still goes to the inbox. A complete
   HTTP(S) URL goes to `/v1/clips` with `via: phone`; share captures use `via: share`.
+  Macs advertising `hello.api < 2` leave clips queued and show an update hint.
   Old SQLite inbox captures remain readable. Non-iOS URL captures use that
   existing durable SQLite outbox. An unreadable old SQLite queue is copied intact
   to an `outbox.recovery.<timestamp>` key before resetting it, with a visible

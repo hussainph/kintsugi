@@ -30,6 +30,10 @@ public class KintsugiCaptureModule: Module {
       try CaptureStore().acknowledge(id)
     }
 
+    AsyncFunction("reject") { (id: String, reason: String) throws in
+      try CaptureStore().reject(id, reason: reason)
+    }
+
     AsyncFunction("release") { (id: String) throws in
       try CaptureStore().release(id)
     }

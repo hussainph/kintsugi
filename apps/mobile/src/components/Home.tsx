@@ -29,7 +29,9 @@ function sections(entries: Entry[], vaultName: string): Section[] {
 export function Home({ client }: { client: Remote }) {
   const theme = useTheme();
   const { unpair, pairing } = usePairing();
-  const waiting = useOutbox();
+  const outbox = useOutbox();
+  const waiting = outbox.filter((item) => !item.error);
+  const rejected = outbox.filter((item) => item.error);
   const [tree, setTree] = useState<Entry[]>([]);
   const [vaultName, setVaultName] = useState('Kintsugi');
   const [api, setApi] = useState(0);
@@ -59,7 +61,7 @@ export function Home({ client }: { client: Remote }) {
       setTree(next);
       setConnection({ state: 'online' });
       // Anything captured while the Mac was away goes now.
-      if (pairing) await send(client, pairing, hello.api);
+      if (pairing) await send(client, hello.api);
       setTree(await client.tree());
     } catch (e) {
       fail(e);
@@ -95,7 +97,7 @@ export function Home({ client }: { client: Remote }) {
     try {
       await capture(text);
       setNote('');
-      send(client, pairing, api).then(() => client.tree().then(setTree)).catch(fail);
+      send(client, api).then(() => client.tree().then(setTree)).catch(fail);
     } catch (error) {
       Alert.alert('Couldn’t save on this phone', String(error));
     } finally {
@@ -175,6 +177,11 @@ export function Home({ client }: { client: Remote }) {
             </View>
             {api > 0 && api < 2 && (
               <Text style={[styles.status, { color: theme.muted }]}>Update Kintsugi on your Mac to send inspiration clips.</Text>
+            )}
+            {rejected.length > 0 && (
+              <Text style={[styles.status, { color: theme.danger }]}>
+                {rejected.length} capture(s) couldn’t be sent. Their contents are kept on this phone; they won’t retry automatically.
+              </Text>
             )}
             {outboxWarning && <Text style={[styles.status, { color: theme.danger }]}>{outboxWarning}</Text>}
             {status && <Text style={[styles.status, { color: theme.muted }]}>{status}</Text>}

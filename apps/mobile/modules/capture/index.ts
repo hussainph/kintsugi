@@ -1,7 +1,7 @@
 import { requireOptionalNativeModule } from 'expo';
 
 /** One queued capture, as `pending()` lists it (oldest first). */
-export type CaptureSummary = { id: string; capturedAt: string };
+export type CaptureSummary = { id: string; capturedAt: string; error?: string };
 
 /** The App Group capture queue shared with the share extension
  *  (ios/Shared/CaptureStore.swift). Send flow: pending → claim → read → POST
@@ -21,6 +21,8 @@ export type KintsugiCaptureModule = {
   claim(id: string): Promise<boolean>;
   /** Removes a delivered capture. */
   acknowledge(id: string): Promise<void>;
+  /** Preserves a rejected item, but excludes it from automatic delivery. */
+  reject(id: string, reason: string): Promise<void>;
   /** Gives up this app's lease so the capture is sent later. A lease held by
    *  the share extension's upload is left alone (it lapses within 120 s). */
   release(id: string): Promise<void>;

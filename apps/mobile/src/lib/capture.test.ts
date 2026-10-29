@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { Offline } from '@kintsugi/core/remote';
+import { Offline, remote } from '@kintsugi/core/remote';
 
 import { captureURL } from './capture-input.ts';
 import { postClip } from './clip-capture.ts';
-import { type CaptureQueue, type CaptureRetries, drainCaptures } from './drain-captures.ts';
+import { type CaptureQueue, drainCaptures } from './drain-captures.ts';
 
 const payload = { url: 'https://example.com/', capturedAt: '2026-10-29T10:30', via: 'share' as const };
 
@@ -17,6 +17,7 @@ test('only a complete pasted web URL becomes a phone clip', () => {
 });
 
 test('clip transport matches the spec and requires confirmation', async () => {
+  const client = remote({ url: 'https://mac.example', token: 'test-token' });
   const original = globalThis.fetch;
   try {
     globalThis.fetch = async (input, init) => {
@@ -26,28 +27,30 @@ test('clip transport matches the spec and requires confirmation', async () => {
       assert.deepEqual(JSON.parse(init?.body as string), payload);
       return Response.json({ path: 'inspiration/example.md' });
     };
-    assert.deepEqual(await postClip({ url: 'https://mac.example', token: 'test-token' }, payload), { path: 'inspiration/example.md' });
+    assert.deepEqual(await postClip(client, payload), { path: 'inspiration/example.md' });
     for (const status of [401, 413, 500, 502, 504]) {
       globalThis.fetch = async () => Response.json({ error: 'failed' }, { status });
-      await assert.rejects(postClip({ url: 'https://mac.example', token: 'test-token' }, payload));
+      await assert.rejects(postClip(client, payload));
     }
     globalThis.fetch = async () => Response.json({});
-    await assert.rejects(postClip({ url: 'https://mac.example', token: 'test-token' }, payload), /confirm/);
+    await assert.rejects(postClip(client, payload), /confirm/);
     globalThis.fetch = async () => { throw new Error('offline'); };
-    await assert.rejects(postClip({ url: 'https://mac.example', token: 'test-token' }, payload), /reachable/);
+    await assert.rejects(postClip(client, payload), /reachable/);
   } finally { globalThis.fetch = original; }
 });
 
 function queue(): { port: CaptureQueue; events: string[] } {
   const events: string[] = [];
+  const rejected = new Set<string>();
   return {
     events,
     port: {
-      pending: async () => JSON.stringify([{ id: 'uploading' }, { id: 'waiting' }]),
+      pending: async () => JSON.stringify([{ id: 'uploading' }, { id: 'waiting', error: rejected.has('waiting') ? 'rejected' : undefined }]),
       claim: async (id) => { events.push(`claim:${id}`); return id !== 'uploading'; },
       read: async (id) => { events.push(`read:${id}`); return JSON.stringify(payload); },
       acknowledge: async (id) => { events.push(`ack:${id}`); },
       release: async (id) => { events.push(`release:${id}`); },
+      reject: async (id) => { rejected.add(id); events.push(`reject:${id}`); },
     },
   };
 }
@@ -79,17 +82,15 @@ test('one rejected payload does not strand later valid captures', async () => {
   assert.equal(events.includes('release:rejected'), true);
 });
 
-test('a rejected capture backs off without delaying new captures', async () => {
-  const { port } = queue();
-  const retries: CaptureRetries = new Map();
-  let time = 0, attempts = 0;
+test('a rejected capture is kept without automatic retries', async () => {
+  const { port, events } = queue();
+  let attempts = 0;
   const reject = async () => { attempts++; throw new Error('rejected'); };
-  await assert.rejects(drainCaptures(port, reject, retries, () => time));
-  await drainCaptures(port, reject, retries, () => time);
+  await assert.rejects(drainCaptures(port, reject));
+  await drainCaptures(port, reject);
   assert.equal(attempts, 1);
-  time = 30_000;
-  await assert.rejects(drainCaptures(port, reject, retries, () => time));
-  assert.equal(attempts, 2);
+  assert.equal(events.includes('reject:waiting'), true);
+  assert.equal(events.includes('ack:waiting'), false);
 });
 
 test('unreadable payload stays on disk for recovery, with its claim released', async () => {
