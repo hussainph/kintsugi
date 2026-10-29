@@ -10,7 +10,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "dev.phalasiya.kintsugi",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Connect to Kintsugi on your Mac and send your captures."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -33,7 +36,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      "./plugins/with-capture.js"
     ],
     "experiments": {
       "typedRoutes": true,
