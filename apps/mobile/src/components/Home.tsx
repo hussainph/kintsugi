@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, AppState, Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { StatusDot } from '@/components/StatusDot';
-import { capture, send, useOutbox } from '@/lib/outbox';
+import { captureURL } from '@/lib/capture-input';
+import { capture, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
 import { usePairing } from '@/lib/pairing';
 import { fonts, useTheme } from '@/theme';
 
@@ -27,13 +28,15 @@ function sections(entries: Entry[], vaultName: string): Section[] {
 
 export function Home({ client }: { client: Remote }) {
   const theme = useTheme();
-  const { unpair } = usePairing();
+  const { unpair, pairing } = usePairing();
   const waiting = useOutbox();
   const [tree, setTree] = useState<Entry[]>([]);
   const [vaultName, setVaultName] = useState('Kintsugi');
+  const [api, setApi] = useState(0);
   const [connection, setConnection] = useState<Connection>({ state: 'connecting' });
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState('');
 
   const fail = useCallback(
@@ -49,17 +52,19 @@ export function Home({ client }: { client: Remote }) {
 
   const load = useCallback(async () => {
     try {
+      await refreshOutbox();
       const [hello, next] = await Promise.all([client.hello(), client.tree()]);
       setVaultName(hello.vault);
+      setApi(hello.api);
       setTree(next);
       setConnection({ state: 'online' });
       // Anything captured while the Mac was away goes now.
-      await send(client);
+      if (pairing) await send(client, pairing, hello.api);
       setTree(await client.tree());
     } catch (e) {
       fail(e);
     }
-  }, [client, fail]);
+  }, [client, fail, pairing]);
 
   useFocusEffect(
     useCallback(() => {
@@ -69,7 +74,12 @@ export function Home({ client }: { client: Remote }) {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => state === 'active' && load());
-    return () => sub.remove();
+    // Also retry while the app stays open, including expired upload claims.
+    const timer = setInterval(() => AppState.currentState === 'active' && load(), 30_000);
+    return () => {
+      sub.remove();
+      clearInterval(timer);
+    };
   }, [load]);
 
   const refresh = async () => {
@@ -78,14 +88,19 @@ export function Home({ client }: { client: Remote }) {
     setRefreshing(false);
   };
 
-  const save = () => {
+  const save = async () => {
     const text = note.trim();
-    if (!text) return;
-    capture(text);
-    setNote('');
-    send(client)
-      .then(() => client.tree().then(setTree))
-      .catch(fail);
+    if (!text || saving || !pairing) return;
+    setSaving(true);
+    try {
+      await capture(text);
+      setNote('');
+      send(client, pairing, api).then(() => client.tree().then(setTree)).catch(fail);
+    } catch (error) {
+      Alert.alert('Couldn’t save on this phone', String(error));
+    } finally {
+      setSaving(false);
+    }
   };
 
   const list = useMemo(() => {
@@ -100,12 +115,12 @@ export function Home({ client }: { client: Remote }) {
   const status =
     connection.state === 'offline'
       ? waiting.length
-        ? `Your Mac is offline. ${waiting.length === 1 ? '1 note is' : `${waiting.length} notes are`} waiting to go.`
+        ? `Your Mac is offline. ${waiting.length === 1 ? '1 capture is' : `${waiting.length} captures are`} waiting to go.`
         : 'Your Mac is offline. Captures will wait here until it’s back.'
       : connection.state === 'error'
         ? connection.message
         : waiting.length
-          ? `Sending ${waiting.length === 1 ? '1 note' : `${waiting.length} notes`}…`
+          ? `${waiting.length === 1 ? '1 capture is' : `${waiting.length} captures are`} waiting to send…`
           : null;
 
   return (
@@ -144,17 +159,24 @@ export function Home({ client }: { client: Remote }) {
               <TextInput
                 value={note}
                 onChangeText={setNote}
+                editable={!saving}
                 placeholder="Capture an idea…"
                 placeholderTextColor={theme.faint}
                 multiline
                 style={[styles.captureInput, { color: theme.text }]}
               />
               {note.trim() !== '' && (
-                <Pressable onPress={save} style={[styles.captureButton, { backgroundColor: theme.primary }]}>
-                  <Text style={[styles.captureButtonText, { color: theme.onPrimary }]}>Save to inbox</Text>
+                <Pressable disabled={saving} onPress={save} style={[styles.captureButton, { backgroundColor: theme.primary }]}>
+                  <Text style={[styles.captureButtonText, { color: theme.onPrimary }]}>
+                    {saving ? 'Saving…' : captureURL(note) ? 'Save inspiration' : 'Save to inbox'}
+                  </Text>
                 </Pressable>
               )}
             </View>
+            {api > 0 && api < 2 && (
+              <Text style={[styles.status, { color: theme.muted }]}>Update Kintsugi on your Mac to send inspiration clips.</Text>
+            )}
+            {outboxWarning && <Text style={[styles.status, { color: theme.danger }]}>{outboxWarning}</Text>}
             {status && <Text style={[styles.status, { color: theme.muted }]}>{status}</Text>}
           </View>
         }
