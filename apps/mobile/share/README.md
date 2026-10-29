@@ -121,9 +121,10 @@ xcrun simctl runtime list
 xcrun simctl list devices available
 ```
 
-Use a **standard iPhone on iOS 27.1**, not the iPhone Duo (its simulator does not
-support most app extensions). Keep all acceptance runs headless: do not open
-Device Hub or Simulator.app. Use the **actual device UUID** from that list, not
+Use a **standard iPhone on a compatible iOS 27.x runtime**, not the iPhone Duo
+(its simulator does not support most app extensions). Choose the newest runtime
+that offers a standard iPhone: if 27.1 is Duo-only, use 27.0 with Xcode's 27.1
+SDK. Keep all acceptance runs headless: do not open Device Hub or Simulator.app. Use the **actual device UUID** from that list, not
 an assumed model name. Build with `xcodebuild`, boot via `xcrun simctl boot`, and
 install/launch/open URLs via `simctl`. Screenshots use `simctl io … screenshot`.
 The Expo command below is for interactive development only, not the owner's
@@ -133,7 +134,14 @@ headless acceptance run:
 pnpm --filter @kintsugi/mobile exec expo run:ios --device <UUID>
 ```
 
-Manual acceptance on Simulator/device:
+Automated headless acceptance uses a separate UIKit share source and XCTest,
+not a custom capture entry point. See [`acceptance/README.md`](acceptance/README.md)
+for the signed-build guards, loopback Mac stub, run commands, evidence and
+hardware limitations. URL/PNG/text shares, phone URL capture and same-UUID
+app handoff passed on iPhone 17 / iOS 27.0, built with Xcode 27.1. Delivery used
+a loopback stub; this does not claim Safari/Photos, Tailscale or hardware testing.
+
+Additional manual acceptance on Simulator/device:
 1. Pair once; share a Safari URL. Check the source preview, add a note, Save.
    The host app should reappear without launching Kintsugi. Verify the Mac's
    `inspiration/` clip and `via: share`.
