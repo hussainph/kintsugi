@@ -14,3 +14,12 @@ him.
   (github.com/hussainph/hussain.ph)
 - Product and contracts: `README.md`, `docs/inspiration.md`
 - Phone app conventions: `apps/mobile/AGENTS.md`
+
+## Toolchain
+
+- Xcode 27.1 (iOS 27.1 SDK and Simulator runtime, with the iPhone Duo
+  simulator in Device Hub). Device Hub replaces Simulator.app.
+- iPhone Duo is a first-class target for the phone app: test folded, open,
+  partially open and in Split View. Most app extensions don't run in the
+  iPhone Duo simulator, so test the share extension on a standard iPhone
+  simulator or a device.

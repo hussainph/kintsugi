@@ -106,8 +106,12 @@ Readers also accept block lists (`tags:\n  - a`), because Obsidian writes them.
 
 A capture carries any of: `url`, `text` (a shared passage or a note), `note`,
 one image (bytes + MIME type), plus `capturedAt` and `via`. An optional
-`title` is used when the capturing app already knows it. URLs must be HTTP
-or HTTPS; empty captures are rejected. `capturedAt` is required local time
+client-generated `id` is a UUID string in hyphenated 8-4-4-4-12 hexadecimal
+form (case-insensitive). Generate it once when queuing a capture and persist
+it with that capture; every delivery attempt, including the share extension
+and app outbox, must reuse it. Omit it only for legacy/non-retried captures.
+An optional `title` is used when the capturing app already knows it. URLs
+must be HTTP or HTTPS; empty captures are rejected. `capturedAt` is required local time
 in `YYYY-MM-DDTHH:MM` form. The receiver writes the clip at once:
 
 - the `kind` guessed from what arrived (a known social host → `post`, a
@@ -131,13 +135,18 @@ in `YYYY-MM-DDTHH:MM` form. The receiver writes the clip at once:
 Added to the server in `apps/desktop/src-tauri/src/phone/server.rs` and its
 client in `packages/core/src/remote.ts`; `hello` reports `api: 2`.
 
-- `POST /v1/clips`: `{ url?, text?, note?, title?, image?: base64, imageType?,
-  capturedAt, via }` → `{ path }`. Images up to 15 MiB decoded; `imageType`
+- `POST /v1/clips`: `{ id?, url?, text?, note?, title?, image?: base64, imageType?,
+  capturedAt, via }` → `{ path }` with 200, including on a duplicate `id`.
+  Invalid UUID strings return 400 (wrong field types return 422; null IDs
+  are treated as omitted).
+  Images up to 15 MiB decoded; `imageType`
   is required with image bytes. Supported types: JPEG, PNG, GIF, WebP, HEIC,
   HEIF and AVIF. SVG is not accepted. Invalid captures return 400 without
   writing a clip (422 for a JSON field/type error, 413 for an oversized image
-  or request). Errors never echo capture content. The request body limit
-  allows base64's encoding overhead.
+  or request). Storage/receipt failures return 500 and may be retried with
+  the same ID: a 500 can occur after the clip was saved. Errors never echo
+  capture content. The request body limit allows base64's
+  encoding overhead.
 - `GET /v1/clips` → `ClipSummary[]`, newest first (path breaks timestamp ties).
   A summary has `path`, `kind`, `captured`, `tags`, and nullable `title`,
   `url`, `site`, `author`, `image`, `via`, `summary`, `enriched`, `enrichError`.
@@ -147,8 +156,16 @@ client in `packages/core/src/remote.ts`; `hello` reports `api: 2`.
   not sent to the phone. Missing clips return 404; non-clip paths return 400.
 
 The shared types live in `@kintsugi/core/clips`. The remote client exposes
-`captureClip(capture)`, `clips()` and `clip(path)`. Existing document and
-inbox-capture API calls remain compatible.
+`captureClip(capture)`, `clips()` and `clip(path)`. Non-OK replies throw the
+exported `HttpError` from `@kintsugi/core/remote`, carrying numeric `status`
+and the server's message in `message` (a safe fallback if none was supplied).
+`isPermanentCaptureStatus(status)` is true only for **400, 413 and 422**:
+keep those rejected captures for the writer to fix or discard, but do not
+auto-retry the unchanged payload. Other HTTP statuses (notably 408, 429 and
+5xx) remain retry candidates with backoff. `Unpaired` (401) still requires
+pairing again; `Offline` still covers network failures/timeouts and 502/504.
+An accepted document-write conflict (409) is still returned, not thrown.
+Existing document and inbox-capture API calls remain compatible.
 
 ### Desktop and storage API
 
@@ -156,6 +173,31 @@ The desktop commands are `clip_list`, `clip_read`, `clip_create({ capture })`,
 `clip_update({ path, title?, tags?, note? })` and `clip_trash({ path })`.
 Desktop captures carry image bytes rather than base64 (`DesktopClipCapture`
 uses a JSON number array; convert a `Uint8Array` with `Array.from`).
+Both desktop and phone captures accept the same optional `id` and use one
+receipt service in the desktop app. It keeps the latest **1024 distinct IDs**
+(oldest first eviction, duplicate reads do not refresh order), scoped to the
+canonical vault root, in `clip-capture-ids.json` in the app config directory.
+No IDs or receipt indexes are added to the vault's plain files. Lookup and
+creation share one in-process lock across both entry points. While retained,
+a repeated ID returns the original path without rewriting the clip, media or
+receipt file, even if the clip was edited or trashed; it never resurrects it.
+The original capture wins over changed retry content. After eviction (or if
+app config is deleted), the ID no longer has a deduplication guarantee.
+
+The receipt journal reserves the selected path before any clip/media write,
+then marks it complete before answering success. Every app capture, even
+without an ID, skips other pending reservations during naming, so it cannot
+take a crashed capture's filename. On restart, a pending reservation whose
+clip exists is completed rather than duplicated, even after enrichment or
+writer edits; if no clip was saved, delivery can try again. Known failed
+writes release their reservation when possible. App trash completes pending
+receipts before deleting their clip, so a retry cannot resurrect it either.
+An unreadable/corrupt receipt store fails closed for all app clip captures
+(and clip trash) with an error instead of silently losing IDs. Repair the
+app config's `clip-capture-ids.json` before retrying; deleting it deliberately
+resets the deduplication guarantee. This journal coordinates app operations,
+not arbitrary external tools writing into unpublished reserved paths.
+
 `ClipEdit` and `ClipChanged` type the edit arguments and event payload.
 Updating `note` replaces the whole own-text section (including a shared quote, if present),
 not the extracted source. An omitted edit field is unchanged; an empty title
@@ -163,10 +205,16 @@ clears it and an empty tag array clears tags. Trash includes the primary
 image. Generic desktop/phone document mutation commands reject paths in
 `inspiration/`; clip names stay stable and all clip writes share their lock.
 Successful desktop and phone mutations emit `clips:changed` with
-`{ path }`; enrichment uses that event too.
+`{ path }`; enrichment uses that event too. Already-completed duplicate
+captures emit no event.
 
 The vault crate exports `clip_list`, `clip_read`, `clip_create`, `clip_update`,
 `clip_enrich`, `clip_save_media`, `clip_trash`, and `clips_needing_enrichment`.
+`clip_validate_capture` checks payloads without writing;
+`clip_create_with_receipt` invokes an app-owned reservation callback under
+the naming/path locks, before saving media or Markdown, and skips the
+provided reserved paths during naming. The app's receipt service uses this hook; raw `clip_create` remains a non-idempotent storage
+primitive without delivery IDs.
 Metadata updates are patches against the latest file. `ClipUpdate` also accepts `kind`, `url`,
 `site`, `author`, `image`, `summary`, `enriched`, `enrich_error`, and `source`;
 an absent field is untouched, an empty optional scalar clears it. Source
