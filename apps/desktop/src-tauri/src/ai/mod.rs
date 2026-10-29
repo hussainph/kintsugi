@@ -5,12 +5,16 @@ mod pi_auth;
 mod wire;
 
 use pi_auth::{Auth, Kind, Store};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
+use std::task::Poll;
+use std::time::Duration;
 use tauri::ipc::Channel;
-use tauri::{async_runtime, AppHandle, Manager, State};
-use wire::{Event, Provider, Request, Wire, PROVIDERS};
+use tauri::{AppHandle, Manager, State, async_runtime};
+use wire::{Event, PROVIDERS, Provider, Request, Wire};
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -30,6 +34,10 @@ pub struct ProviderStatus {
 /// Every provider Kintsugi speaks, and whether it can be used right now.
 #[tauri::command]
 pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
+    statuses()
+}
+
+fn statuses() -> Result<Vec<ProviderStatus>> {
     let kinds: HashMap<String, Kind> = Store::default_location()?.list()?.into_iter().collect();
     Ok(PROVIDERS
         .iter()
@@ -44,9 +52,193 @@ pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
                 _ if p.keyless => "local",
                 _ => "none",
             };
-            ProviderStatus { id: p.id, name: p.name, auth }
+            ProviderStatus {
+                id: p.id,
+                name: p.name,
+                auth,
+            }
         })
         .collect())
+}
+
+/// What a model is used for decides how fast and how strong it needs to be.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Task {
+    /// Quality first: rewrites, and enrichment.
+    Edit,
+    /// Speed first: inline completions (currently requested by the webview).
+    #[allow(dead_code)]
+    Complete,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+struct ModelRef {
+    provider: String,
+    model: String,
+    #[serde(default)]
+    reasoning: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Preferences {
+    edit: Vec<ModelRef>,
+    complete: Vec<ModelRef>,
+}
+
+/// The webview's `src/lib/models.ts` reads the same file, so both sides
+/// pick the same model for a task.
+const PREFERENCES_JSON: &str = include_str!("../../../src/lib/models.json");
+
+fn preferences(task: Task) -> &'static [ModelRef] {
+    static PARSED: OnceLock<Preferences> = OnceLock::new();
+    let parsed = PARSED.get_or_init(|| serde_json::from_str(PREFERENCES_JSON).expect("src/lib/models.json is valid"));
+    match task {
+        Task::Edit => &parsed.edit,
+        Task::Complete => &parsed.complete,
+    }
+}
+
+/// Mirrors `usable` in src/lib/models.ts: local servers are never picked
+/// automatically, and a login Kintsugi can't use doesn't count.
+fn usable(auth: &str) -> bool {
+    !matches!(auth, "none" | "unsupported_login" | "local")
+}
+
+/// The first preferred model whose provider is usable, as `modelFor` does.
+fn model_for(task: Task, statuses: &[ProviderStatus]) -> Option<&'static ModelRef> {
+    preferences(task)
+        .iter()
+        .find(|m| statuses.iter().any(|s| s.id == m.provider && usable(s.auth)))
+}
+
+/// One bounded, non-streamed completion for background work (no webview).
+pub struct Ask {
+    pub system: String,
+    /// The single user message.
+    pub prompt: String,
+    pub max_tokens: u32,
+    /// The response is abandoned once it grows past this many bytes
+    /// (the Codex backend ignores `max_tokens`).
+    pub max_response_bytes: usize,
+    /// For the whole call: credentials, connection and the full response.
+    pub timeout: Duration,
+}
+
+/// The longest prompt `complete` will send, system and user together.
+pub const MAX_PROMPT_BYTES: usize = 200_000;
+
+/// Why a completion failed. Deliberately nothing but the kind: provider
+/// and credential errors can echo keys or prompts, so they're dropped here
+/// and only these fixed messages (safe to store or show) remain.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AiError {
+    /// No usable provider, or credentials that can't be read or used.
+    NotConfigured,
+    /// The provider refused or failed the request, or the connection broke.
+    Request,
+    TimedOut,
+    /// The prompt was over `MAX_PROMPT_BYTES`.
+    PromptTooLong,
+    /// The response hit `max_tokens` or `max_response_bytes`.
+    ResponseTooLong,
+}
+
+impl AiError {
+    pub fn message(self) -> &'static str {
+        match self {
+            AiError::NotConfigured => "No AI provider is set up. Run `pi`, log in or add an API key.",
+            AiError::Request => "The AI provider request failed.",
+            AiError::TimedOut => "The AI provider took too long to answer.",
+            AiError::PromptTooLong => "The AI prompt was too long.",
+            AiError::ResponseTooLong => "The AI answer was too long.",
+        }
+    }
+}
+
+impl fmt::Display for AiError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.message())
+    }
+}
+
+impl std::error::Error for AiError {}
+
+/// One completion with the task's preferred model, collected into a
+/// string. Exactly one request: no fallback to another model on failure.
+pub async fn complete(task: Task, ask: &Ask) -> std::result::Result<String, AiError> {
+    if ask.system.len() + ask.prompt.len() > MAX_PROMPT_BYTES {
+        return Err(AiError::PromptTooLong);
+    }
+    let statuses = statuses().map_err(|_| AiError::NotConfigured)?;
+    let model = model_for(task, &statuses).ok_or(AiError::NotConfigured)?;
+    let provider = wire::provider(&model.provider).ok_or(AiError::NotConfigured)?;
+    let request = Request {
+        id: "complete".into(),
+        provider: provider.id.into(),
+        model: model.model.clone(),
+        system: ask.system.clone(),
+        messages: vec![wire::Message {
+            role: wire::Role::User,
+            content: ask.prompt.clone(),
+        }],
+        max_tokens: Some(ask.max_tokens),
+        temperature: None,
+        stop: None,
+        reasoning: model.reasoning.clone(),
+    };
+    let run = async {
+        let auth = resolve(provider).await.map_err(|_| AiError::NotConfigured)?;
+        // Sync cells, so the whole future stays `Send` for `spawn`.
+        let text = Mutex::new(String::new());
+        let stop_reason = Mutex::new(None);
+        let overflow = AtomicBool::new(false);
+        let streaming = wire::stream(provider, auth, &request, |event| match event {
+            Event::Delta { text: delta } => {
+                let mut text = text.lock().unwrap();
+                // Checked before appending, so one huge delta is never held.
+                if text.len() + delta.len() > ask.max_response_bytes {
+                    overflow.store(true, Ordering::Relaxed);
+                } else {
+                    text.push_str(&delta);
+                }
+            }
+            Event::Done { stop_reason: reason } => *stop_reason.lock().unwrap() = reason,
+            Event::Error { .. } => {}
+        });
+        let Some(result) = until_overflow(streaming, &overflow).await else {
+            return Err(AiError::ResponseTooLong);
+        };
+        result.map_err(|_| AiError::Request)?;
+        if stop_reason.into_inner().unwrap().is_some_and(|r| truncated(&r)) {
+            return Err(AiError::ResponseTooLong);
+        }
+        Ok(text.into_inner().unwrap())
+    };
+    tokio::time::timeout(ask.timeout, run).await.map_err(|_| AiError::TimedOut)?
+}
+
+/// Polls `future` until it finishes or `overflow` is set, which drops it
+/// and so closes the connection.
+async fn until_overflow<F: std::future::Future>(future: F, overflow: &AtomicBool) -> Option<F::Output> {
+    let mut future = std::pin::pin!(future);
+    let over = || overflow.load(Ordering::Relaxed);
+    std::future::poll_fn(|cx| {
+        if over() {
+            return Poll::Ready(None);
+        }
+        match future.as_mut().poll(cx) {
+            Poll::Ready(_) if over() => Poll::Ready(None),
+            Poll::Ready(output) => Poll::Ready(Some(output)),
+            Poll::Pending if over() => Poll::Ready(None),
+            Poll::Pending => Poll::Pending,
+        }
+    })
+    .await
+}
+
+/// Stop reasons meaning the output was cut off (Anthropic, OpenAI, Codex).
+fn truncated(reason: &str) -> bool {
+    matches!(reason, "max_tokens" | "length" | "max_output_tokens")
 }
 
 /// Starts a streamed completion; events arrive on `on_event`. Returns at once.
@@ -97,8 +289,71 @@ async fn resolve(provider: &Provider) -> Result<Option<Auth>> {
         None => match env() {
             Some(key) => Ok(Some(Auth::ApiKey(key))),
             None if provider.keyless => Ok(None),
-            None => Err(format!("No credentials for {}. Run `pi` and log in, or add an API key.", provider.name)),
+            None => Err(format!(
+                "No credentials for {}. Run `pi` and log in, or add an API key.",
+                provider.name
+            )),
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn status(id: &'static str, auth: &'static str) -> ProviderStatus {
+        ProviderStatus { id, name: id, auth }
+    }
+
+    #[test]
+    fn preferences_parse_and_name_known_providers() {
+        for task in [Task::Edit, Task::Complete] {
+            assert!(!preferences(task).is_empty());
+            for m in preferences(task) {
+                assert!(wire::provider(&m.provider).is_some(), "unknown provider {}", m.provider);
+            }
+        }
+    }
+
+    #[test]
+    fn model_for_takes_the_first_usable_preference() {
+        let first = &preferences(Task::Edit)[0];
+        let second = &preferences(Task::Edit)[1];
+        let id = |m: &ModelRef| wire::provider(&m.provider).unwrap().id;
+        let all_usable = vec![status(id(first), "pi_login"), status(id(second), "env")];
+        assert_eq!(model_for(Task::Edit, &all_usable), Some(first));
+        for unusable in ["none", "unsupported_login", "local"] {
+            let statuses = vec![status(id(first), unusable), status(id(second), "pi_api_key")];
+            assert_eq!(model_for(Task::Edit, &statuses), Some(second), "{unusable}");
+        }
+        assert_eq!(model_for(Task::Edit, &[]), None);
+    }
+
+    #[test]
+    fn errors_are_fixed_messages() {
+        assert_eq!(AiError::Request.to_string(), "The AI provider request failed.");
+        assert_eq!(format!("{:?}", AiError::TimedOut), "TimedOut");
+    }
+
+    #[test]
+    fn until_overflow_drops_the_future_once_flagged() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let overflow = AtomicBool::new(false);
+        let finished = runtime.block_on(until_overflow(async { 7 }, &overflow));
+        assert_eq!(finished, Some(7));
+        let never = async {
+            overflow.store(true, Ordering::Relaxed);
+            std::future::pending::<()>().await
+        };
+        assert_eq!(runtime.block_on(until_overflow(never, &overflow)), None);
+    }
+
+    #[test]
+    fn truncation_stop_reasons() {
+        for reason in ["max_tokens", "length", "max_output_tokens"] {
+            assert!(truncated(reason));
+        }
+        assert!(!truncated("stop") && !truncated("end_turn"));
     }
 }
 
@@ -115,7 +370,10 @@ mod live {
             provider: provider.id.into(),
             model: model.into(),
             system: "Reply with exactly the word: ok".into(),
-            messages: vec![Message { role: Role::User, content: "ping".into() }],
+            messages: vec![Message {
+                role: Role::User,
+                content: "ping".into(),
+            }],
             max_tokens: Some(64),
             temperature: None,
             stop: None,
@@ -148,6 +406,23 @@ mod live {
     #[ignore]
     fn live_zai() {
         ping("zai", "glm-5.3-flash", None);
+    }
+
+    /// `complete` end to end with the edit model.
+    #[test]
+    #[ignore]
+    fn live_complete() {
+        let ask = Ask {
+            system: "Reply with exactly the word: ok".into(),
+            prompt: "ping".into(),
+            max_tokens: 256,
+            max_response_bytes: 1000,
+            timeout: Duration::from_secs(60),
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let text = runtime.block_on(complete(Task::Edit, &ask)).unwrap();
+        println!("{text:?}");
+        assert!(text.to_lowercase().contains("ok"));
     }
 
     /// Replays a request built by the webview's prompt code, for tuning prompts:

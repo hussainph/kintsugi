@@ -28,6 +28,8 @@ kintsugi-vault.workspace = true
 futures-util = "0.3.34"
 base64 = "0.23.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "rustls", "form"] }
+scraper = { version = "0.27", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 tempfile.workspace = true
