@@ -1,8 +1,14 @@
 # Inspiration
 
-Kintsugi is a writing app with a mind attached: capture anything that
-inspires you, from anywhere (a post, a blog, a video, a screenshot, a passing
-thought), and reach for it while you write. Think myMind's effortless,
+Kintsugi exists to make writing for the blog easy and delightful. Most
+finished pieces are published there. What a piece draws on can come from
+anywhere, but most often it's the writer's own work: earlier posts, drafts
+and notes in the vault, their projects. Outside inspiration matters too: a
+post, a blog, a video, a screenshot, a passing thought.
+
+So Kintsugi is a writing app with a mind attached. It captures anything
+worth keeping, from anywhere, and puts the writer's own work and the
+captured clips within reach while they write. Think myMind's effortless,
 image-forward library with Obsidian's plain files and links, in Kintsugi's
 quiet interface.
 
@@ -18,6 +24,9 @@ against. Change it in the same commit as the code that changes the contract.
   and tags clips by itself; search and the editor find them.
 - **Plain files.** Every clip is a Markdown file in the vault. The vault still
   opens in Obsidian, links and all.
+- **The writer's own work comes first.** References, search and the margin
+  treat the vault's documents (published posts, drafts, notes) as first-class
+  sources alongside clips, never as an afterthought.
 - **The AI never writes for you.** It organizes inspiration and surfaces it in
   the margin. Your words stay yours.
 
@@ -153,17 +162,26 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
 
 ## Referencing in writing
 
-- A reference is an Obsidian wikilink to the clip's file name:
-  `[[why-we-sleep]]`. It resolves against `inspiration/` first, then the
-  rest of the vault, by basename.
-- Typing `[[` in the editor opens a picker of clips (search as you type,
+- A reference is an Obsidian wikilink to a file name: a clip
+  (`[[why-we-sleep]]`) or one of the writer's own documents
+  (`[[on-craft]]`). It resolves by basename across the whole vault; if a
+  clip and a document share a name, the document wins (`[[inspiration/x]]`
+  reaches the clip).
+- Typing `[[` in the editor opens one picker over the writer's documents and
+  clips (search as you type; documents show title and status, clips show
   cards with thumbnails). Choosing one inserts the link.
 - Quoting a clip inserts a blockquote attributed to it:
   `> passage\n>\n> [[why-we-sleep]]`.
 - In the editor, wikilinks render as small inline chips (title and site);
   hovering shows the card; ⌘-click opens the clip.
-- **The margin**: a quiet right-hand panel listing the clips this document
-  references and clips related to the paragraph being written. Drag one in
-  to quote it.
+- **The margin**: a quiet right-hand panel listing what this document
+  references and what relates to the paragraph being written: the writer's
+  own documents first, then clips. Drag one in to quote it.
 - Backlinks come from scanning documents for wikilinks; the library's
-  **Used in** and the margin share one index.
+  **Used in**, a document's own backlinks and the margin share one index.
+
+## Publishing (to be designed)
+
+Most complete documents end up on the blog. Publishing a document, and
+importing the blog's existing posts so they can be referenced, get their own
+design once the blog's setup is settled.
