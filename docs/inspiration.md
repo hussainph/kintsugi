@@ -197,6 +197,6 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
 
 ## Publishing (to be designed)
 
-Most complete documents end up on the blog. Publishing a document, and
-importing the blog's existing posts so they can be referenced, get their own
-design once the blog's setup is settled.
+Most complete documents end up on the blog: hussain.ph, an Astro + MDX site
+(`~/Desktop/code/3d-portfolio`). Publishing a document there, and importing
+the blog's existing posts so they can be referenced, get their own design.
