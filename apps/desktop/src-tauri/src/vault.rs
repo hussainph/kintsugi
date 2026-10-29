@@ -43,15 +43,6 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
     if let Ok(root) = vault.root() {
         return Ok(root);
     }
-    // A dev run can exercise a scratch vault without changing the writer's
-    // saved vault or touching their documents. Ignored in release builds.
-    if let Some(path) = scratch_root() {
-        if !path.is_dir() {
-            return Err("scratch vault is not a folder".into());
-        }
-        *vault.0.lock().unwrap() = Some(path.clone());
-        return Ok(path);
-    }
     let path = match config::load(app).vault.filter(|p| p.is_dir()) {
         Some(path) => path,
         None => {
@@ -71,19 +62,10 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     if !path.is_dir() {
         return Err(format!("not a folder: {}", path.display()));
     }
-    if scratch_root().is_none() {
-        config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
-    }
+    config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
     *app.state::<Vault>().0.lock().unwrap() = Some(path.to_path_buf());
     crate::enrich::wake(app);
     Ok(())
-}
-
-pub fn scratch_root() -> Option<PathBuf> {
-    #[cfg(debug_assertions)]
-    { std::env::var_os("KINTSUGI_SCRATCH_VAULT").map(PathBuf::from) }
-    #[cfg(not(debug_assertions))]
-    { None }
 }
 
 #[tauri::command]

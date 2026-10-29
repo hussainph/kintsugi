@@ -18,10 +18,8 @@ pub fn run() {
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .setup(|app| {
-            if vault::scratch_root().is_none() {
-                enrich::start(app.handle());
-                phone::restore(app.handle());
-            }
+            enrich::start(app.handle());
+            phone::restore(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
