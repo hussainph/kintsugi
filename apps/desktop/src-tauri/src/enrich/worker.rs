@@ -3,11 +3,11 @@
 
 use super::{
     fetch,
-    storage::{Clip, Files, Store, Update},
+    storage::{Clip, Store, Update, VaultStore},
     think,
 };
 use std::{future::Future, path::Path, time::Duration};
-use tauri::{AppHandle, Emitter, Listener, Manager};
+use tauri::{AppHandle, Listener, Manager};
 use tokio::sync::Notify;
 
 type Result<T> = std::result::Result<T, String>;
@@ -44,7 +44,7 @@ pub fn start(app: &AppHandle) {
                 }
             }
         };
-        let store = Files;
+        let store = VaultStore;
         loop {
             if let Ok(root) = app.state::<crate::vault::Vault>().root() {
                 if drain(
@@ -53,9 +53,7 @@ pub fn start(app: &AppHandle) {
                     &root,
                     &BACKOFF,
                     || app.state::<crate::vault::Vault>().root().ok().as_deref() == Some(root.as_path()),
-                    |path| {
-                        let _ = app.emit(CHANGED, serde_json::json!({ "path": path }));
-                    },
+                    |path| crate::vault::clips_changed(&app, path),
                 )
                 .await
                 .is_err()
@@ -77,8 +75,8 @@ struct Enricher(fetch::Fetcher);
 
 impl Engine for Enricher {
     async fn enrich(&self, clip: &Clip, existing_tags: Vec<String>) -> Result<Update> {
-        let page = match &clip.url {
-            Some(url) => source_or_shared(clip, self.0.fetch(url, clip.image.is_none()).await)?,
+        let page = match &clip.summary.url {
+            Some(url) => source_or_shared(clip, self.0.fetch(url, clip.summary.image.is_none()).await)?,
             None => fetch::Page::default(),
         };
         build_update(clip, page, existing_tags).await
@@ -89,28 +87,35 @@ impl Engine for Enricher {
 /// Bare URLs still retry; without any source, the model would only be guessing.
 fn source_or_shared(clip: &Clip, fetched: Result<fetch::Page>) -> Result<fetch::Page> {
     match fetched {
-        Err(_) if !clip.own_text.trim().is_empty() || !clip.source_text.trim().is_empty() => Ok(fetch::Page::default()),
+        Err(_) if !clip.text.trim().is_empty() || clip.source.as_deref().is_some_and(|s| !s.trim().is_empty()) => {
+            Ok(fetch::Page::default())
+        }
         other => other,
     }
 }
 
 async fn build_update(clip: &Clip, page: fetch::Page, existing_tags: Vec<String>) -> Result<Update> {
     // The think module owns prompt construction and structured-output checks.
+    let baseline = &clip.summary;
     let input = think::Input {
-        title: clip.title.clone().filter(|s| !s.trim().is_empty()).or_else(|| page.title.clone()),
-        kind: clip.kind.clone(),
-        own_text: clip.own_text.clone(),
+        title: baseline
+            .title
+            .clone()
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| page.title.clone()),
+        kind: kind_name(baseline.kind).into(),
+        own_text: clip.text.clone(),
         source_text: if page.source_text.is_empty() {
-            clip.source_text.clone()
+            clip.source.clone().unwrap_or_default()
         } else {
             page.source_text.clone()
         },
         metadata: [
             ("page title", page.title.clone()),
-            ("site", page.site.clone().or_else(|| clip.site.clone())),
-            ("author", page.author.clone().or_else(|| clip.author.clone())),
+            ("site", page.site.clone().or_else(|| baseline.site.clone())),
+            ("author", page.author.clone().or_else(|| baseline.author.clone())),
             ("description", page.description),
-            ("url", clip.url.clone()),
+            ("url", baseline.url.clone()),
         ]
         .into_iter()
         .filter_map(|(label, value)| value.map(|value| (label.to_string(), value)))
@@ -130,6 +135,18 @@ async fn build_update(clip: &Clip, page: fetch::Page, existing_tags: Vec<String>
     })
 }
 
+fn kind_name(kind: kintsugi_vault::ClipKind) -> &'static str {
+    use kintsugi_vault::ClipKind;
+    match kind {
+        ClipKind::Link => "link",
+        ClipKind::Post => "post",
+        ClipKind::Video => "video",
+        ClipKind::Image => "image",
+        ClipKind::Quote => "quote",
+        ClipKind::Note => "note",
+    }
+}
+
 async fn drain<S: Store, E: Engine>(
     store: &S,
     engine: &E,
@@ -145,7 +162,7 @@ async fn drain<S: Store, E: Engine>(
         }
         // An unreadable/deleted clip must not starve every other capture.
         if process(store, engine, root, &clip, delays).await.is_ok() {
-            changed(&clip.path);
+            changed(&clip.summary.path);
         } else {
             eprintln!("Could not save clip enrichment or its error.");
         }
@@ -190,14 +207,14 @@ mod tests {
         fn pending(&self, _: &Path) -> Result<Vec<Clip>> {
             let first = clip();
             let mut second = clip();
-            second.path = "inspiration/second.md".into();
+            second.summary.path = "inspiration/second.md".into();
             Ok(vec![first, second])
         }
         fn tags(&self, _: &Path) -> Result<Vec<String>> {
             Ok(vec!["writing".into()])
         }
         fn apply(&self, _: &Path, clip: &Clip, _: &Update) -> Result<()> {
-            self.applied.lock().unwrap().push(clip.path.clone());
+            self.applied.lock().unwrap().push(clip.summary.path.clone());
             Ok(())
         }
         fn fail(&self, _: &Path, _: &Clip, message: &str) -> Result<()> {
@@ -231,16 +248,24 @@ mod tests {
 
     fn clip() -> Clip {
         Clip {
-            path: "inspiration/note.md".into(),
-            title: None,
-            url: None,
-            site: None,
-            author: None,
-            image: None,
-            kind: "note".into(),
-            tags: vec![],
-            own_text: "My own words.".into(),
-            source_text: String::new(),
+            summary: kintsugi_vault::ClipSummary {
+                path: "inspiration/note.md".into(),
+                kind: kintsugi_vault::ClipKind::Note,
+                title: None,
+                url: None,
+                site: None,
+                author: None,
+                image: None,
+                captured: "2026-10-29T14:05".into(),
+                via: None,
+                tags: vec![],
+                summary: None,
+                enriched: None,
+                enrich_error: None,
+            },
+            text: "My own words.".into(),
+            source: None,
+            has_source: false,
         }
     }
 
@@ -257,7 +282,7 @@ mod tests {
         let clip = clip();
         assert!(source_or_shared(&clip, Err("could not fetch source page".into())).is_ok());
         let bare = Clip {
-            own_text: String::new(),
+            text: String::new(),
             ..clip
         };
         assert!(source_or_shared(&bare, Err("could not fetch source page".into())).is_err());
@@ -268,9 +293,9 @@ mod tests {
         struct Serial(Mutex<Vec<String>>);
         impl Engine for Serial {
             async fn enrich(&self, clip: &Clip, tags: Vec<String>) -> Result<Update> {
-                self.0.lock().unwrap().push(format!("start {}", clip.path));
+                self.0.lock().unwrap().push(format!("start {}", clip.summary.path));
                 tokio::task::yield_now().await;
-                self.0.lock().unwrap().push(format!("end {}", clip.path));
+                self.0.lock().unwrap().push(format!("end {}", clip.summary.path));
                 Flaky(Mutex::new(0)).enrich(clip, tags).await
             }
         }

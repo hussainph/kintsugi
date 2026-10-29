@@ -2,6 +2,7 @@
 
 pub mod fetch;
 mod storage;
+mod tags;
 pub mod think;
 mod worker;
 
