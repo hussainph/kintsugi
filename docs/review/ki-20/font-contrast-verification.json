@@ -1,0 +1,234 @@
+{
+  "checkedAt": "2026-10-31T19:27:33.087Z",
+  "fonts": [
+    {
+      "family": "LT Superior Serif",
+      "loaded": true,
+      "results": [
+        {
+          "weight": 400,
+          "check": true,
+          "faces": [
+            {
+              "family": "LT Superior Serif",
+              "weight": "400",
+              "style": "normal",
+              "status": "loaded"
+            }
+          ]
+        },
+        {
+          "weight": 500,
+          "check": true,
+          "faces": [
+            {
+              "family": "LT Superior Serif",
+              "weight": "500",
+              "style": "normal",
+              "status": "loaded"
+            }
+          ]
+        },
+        {
+          "weight": 700,
+          "check": true,
+          "faces": [
+            {
+              "family": "LT Superior Serif",
+              "weight": "700",
+              "style": "normal",
+              "status": "loaded"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Sidebar Geist Mono",
+      "loaded": true,
+      "results": [
+        {
+          "weight": 400,
+          "check": true,
+          "faces": [
+            {
+              "family": "Sidebar Geist Mono",
+              "weight": "100 900",
+              "style": "normal",
+              "status": "loaded"
+            }
+          ]
+        },
+        {
+          "weight": 500,
+          "check": true,
+          "faces": [
+            {
+              "family": "Sidebar Geist Mono",
+              "weight": "100 900",
+              "style": "normal",
+              "status": "loaded"
+            }
+          ]
+        },
+        {
+          "weight": 600,
+          "check": true,
+          "faces": [
+            {
+              "family": "Sidebar Geist Mono",
+              "weight": "100 900",
+              "style": "normal",
+              "status": "loaded"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "family": "Timeless Sans",
+      "loaded": false,
+      "results": [
+        {
+          "weight": 400,
+          "check": true,
+          "faces": []
+        },
+        {
+          "weight": 500,
+          "check": true,
+          "faces": []
+        },
+        {
+          "weight": 600,
+          "check": true,
+          "faces": []
+        }
+      ]
+    }
+  ],
+  "contrast": [
+    {
+      "name": "checked checkbox fill / canvas",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(25, 25, 25)",
+      "ratio": 16.699367184453564,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "checkbox mark / fill",
+      "foreground": "rgb(25, 25, 25)",
+      "background": "rgb(249, 249, 249)",
+      "ratio": 16.699367184453564,
+      "minimum": 4.5,
+      "passed": true
+    },
+    {
+      "name": "mixed group checkbox / canvas",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(25, 25, 25)",
+      "ratio": 16.699367184453564,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "radio dot / canvas",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(25, 25, 25)",
+      "ratio": 16.699367184453564,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "checked switch track / canvas",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(25, 25, 25)",
+      "ratio": 16.699367184453564,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "checked switch thumb / track",
+      "foreground": "rgb(25, 25, 25)",
+      "background": "rgb(249, 249, 249)",
+      "ratio": 16.699367184453564,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "unchecked switch thumb / track",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(54, 54, 54)",
+      "ratio": 11.477878293963448,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "keyboard focus outline / canvas",
+      "foreground": "rgb(224, 224, 224)",
+      "background": "rgb(25, 25, 25)",
+      "ratio": 13.318620169365625,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "PreviewCard link / canvas",
+      "foreground": "rgb(224, 224, 224)",
+      "background": "rgb(25, 25, 25)",
+      "ratio": 13.318620169365625,
+      "minimum": 4.5,
+      "passed": true
+    },
+    {
+      "name": "PreviewCard focus / canvas",
+      "foreground": "rgb(224, 224, 224)",
+      "background": "rgb(25, 25, 25)",
+      "ratio": 13.318620169365625,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "Slider fill / track",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(40, 40, 40)",
+      "ratio": 14.003375383452829,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "Meter fill / track",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(40, 40, 40)",
+      "ratio": 14.003375383452829,
+      "minimum": 3,
+      "passed": true
+    },
+    {
+      "name": "Progress fill / track",
+      "foreground": "rgb(249, 249, 249)",
+      "background": "rgb(40, 40, 40)",
+      "ratio": 14.003375383452829,
+      "minimum": 3,
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "screenshots": [
+    "controls-light.png",
+    "controls-dark.png",
+    "dark-input-focus.png",
+    "dark-preview-card.png"
+  ],
+  "blocked": [
+    "Timeless Sans: supplied v1.2 license repository-bundling gate; no face shipped"
+  ],
+  "identity": {
+    "name": "Charter",
+    "resolver": "Paper",
+    "palette1": "#0a0a0a",
+    "canvas": "rgb(25, 25, 25)",
+    "neutral9": "#e0e0e0",
+    "neutral10": "#f9f9f9"
+  }
+}

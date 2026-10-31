@@ -2,13 +2,13 @@
 
 ## Final outcome
 
-**One coherent complete run:180/180 checks PASS;38/38 behavioral rows PASS in both light and dark;84/84 rendered main-part specification samples match.** No console, page or HTTP errors. Run: 2026-10-31T16:32:33.232Z → 2026-10-31T16:34:38.033Z.
+**One coherent complete follow-up run: 180/180 checks PASS; 38/38 behavioral rows PASS in both light and dark; 84/84 rendered main-part samples match the capture plus the approved dark PreviewCard foreground.** No console, page or HTTP errors. Run: 2026-10-31T19:32:33.438Z → 2026-10-31T19:34:34.129Z, on a fresh server with source edits frozen.
 
 - Final source guard follow-up:22/22 PASS after adding caller baseUIHandlerPrevented cancellation guard to ContextMenu.Trigger.
 - Final Caption copy follow-up:2/2 PASS after wording correction, with current screenshots.
 - Existing Lab boot CLI:17 entries /32 stories PASS, including all discovered component/page stories.
-- No fallback/unavailable/loading glyphs after settling. Sidebar Geist Mono400/500/600 loaded.
-- All checks used headless:true Chrome, one serial worker (concurrency hint1), loopback server4415. No native app/window launched.
+- No fallback/unavailable/loading icon glyphs after settling. LT Superior Serif400/500/700 and Sidebar Geist Mono400/500/600 are genuinely loaded (returned FontFace objects). Timeless Sans is deliberately unshipped pending its packaged v1.2 license gate.
+- Catalog checks use headless:true Chrome, one serial worker, loopback server4415. Lab boot uses the supplied concurrency hint. No native app/window launched.
 
 ## Resolved findings and installed-library adaptations
 
@@ -17,6 +17,7 @@
 - ContextMenu right-click plus **Shift+F10 and ContextMenu keys** now open the library portal. Focus enters the menu; ArrowDown/Home focuses Open clip; Enter runs its callback and dismisses. Both modes PASS, and the last guard refinement was rechecked.
 - Tabs retains installed manual activation: arrow keys move focus; Space activates. Disabled tabs may receive roving focus but do not activate.
 - Menu/submenu exit waits now correctly account for both parent and nested exiting nodes; no harness strict-selector failures remain.
+- The follow-up sampler aligns requested system media with the scenario and waits for class/provider/palette agreement after loading fonts. Two intermediate runs were 179/180, each catching a light-mode reset during a dark check while the hot-reload server was active. A fresh server with source edits frozen passed 180/180; that coherent result supersedes both intermediate runs.
 
 Earlier interim partial counts and failure artifacts are superseded by this coherent final result. **No unresolved behavioral failures remain in this verifier.**
 
@@ -67,7 +68,8 @@ All named imports above are from `@kintsugi/ui/graphical`; implementation entry 
 
 ## Specification and scenario evidence
 
--84 exact normalized expected/actual main-part samples from downloaded `gui/components/kintsugi/*.md`:all38 both modes plus all five Button variants. Applies only each part’s authored property list; compares fill/radius and full family/size/weight/line-height/tracking where applicable, plus zero native borders.
+- 84 normalized expected/actual main-part samples from downloaded `gui/components/kintsugi/*.md`: all38 both modes plus all five Button variants. Applies each part's authored property list; compares fill/radius and full typography plus zero native borders. The only sampled main-part deviation is the owner-approved dark PreviewCard foreground, expected independently as `var(--neutral-9)`; all captured light samples remain exact.
+- Dedicated follow-up checks independently measure 13 dark rendered contrast pairs, confirm actual loaded LT/Geist FontFaces and preserve Charter/Paper identity plus the untouched raw Color1 palette. Evidence: `font-contrast-verification.json` beside this report.
 - Direct reusable bundled Input inside Field invalid/readOnly:both modes match exact error/readonly shadow+fill; separate keyboard outline preserves invalid edge.
 - Open mounted Dialog follows actual html.dark light→dark→light, including portal theme variables/fonts/fills.
 - Dialog accessible naming, six Tab steps of modal focus containment, Escape/focus return; distinct AlertDialog cancel/confirm; Drawer/Popover/PreviewCard/Tooltip/Select/Autocomplete/Menu/Toast real portals.
@@ -78,29 +80,30 @@ All named imports above are from `@kintsugi/ui/graphical`; implementation entry 
 ## Checks actually run
 
 1. `node --check scripts/check-graphical.mjs` — PASS.
-2. `pnpm --filter @kintsugi/lab exec tsx src/boot.ts --url http://127.0.0.1:4415 --out "$PWD/.lab-artifacts/ki-20/boot" --workers "$VOLLI_CONCURRENCY_HINT" --executable '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'` —32/32 stories PASS,17 entries; `.lab-artifacts/ki-20/boot/manifest.json`.
-3. `node scripts/check-graphical.mjs --out .headless/graphical/final-green` — **180/180 PASS**, including all38 rows both modes and all84 style samples; `final-green/report.json`.
+2. `pnpm --filter @kintsugi/lab exec tsx src/boot.ts --url http://127.0.0.1:4415 --out ../../.lab-artifacts/ki-20/boot --workers "$VOLLI_CONCURRENCY_HINT"` —32/32 stories PASS,17 entries; `.lab-artifacts/ki-20/boot/manifest.json`.
+3. `node scripts/check-graphical.mjs --out .headless/graphical/followup-green` — **180/180 PASS**, including all38 rows both modes and all84 style samples with the approved dark role; `followup-green/report.json`.
 4. `node scripts/check-graphical.mjs --behavior-only --only ContextMenu --out .headless/graphical/context-guard` —22/22 PASS after final caller-cancellation guard.
-5. Final one-off headless Playwright Caption check —2/2 modes PASS: asserts final wording, type/clear/blur invalid, fill/blur clears, captures screenshots; `field-final-copy.json`.
+5. Initial one-off headless Playwright Caption check —2/2 modes PASS: asserts final wording, type/clear/blur invalid, fill/blur clears; the complete follow-up catalog repeats the interactions.
+6. `node scripts/check-theme-assets.mjs --allow-blocked-timeless` —13/13 dark contrast pairs pass; actual LT/Geist faces loaded; one explicit Timeless license gate.
 
 ## Screenshots and artifacts
 
-- Machine-readable final summary: `summary.json`.
-- Complete exact results/spec values/fonts/portals/errors: `final-green/report.json`; full command log: `final-green/run.log`.
-- Full catalog light/dark: `final-green/catalog-{light,dark}.png`.
-- Section captures: `final-green/{controls,forms,disclosure,overlays,menus,feedback}-{light,dark}.png`.
-- Current Caption wording + invalid state: `final-green/field-final-copy-{light,dark}.png`.
-- Open modal/drawer/toast: `final-green/{dialog,drawer,toast}-{light,dark}.png`.
-- Direct Input states: `final-green/direct-input-states-{light,dark}.png`.
-- Reduced motion: `final-green/{feedback-dark-reduced-motion,dialog-dark-reduced-motion}.png`.
-- Narrow viewport: `final-green/catalog-light-390-{top,bottom}.png`, `final-green/dialog-light-390.png`.
+Paths below are relative to `.headless/graphical/` unless noted:
+
+- Complete results/spec values/fonts/portals/errors: `followup-green/report.json` and `report.md`; command log: `.headless/followup-catalog.log`.
+- Full catalog light/dark: `followup-green/catalog-{light,dark}.png`.
+- Section captures: `followup-green/{controls,forms,disclosure,overlays,menus,feedback}-{light,dark}.png`.
+- Open modal/drawer/toast: `followup-green/{dialog,drawer,toast}-{light,dark}.png`.
+- Direct Input states: `followup-green/direct-input-states-{light,dark}.png`.
+- Reduced motion: `followup-green/{feedback-dark-reduced-motion,dialog-dark-reduced-motion}.png`.
+- Narrow viewport: `followup-green/catalog-light-390-{top,bottom}.png`, `followup-green/dialog-light-390.png`.
+- Durable font/contrast JSON and eight selected screenshots: `docs/review/ki-20/`.
 
 Full-page captures temporarily expose only preview scroller height/overflow for capture. Normal interaction and viewport captures use actual geometry. Screenshots were inspected for controls, forms, dark modal, direct invalid/readOnly states and narrow layout.
 
 ## Remaining limitations / external decisions
 
 - This is behavior coverage of all38 with sampled rendered style parity—not every-part/every-state pixel equivalence.
-- Timeless Sans and LT Superior Serif vendor acquisition remains externally blocked per parent; configured stacks are retained but current glyphs use fallbacks. Geist Mono is genuinely loaded.
-- Authored dark color-1 is near-black: selected radio/switch and PreviewCard link have visibly weak contrast despite matching the target. Any palette change is a theme decision, not an implementation drift repair.
-- Product app workflows and supplementary searchable Menu additions are owned by parent/other verifier. No additional public primitive coverage claim.
-- Only `scripts/check-graphical.mjs` and owned artifact outputs were edited; no product files or commits.
+- LT Superior Serif now loads real upright400/500/700; no vendor italic exists, so a browser slant is synthetic. Geist Mono is loaded. Timeless Sans is unshipped because the supplied v1.2 license §6 restricts bundling/redistribution and §8.4 retains the packaged contract. Need a v1.3-licensed archive or written repository permission. See `packages/ui/src/fonts/README.md`.
+- The owner approved dark role corrections using existing Neutral9/10 (with Neutral1 marks). Palette, light styles and internal identity remain unchanged. Thirteen rendered contrast assertions pass; no whole-app accessibility certification is implied.
+- Product app workflows and supplementary searchable Menu additions have separate parent verification, detailed in `docs/graphical-coverage.md`. No additional public primitive coverage claim.

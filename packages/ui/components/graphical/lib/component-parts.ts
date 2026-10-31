@@ -1,6 +1,7 @@
 import { RADIUS_CORNERS } from "./component-radius";
 import { configuredComponentReference } from "./component-references";
 import { componentSurfaceRelief } from "./theme-surfaces";
+import { correctComponentContrastStyle } from "./contrast-correction";
 import {
   CATALOG,
   isCatalogComponent,
@@ -891,7 +892,9 @@ export function resolveComponentPartStyle(
       background,
     });
   }
-  return style;
+  return correctComponentContrastStyle(
+    document, mode, component, part, effectiveState, variant, tokens, style,
+  );
 }
 
 export function resolveButtonPartStyle(

@@ -8,6 +8,7 @@
    centrally, not from JS modules whose stylesheet execution order can vary. */
 @import "./components/graphical.css";
 @import "./fonts/geist-mono.css";
+@import "./fonts/superior-serif.css";
 
 @custom-variant dark (&:is(.dark *, [data-color-mode="dark"] *));
 
