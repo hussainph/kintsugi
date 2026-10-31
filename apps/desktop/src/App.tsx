@@ -14,6 +14,7 @@ import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { External, paragraphRange, replaceText } from "@kintsugi/editor/Editor";
 import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
@@ -886,7 +887,7 @@ export default function App() {
             readOnly={!!field(doc.text, "mirror")}
           />
         ) : (
-          <div className="m-auto space-y-2 text-center text-sm text-muted-foreground">
+          <div className="ki-empty ki-stack-xs ki-text-s">
             <p>
               <Kbd>⌘N</Kbd> to start writing
             </p>
@@ -897,26 +898,38 @@ export default function App() {
         )}
         </div>
         {doc && !away && (
-          <footer className="absolute right-18 bottom-3 flex items-center gap-3 text-xs text-muted-foreground opacity-60 transition-opacity hover:opacity-100">
+          <footer className="ki-document-status ki-text-xs">
             {mirror ? (
               <span title="Generated from the blog repository; edit the post there">Read-only mirror of {mirror}</span>
             ) : (
               <>
                 <DocTags tags={docTags} vocabulary={tagsInUse} onChange={changeTags} />
-                <Badge asChild variant={status === "complete" ? "default" : "outline"}>
-                  <button onClick={toggleStatus} title="Toggle status (⇧⌘D)">
-                    {status ?? "no status"}
-                  </button>
-                </Badge>
-                {status === "complete" && <button className="hover:text-foreground" onClick={openPublish} title="Publish to the blog (⇧⌘P)">Publish…</button>}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge asChild variant={status === "complete" ? "default" : "outline"}>
+                      <button onClick={toggleStatus} aria-label={`Status: ${status ?? "no status"}. Toggle status`}>
+                        {status ?? "no status"}
+                      </button>
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>Toggle status (⇧⌘D)</TooltipContent>
+                </Tooltip>
+                {status === "complete" && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="ki-footer-action" onClick={openPublish}>Publish…</button>
+                    </TooltipTrigger>
+                    <TooltipContent>Publish to the blog (⇧⌘P)</TooltipContent>
+                  </Tooltip>
+                )}
               </>
             )}
             <ExportMenu mirror={!!mirror} />
-            <span>{wordCount(text).toLocaleString()} words</span>
-            <button onClick={() => ideasForDraft(doc.path)} className="hover:text-foreground" title="Ideas for this draft">
+            <span className="ki-data">{wordCount(text).toLocaleString()} words</span>
+            <button onClick={() => ideasForDraft(doc.path)} className="ki-footer-action">
               Ideas
             </button>
-            <span className={save === "error" ? "text-destructive" : ""}>
+            <span role="status" className={save === "error" ? "ki-error" : ""}>
               {{ saved: "Saved", editing: "Editing", error: "Not saved" }[save]}
             </span>
           </footer>

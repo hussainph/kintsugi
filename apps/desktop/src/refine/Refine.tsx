@@ -1,6 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { diffWords } from "diff";
-import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "lucide-react";
+import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@kintsugi/ui/components/command";
@@ -185,7 +185,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
       <PopoverContent
         align="start"
         sideOffset={8}
-        className="w-[min(32rem,calc(100vw-2rem))] p-0"
+        className="ki-refine-popup"
         onOpenAutoFocus={(e) => (action || initial) && e.preventDefault()}
       >
         {found ? (
@@ -252,29 +252,28 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
           </Command>
         ) : (
           <div ref={resultRef} tabIndex={-1} onKeyDown={onResultKey} className="outline-none">
-            <div className="flex items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground">
-              <Sparkles className="size-3.5" />
+            <div className="ki-refine-heading ki-divider-bottom ki-text-xs ki-muted flex items-center gap-[var(--space-xs)]">
+              <Sparkles className="size-[1em]" />
               <span className="truncate">{action.label}</span>
               {versions.length > 1 && (
-                <span className="ml-auto tabular-nums">
+                <span className="ki-data ml-auto">
                   {index + 1} / {versions.length}
                 </span>
               )}
             </div>
-            <div className="max-h-[50vh] overflow-y-auto px-4 py-3 font-[family-name:var(--font-prose)] text-[15px] leading-relaxed">
+            <div className="ki-refine-result ki-prose max-h-[50vh] overflow-y-auto">
               {error ? (
-                <p className="font-sans text-sm text-destructive">{error}</p>
+                <p className="ki-text-s ki-error" role="alert">{error}</p>
               ) : !version?.text ? (
-                <p className="font-sans text-sm text-muted-foreground">Thinking…</p>
+                <p className="ki-text-s ki-muted" role="status">Thinking…</p>
               ) : action.shape === "choices" ? (
-                <ol className="space-y-0.5">
+                <ol className="ki-stack-xxs">
                   {options.map((option, i) => (
                     <li key={i}>
                       <button
-                        className={cn(
-                          "flex w-full items-center gap-3 rounded-md px-2 py-1 text-left",
-                          i === choice && "bg-accent",
-                        )}
+                        className="ki-refine-choice flex w-full items-center gap-[var(--space-s)] text-left"
+                        aria-current={i === choice ? "true" : undefined}
+                        data-selected={i === choice}
                         onMouseEnter={() => setChoice(i)}
                         onClick={() => accept(option)}
                       >
@@ -290,7 +289,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                 <p className="whitespace-pre-wrap">{version.text}</p>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-2 text-xs text-muted-foreground">
+            <div className="ki-refine-footer ki-divider-top ki-text-xs ki-muted flex flex-wrap items-center gap-x-[var(--space-s)] gap-y-[var(--space-xxs)]">
               <span>
                 <Kbd>↵</Kbd> accept
               </span>
@@ -375,16 +374,16 @@ function Supporting({ found, onReference, onOpen, onBack }: {
 }
 
 function Diff({ before, after }: { before: string; after: string }) {
-  if (before === after) return <p className="font-sans text-sm text-muted-foreground">No changes suggested.</p>;
+  if (before === after) return <p className="ki-text-s ki-muted">No changes suggested.</p>;
   return (
     <p className="whitespace-pre-wrap">
       {diffWords(before, after).map((part, i) =>
         part.added ? (
-          <ins key={i} className="rounded-sm bg-emerald-500/15 text-foreground no-underline">
+          <ins key={i} className="ki-diff-added">
             {part.value}
           </ins>
         ) : part.removed ? (
-          <del key={i} className="text-muted-foreground decoration-red-500/70">
+          <del key={i} className="ki-diff-removed">
             {part.value}
           </del>
         ) : (

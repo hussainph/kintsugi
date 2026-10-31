@@ -1,30 +1,26 @@
 import { Collapsible as CollapsiblePrimitive } from "radix-ui"
+import { graphicalPart } from "./graphical"
 
-function Collapsible({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.Root>) {
-  return <CollapsiblePrimitive.Root data-slot="collapsible" {...props} />
+const Root = graphicalPart(CollapsiblePrimitive.Root, "collapsible", "group", "ui-stack ki-collapsible")
+const Trigger = graphicalPart(CollapsiblePrimitive.Trigger, "collapsible", "trigger", "ui-button ui-spread")
+const Panel = graphicalPart(CollapsiblePrimitive.Content, "collapsible", "panel", "ki-disclosure")
+
+function Collapsible(props: React.ComponentProps<typeof CollapsiblePrimitive.Root>) {
+  return <Root data-slot="collapsible" {...props} />
 }
 
-function CollapsibleTrigger({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleTrigger>) {
-  return (
-    <CollapsiblePrimitive.CollapsibleTrigger
-      data-slot="collapsible-trigger"
-      {...props}
-    />
-  )
+function CollapsibleTrigger(props: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleTrigger>) {
+  // Existing Sidebar triggers compose their own navigation button. Do not put
+  // a second control's surface/spacing around that authored asChild content.
+  const Comp = props.asChild ? CollapsiblePrimitive.Trigger : Trigger
+  return <Comp data-slot="collapsible-trigger" {...props} />
 }
 
-function CollapsibleContent({
-  ...props
-}: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
+function CollapsibleContent({ children, ...props }: React.ComponentProps<typeof CollapsiblePrimitive.CollapsibleContent>) {
   return (
-    <CollapsiblePrimitive.CollapsibleContent
-      data-slot="collapsible-content"
-      {...props}
-    />
+    <Panel data-slot="collapsible-content" {...props}>
+      <div className="ui-disclosure-content">{children}</div>
+    </Panel>
   )
 }
 

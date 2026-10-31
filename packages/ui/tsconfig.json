@@ -1,7 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "paths": { "@kintsugi/ui/*": ["./src/*"] }
+    "types": ["node", "react", "react-dom"],
+    "paths": {
+      "@kintsugi/ui/*": [
+        "./src/*"
+      ]
+    }
   },
-  "include": ["src"]
+  "include": [
+    "src",
+    "components/graphical"
+  ]
 }

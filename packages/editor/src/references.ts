@@ -587,18 +587,55 @@ function headLength(doc: Text): number {
   return 0;
 }
 
+/** CodeMirror owns the popup DOM and keyboard/focus lifecycle. Its existing
+ * theme hook maps the Combobox/PreviewCard parts without replacing that host. */
+const referenceText = (size: "xs" | "s" | "m", weight: "regular" | "medium" = "regular") => ({
+  fontFamily: "var(--font-ui)",
+  fontWeight: `var(--weight-ui-${weight})`,
+  fontSize: `var(--size-${size})`,
+  lineHeight: `var(--line-${size})`,
+  letterSpacing: `var(--tracking-${size === "m" ? "m" : "l"})`,
+});
+
 const referenceTheme = EditorView.theme({
-  ".cm-reference-chip": { display: "inline", padding: "2px 6px", borderRadius: "5px", backgroundColor: "color-mix(in srgb, var(--muted-foreground) 8%, transparent)", color: "var(--foreground)", fontSize: ".85em", boxDecorationBreak: "clone", cursor: "text" },
-  ".cm-reference-site": { color: "var(--muted-foreground)", fontSize: ".85em", marginLeft: "6px" },
-  ".cm-reference-unresolved": { color: "var(--muted-foreground)", backgroundColor: "transparent", textDecoration: "underline dotted", textUnderlineOffset: "4px" },
-  ".cm-tooltip.cm-reference-card": { border: "1px solid var(--border)", borderRadius: "8px", backgroundColor: "var(--popover)", color: "var(--foreground)", boxShadow: "0 8px 24px #0002", overflow: "hidden", fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: "400", fontStyle: "normal", lineHeight: "1.45", letterSpacing: "normal" },
-  ".cm-reference-thumbnail": { width: "38px", height: "38px", objectFit: "cover", borderRadius: "4px", flexShrink: "0" },
-  ".cm-reference-card-meta": { color: "var(--muted-foreground)", fontSize: "11px", marginTop: "2px" },
-  ".cm-reference-card": { padding: "12px", width: "min(300px, calc(100vw - 16px))", boxSizing: "border-box", lineHeight: "1.5" },
-  ".cm-reference-card-image": { width: "100%", maxHeight: "150px", objectFit: "cover", borderRadius: "4px", marginBottom: "8px" },
-  ".cm-reference-card-title": { fontWeight: "600", overflowWrap: "anywhere" },
-  ".cm-reference-card-summary": { color: "var(--muted-foreground)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "10px 0" },
-  ".cm-reference-card-actions": { display: "flex", gap: "14px", marginTop: "10px" },
-  ".cm-reference-card-action": { font: "inherit", fontSize: "12px", color: "var(--primary)", background: "none", border: "none", padding: "2px 0", cursor: "pointer" },
-  ".cm-reference-card-action:focus-visible": { outline: "2px solid var(--primary)", outlineOffset: "3px" },
+  ".cm-reference-chip": {
+    display: "inline", padding: "var(--space-zero) var(--space-xs)", borderRadius: "var(--radius-s)",
+    backgroundColor: "var(--neutral-3)", color: "var(--neutral-10)",
+    fontFamily: "var(--font-editorial)", fontWeight: "var(--weight-editorial-regular)",
+    fontSize: "calc(var(--size-m) * var(--editor-text-scale, 1))",
+    lineHeight: "calc(var(--line-m) * var(--editor-text-scale, 1))", letterSpacing: "var(--letter-spacing-m)",
+    boxDecorationBreak: "clone", cursor: "text",
+  },
+  ".cm-reference-site": { ...referenceText("xs"), color: "var(--neutral-7)", marginLeft: "var(--space-xs)" },
+  ".cm-reference-unresolved": { color: "var(--neutral-7)", backgroundColor: "var(--color-none)", textDecoration: "underline dotted", textUnderlineOffset: "var(--space-xxs)" },
+  ".cm-tooltip.cm-reference-card": {
+    ...referenceText("s"), border: "0", backgroundColor: "var(--neutral-1)", color: "var(--neutral-10)",
+    boxShadow: "var(--border-shadow-s), var(--shadow-m)", fontStyle: "normal", textWrap: "pretty",
+    maxWidth: "min(420px, calc(100vw - var(--space-xl)))", maxHeight: "calc(100dvh - var(--space-xl))",
+    overflow: "hidden", transformOrigin: "center", animation: "kintsugi-reference-popup-in var(--motion-duration) var(--motion-easing)",
+  },
+  // The supplied popup part uses Neutral 2 and an inset edge in dark mode.
+  // CodeMirror mounts tooltips inside its editor, retaining the provider scope.
+  '[data-color-mode="dark"] & .cm-tooltip.cm-reference-card, .dark & .cm-tooltip.cm-reference-card': { backgroundColor: "var(--neutral-2)" },
+  ".cm-reference-thumbnail": { width: "38px", height: "38px", objectFit: "cover", borderRadius: "var(--radius-xs)", flexShrink: "0" },
+  ".cm-reference-card": { display: "flex", flexDirection: "column", gap: "var(--space-xs)", padding: "var(--space-m)", width: "min(300px, calc(100vw - 16px))", boxSizing: "border-box", borderRadius: "var(--radius-m)", overflowY: "auto" },
+  ".cm-reference-card-image": { width: "100%", maxHeight: "150px", objectFit: "cover", borderRadius: "var(--radius-s)", margin: "0" },
+  ".cm-reference-card-title": { ...referenceText("m", "medium"), color: "var(--neutral-10)", overflowWrap: "anywhere" },
+  ".cm-reference-card-meta, .cm-reference-card-summary": { ...referenceText("s"), color: "var(--neutral-7)", overflowWrap: "anywhere", margin: "0" },
+  ".cm-reference-card-summary": { whiteSpace: "pre-wrap" },
+  ".cm-reference-card-actions": { display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", marginTop: "var(--space-xs)" },
+  ".cm-reference-card-action": {
+    ...referenceText("s", "medium"), color: "var(--neutral-10)", backgroundColor: "var(--color-none)",
+    border: "0", borderRadius: "var(--radius-s)", padding: "var(--space-xs) var(--space-m)", cursor: "pointer",
+    transition: "background-color var(--motion-duration) var(--motion-easing), transform var(--motion-duration) var(--motion-easing)",
+  },
+  ".cm-reference-card-action:hover": { backgroundColor: "var(--neutral-3-transparent)" },
+  ".cm-reference-card-action:active": { transform: "translateY(var(--motion-press-distance))" },
+  ".cm-reference-card-action:focus-visible": { outline: "var(--border-l) solid var(--neutral-10)", outlineOffset: "var(--space-xxs)" },
+  "@keyframes kintsugi-reference-popup-in": { from: { opacity: "0", scale: "var(--motion-popup-scale)" }, to: { opacity: "1", scale: "1" } },
+  "@media (prefers-reduced-motion: reduce)": {
+    ".cm-tooltip.cm-reference-card": { animation: "none" },
+    ".cm-reference-card-action": { transition: "none" },
+    ".cm-reference-card-action:active": { transform: "none" },
+  },
 });

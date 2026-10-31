@@ -2,6 +2,10 @@ import * as React from "react"
 import { cn } from "cn"
 import { Separator as SeparatorPrimitive } from "radix-ui"
 
+import { graphicalPart } from "./graphical"
+
+const ThemedRoot = graphicalPart(SeparatorPrimitive.Root, "separator", "separator", "ui-separator")
+
 function Separator({
   className,
   orientation = "horizontal",
@@ -9,12 +13,12 @@ function Separator({
   ...props
 }: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
   return (
-    <SeparatorPrimitive.Root
+    <ThemedRoot
       data-slot="separator"
       decorative={decorative}
       orientation={orientation}
       className={cn(
-        "shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch",
+        "shrink-0",
         className
       )}
       {...props}

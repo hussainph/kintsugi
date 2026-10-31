@@ -1,4 +1,4 @@
-import { FilePlus, FolderPlus, Tag } from "lucide-react";
+import { FilePlus, FolderPlus, Tag } from "@kintsugi/ui/icons";
 import { useMemo, useState } from "react";
 import {
   Command,
@@ -106,9 +106,9 @@ export function Palette({ mode, docs, onOpen, onCreate, onClose }: Props) {
                     <StatusDot status={doc.status} />
                     <span className="max-w-[60%] shrink-0 truncate">{displayName(doc)}</span>
                     {doc.tags?.length ? (
-                      <span className="min-w-0 shrink-4 truncate text-xs text-muted-foreground/80">{doc.tags.map((t) => `#${t}`).join(" ")}</span>
+                      <span className="ki-text-xs ki-muted min-w-0 shrink-4 truncate">{doc.tags.map((t) => `#${t}`).join(" ")}</span>
                     ) : null}
-                    <span className="ml-auto min-w-0 shrink-2 truncate text-xs text-muted-foreground">
+                    <span className="ki-data ki-muted ml-auto min-w-0 shrink-2 truncate">
                       {doc.path}
                     </span>
                   </CommandItem>

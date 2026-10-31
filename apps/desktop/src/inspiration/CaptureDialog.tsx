@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Paperclip, Search } from "lucide-react";
+import { ArrowLeft, BookOpen, Paperclip, Search } from "@kintsugi/ui/icons";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { parseIsbn, isbnUrl } from "@kintsugi/core/books";
@@ -34,7 +34,7 @@ export function CaptureDialog({ open, onClose, capture }: { open: boolean; onClo
   };
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) close(); }}>
-      <DialogContent className="sm:max-w-md motion-reduce:animate-none">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{books ? "Add a book" : "Add a clip"}</DialogTitle>
           <DialogDescription>{books ? "Search by title, author or ISBN." : "Paste a link or some text, or add an image, PDF or EPUB."}</DialogDescription>
@@ -43,11 +43,11 @@ export function CaptureDialog({ open, onClose, capture }: { open: boolean; onClo
           <Textarea autoFocus aria-label="URL or text to capture" placeholder="A link, a quote or a note" className="min-h-36 resize-y select-text" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => {
             if (e.metaKey && e.key === "Enter") { e.preventDefault(); void save(); }
           }} />
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-[var(--space-s)]">
             <input ref={picker} type="file" accept={FILE_ACCEPT} className="hidden" aria-label="Choose an image, PDF or EPUB" onChange={(e) => setFile(e.target.files?.[0])} />
             <div className="flex min-w-0 items-center">
-              <Button variant="ghost" onClick={() => picker.current?.click()} className="min-w-0 text-muted-foreground" title="An image, a PDF or an EPUB"><Paperclip /><span className="truncate">{file?.name ?? "Add a file"}</span></Button>
-              {!file && <Button variant="ghost" onClick={() => setBooks(true)} className="text-muted-foreground"><BookOpen />Find a book</Button>}
+              <Button variant="ghost" onClick={() => picker.current?.click()} className="min-w-0" title="An image, a PDF or an EPUB"><Paperclip /><span className="truncate">{file?.name ?? "Add a file"}</span></Button>
+              {!file && <Button variant="ghost" onClick={() => setBooks(true)}><BookOpen />Find a book</Button>}
             </div>
             <Button disabled={saving || (!text.trim() && !file)} onClick={save}>{saving ? "Saving…" : "Save"}</Button>
           </div>

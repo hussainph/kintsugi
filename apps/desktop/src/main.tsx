@@ -4,6 +4,7 @@ import "./headless/install";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "@/App";
+import { KintsugiProvider } from "@kintsugi/ui/provider";
 import "./index.css";
 
 // shadcn's dark theme hangs off a `.dark` class; follow the system setting.
@@ -14,6 +15,8 @@ dark.addEventListener("change", applyTheme);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <App />
+    <KintsugiProvider>
+      <App />
+    </KintsugiProvider>
   </React.StrictMode>,
 );

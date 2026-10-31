@@ -1,5 +1,8 @@
 @import "@kintsugi/ui/styles.css";
+@import "./theme.css";
 @source "../../../packages";
+
+html, body, #root, #root > .graphical-theme { height: 100%; }
 
 /* A window, not a page: no rubber-band scrolling or stray text selection. */
 @layer base {
@@ -13,8 +16,8 @@
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
-.inspiration-scroll::-webkit-scrollbar { width: 6px; }
+.inspiration-scroll::-webkit-scrollbar { width: var(--space-xs); }
 .inspiration-scroll::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }

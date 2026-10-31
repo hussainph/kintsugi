@@ -1,0 +1,494 @@
+/* Establish the host's order even when this component stylesheet loads first. */
+@layer theme, base, components, utilities;
+@layer components {
+/* Compatibility selectors for the retained Radix/cmdk primitives.
+ * Values and state appearances come from Graphical's appearanceVariables. */
+.ki-radix[data-state="open"]:not(:disabled, [data-disabled]) {
+  --ui-background: var(--ui-open-background);
+  --ui-background-image: var(--ui-open-background-image);
+  --ui-bevel: var(--ui-open-bevel);
+  --ui-bevel-content: var(--ui-open-bevel-content);
+  --ui-color: var(--ui-open-color);
+  --ui-radius: var(--ui-open-radius);
+  --ui-inner-radius: var(--ui-open-inner-radius);
+  --ui-shadow: var(--ui-open-shadow);
+  --ui-opacity: var(--ui-open-opacity);
+  --ui-filter: var(--ui-open-filter);
+  --ui-backdrop-filter: var(--ui-open-backdrop-filter);
+  --ui-elevation: var(--ui-open-elevation);
+  --ui-top: var(--ui-open-top);
+  --ui-bottom: var(--ui-open-bottom);
+  --ui-x: var(--ui-open-x);
+  --ui-left: var(--ui-open-left);
+  --ui-right: var(--ui-open-right);
+  --ui-gap: var(--ui-open-gap);
+  --ui-font: var(--ui-open-font);
+  --ui-size: var(--ui-open-size);
+  --ui-letter-spacing: var(--ui-open-letter-spacing);
+  --ui-weight: var(--ui-open-weight);
+  --icon-stroke-width: var(--ui-open-icon-stroke-width);
+  --icon-light-display: var(--ui-open-icon-light-display);
+  --icon-regular-display: var(--ui-open-icon-regular-display);
+  --icon-bold-display: var(--ui-open-icon-bold-display);
+  --ui-line: var(--ui-open-line);
+  --ui-control: var(--ui-open-control);
+  --ui-edge: var(--ui-open-edge);
+  --ui-edge-width: var(--ui-open-edge-width);
+}
+
+.ki-radix[cmdk-item][data-selected="false"] {
+  --ui-background: var(--ui-rest-background);
+  --ui-background-image: var(--ui-rest-background-image);
+  --ui-bevel: var(--ui-rest-bevel);
+  --ui-bevel-content: var(--ui-rest-bevel-content);
+  --ui-color: var(--ui-rest-color);
+  --ui-radius: var(--ui-rest-radius);
+  --ui-inner-radius: var(--ui-rest-inner-radius);
+  --ui-shadow: var(--ui-rest-shadow);
+  --ui-opacity: var(--ui-rest-opacity);
+  --ui-filter: var(--ui-rest-filter);
+  --ui-backdrop-filter: var(--ui-rest-backdrop-filter);
+  --ui-elevation: var(--ui-rest-elevation);
+  --ui-top: var(--ui-rest-top);
+  --ui-bottom: var(--ui-rest-bottom);
+  --ui-x: var(--ui-rest-x);
+  --ui-left: var(--ui-rest-left);
+  --ui-right: var(--ui-rest-right);
+  --ui-gap: var(--ui-rest-gap);
+  --ui-font: var(--ui-rest-font);
+  --ui-size: var(--ui-rest-size);
+  --ui-letter-spacing: var(--ui-rest-letter-spacing);
+  --ui-weight: var(--ui-rest-weight);
+  --icon-stroke-width: var(--ui-rest-icon-stroke-width);
+  --icon-light-display: var(--ui-rest-icon-light-display);
+  --icon-regular-display: var(--ui-rest-icon-regular-display);
+  --icon-bold-display: var(--ui-rest-icon-bold-display);
+  --ui-line: var(--ui-rest-line);
+  --ui-control: var(--ui-rest-control);
+  --ui-edge: var(--ui-rest-edge);
+  --ui-edge-width: var(--ui-rest-edge-width);
+}
+.ki-radix[cmdk-item][data-selected="true"] {
+  --ui-background: var(--ui-highlighted-background);
+  --ui-background-image: var(--ui-highlighted-background-image);
+  --ui-bevel: var(--ui-highlighted-bevel);
+  --ui-bevel-content: var(--ui-highlighted-bevel-content);
+  --ui-color: var(--ui-highlighted-color);
+  --ui-radius: var(--ui-highlighted-radius);
+  --ui-inner-radius: var(--ui-highlighted-inner-radius);
+  --ui-shadow: var(--ui-highlighted-shadow);
+  --ui-opacity: var(--ui-highlighted-opacity);
+  --ui-filter: var(--ui-highlighted-filter);
+  --ui-backdrop-filter: var(--ui-highlighted-backdrop-filter);
+  --ui-elevation: var(--ui-highlighted-elevation);
+  --ui-top: var(--ui-highlighted-top);
+  --ui-bottom: var(--ui-highlighted-bottom);
+  --ui-x: var(--ui-highlighted-x);
+  --ui-left: var(--ui-highlighted-left);
+  --ui-right: var(--ui-highlighted-right);
+  --ui-gap: var(--ui-highlighted-gap);
+  --ui-font: var(--ui-highlighted-font);
+  --ui-size: var(--ui-highlighted-size);
+  --ui-letter-spacing: var(--ui-highlighted-letter-spacing);
+  --ui-weight: var(--ui-highlighted-weight);
+  --icon-stroke-width: var(--ui-highlighted-icon-stroke-width);
+  --icon-light-display: var(--ui-highlighted-icon-light-display);
+  --icon-regular-display: var(--ui-highlighted-icon-regular-display);
+  --icon-bold-display: var(--ui-highlighted-icon-bold-display);
+  --ui-line: var(--ui-highlighted-line);
+  --ui-control: var(--ui-highlighted-control);
+  --ui-edge: var(--ui-highlighted-edge);
+  --ui-edge-width: var(--ui-highlighted-edge-width);
+}
+.ki-radix[cmdk-item][data-disabled="true"] {
+  --ui-background: var(--ui-disabled-background);
+  --ui-background-image: var(--ui-disabled-background-image);
+  --ui-bevel: var(--ui-disabled-bevel);
+  --ui-bevel-content: var(--ui-disabled-bevel-content);
+  --ui-color: var(--ui-disabled-color);
+  --ui-radius: var(--ui-disabled-radius);
+  --ui-inner-radius: var(--ui-disabled-inner-radius);
+  --ui-shadow: var(--ui-disabled-shadow);
+  --ui-opacity: var(--ui-disabled-opacity);
+  --ui-filter: var(--ui-disabled-filter);
+  --ui-backdrop-filter: var(--ui-disabled-backdrop-filter);
+  --ui-elevation: var(--ui-disabled-elevation);
+  --ui-top: var(--ui-disabled-top);
+  --ui-bottom: var(--ui-disabled-bottom);
+  --ui-x: var(--ui-disabled-x);
+  --ui-left: var(--ui-disabled-left);
+  --ui-right: var(--ui-disabled-right);
+  --ui-gap: var(--ui-disabled-gap);
+  --ui-font: var(--ui-disabled-font);
+  --ui-size: var(--ui-disabled-size);
+  --ui-letter-spacing: var(--ui-disabled-letter-spacing);
+  --ui-weight: var(--ui-disabled-weight);
+  --icon-stroke-width: var(--ui-disabled-icon-stroke-width);
+  --icon-light-display: var(--ui-disabled-icon-light-display);
+  --icon-regular-display: var(--ui-disabled-icon-regular-display);
+  --icon-bold-display: var(--ui-disabled-icon-bold-display);
+  --ui-line: var(--ui-disabled-line);
+  --ui-control: var(--ui-disabled-control);
+  --ui-edge: var(--ui-disabled-edge);
+  --ui-edge-width: var(--ui-disabled-edge-width);
+}
+
+/* Receiving APIs add density/icon sizes not present in Graphical's catalog. */
+.ki-button-xs {
+  padding: var(--space-xxs) var(--space-xs);
+  font-size: var(--size-xs);
+  line-height: var(--line-xs);
+  letter-spacing: var(--letter-spacing-xs);
+}
+.ki-button-sm { padding: var(--space-xxs) var(--space-s); }
+.ki-button-lg { padding: var(--space-s) var(--space-l); }
+.ki-button-icon {
+  padding-inline: var(--space-xs);
+  aspect-ratio: 1;
+}
+.ki-button-icon.ki-button-xs,
+.ki-button-icon.ki-button-sm { padding-inline: var(--space-xxs); }
+.ki-button-link { text-underline-offset: var(--space-xxs); }
+.ki-button-link:hover { text-decoration: underline; }
+.ki-button[aria-invalid='true'] { outline-color: var(--error); }
+
+/* Radix Presence waits for CSS exit animations before unmounting. */
+.ki-popup {
+  --ki-duration: var(--motion-duration);
+  --ki-easing: var(--motion-easing);
+  transform-origin: var(--radix-popover-content-transform-origin,
+    var(--radix-context-menu-content-transform-origin,
+      var(--radix-tooltip-content-transform-origin, center)));
+  max-width: min(var(--ki-available-width, 100vw), calc(100vw - var(--space-xl)), 420px);
+  max-height: var(--ki-available-height, calc(100dvh - var(--space-xl)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.ki-large {
+  --ki-duration: var(--motion-large-duration);
+  --ki-easing: var(--motion-large-easing);
+}
+.ki-popup[data-state='open'],
+.ki-popup[data-state='delayed-open'],
+.ki-popup[data-state='instant-open'] {
+  animation: ki-popup-in var(--ki-duration) var(--ki-easing);
+}
+.ki-popup[data-state='closed'] {
+  animation: ki-popup-out var(--ki-duration) var(--ki-easing);
+}
+@keyframes ki-popup-in {
+  from { opacity: 0; scale: var(--motion-popup-scale); }
+  to { opacity: var(--ui-opacity, 1); scale: 1; }
+}
+@keyframes ki-popup-out {
+  from { opacity: var(--ui-opacity, 1); scale: 1; }
+  to { opacity: 0; scale: var(--motion-popup-scale); }
+}
+.ki-modal {
+  max-width: min(400px, calc(100vw - var(--space-xl)));
+  max-height: calc(100dvh - var(--space-xl));
+}
+.ki-modal:has(> [data-slot='dialog-close']) [data-slot='dialog-title'],
+.ki-sheet:has(> [data-slot='sheet-close']) [data-slot='sheet-title'] {
+  padding-inline-end: var(--space-xl);
+}
+.ki-backdrop[data-state='open'] {
+  animation: ki-backdrop-in var(--ki-duration) var(--ki-easing);
+}
+.ki-backdrop[data-state='closed'] {
+  animation: ki-backdrop-out var(--ki-duration) var(--ki-easing);
+}
+@keyframes ki-backdrop-in { from { opacity: 0; } to { opacity: var(--ui-opacity, 1); } }
+@keyframes ki-backdrop-out { from { opacity: var(--ui-opacity, 1); } to { opacity: 0; } }
+.ki-popover {
+  --ki-available-width: var(--radix-popover-content-available-width);
+  --ki-available-height: var(--radix-popover-content-available-height);
+}
+.ki-radix[data-ui-component='context-menu'][data-ui-part='popover'] {
+  --ki-available-width: var(--radix-context-menu-content-available-width);
+  --ki-available-height: var(--radix-context-menu-content-available-height);
+}
+.ki-radix[data-ui-component='tooltip'][data-ui-part='popover'] {
+  --ki-available-width: var(--radix-tooltip-content-available-width);
+  --ki-available-height: var(--radix-tooltip-content-available-height);
+  max-width: min(32ch, var(--ki-available-width, calc(100vw - var(--space-xl))));
+}
+.ui-menu-detailed .ki-radix[data-state='open'][data-ui-part='option'] {
+  background: var(--ui-highlighted-background);
+  color: var(--ui-highlighted-color);
+}
+.ki-sheet {
+  max-height: 100dvh;
+  overflow-y: auto;
+  --ki-sheet-x: 0;
+  --ki-sheet-y: 0;
+}
+.ki-sheet[data-side='left'] { --ki-sheet-x: -100%; }
+.ki-sheet[data-side='right'] { --ki-sheet-x: 100%; }
+.ki-sheet[data-side='top'] { --ki-sheet-y: -100%; }
+.ki-sheet[data-side='bottom'] { --ki-sheet-y: 100%; }
+.ki-sheet[data-state='open'] { animation: ki-sheet-in var(--ki-duration) var(--ki-easing); }
+.ki-sheet[data-state='closed'] { animation: ki-sheet-out var(--ki-duration) var(--ki-easing); }
+@keyframes ki-sheet-in { from { translate: var(--ki-sheet-x) var(--ki-sheet-y); opacity: 0; } }
+@keyframes ki-sheet-out { to { translate: var(--ki-sheet-x) var(--ki-sheet-y); opacity: 0; } }
+
+/* Collapsible keeps Radix's measured height, forceMount and exit lifecycle. */
+.ki-disclosure[data-state='open'] { animation: ki-disclosure-in var(--motion-large-duration) var(--motion-large-easing); }
+.ki-disclosure[data-state='closed'] { animation: ki-disclosure-out var(--motion-large-duration) var(--motion-large-easing); }
+.ki-disclosure { overflow: hidden; padding: 0; }
+.ki-collapsible[data-state='closed'] { gap: 0; }
+@keyframes ki-disclosure-in { from { height: 0; opacity: 0; } to { height: var(--radix-collapsible-content-height); opacity: 1; } }
+@keyframes ki-disclosure-out { from { height: var(--radix-collapsible-content-height); opacity: 1; } to { height: 0; opacity: 0; } }
+
+/* Switch geometry is derived from Graphical's controlSize, never its edge. */
+.ki-switch {
+  --switch-height: var(--ui-control);
+  --switch-thumb-size: calc(var(--switch-height) * .75);
+  --switch-inset: calc(var(--switch-height) / 8);
+  --switch-travel: calc(var(--switch-height) * .75);
+  --switch-stretch: 0px;
+  position: relative;
+  display: inline-flex;
+  width: calc(var(--switch-height) * 1.75);
+  height: var(--switch-height);
+  padding: 0;
+  flex-shrink: 0;
+}
+.ki-switch[data-size='sm'] { --switch-height: var(--space-m); }
+.ki-switch-thumb {
+  pointer-events: none;
+  position: absolute;
+  width: calc(var(--switch-thumb-size) + var(--switch-stretch));
+  height: var(--switch-thumb-size);
+  top: var(--switch-inset);
+  inset-inline-start: var(--switch-inset);
+  padding: 0;
+  transition: translate var(--motion-duration) var(--motion-easing), width var(--motion-duration) var(--motion-easing);
+}
+.ki-switch:dir(rtl) { --switch-direction: -1; }
+.ki-switch-thumb[data-state='checked'] {
+  translate: calc((var(--switch-travel) - var(--switch-stretch)) * var(--switch-direction, 1));
+}
+.ki-switch:active:not(:disabled):not([aria-readonly='true']) {
+  --switch-stretch: calc(min(6px, var(--switch-thumb-size) / 4) * var(--motion-enabled, 1));
+}
+.ki-switch:active .ki-switch-thumb { transition-duration: calc(var(--motion-duration) / 2); }
+.ki-switch[data-checked]:focus-visible:not(:disabled) {
+  --ui-shadow: var(--ui-checked-focused-shadow);
+  --ui-edge: var(--ui-checked-focused-edge);
+  --ui-edge-width: var(--ui-checked-focused-edge-width);
+}
+
+/* Unspec'd utility patterns share the existing foundation/field vocabulary. */
+.ki-input-group {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+}
+.ki-input-group:has([data-align='block-start'], [data-align='block-end'], textarea) { flex-direction: column; align-items: stretch; }
+.ki-input-group:has(:focus-visible) { box-shadow: var(--ui-focus-shadow); outline: var(--focus-ring-outline); outline-offset: var(--ui-edge-width); }
+.ki-input-group:has([aria-invalid='true']) { box-shadow: var(--ui-invalid-shadow); }
+.ki-input-group:has(:disabled) { background: var(--ui-disabled-background); color: var(--ui-disabled-color); }
+.ki-input-group > :is([data-slot='input-group-control'], [cmdk-input]) {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  outline: none;
+  flex: 1;
+}
+.ki-input-group-addon { padding: var(--space-xxs) var(--space-xs); gap: var(--space-xs); color: var(--neutral-7); font-size: var(--size-s); }
+.ki-input-group-addon[data-align='inline-start'], .ki-input-group-addon[data-align='block-start'] { order: -1; }
+.ki-input-group-addon[data-align='inline-end'], .ki-input-group-addon[data-align='block-end'] { order: 1; }
+.ki-input-group-addon[data-align^='block'] { width: 100%; justify-content: flex-start; }
+.ki-kbd {
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: var(--neutral-3);
+  color: var(--neutral-7);
+  padding: var(--space-zero) var(--space-xxs);
+  font-family: var(--font-data);
+  font-size: var(--size-xs);
+  line-height: var(--line-xs);
+  letter-spacing: var(--letter-spacing-xs);
+  font-weight: var(--weight-data-medium);
+  gap: var(--space-xxs);
+}
+[data-slot='tooltip-content'] .ki-kbd { background: var(--neutral-1-transparent); color: inherit; }
+.ki-skeleton { border-radius: var(--radius-s); background: var(--neutral-3); animation: ki-pulse calc(var(--motion-large-duration) * 5) var(--motion-large-easing) var(--motion-large-iterations); }
+@keyframes ki-pulse { 50% { opacity: .5; } }
+.ki-command-group [cmdk-group-heading] { padding: var(--space-xs) var(--space-xs) var(--space-xxs); color: var(--neutral-6); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-weight: var(--weight-ui-medium); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ki-popup, .ki-backdrop, .ki-sheet, .ki-disclosure, .ki-skeleton { animation: none; }
+  .ki-switch, .ki-switch-thumb { transition: none; --switch-stretch: 0px; }
+  .ki-switch:active { --switch-stretch: 0px; }
+}
+.ki-badge {
+  padding: 0 var(--space-xs);
+  gap: var(--space-xxs);
+  border-radius: var(--radius-full);
+  font-size: var(--size-xs);
+  line-height: var(--line-xs);
+  letter-spacing: var(--letter-spacing-xs);
+}
+.ki-sidebar-surface:where(.group[data-variant='floating'] *) {
+  box-shadow: var(--border-shadow-s), var(--shadow-s);
+}
+.ki-sidebar-edge[data-side='left'] { box-shadow: inset calc(-1 * var(--border-s)) 0 0 var(--neutral-4-transparent); }
+.ki-sidebar-edge[data-side='right'] { box-shadow: inset var(--border-s) 0 0 var(--neutral-4-transparent); }
+.ki-sidebar-sub { box-shadow: inset var(--border-s) 0 0 var(--neutral-4-transparent); }
+.ki-sidebar-link-sm { font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); padding-block: var(--space-xxs); }
+.ki-sidebar-link-lg { padding-block: var(--space-s); }
+
+.ki-radix[data-ui-component="context-menu"][data-ui-part="option"][data-state="checked"]:not([data-highlighted], [data-disabled]) {
+  --ui-background: var(--ui-selected-background);
+  --ui-background-image: var(--ui-selected-background-image);
+  --ui-bevel: var(--ui-selected-bevel);
+  --ui-bevel-content: var(--ui-selected-bevel-content);
+  --ui-color: var(--ui-selected-color);
+  --ui-radius: var(--ui-selected-radius);
+  --ui-inner-radius: var(--ui-selected-inner-radius);
+  --ui-shadow: var(--ui-selected-shadow);
+  --ui-opacity: var(--ui-selected-opacity);
+  --ui-filter: var(--ui-selected-filter);
+  --ui-backdrop-filter: var(--ui-selected-backdrop-filter);
+  --ui-elevation: var(--ui-selected-elevation);
+  --ui-top: var(--ui-selected-top);
+  --ui-bottom: var(--ui-selected-bottom);
+  --ui-x: var(--ui-selected-x);
+  --ui-left: var(--ui-selected-left);
+  --ui-right: var(--ui-selected-right);
+  --ui-gap: var(--ui-selected-gap);
+  --ui-font: var(--ui-selected-font);
+  --ui-size: var(--ui-selected-size);
+  --ui-letter-spacing: var(--ui-selected-letter-spacing);
+  --ui-weight: var(--ui-selected-weight);
+  --icon-stroke-width: var(--ui-selected-icon-stroke-width);
+  --icon-light-display: var(--ui-selected-icon-light-display);
+  --icon-regular-display: var(--ui-selected-icon-regular-display);
+  --icon-bold-display: var(--ui-selected-icon-bold-display);
+  --ui-line: var(--ui-selected-line);
+  --ui-control: var(--ui-selected-control);
+  --ui-edge: var(--ui-selected-edge);
+  --ui-edge-width: var(--ui-selected-edge-width);
+}
+.ki-switch:not([data-checked], :disabled):hover > .ki-switch-thumb {
+  --ui-background: var(--ui-hover-background);
+  --ui-background-image: var(--ui-hover-background-image);
+  --ui-bevel: var(--ui-hover-bevel);
+  --ui-bevel-content: var(--ui-hover-bevel-content);
+  --ui-color: var(--ui-hover-color);
+  --ui-radius: var(--ui-hover-radius);
+  --ui-inner-radius: var(--ui-hover-inner-radius);
+  --ui-shadow: var(--ui-hover-shadow);
+  --ui-opacity: var(--ui-hover-opacity);
+  --ui-filter: var(--ui-hover-filter);
+  --ui-backdrop-filter: var(--ui-hover-backdrop-filter);
+  --ui-elevation: var(--ui-hover-elevation);
+  --ui-top: var(--ui-hover-top);
+  --ui-bottom: var(--ui-hover-bottom);
+  --ui-x: var(--ui-hover-x);
+  --ui-left: var(--ui-hover-left);
+  --ui-right: var(--ui-hover-right);
+  --ui-gap: var(--ui-hover-gap);
+  --ui-font: var(--ui-hover-font);
+  --ui-size: var(--ui-hover-size);
+  --ui-letter-spacing: var(--ui-hover-letter-spacing);
+  --ui-weight: var(--ui-hover-weight);
+  --icon-stroke-width: var(--ui-hover-icon-stroke-width);
+  --icon-light-display: var(--ui-hover-icon-light-display);
+  --icon-regular-display: var(--ui-hover-icon-regular-display);
+  --icon-bold-display: var(--ui-hover-icon-bold-display);
+  --ui-line: var(--ui-hover-line);
+  --ui-control: var(--ui-hover-control);
+  --ui-edge: var(--ui-hover-edge);
+  --ui-edge-width: var(--ui-hover-edge-width);
+}
+.ki-switch:not([data-checked], :disabled):focus-visible > .ki-switch-thumb {
+  --ui-background: var(--ui-focus-background);
+  --ui-background-image: var(--ui-focus-background-image);
+  --ui-bevel: var(--ui-focus-bevel);
+  --ui-bevel-content: var(--ui-focus-bevel-content);
+  --ui-color: var(--ui-focus-color);
+  --ui-radius: var(--ui-focus-radius);
+  --ui-inner-radius: var(--ui-focus-inner-radius);
+  --ui-shadow: var(--ui-focus-shadow);
+  --ui-opacity: var(--ui-focus-opacity);
+  --ui-filter: var(--ui-focus-filter);
+  --ui-backdrop-filter: var(--ui-focus-backdrop-filter);
+  --ui-elevation: var(--ui-focus-elevation);
+  --ui-top: var(--ui-focus-top);
+  --ui-bottom: var(--ui-focus-bottom);
+  --ui-x: var(--ui-focus-x);
+  --ui-left: var(--ui-focus-left);
+  --ui-right: var(--ui-focus-right);
+  --ui-gap: var(--ui-focus-gap);
+  --ui-font: var(--ui-focus-font);
+  --ui-size: var(--ui-focus-size);
+  --ui-letter-spacing: var(--ui-focus-letter-spacing);
+  --ui-weight: var(--ui-focus-weight);
+  --icon-stroke-width: var(--ui-focus-icon-stroke-width);
+  --icon-light-display: var(--ui-focus-icon-light-display);
+  --icon-regular-display: var(--ui-focus-icon-regular-display);
+  --icon-bold-display: var(--ui-focus-icon-bold-display);
+  --ui-line: var(--ui-focus-line);
+  --ui-control: var(--ui-focus-control);
+  --ui-edge: var(--ui-focus-edge);
+  --ui-edge-width: var(--ui-focus-edge-width);
+}
+}
+
+/* Override Sonner's injected unlayered defaults, not consumer utilities. */
+
+[data-sonner-toaster] .ki-toast {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: var(--ui-gap);
+  transition-duration: var(--motion-large-duration);
+  transition-timing-function: var(--motion-large-easing);
+}
+[data-sonner-toaster] .ki-toast [data-content] { display: flex; flex: 1; flex-direction: column; gap: var(--space-xxs); }
+[data-sonner-toaster] .ki-toast .ki-toast-title {
+  color: var(--ki-toast-title-rest-color);
+  font-family: var(--ki-toast-title-rest-font);
+  font-size: var(--ki-toast-title-rest-size);
+  line-height: var(--ki-toast-title-rest-line);
+  letter-spacing: var(--ki-toast-title-rest-letter-spacing);
+  font-weight: var(--ki-toast-title-rest-weight);
+}
+[data-sonner-toaster] .ki-toast .ki-toast-description {
+  color: var(--ki-toast-description-rest-color);
+  font-family: var(--ki-toast-description-rest-font);
+  font-size: var(--ki-toast-description-rest-size);
+  line-height: var(--ki-toast-description-rest-line);
+  letter-spacing: var(--ki-toast-description-rest-letter-spacing);
+  font-weight: var(--ki-toast-description-rest-weight);
+}
+[data-sonner-toaster] [data-sonner-toast].ki-toast .ki-toast-close {
+  position: absolute;
+  top: var(--space-s);
+  inset-inline-end: var(--space-s);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xxs);
+  cursor: pointer;
+  background: var(--ki-toast-close-rest-background);
+  color: var(--ki-toast-close-rest-color);
+  border: 0;
+  border-radius: var(--ki-toast-close-rest-radius);
+  box-shadow: var(--ki-toast-close-rest-shadow);
+}
+[data-sonner-toaster] [data-sonner-toast].ki-toast .ki-toast-close:hover {
+  background: var(--ki-toast-close-hover-background);
+  color: var(--ki-toast-close-hover-color);
+}
+[data-sonner-toaster] [data-sonner-toast].ki-toast .ki-toast-close:focus-visible { outline: var(--focus-ring-outline); }
+.ki-toast-spinner { animation: ki-toast-spin calc(var(--motion-duration) * 3.5) linear var(--motion-small-iterations); }
+@keyframes ki-toast-spin { to { rotate: 1turn; } }
+@media (prefers-reduced-motion: reduce) { .ki-toast-spinner { animation: none; } }
+
+[data-sonner-toaster] .ki-toast:focus-visible { box-shadow: var(--ui-shadow); outline: var(--focus-ring-outline); outline-offset: var(--ui-edge-width); }
+[data-sonner-toaster] .ki-toast:has([data-close-button]) [data-content] { padding-inline-end: var(--space-xl); }

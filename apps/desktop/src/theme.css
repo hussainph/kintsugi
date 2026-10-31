@@ -1,0 +1,95 @@
+/* Desktop compositions consume the live Graphical foundations. Shared controls
+   keep their own bundled part/state styling; only application roles live here. */
+.ki-text-xxs, .ki-text-xs, .ki-text-s, .ki-text-m, .ki-title, .ki-prose, .ki-prose-title, .ki-data {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-ui-regular);
+  font-size: var(--size-s);
+  line-height: var(--line-s);
+  letter-spacing: var(--letter-spacing-s);
+  text-wrap-style: pretty;
+}
+.ki-text-xxs { font-size: var(--size-xxs); line-height: var(--line-xxs); letter-spacing: var(--letter-spacing-xxs); }
+.ki-text-xs { font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-text-m { font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); }
+.ki-title { font-family: var(--font-brand); font-weight: var(--weight-brand-medium); font-size: var(--size-xl); line-height: var(--line-xl); letter-spacing: var(--letter-spacing-xl); }
+.ki-prose, .ki-prose-title { font-family: var(--font-editorial); font-weight: var(--weight-editorial-regular); font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); }
+.ki-prose-title { font-size: var(--size-l); line-height: var(--line-l); letter-spacing: var(--letter-spacing-l); }
+.ki-data { font-family: var(--font-data); font-weight: var(--weight-data-regular); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-variant-numeric: tabular-nums; }
+.ki-medium { font-weight: var(--weight-ui-medium); }
+.ki-muted { color: var(--neutral-7); }
+.ki-error { color: var(--error); }
+.ki-stack-xxs > * + * { margin-block-start: var(--space-xxs); }
+.ki-stack-xs > * + * { margin-block-start: var(--space-xs); }
+.ki-stack-s > * + * { margin-block-start: var(--space-s); }
+.ki-stack-m > * + * { margin-block-start: var(--space-m); }
+.ki-stack-l > * + * { margin-block-start: var(--space-l); }
+.ki-stack-xl > * + * { margin-block-start: var(--space-xl); }
+.ki-divider-top { border-width: 0; box-shadow: inset 0 var(--border-s) 0 var(--neutral-4); }
+.ki-divider-bottom { border-width: 0; box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4); }
+
+.ki-empty { margin: auto; color: var(--neutral-7); text-align: center; }
+.ki-document-status { position: absolute; right: var(--space-m); bottom: var(--space-s); display: flex; align-items: center; gap: var(--space-s); color: var(--neutral-7); }
+.ki-status-dot { width: var(--space-xs); height: var(--space-xs); flex-shrink: 0; border-radius: var(--radius-full); box-shadow: inset 0 0 0 var(--border-s) var(--neutral-7); }
+.ki-status-dot[data-complete="true"] { background: var(--neutral-10); box-shadow: none; }
+.ki-chevron { transition: transform var(--motion-large-duration) var(--motion-large-easing); }
+.ki-error-surface { border: 0; border-radius: var(--radius-s); padding: var(--space-s); color: var(--error); background: var(--error-transparent); }
+
+.ki-library { padding: calc(var(--space-xxl) + var(--space-s)) var(--space-xl) var(--space-xs); }
+.ki-library-header { margin-bottom: var(--space-xl); }
+.ki-search { position: relative; max-width: 36rem; }
+.ki-search > .ki-search-icon { position: absolute; pointer-events: none; top: 50%; left: var(--space-s); width: 1em; height: 1em; transform: translateY(-50%); color: var(--neutral-7); }
+.ki-search input { padding-inline-start: calc(var(--space-s) + 1em + var(--space-xs)); padding-inline-end: calc(var(--space-s) + 1em + var(--space-xs)); }
+.ki-search-clear { position: absolute; top: 50%; right: var(--space-xxs); translate: 0 -50%; }
+.ki-drop-target { inset: var(--space-s); border: 0; border-radius: var(--radius-l); background: var(--neutral-1); box-shadow: inset 0 0 0 var(--border-l) var(--neutral-7), var(--shadow-m); }
+.ki-library-empty { padding-bottom: var(--space-xxl); }
+.ki-library-help { padding-block: var(--space-xs) var(--space-s); }
+
+.ki-clip-card { border-radius: var(--radius-m); color: var(--neutral-10); transition: transform var(--motion-duration) var(--motion-easing); }
+.ki-clip-card:active { transform: translateY(var(--motion-press-distance)); }
+.ki-clip-card-body { overflow: hidden; border: 0; border-radius: var(--radius-m); background: var(--neutral-2); box-shadow: var(--border-shadow-s); }
+.ki-clip-card-copy { gap: var(--space-s); padding: var(--space-l); }
+.ki-clip-card-meta { padding: var(--space-s) var(--space-xxs) 0; }
+.ki-clip-card:hover .ki-clip-card-title { text-decoration: underline; text-decoration-color: var(--neutral-5); text-underline-offset: var(--space-xxs); }
+.ki-image-placeholder { background: var(--neutral-3); color: var(--neutral-7); }
+.ki-clip-image-surface { border: 0; border-radius: var(--radius-m); background: var(--neutral-2); padding: var(--space-xs); box-shadow: var(--border-shadow-s); }
+.ki-clip-image { border-radius: var(--radius-s); }
+.ki-clip-detail-grid { gap: var(--space-xxl); }
+.ki-clip-title { font-family: var(--font-brand); font-weight: var(--weight-brand-medium); font-size: var(--size-l); line-height: var(--line-l); letter-spacing: var(--letter-spacing-l); }
+.ki-clip-note { font-family: var(--font-editorial); font-weight: var(--weight-editorial-regular); font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); }
+.ki-field-label { font-family: var(--font-ui); font-weight: var(--weight-ui-medium); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); color: var(--neutral-10); }
+.ki-source-link { display: inline-flex; max-width: 100%; align-items: center; gap: var(--space-xxs); color: var(--neutral-7); text-decoration: underline; text-decoration-color: var(--neutral-4); text-underline-offset: var(--space-xxs); border-radius: var(--radius-xs); transition: color var(--motion-duration) var(--motion-easing); }
+.ki-source-link:hover { color: var(--neutral-10); }
+/* QR artwork needs its own high-contrast light surface in either app mode. */
+.ki-pairing-code { border-radius: var(--radius-m); padding: var(--space-s); background: white; }
+.ki-phone-label { font-family: var(--font-ui); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); font-weight: var(--weight-ui-medium); color: var(--neutral-10); }
+
+.ki-refine-popup { width: min(32rem, calc(100vw - var(--space-xl))); padding: 0; }
+.ki-refine-heading, .ki-refine-footer { padding: var(--space-xs) var(--space-s); }
+.ki-refine-result { padding: var(--space-s) var(--space-m); }
+.ki-refine-choice { border-radius: var(--radius-s); padding: var(--space-xxs) var(--space-xs); transition: background-color var(--motion-duration) var(--motion-easing), transform var(--motion-duration) var(--motion-easing); }
+.ki-refine-choice:active { transform: translateY(var(--motion-press-distance)); }
+.ki-refine-choice:hover, .ki-refine-choice[data-selected="true"] { background: var(--neutral-3); }
+.ki-diff-added { border-radius: var(--radius-xs); background: var(--success-transparent); color: var(--neutral-10); text-decoration: none; }
+.ki-diff-removed { color: var(--neutral-7); text-decoration-color: var(--error); }
+
+.ki-clip-card:focus-visible, .ki-source-link:focus-visible, .ki-refine-choice:focus-visible, .ki-used-in-link:focus-visible {
+  outline: 2px solid var(--neutral-10);
+  outline-offset: var(--space-xxs);
+}
+
+/* The headless transport uses a real native <dialog>, inside the theme scope,
+   rather than an unobservable browser prompt. Keep its keyboard contract. */
+[data-headless-dialog] { margin: auto; min-width: min(360px, calc(100vw - var(--space-xl))); max-width: min(560px, calc(100vw - var(--space-xl))); max-height: calc(100vh - var(--space-xl)); overflow: auto; padding: var(--space-l); border: 0; border-radius: var(--radius-m); color: var(--neutral-10); background: var(--neutral-1); box-shadow: var(--border-shadow-s), var(--shadow-l); font-family: var(--font-ui); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); font-weight: var(--weight-ui-regular); text-wrap: pretty; }
+[data-headless-dialog]::backdrop { background: var(--neutral-10-transparent); }
+[data-headless-dialog] form, [data-headless-dialog] label { display: grid; gap: var(--space-s); }
+[data-headless-dialog] input { width: 100%; box-sizing: border-box; padding: var(--space-xs) var(--space-s); border: 0; border-radius: var(--radius-s); color: var(--neutral-10); background: var(--neutral-1); box-shadow: 0 0 0 var(--border-s) var(--neutral-4); font: inherit; }
+[data-headless-dialog] .ki-headless-actions { display: flex; gap: var(--space-xs); justify-content: flex-end; }
+[data-headless-dialog] button { padding: var(--space-xs) var(--space-m); border: 0; border-radius: var(--radius-s); font: inherit; font-weight: var(--weight-ui-medium); background: var(--color-none); color: var(--neutral-10); transition: background-color var(--motion-duration) var(--motion-easing); }
+[data-headless-dialog] button[value="ok"] { background: var(--neutral-10); color: var(--neutral-1); }
+[data-headless-dialog] button:hover { box-shadow: var(--shadow-s); }
+[data-headless-dialog] :is(input, button):focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ki-chevron, .ki-clip-card, .ki-refine-choice, .ki-source-link, [data-headless-dialog] button { transition: none; }
+  .ki-clip-card:active, .ki-refine-choice:active { transform: none; }
+}

@@ -224,3 +224,5 @@ is already open on the owner's screen, leave it alone; don't activate it and
 don't use it to inspect the app. Use `simctl io … screenshot` for evidence.
 `pnpm ios` is a human convenience only; it runs `expo run:ios` with a device
 and opens the UI.
+
+For UI work, follow GUI.md and use graphical-ui, graphical-convert, or graphical-audit as appropriate.

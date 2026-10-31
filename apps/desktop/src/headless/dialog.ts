@@ -10,20 +10,9 @@ function show({ message, input, ok, cancel }: Spec): Promise<string | null> {
     const dialog = document.createElement("dialog");
     dialog.setAttribute("aria-label", message.split("\n")[0]);
     dialog.dataset.headlessDialog = "";
-    Object.assign(dialog.style, {
-      padding: "16px",
-      borderRadius: "8px",
-      border: "1px solid color-mix(in srgb, currentColor 20%, transparent)",
-      background: "Canvas",
-      color: "CanvasText",
-      font: "13px system-ui, sans-serif",
-      minWidth: "360px",
-      maxWidth: "560px",
-    });
 
     const form = document.createElement("form");
     form.method = "dialog";
-    Object.assign(form.style, { display: "grid", gap: "12px" });
 
     const text = document.createElement("label");
     text.style.whiteSpace = "pre-wrap";
@@ -37,18 +26,16 @@ function show({ message, input, ok, cancel }: Spec): Promise<string | null> {
       field.value = input;
       field.autocomplete = "off";
       field.spellcheck = false;
-      Object.assign(field.style, { font: "inherit", padding: "6px 8px", width: "100%", boxSizing: "border-box" });
-      text.append(document.createElement("br"), field);
+      text.append(field);
     }
 
     const buttons = document.createElement("div");
-    Object.assign(buttons.style, { display: "flex", gap: "8px", justifyContent: "flex-end" });
+    buttons.className = "ki-headless-actions";
     const button = (label: string, value: string) => {
       const b = document.createElement("button");
       b.type = "submit";
       b.value = value;
       b.textContent = label;
-      b.style.font = "inherit";
       buttons.append(b);
       return b;
     };
@@ -71,7 +58,8 @@ function show({ message, input, ok, cancel }: Spec): Promise<string | null> {
       }
     });
 
-    document.body.append(dialog);
+    // A native modal enters the top layer without losing inherited theme values.
+    (document.querySelector(".graphical-theme") ?? document.body).append(dialog);
     dialog.showModal();
     (field ?? okButton).focus();
   });

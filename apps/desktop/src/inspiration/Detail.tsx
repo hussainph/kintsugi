@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ArrowUpRight, BookOpen, FileText, MessageCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, FileText, MessageCircle, Trash2 } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { toast } from "sonner";
 import type { Clip, ClipChanged, ClipEdit } from "@kintsugi/core/clips";
@@ -8,6 +8,7 @@ import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
 import { Textarea } from "@kintsugi/ui/components/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { quoteLinkLabel } from "@kintsugi/core/references";
 import { discuss, useScreenContext } from "@/lib/chat";
 import { clipFileLabel, clipLabel, clips, clipSite, sourceUrl } from "./api";
@@ -112,9 +113,9 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
   const chip = clip && { kind: "clip", path: clip.path, label: clip.title || clipLabel(clip) };
   useScreenContext("clip", chip ? () => [chip] : null, [chip?.path, chip?.label]);
 
-  if (!clip) return <div className="flex flex-1 flex-col items-center justify-center gap-4 text-sm text-muted-foreground">
+  if (!clip) return <div className="ki-text-s ki-muted flex flex-1 flex-col items-center justify-center gap-[var(--space-m)]">
     <p role={error ? "alert" : "status"}>{error || "Opening clip…"}</p>
-    <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Back to library</Button>{error && <Button variant="outline" onClick={load}>Try again</Button>}</div>
+    <div className="flex gap-[var(--space-xs)]"><Button variant="ghost" onClick={onClose}>Back to library</Button>{error && <Button variant="outline" onClick={load}>Try again</Button>}</div>
   </div>;
 
   const source = sourceUrl(clip.url);
@@ -122,47 +123,47 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
   // Only web links open; a saved PDF's page link stays in the file.
   const quoteAt = sourceUrl(clip.quoteLink ?? null);
   return (
-    <div className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">
-      <div className="mb-8 flex items-center justify-between gap-3">
-        <Button autoFocus variant="ghost" className="-ml-2 text-muted-foreground" onClick={async () => { await save(); if (!Object.keys(edits.current).length) onClose(); }}><ArrowLeft />Inspiration</Button>
-        <div className="flex items-center gap-3">
-          <span className={`text-xs ${status.startsWith("Not saved") ? "text-destructive" : "text-muted-foreground"}`} role="status">{status}</span>
+    <div className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[var(--space-xxl)]">
+      <div className="mb-[var(--space-xl)] flex items-center justify-between gap-[var(--space-s)]">
+        <Button autoFocus variant="ghost" className="-ml-[var(--space-xs)]" onClick={async () => { await save(); if (!Object.keys(edits.current).length) onClose(); }}><ArrowLeft />Inspiration</Button>
+        <div className="flex items-center gap-[var(--space-s)]">
+          <span className={`ki-text-xs ${status.startsWith("Not saved") ? "ki-error" : "ki-muted"}`} role="status">{status}</span>
           <Button variant="outline" size="sm" onClick={() => discuss({ kind: "clip", path: clip.path, label: clip.title || clipLabel(clip) })}><MessageCircle />Discuss</Button>
         </div>
       </div>
-      {error && <p className="mb-4 text-sm text-destructive" role="alert">{error}</p>}
-      <div className={`grid gap-10 ${clip.image ? "lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,1fr)]" : "mx-auto max-w-2xl"}`}>
-        {clip.image && <div className="flex min-h-48 items-start justify-center rounded-xl bg-muted/40 p-2"><ClipImage path={clip.path} image={clip.image} alt={clipLabel(clip)} className="max-h-[68vh] w-full rounded-lg object-contain" /></div>}
-        <div className="min-w-0 space-y-8 select-text">
-          <div className="space-y-3">
-            <Input aria-label="Clip title" placeholder="Untitled" value={draft.title} onChange={(e) => edit("title", e.target.value)} onBlur={() => void save()} className="h-auto rounded-none border-0 px-0 py-1 text-xl! font-medium shadow-none focus-visible:ring-0" />
-            <p className="text-xs text-muted-foreground">{clipSite(clip)}{clip.author && (clip.kind === "book" || clip.kind === "document") && <><span className="px-1.5 opacity-40">·</span>{clip.author}</>} <span className="px-1.5 opacity-40">·</span> {clip.captured.slice(0, 10)}</p>
-            {clip.summary && <p className="text-sm leading-relaxed text-muted-foreground">{clip.summary}</p>}
-            {(fileLabel || source) && <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      {error && <p className="ki-text-s ki-error mb-[var(--space-m)]" role="alert">{error}</p>}
+      <div className={`ki-clip-detail-grid grid ${clip.image ? "lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,1fr)]" : "mx-auto max-w-2xl"}`}>
+        {clip.image && <div className="ki-clip-image-surface flex min-h-48 items-start justify-center"><ClipImage path={clip.path} image={clip.image} alt={clipLabel(clip)} className="ki-clip-image max-h-[68vh] w-full object-contain" /></div>}
+        <div className="ki-stack-xl min-w-0 select-text">
+          <div className="ki-stack-s">
+            <Input aria-label="Clip title" placeholder="Untitled" value={draft.title} onChange={(e) => edit("title", e.target.value)} onBlur={() => void save()} className="ki-clip-title" />
+            <p className="ki-text-xs ki-muted">{clipSite(clip)}{clip.author && (clip.kind === "book" || clip.kind === "document") && <><span className="px-[var(--space-xs)]">·</span>{clip.author}</>} <span className="px-[var(--space-xs)]">·</span> <time className="ki-data" dateTime={clip.captured}>{clip.captured.slice(0, 10)}</time></p>
+            {clip.summary && <p className="ki-text-s ki-muted">{clip.summary}</p>}
+            {(fileLabel || source) && <div className="flex flex-wrap items-center gap-x-[var(--space-m)] gap-y-[var(--space-xs)]">
               {fileLabel && <Button variant="outline" size="sm" onClick={() => clips.openFile(clip.path).catch((e) => toast.error(String(e)))} title={clip.file ?? undefined}>{fileLabel === "PDF" ? <FileText /> : <BookOpen />}Open {fileLabel}</Button>}
-              {source && <button className="inline-flex max-w-full items-center gap-1 text-xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground" onClick={() => openUrl(source).catch((e) => toast.error(String(e)))} title={source}><span className="truncate">Open source</span><ArrowUpRight className="size-3" /></button>}
+              {source && <Tooltip><TooltipTrigger asChild><button className="ki-source-link ki-text-xs" onClick={() => openUrl(source).catch((e) => toast.error(String(e)))}><span className="truncate">Open source</span><ArrowUpRight className="size-[1em]" /></button></TooltipTrigger><TooltipContent>{source}</TooltipContent></Tooltip>}
             </div>}
           </div>
-          <div className="space-y-3">
-            <label htmlFor="clip-note" className="text-sm font-medium">Your notes</label>
-            <Textarea id="clip-note" value={draft.note} onChange={(e) => edit("note", e.target.value)} onBlur={() => void save()} placeholder="A quote or a note…" className="min-h-48 resize-y border-0 bg-muted/35 px-4 py-3 font-[family-name:var(--font-prose)] text-base! leading-relaxed shadow-none focus-visible:ring-1" />
-            <p className="text-[11px] text-muted-foreground">Markdown. Editing this doesn’t change the saved source text.</p>
-            {(clip.quoteBy || quoteAt) && <p className="text-xs text-muted-foreground" data-quote-origin>
+          <div className="ki-stack-xs">
+            <label htmlFor="clip-note" className="ki-field-label">Your notes</label>
+            <Textarea id="clip-note" aria-describedby="clip-note-help" value={draft.note} onChange={(e) => edit("note", e.target.value)} onBlur={() => void save()} placeholder="A quote or a note…" className="ki-clip-note min-h-48 resize-y" />
+            <p id="clip-note-help" className="ki-text-xs ki-muted">Markdown. Editing this doesn’t change the saved source text.</p>
+            {(clip.quoteBy || quoteAt) && <p className="ki-text-xs ki-muted" data-quote-origin>
               {clip.quoteBy && <>Quote by {clip.quoteBy}</>}
-              {quoteAt && <>{clip.quoteBy && <span className="px-1.5 opacity-40">·</span>}<button className="underline decoration-border underline-offset-4 hover:text-foreground" onClick={() => openUrl(quoteAt).catch((e) => toast.error(String(e)))} title={quoteAt}>{quoteLinkLabel(quoteAt) === "source" ? "Open at the passage" : `Open at ${quoteLinkLabel(quoteAt)}`}</button></>}
+              {quoteAt && <>{clip.quoteBy && <span className="px-[var(--space-xs)]">·</span>}<button className="ki-source-link" onClick={() => openUrl(quoteAt).catch((e) => toast.error(String(e)))} title={quoteAt}>{quoteLinkLabel(quoteAt) === "source" ? "Open at the passage" : `Open at ${quoteLinkLabel(quoteAt)}`}</button></>}
             </p>}
           </div>
-          <div className="space-y-2">
-            <label htmlFor="clip-tags" className="text-sm font-medium">Tags</label>
-            <Input id="clip-tags" placeholder="essays, design, to-read" value={draft.tags} onChange={(e) => edit("tags", e.target.value)} onBlur={() => void save()} className="border-0 bg-muted/35 shadow-none" />
-            <p className="text-[11px] text-muted-foreground">Separate tags with commas.</p>
+          <div className="ki-stack-xs">
+            <label htmlFor="clip-tags" className="ki-field-label">Tags</label>
+            <Input id="clip-tags" aria-describedby="clip-tags-help" placeholder="essays, design, to-read" value={draft.tags} onChange={(e) => edit("tags", e.target.value)} onBlur={() => void save()} />
+            <p id="clip-tags-help" className="ki-text-xs ki-muted">Separate tags with commas.</p>
           </div>
-          <section aria-label="Clip backlinks" data-clip-used-in={clip.path} className="space-y-3 border-t pt-6">
-            {renderUsedIn ? renderUsedIn(clip) : <><h2 className="text-sm font-medium">Used in</h2><p className="text-sm text-muted-foreground/70">Documents that link to this clip show here.</p></>}
+          <section aria-label="Clip backlinks" data-clip-used-in={clip.path} className="ki-stack-s ki-divider-top pt-[var(--space-l)]">
+            {renderUsedIn ? renderUsedIn(clip) : <><h2 className="ki-text-s ki-medium">Used in</h2><p className="ki-text-s ki-muted">Documents that link to this clip show here.</p></>}
           </section>
-          <div className="flex items-center justify-between gap-4">
-            <Button variant="ghost" size="sm" onClick={() => setConfirmTrash(true)} className="text-muted-foreground"><Trash2 />Move to Trash</Button>
-            <div className="flex gap-2">
+          <div className="flex items-center justify-between gap-[var(--space-m)]">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmTrash(true)}><Trash2 />Move to Trash</Button>
+            <div className="flex gap-[var(--space-xs)]">
               {status.startsWith("Not saved") && <Button variant="ghost" size="sm" onClick={() => { edits.current = {}; onClose(); }}>Discard changes</Button>}
               <Button variant="outline" size="sm" onClick={() => void save()} disabled={status === "Saved" || status === "Saving…"}>Save changes</Button>
             </div>
@@ -170,9 +171,9 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
         </div>
       </div>
       <Dialog open={confirmTrash} onOpenChange={(next) => { if (!trashing) setConfirmTrash(next); }}>
-        <DialogContent className="motion-reduce:animate-none">
+        <DialogContent>
           <DialogHeader><DialogTitle>Move this clip to Trash?</DialogTitle><DialogDescription>{clip.file ? "Its saved file and image go with it. You can recover them from the Mac’s Trash." : "Its saved image goes with it. You can recover both from the Mac’s Trash."}</DialogDescription></DialogHeader>
-          <div className="flex justify-end gap-2">
+          <div className="flex justify-end gap-[var(--space-xs)]">
             <Button variant="ghost" disabled={trashing} onClick={() => setConfirmTrash(false)}>Cancel</Button>
             <Button variant="destructive" disabled={trashing} onClick={async () => {
               setTrashing(true);

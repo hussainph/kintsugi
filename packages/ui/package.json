@@ -6,14 +6,23 @@
     "./components/*": "./src/components/*.tsx",
     "./hooks/*": "./src/hooks/*.ts",
     "./lib/*": "./src/lib/*.ts",
-    "./styles.css": "./src/styles.css"
+    "./styles.css": "./src/styles.css",
+    "./graphical": "./components/graphical/index.ts",
+    "./graphical/styles.css": "./components/graphical/styles.css",
+    "./provider": "./src/provider.tsx",
+    "./icons": "./src/icons.tsx"
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
     "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "@hugeicons/core-free-icons": "^4.4.0",
+    "@hugeicons/react": "^1.1.10",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.5.0",
     "lucide-react": "catalog:",
+    "motion": "catalog:",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.8.1",
     "shadcn": "^4.23.0",
@@ -26,10 +35,14 @@
     "tailwindcss": "*"
   },
   "devDependencies": {
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "tailwindcss": "catalog:"
+  },
+  "scripts": {
+    "typecheck": "tsc"
   }
 }

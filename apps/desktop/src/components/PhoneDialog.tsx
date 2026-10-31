@@ -1,4 +1,4 @@
-import { Copy, RotateCcw } from "lucide-react";
+import { Copy, RotateCcw } from "@kintsugi/ui/icons";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@kintsugi/ui/components/dialog";
 import { Switch } from "@kintsugi/ui/components/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { phone, PhoneStatus } from "@/lib/phone";
 
 type Props = {
@@ -63,7 +64,7 @@ export function PhoneDialog({ open, status, onStatus, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-busy={busy}>
         <DialogHeader>
           <DialogTitle>Connect your phone</DialogTitle>
           <DialogDescription>
@@ -72,49 +73,49 @@ export function PhoneDialog({ open, status, onStatus, onClose }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <label className="flex items-center justify-between gap-4 text-sm">
+        <label className="ki-phone-label flex items-center justify-between gap-[var(--space-xs)]">
           Phone access
           <Switch checked={enabled} disabled={busy || !status} onCheckedChange={(on) => run(() => phone.enable(on))} />
         </label>
 
         {enabled && status && (
-          <div className="space-y-4 text-sm">
-            {status.problem && <p className="text-destructive">{status.problem}</p>}
+          <div className="ki-stack-m ki-text-s">
+            {status.problem && <p className="ki-error" role="alert">{status.problem}</p>}
             {status.tailscale === "ready" && qr && status.pair ? (
-              <div className="flex flex-col items-center gap-3">
+              <div className="flex flex-col items-center gap-[var(--space-s)]">
                 <div
-                  className="size-44 rounded-lg bg-white p-3 [&_svg]:size-full"
+                  className="ki-pairing-code size-44 [&_svg]:size-full"
                   role="img"
                   aria-label="Pairing code"
                   dangerouslySetInnerHTML={{ __html: qr }}
                 />
-                <p className="text-center text-muted-foreground">
+                <p className="ki-muted text-center">
                   Scan with your phone's camera to pair. Your Mac is at{" "}
-                  <span className="font-mono text-xs text-foreground">{status.url}</span>
+                  <span className="ki-data text-(--neutral-10)">{status.url}</span>
                 </p>
               </div>
             ) : (
-              status.tailscale !== "ready" && <p className="text-muted-foreground">{HINTS[status.tailscale]}</p>
+              status.tailscale !== "ready" && <p className="ki-muted">{HINTS[status.tailscale]}</p>
             )}
           </div>
         )}
 
         {enabled && status && (
           <DialogFooter className="sm:justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={busy}
-              onClick={() => run(phone.reset)}
-              title="Makes a new pairing code; phones paired with the old one are signed out"
-            >
-              <RotateCcw /> Unpair phones
-            </Button>
-            <div className="flex gap-2">
-              {status.devPair && (
-                <Button variant="outline" size="sm" onClick={() => copy(status.devPair!)} title="Pairs the iOS Simulator">
-                  Simulator link
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" disabled={busy} onClick={() => run(phone.reset)}>
+                  <RotateCcw /> Unpair phones
                 </Button>
+              </TooltipTrigger>
+              <TooltipContent>Makes a new pairing code; phones paired with the old one are signed out</TooltipContent>
+            </Tooltip>
+            <div className="flex flex-wrap gap-[var(--space-xs)]">
+              {status.devPair && (
+                <Tooltip>
+                  <TooltipTrigger asChild><Button variant="outline" size="sm" onClick={() => copy(status.devPair!)}>Simulator link</Button></TooltipTrigger>
+                  <TooltipContent>Pairs the iOS Simulator</TooltipContent>
+                </Tooltip>
               )}
               {status.pair && (
                 <Button size="sm" onClick={() => copy(status.pair!)}>

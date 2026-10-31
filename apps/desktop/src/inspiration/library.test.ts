@@ -58,6 +58,24 @@ test("masonry is stable, retains newest-first DOM order, and never overlaps", ()
   assert.equal(masonry([], 900).height, 0);
 });
 
+test("masonry accepts live theme gaps and caption typography without overlapping", () => {
+  const items = Array.from({ length: 30 }, (_, i) => preview(`inspiration/${i}.md`, "media/a.png"));
+  for (const metrics of [{ gap: 22, captionHeight: 69 }, { gap: 45, captionHeight: 105 }]) {
+    const result = masonry(items, 920, metrics);
+    const previous = new Map<number, number>();
+    for (const tile of result.tiles) {
+      assert.equal(tile.height - tile.bodyHeight, metrics.captionHeight);
+      if (previous.has(tile.x)) assert.equal(tile.y - previous.get(tile.x)!, metrics.gap);
+      previous.set(tile.x, tile.y + tile.height);
+      assert.ok(tile.x + tile.width <= 920 + 0.01);
+    }
+    const firstRow = result.tiles.filter((tile) => tile.y === 0);
+    for (let i = 1; i < firstRow.length; i++) {
+      assert.ok(Math.abs(firstRow[i].x - firstRow[i - 1].x - firstRow[i - 1].width - metrics.gap) < 0.01);
+    }
+  }
+});
+
 test("live refresh retains the loaded window within server pagination limits", async () => {
   const items = Array.from({ length: 301 }, (_, i) => preview(`inspiration/${i}.md`));
   const calls: { offset: number; limit: number }[] = [];

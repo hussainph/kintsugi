@@ -1,4 +1,4 @@
-import { Bookmark, ChevronRight, FileText, Folder, Lightbulb, Rss, Settings, Smartphone, UserRound } from "lucide-react";
+import { Bookmark, ChevronRight, FileText, Folder, Lightbulb, Rss, Settings, Smartphone, UserRound } from "@kintsugi/ui/icons";
 import { useMemo, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
 import {
@@ -10,6 +10,7 @@ import {
   ContextMenuTrigger,
 } from "@kintsugi/ui/components/context-menu";
 import { Input } from "@kintsugi/ui/components/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
@@ -75,7 +76,7 @@ export function Sidebar(props: Props) {
   const rename = (entry: Entry) => (
     <Input
       autoFocus
-      className="h-7 px-2 text-sm"
+      aria-label={`Rename ${entry.name}`}
       defaultValue={entry.name}
       onFocus={(e) => e.target.setSelectionRange(0, entry.name.replace(/\.mdx?$/, "").length)}
       onKeyDown={(e) => {
@@ -95,7 +96,10 @@ export function Sidebar(props: Props) {
     const dir = entry.kind === "folder" ? entry.path : parentDir(entry.path);
     return (
       <ContextMenu>
-        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+        <Tooltip>
+          <TooltipTrigger asChild><ContextMenuTrigger asChild>{row}</ContextMenuTrigger></TooltipTrigger>
+          <TooltipContent side="right">{entry.path}</TooltipContent>
+        </Tooltip>
         <ContextMenuContent className="w-52">
           <ContextMenuItem onSelect={() => props.onNewDoc(dir)}>
             New document<ContextMenuShortcut>⌘N</ContextMenuShortcut>
@@ -131,7 +135,6 @@ export function Sidebar(props: Props) {
                   onClick={() => props.onOpen(entry.path)}
                   onDoubleClick={() => setRenaming(entry.path)}
                   onKeyDown={keys(entry.path)}
-                  title={entry.path}
                 >
                   <FileText />
                   <span className="truncate">{displayName(entry)}</span>
@@ -150,12 +153,12 @@ export function Sidebar(props: Props) {
                 entry,
                 <CollapsibleTrigger asChild>
                   <SidebarMenuButton
-                    className={cn(props.selectedDir === entry.path && "font-medium")}
+                    className={cn(props.selectedDir === entry.path && "ki-medium")}
                     onClick={() => props.onSelectDir(entry.path)}
                     onDoubleClick={() => setRenaming(entry.path)}
                     onKeyDown={keys(entry.path)}
                   >
-                    <ChevronRight className="transition-transform" />
+                    <ChevronRight className="ki-chevron" />
                     <Folder />
                     <span className="truncate">{entry.name}</span>
                   </SidebarMenuButton>
@@ -177,36 +180,40 @@ export function Sidebar(props: Props) {
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} title="Feed (⇧⌘F)">
+              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} tooltip="Feed (⇧⌘F)">
                 <Rss />
                 <span>Feed</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘F</span>
+                <span className="ki-data ki-muted ml-auto">⇧⌘F</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} title="Inspiration (⇧⌘I)">
+              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} tooltip="Inspiration (⇧⌘I)">
                 <Bookmark />
                 <span>Inspiration</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘I</span>
+                <span className="ki-data ml-auto ki-muted">⇧⌘I</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} title="Ideas from Kin (⇧⌘E)">
+              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} tooltip="Ideas from Kin (⇧⌘E)">
                 <Lightbulb />
                 <span>Ideas</span>
-                <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘E</span>
+                <span className="ki-data ki-muted ml-auto">⇧⌘E</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel
-            className={cn("cursor-default", props.selectedDir === "" && "text-sidebar-foreground")}
-            onClick={() => props.onSelectDir("")}
-            title="New documents go to the vault root"
-          >
-            {props.vaultName}
-          </SidebarGroupLabel>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SidebarGroupLabel
+                className={cn("cursor-default", props.selectedDir === "" && "text-sidebar-foreground")}
+                onClick={() => props.onSelectDir("")}
+              >
+                {props.vaultName}
+              </SidebarGroupLabel>
+            </TooltipTrigger>
+            <TooltipContent>New documents go to the vault root</TooltipContent>
+          </Tooltip>
           <TagFilter vocabulary={tags} counts={counts} selected={tagFilter} onChange={setTagFilter} />
           <TagChips
             className="px-2 pb-1"
@@ -216,7 +223,7 @@ export function Sidebar(props: Props) {
           <SidebarGroupContent>
             <SidebarMenu>{shown.map(render)}</SidebarMenu>
             {tagFilter.length > 0 && !shown.length && (
-              <p className="px-2 py-1 text-xs text-muted-foreground">
+              <p className="ki-text-xs ki-muted px-2 py-1">
                 No documents are tagged {tagFilter.map((t) => `#${t}`).join(" and ")}.
               </p>
             )}
@@ -226,19 +233,19 @@ export function Sidebar(props: Props) {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm" className="text-muted-foreground" onClick={props.onPhone}>
+            <SidebarMenuButton size="sm" onClick={props.onPhone}>
               <Smartphone />
               <span>{props.phoneOn ? "Phone access on" : "Connect your phone"}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm" className="text-muted-foreground" onClick={openAboutYou} title="What Kin remembers about you">
+            <SidebarMenuButton size="sm" onClick={openAboutYou} tooltip="What Kin remembers about you">
               <UserRound />
               <span>About you</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm" className="text-muted-foreground" onClick={openSettings} title="Settings (⌘,)">
+            <SidebarMenuButton size="sm" onClick={openSettings} tooltip="Settings (⌘,)">
               <Settings />
               <span>Settings</span>
             </SidebarMenuButton>
@@ -255,11 +262,8 @@ export function StatusDot({ status, className }: { status: string | null; classN
   return (
     <span
       aria-label={status}
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        status === "complete" ? "bg-primary" : "ring-1 ring-muted-foreground ring-inset",
-        className,
-      )}
+      data-complete={status === "complete"}
+      className={cn("ki-status-dot", className)}
     />
   );
 }
