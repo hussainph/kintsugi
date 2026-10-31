@@ -1,6 +1,6 @@
 # Kintsugi
 
-Where scattered inspiration becomes writing. Kintsugi gathers everything you read, watch and hear into a local vault of plain files, and an agent reads it alongside you, keeping a wiki of what it has learned and offering ideas. Then you write: a minimal macOS editor for long-form Markdown and MDX, with a phone app for capturing and browsing away from the desk. The AI organizes, connects and suggests, but it never writes for you. See [docs/vision.md](docs/vision.md) for where it's going.
+Where scattered inspiration becomes writing. Kintsugi brings everything you read, watch and hear into one place: a feed of new work from sources you follow, and a curated library of what's worth keeping, all in a local vault of plain files. Kin, its agent, reads it all alongside you and offers ideas. Then you write: a focused Markdown and MDX editor on the Mac, and a phone app that works like a notes app. Kin finds, connects and suggests, but it never writes for you. See [docs/vision.md](docs/vision.md) for where it's going.
 
 Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by default `~/Documents/Kintsugi`). Each document's frontmatter holds a `status` of `draft` or `complete`.
 
