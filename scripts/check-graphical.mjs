@@ -57,7 +57,7 @@ const text = (locator, expected) => eventually(async () => assert((await locator
 const visible = locator => locator.waitFor({ state: 'visible' });
 const hidden = locator => eventually(async () => { for (const item of await locator.all()) assert.equal(await item.isVisible(), false, 'All exiting surfaces hidden'); });
 async function scenario(theme, reducedMotion = false, disabled = false, width = 1440) {
-  await page.emulateMedia({ reducedMotion: reducedMotion ? 'reduce' : 'no-preference' });
+  await page.emulateMedia({ colorScheme: theme, reducedMotion: reducedMotion ? 'reduce' : 'no-preference' });
   await page.evaluate(({ theme, reducedMotion, disabled, width }) => window.postMessage({ type: 'lab:scenario', scenario: { theme, density: 'comfortable', reducedMotion, textScale: 1, width }, values: { disabled } }, location.origin), { theme, reducedMotion, disabled, width });
   await page.waitForFunction(({ theme, reducedMotion }) => document.documentElement.classList.contains('dark') === (theme === 'dark') && document.documentElement.dataset.labReducedMotion === String(reducedMotion), { theme, reducedMotion });
   await page.locator(`.graphical-theme[data-color-mode="${theme}"]`).first().waitFor({ state: 'attached' });
@@ -75,6 +75,13 @@ async function open(story, mode = 'light', reduced = false, disabled = false) {
   assert.equal(await page.evaluate(() => window.__LAB_ERROR__), undefined, 'Lab boundary');
   await scenario(mode, reduced, disabled);
   await page.evaluate(() => document.fonts.ready);
+  // Font loading can outlast the initial provider effect. Sample only once the
+  // host class, provider mode and resolved palette agree with the scenario.
+  await page.waitForFunction(mode => {
+    const scope = document.querySelector('.graphical-theme');
+    return document.documentElement.classList.contains('dark') === (mode === 'dark') &&
+      scope?.dataset.colorMode === mode && getComputedStyle(scope).getPropertyValue('--neutral-1').trim() === (mode === 'dark' ? '#191919' : '#ffffff');
+  }, mode);
 }
 async function shot(name, fullPage = false) {
   const filename = `${name}.png`;
@@ -239,16 +246,25 @@ async function sampleSpec(name, mode, overrideVariant) {
   const variant = overrideVariant ?? defaultVariant;
   const data = specs[component]; const states = data.variants[variant][mode][p]; const state = states[requestedState] ? requestedState : 'rest'; const expected = states[state];
   const supported = data.parts.find(part => part.id === p).properties;
+  const expectedCss = { ...expected.css };
+  // Owner-approved dark deviation: this main-part sample is the only sampled
+  // rest foreground that selects Color 1. Keep all other captured properties,
+  // and every light-mode expectation, literal and independent of the resolver.
+  const approvedOverrides = {};
+  if (mode === 'dark' && component === 'preview-card' && p === 'trigger' && expected.tokens.foreground === 'color-1') {
+    expectedCss.color = 'var(--neutral-9)';
+    approvedOverrides.color = 'neutral-9 (owner-approved dark contrast)';
+  }
   const props = ['backgroundColor', 'color', 'borderRadius', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing'];
   const mapping = { backgroundColor: 'background', color: 'foreground', borderRadius: 'radius', fontFamily: 'font', fontSize: 'textSize', fontWeight: 'weight', lineHeight: 'lineHeight', letterSpacing: 'letterSpacing' };
   const keys = props.filter(key => supported.includes(mapping[key]) && expected.css[key] !== undefined);
   const target = component === 'button' ? section(name).getByRole('button', { name: variant, exact: true }) : section(name).locator(selector).first();
   const observed = await target.evaluate((el, { css, keys }) => {
-    const cs = getComputedStyle(el); const probe = document.createElement('div'); Object.assign(probe.style, css); document.body.append(probe); const reference = getComputedStyle(probe);
+    const cs = getComputedStyle(el); const probe = document.createElement('div'); Object.assign(probe.style, css); document.querySelector('.graphical-theme').append(probe); const reference = getComputedStyle(probe);
     const pairs = Object.fromEntries(keys.map(key => [key, { actual: cs[key], expected: reference[key] }])); probe.remove(); return { pairs, borderWidth: cs.borderTopWidth };
-  }, { css: Object.fromEntries(keys.map(key => [key, typeof expected.css[key] === 'number' && !['fontWeight'].includes(key) ? `${expected.css[key]}px` : expected.css[key]])), keys });
+  }, { css: Object.fromEntries(keys.map(key => [key, typeof expectedCss[key] === 'number' && !['fontWeight'].includes(key) ? `${expectedCss[key]}px` : expectedCss[key]])), keys });
   const mismatches = Object.entries(observed.pairs).filter(([, pair]) => pair.actual !== pair.expected);
-  const result = { name, mode, component, part: p, state, variant, ...observed, mismatches };
+  const result = { name, mode, component, part: p, state, variant, approvedOverrides, ...observed, mismatches };
   report.specSamples.push(result);
   assert.equal(mismatches.length, 0, JSON.stringify(mismatches));
   assert.equal(observed.borderWidth, '0px', 'Zero native border');

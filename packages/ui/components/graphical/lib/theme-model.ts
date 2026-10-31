@@ -5,6 +5,7 @@ import { componentRadius, RADIUS_CORNERS } from "./component-radius";
 import type { CSSProperties } from 'react';
 import { colorWithOpacity } from "./dialkit-color";
 import { contrastingTextColor } from "./color-contrast";
+import { contrastRoleColorKey, defaultComponentFocusShadow } from "./contrast-correction";
 import {
   iconWeightVariables,
   themeIconWeightVariables,
@@ -259,7 +260,9 @@ export function componentFocusOutline(
 ) {
   const ring = componentFocusRing(theme, tokens);
   const width = resolveBorderWidth(theme, ring.width);
-  const color = resolveColor(theme, mode, ring.color);
+  const color = resolveColor(theme, mode,
+    tokens.focusRing || theme.focusRing ? ring.color
+      : contrastRoleColorKey(theme, mode, ring.color, 'focus'));
   return `${width}px solid ${ring.opacity === 100 ? color : `color-mix(in srgb, ${color} ${ring.opacity}%, transparent)`}`;
 }
 
@@ -1102,7 +1105,8 @@ export function resolveTokenStyle(
       .filter((layer) => layer.bevel)
       .map((layer) => layer.value)
       .join(', ') || 'none';
-  const focus = `0 0 0 ${theme.border.l}px color-mix(in srgb, ${resolveColor(theme, mode, 'color-1-transparent')} 24%, transparent)`;
+  const focus = defaultComponentFocusShadow(theme, mode) ??
+    `0 0 0 ${theme.border.l}px color-mix(in srgb, ${resolveColor(theme, mode, 'color-1-transparent')} 24%, transparent)`;
   return {
     background:
       backgroundOpacity === 100 || background === 'transparent'
@@ -1255,7 +1259,8 @@ export function resolveModeTokens(theme: ThemeDefinition, mode: ColorMode) {
     }),
     danger: color('error'),
     dangerText: contrastingTextColor(color('error'), color('neutral-1')),
-    focus: color('color-1'),
+    focus: color(theme.focusRing ? 'color-1'
+      : contrastRoleColorKey(theme, mode, 'color-1', 'focus')),
   };
 }
 export type ModeTokens = ReturnType<typeof resolveModeTokens>;

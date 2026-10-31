@@ -36,7 +36,7 @@ const report = {
   modes: {}, console: [], pageErrors: [], requestFailures: [], httpErrors: [], observations: [],
   limitations: [
     'Scratch-vault UI only; no native Tauri window, OS phone settings, provider credentials, or owner vault.',
-    'LT Superior Serif and Timeless Sans assets are pending. Computed family/token checks are not a claim of loaded-font visual parity.',
+    'LT Superior Serif 400/500/700 and Geist Mono are loaded. Timeless Sans remains absent pending the supplied v1.2 license redistribution gate; no font-complete parity claim.',
     'AI disabled: verify unauthenticated Refine error only; no generated revision or accept/retry network success.',
   ],
 };
@@ -139,13 +139,22 @@ try {
     // Exercise the real live matchMedia listener rather than toggling .dark.
     await page.emulateMedia({ colorScheme: mode });
     await page.locator(`.graphical-theme[data-color-mode="${mode}"]`).waitFor();
-    const state = await page.evaluate(() => ({
-      hashCleared: location.hash === '', darkMedia: matchMedia('(prefers-color-scheme: dark)').matches,
-      darkClass: document.documentElement.classList.contains('dark'),
-      theme: document.querySelector('.graphical-theme')?.getAttribute('data-graphical-theme'),
-      colorMode: document.querySelector('.graphical-theme')?.getAttribute('data-color-mode'),
-      fonts: [...document.fonts].map(f => ({family:f.family, status:f.status, weight:f.weight})),
-    }));
+    const state = await page.evaluate(async () => {
+      const serif = [];
+      for (const weight of [400, 500, 700]) {
+        const faces = await document.fonts.load(`${weight} 16px "LT Superior Serif"`, 'Kintsugi');
+        serif.push({ weight, loaded: faces.some(face => face.family.replaceAll('"', '') === 'LT Superior Serif' && face.status === 'loaded') });
+      }
+      return {
+        hashCleared: location.hash === '', darkMedia: matchMedia('(prefers-color-scheme: dark)').matches,
+        darkClass: document.documentElement.classList.contains('dark'),
+        theme: document.querySelector('.graphical-theme')?.getAttribute('data-graphical-theme'),
+        colorMode: document.querySelector('.graphical-theme')?.getAttribute('data-color-mode'),
+        fonts: [...document.fonts].map(f => ({family:f.family, status:f.status, weight:f.weight})),
+        serif,
+      };
+    });
+    assert(state.serif.every(face => face.loaded), 'Actual LT Superior Serif faces load at all requested weights');
     assert.ok(state.hashCleared); assert.equal(state.darkMedia, mode === 'dark'); assert.equal(state.darkClass, mode === 'dark');
     assert.equal(state.colorMode, mode); assert.ok(state.theme);
     await openCraft(page);

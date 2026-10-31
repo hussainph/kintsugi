@@ -1,0 +1,24 @@
+/* Owner-supplied LyonsType archive, original OTFs (no conversion tool installed).
+   SIL OFL 1.1 with Reserved Font Name: see superior-serif/OFL.txt.
+   The vendor supplies no italic face; browser synthesis is not a real italic. */
+@font-face {
+  font-family: "LT Superior Serif";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./superior-serif/LTSuperiorSerif-Regular.otf") format("opentype");
+}
+@font-face {
+  font-family: "LT Superior Serif";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./superior-serif/LTSuperiorSerif-Medium.otf") format("opentype");
+}
+@font-face {
+  font-family: "LT Superior Serif";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./superior-serif/LTSuperiorSerif-Bold.otf") format("opentype");
+}

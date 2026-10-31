@@ -6,10 +6,12 @@ import { theme } from "../../components/graphical/theme"
 import { resolveComponentPartStyle, resolveButtonPartStyle, type ComponentPartId } from "../../components/graphical/lib/component-parts"
 import { componentCssStyle, type ButtonVariant, type ColorMode, type ComponentId, type ComponentState, type ComponentStyle } from "../../components/graphical/lib/theme-model"
 import { controlAppearances, inputAppearanceState } from "../../components/graphical/lib/component-appearances"
+import { correctComponentContrastStyle } from "../../components/graphical/lib/contrast-correction"
+import type { ComponentTokens } from "../../components/graphical/lib/theme-model"
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url))
 type Spec = {
-  variants: Record<string, Record<ColorMode, Record<string, Record<string, { style: ComponentStyle; css: Record<string, unknown> }>>>>
+  variants: Record<string, Record<ColorMode, Record<string, Record<string, { tokens: ComponentTokens; style: ComponentStyle; css: Record<string, unknown> }>>>>
 }
 
 // Verify the full downloaded catalog as well as the parts reused by the
@@ -22,7 +24,7 @@ const components = readdirSync(`${root}/gui/components/kintsugi`)
 assert.equal(components.length, 38, "full supplied Graphical component catalog")
 
 for (const component of components) {
-  test(`${component}: runtime matches every supplied variant, mode, part and state`, () => {
+  test(`${component}: captured light and unrelated dark styles remain exact; approved dark contrast roles resolve`, () => {
     const markdown = readFileSync(`${root}/gui/components/kintsugi/${component}.md`, "utf8")
     const spec = JSON.parse(markdown.split("```json\n")[1]!.split("\n```")[0]!) as Spec
     for (const [variant, modes] of Object.entries(spec.variants)) {
@@ -31,12 +33,17 @@ for (const component of components) {
           for (const [state, expected] of Object.entries(states)) {
             const label = `${component}/${variant}/${mode}/${part}/${state}`
             const actual = resolveComponentPartStyle(theme, mode as ColorMode, component, part as ComponentPartId, state as ComponentState, variant as ButtonVariant | "default")
-            assert.deepEqual(JSON.parse(JSON.stringify(actual)), expected.style, label)
-            assert.deepEqual(JSON.parse(JSON.stringify(componentCssStyle(actual))), expected.css, `${label} CSS`)
+            const corrected = correctComponentContrastStyle(theme, mode as ColorMode, component, part as ComponentPartId, state as ComponentState, variant as ButtonVariant | "default", expected.tokens, expected.style)
+            // Keep the raw capture authoritative for every unrelated property,
+            // including CSS geometry/type/effects, not merely a new snapshot.
+            assert.deepEqual(JSON.parse(JSON.stringify(componentCssStyle(expected.style))), expected.css, `${label} captured CSS`)
+            if (mode === "light") assert.deepEqual(corrected, expected.style, `${label} light unchanged`)
+            assert.deepEqual(JSON.parse(JSON.stringify(actual)), corrected, label)
+            assert.deepEqual(JSON.parse(JSON.stringify(componentCssStyle(actual))), JSON.parse(JSON.stringify(componentCssStyle(corrected))), `${label} CSS`)
             if (component === "button" && part === "control") {
               // The compatibility Button uses this merged control+label resolver.
               const labelStyle = parts.label![state]!.style
-              const merged = { ...expected.style }
+              const merged = { ...corrected }
               for (const key of ["foreground", "fontFamily", "fontSize", "lineHeight", "letterSpacing", "fontWeight"] as const) {
                 Object.assign(merged, { [key]: labelStyle[key] })
               }
