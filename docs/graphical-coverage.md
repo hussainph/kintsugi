@@ -1,19 +1,18 @@
 # KI-20 — Graphical Kintsugi integration
 
-## Result and remaining gate
+## Result
 
 The exact Graphical revision `74tv5u2yagr6` is integrated across the shared DOM
-UI, desktop screens, CodeMirror and Lab entries. The follow-up implements the
-**owner-approved dark contrast correction** and loads **LT Superior Serif** at
-400/500/700, alongside Geist Mono. Palette values, light-mode assignments and
-Charter/Paper identity remain unchanged.
+UI, desktop screens, CodeMirror and Lab entries. The owner-approved dark contrast
+correction is applied. **All selected upright fonts and requested weights are
+installed:** LT Superior Serif 400/500/700, Timeless Sans 400/500/600 and Geist
+Mono 400/500/600. Palette values, light-mode assignments and Charter/Paper
+identity remain unchanged.
 
-**Remaining gate: Timeless Sans licensing.** The owner supplied the font archive,
-but its included v1.2 license restricts bundling/redistribution (§6) and retains
-the packaged version (§8.4). Per the owner's instruction, no Timeless font is
-shipped pending a v1.3-licensed vendor archive or written repository permission.
-Its authored `sans-serif` fallback remains explicit. See the font table and
-`packages/ui/src/fonts/README.md`.
+**Timeless's license gate is resolved by explicit owner election of the vendor's
+v1.3 contract on 2026-10-31.** The original, unmodified Sans WOFF2 is shipped with
+the complete current contract and election/provenance NOTICE. See the font table
+and `packages/ui/src/fonts/README.md`. No font/contrast human gate remains.
 
 Mobile (Expo/React Native) is blocked/excluded: DOM Base UI components do not
 apply. A separate native implementation is required. The Lab shell chrome is
@@ -89,7 +88,7 @@ state/CSS table is regression-tested against the bundled runtime. All 38 reusabl
 modules are implemented, rather than reconstructed from Markdown. Interactive
 Lab compositions live at `component/graphical-catalog` (seven focused stories).
 “Verified” below distinguishes source/behavior checks from exact font/visual
-parity, which is not claimed while Timeless Sans remains unshipped. Captured
+parity across every glyph/platform/state, which is not claimed. Captured
 light styles and unrelated dark properties remain exact; dark role colors use
 the owner-approved assignments below. The coherent
 final browser run passed **180/180 checks**, all **38 components in light and
@@ -203,26 +202,39 @@ preserved. Pretty wrapping is scoped to UI, not editor/preformatted text.
 
 ## Fonts
 
-| Selected alias / weights | Status | Official source and remaining action |
+| Selected alias / weights | Status | Source and license basis |
 | --- | --- | --- |
 | `Sidebar Geist Mono` 400/500/600 | Loaded; upright variable 100–900, vendored Fontsource 5.3.0 subsets; OFL beside files | https://vercel.com/font; stylesheet `packages/ui/src/fonts/geist-mono.css` |
 | `LT Superior Serif` 400/500/700 | Loaded: original Regular/Medium/Bold OTFs, exact OS/2 weights and byte-identical archive hashes; real browser FontFaces loaded for each weight | Owner-supplied `LTSuperiorSerif.zip`; SIL OFL 1.1 with Reserved Font Name, full `superior-serif/OFL.txt` beside faces. No converter was available on PATH, so original OTFs were used as authorized. |
-| `Timeless Sans` 400/500/600 | **Not shipped: included v1.2 license gate**, not a missing download | Owner-supplied `Timeless-Type-Family-1.094.zip`. README recommends web WOFF2s; companion VF metadata confirms wght300–800, STYL0–100, ital0–100. Sans would be pinned STYL100 / ital0. Need a vendor archive with v1.3 or written private-repository permission. |
+| `Timeless Sans` 400/500/600 | Loaded: original, unmodified `TimelessSansVF.woff2`, variable 300–800, normal style / swap; Sans `STYL=100`, upright `ital=0` | Owner-supplied `Timeless-Type-Family-1.094 (1).zip`; owner elected the vendor's **Timeless Free Font License v1.3 (24 October 2026)** on 2026-10-31. Full `timeless-sans/LICENSE.txt` and `NOTICE.txt` accompany the font. |
 
-The original archives in Downloads were read only; temp inspection is inside the
-worktree. Timeless README and LICENSE.pdf both identify **1.2 (18 Sep 2026)**.
-Exact restrictive clause, §6:
+### Timeless license election and provenance
 
-> “Bundle, mirror or otherwise redistribute the fonts, in whole or in part,
-> whether original, custom cut or embedding conversion”
+The original archives in Downloads were read only. The re-downloaded archive
+has the same SHA-256 as the earlier copy and still includes a v1.2 PDF. Its §8.4
+**does not** contain the later-version election wording; that was checked.
+Initially shipping stopped under the earlier instruction. The owner then
+explicitly chose the vendor's current **v1.3**, whose §8.4 says:
 
-§8.4 says “the version that came with your copy of the fonts keeps applying to
-that copy.” §5.3 allows embedding as part of a work and §5.5 collaborator sharing,
-but neither explicitly resolves repository bundling against §6. The newer online
-v1.3 license explicitly permits code repositories, but was not silently substituted
-for the contract supplied with these fonts. Shipping stopped as instructed; no
-Timeless binaries or license PDF are tracked. Official destination:
-https://www.timeless.co/type/playground and https://www.timeless.co/type/license .
+> The version that came with your copy of the fonts keeps applying to that copy,
+> unless you choose to follow a later version instead.
+
+The governing copy is the full current contract from
+https://www.timeless.co/type/license, version 1.3 dated 24 October 2026, including
+§7 confirmed against the browser page. §5.3 expressly permits distribution as
+part of a work's public/private code repository; §5.5 requires the contract to
+accompany font files. The owner's election on 2026-10-31 is recorded in the
+adjacent NOTICE. The old v1.2 PDF is not committed as the governing license.
+Standalone font redistribution, renaming, unauthorized modification and AI
+training remain prohibited by §6. This is not an OFL/open-source font license.
+
+Only the original `Sans-Grotesk/TimelessSansVF.woff2` is copied (211,828 bytes;
+SHA-256 `353b3fbb75b8e9b927db12d520ff8d446d89c36897b47a90d70dbe36e9eeb23a`).
+There is no conversion, subsetting or font modification. Vendor VF metadata
+confirms wght300–800 / STYL0–100 / ital0–100. UI scopes and **portalled roots**
+inherit property-level `font-variation-settings: "STYL" 100, "ital" 0` for WebKit;
+the font-face descriptor repeats these settings for browsers supporting it.
+Only upright is configured; **no Timeless italic face is registered**.
 
 **LT has no vendor italic face.** Existing emphasis/quotes can therefore use a
 browser-synthesized slant, not a genuine loaded italic; no replacement family or
@@ -232,8 +244,18 @@ Vite distributions. No Serif-Text or Grotesk static fonts were shipped.
 
 Browser verification checks returned `FontFace` objects and their loaded status,
 not merely `document.fonts.check` (which can report true for a missing family via
-fallback). LT and Geist pass all requested weights. Timeless correctly returns
-no registered faces and is recorded as a license gate, not a successful load.
+fallback). All three families pass the requested weights. Timeless is checked
+at 400/500/600 in both light and dark, with computed family/weight/axes and real
+rendered-font evidence; no absent-family escape flag remains.
+
+Chrome's CDP reports the vendor's internal family as `Timeless Sans Grotesk
+Light`; it was not renamed. The instance PostScript name carries the actual
+weight/STYL axis values, while the UI's CSS alias remains `Timeless Sans`.
+Six rendered ASCII probes (three weights × two modes) use the custom font,
+not a system fallback. Inherited UI rendering is pixel-identical to explicit
+STYL100/ital0 and differs from STYL0 in both modes. Real body-portalled popup
+and action text also compute the correct family and axes. This validates the
+Sans selection rather than treating the vendor's base family label as proof.
 
 ## Icons
 
@@ -293,8 +315,8 @@ Regression tests inspect all **546 light + 546 dark appearances**: 262 dark
 appearances differ only in approved color fields; light, palette, identity,
 geometry, typography and motion remain unchanged. Independent browser readings
 pass **13/13 contrast assertions** for real rendered fills, marks, dots, thumbs,
-PreviewCard and focus. The former dark-contrast blocker is resolved; Timeless
-licensing remains the only new sign-off gate.
+PreviewCard and focus. Both the former contrast gate and Timeless licensing gate
+are resolved; the latter follows the owner's explicit v1.3 election above.
 
 ### Commands and results
 
@@ -306,15 +328,16 @@ licensing remains the only new sign-off gate.
 | `pnpm --filter @kintsugi/desktop test:references` | 6/6 pass |
 | `pnpm --filter @kintsugi/desktop test:headless` | 27/27 pass |
 | `pnpm --filter @kintsugi/lab-app test` | 8/8 pass |
+| `pnpm --filter @kintsugi/lab test` | 40/40 pass, including CLI/state/analysis/registry checks |
 | `pnpm --filter @kintsugi/editor test` | 13/13 pass |
 | `pnpm lab:check` | Pass; 17 entries and complete state logs |
-| `pnpm --filter @kintsugi/lab exec tsx --test --test-concurrency="$VOLLI_CONCURRENCY_HINT" ../../packages/ui/src/components/graphical.test.ts ../../packages/ui/src/contrast.test.ts ../../packages/ui/src/fonts/font-assets.test.ts` | 57/57 pass: captured specs plus approved dark roles, enabled/disabled customization guards, font hashes/weights/aliases/notices |
+| `pnpm --filter @kintsugi/lab exec tsx --test --test-concurrency="$VOLLI_CONCURRENCY_HINT" ../../packages/ui/src/components/graphical.test.ts ../../packages/ui/src/contrast.test.ts ../../packages/ui/src/fonts/font-assets.test.ts` | 61/61 pass: captured specs, approved dark roles, customization guards, font hashes/descriptors, complete v1.3 election/contract and distribution notices |
 | `pnpm --filter @kintsugi/desktop build` | Pass; existing-style >500KB chunk warning remains |
 | `node --check scripts/check-desktop-theme.mjs`, `scripts/check-graphical.mjs`, `scripts/check-theme-assets.mjs` | Pass |
-| `node scripts/check-theme-assets.mjs --allow-blocked-timeless` | 13/13 rendered contrast pairs pass; actual LT 400/500/700 and Geist 400/500/600 FontFaces loaded; **Timeless remains a reported license gate, not a passing asset** |
-| `node scripts/check-graphical.mjs --out .headless/graphical/followup-green` | 180/180 pass; all 38 components both modes, 84/84 samples against captured specs plus the explicit approved dark PreviewCard foreground; zero runtime errors |
+| `node scripts/check-theme-assets.mjs` | All three families load in both modes; Timeless 400/500/600 computed + CDP-rendered faces verified; inherited Sans glyphs match STYL100 and differ from STYL0; UI/portal axes correct; 13/13 contrast pairs; zero license gates |
+| `node scripts/check-graphical.mjs --out .headless/graphical/timeless-green` | 180/180 pass; all 38 components both modes, 84/84 samples against captured specs plus the explicit approved dark PreviewCard foreground; zero runtime errors |
 | `node scripts/check-graphical.mjs --behavior-only --only ContextMenu --out .headless/graphical/context-guard` | 22/22 pass after final caller-cancellation guard, including both keyboard invocation keys, focus and action |
-| `KINTSUGI_THEME_URL=<printed loopback capability> node scripts/check-desktop-theme.mjs` | Exit 0; 26/26 light/dark workflows; 38 refreshed screenshots; zero console/page/HTTP errors or failed requests |
+| `KINTSUGI_THEME_URL=<printed loopback capability> node scripts/check-desktop-theme.mjs` | Exit 0; 26/26 light/dark workflows; 38 refreshed screenshots; zero console/page/HTTP errors or failed requests; one known Tauri callback warning on intentional reload |
 | `node apps/lab/verify-graphical.mjs http://127.0.0.1:4415` | 33 focused checks pass after the font/contrast follow-up; searchable Menu, forms/keyboard/portals, notifications, foundations, responsive/text scaling; no console/page errors |
 | `pnpm --filter @kintsugi/lab exec tsx src/boot.ts --url http://127.0.0.1:4415 --out ../../.lab-artifacts/ki-20/boot --workers "$VOLLI_CONCURRENCY_HINT"` | 32/32 stories pass across all 17 entries; screenshots and manifest |
 | `git diff --check` | Pass |
@@ -375,17 +398,17 @@ The desktop report and exact computed-style/assertion inventory are
 `.lab-artifacts/ki-20/desktop/report.md` and `results.json`; the Lab boot manifest
 is `.lab-artifacts/ki-20/boot/manifest.json`. Focused Lab captures are in
 `apps/lab/node_modules/.graphical-interactions/`; full final catalog results and
-screenshots are in `.headless/graphical/followup-green/`. Font/contrast evidence
+screenshots are in `.headless/graphical/timeless-green/`. Font/contrast evidence
 is `.headless/theme-assets/report.json`, with a committed copy at
 `docs/review/ki-20/font-contrast-verification.json`. Full generated runs are intentionally
 gitignored, not immutable fixture history; eight selected review images and the
 catalog action report are committed. Screenshots are local review evidence,
-not a claim of font-complete pixel equivalence.
+not a claim of exhaustive pixel equivalence across all glyphs/platforms/states.
 
 **Unverified by design:** successful authenticated AI generation/accept/retry,
 actual Tailscale phone pairing, native OS behavior, and every motion frame/swipe
 velocity/platform. The headless policy precludes native phone integration here.
-Mobile requires its own RN theme work. The approved dark contrast and LT Superior
-Serif setup are complete. Timeless Sans's packaged license permission remains
-the explicit sign-off blocker; absence of a real LT italic face is a disclosed
-vendor coverage limitation, not a substituted font.
+Mobile requires its own RN theme work. The approved dark contrast and all
+selected upright font families/weights are complete. No font/license/contrast
+human gate remains. Absence of a real LT italic face and upright-only Timeless
+registration are disclosed coverage limits, not substituted fonts.

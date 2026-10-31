@@ -2,12 +2,12 @@
 
 ## Final outcome
 
-**One coherent complete follow-up run: 180/180 checks PASS; 38/38 behavioral rows PASS in both light and dark; 84/84 rendered main-part samples match the capture plus the approved dark PreviewCard foreground.** No console, page or HTTP errors. Run: 2026-10-31T19:32:33.438Z → 2026-10-31T19:34:34.129Z, on a fresh server with source edits frozen.
+**One coherent complete follow-up run: 180/180 checks PASS; 38/38 behavioral rows PASS in both light and dark; 84/84 rendered main-part samples match the capture plus the approved dark PreviewCard foreground.** No console, page or HTTP errors. Run: 2026-10-31T20:43:14.052Z → 2026-10-31T20:46:08.671Z, after Timeless installation, on a fresh server with source edits frozen.
 
 - Final source guard follow-up:22/22 PASS after adding caller baseUIHandlerPrevented cancellation guard to ContextMenu.Trigger.
 - Final Caption copy follow-up:2/2 PASS after wording correction, with current screenshots.
 - Existing Lab boot CLI:17 entries /32 stories PASS, including all discovered component/page stories.
-- No fallback/unavailable/loading icon glyphs after settling. LT Superior Serif400/500/700 and Sidebar Geist Mono400/500/600 are genuinely loaded (returned FontFace objects). Timeless Sans is deliberately unshipped pending its packaged v1.2 license gate.
+- No fallback/unavailable/loading icon glyphs after settling. LT Superior Serif400/500/700, Sidebar Geist Mono400/500/600 and Timeless Sans400/500/600 are genuinely loaded. Timeless's original Sans VF is distributed under the owner's explicit v1.3 election, with the complete current contract and NOTICE. All selected upright font roles/weights are complete.
 - Catalog checks use headless:true Chrome, one serial worker, loopback server4415. Lab boot uses the supplied concurrency hint. No native app/window launched.
 
 ## Resolved findings and installed-library adaptations
@@ -81,22 +81,22 @@ All named imports above are from `@kintsugi/ui/graphical`; implementation entry 
 
 1. `node --check scripts/check-graphical.mjs` — PASS.
 2. `pnpm --filter @kintsugi/lab exec tsx src/boot.ts --url http://127.0.0.1:4415 --out ../../.lab-artifacts/ki-20/boot --workers "$VOLLI_CONCURRENCY_HINT"` —32/32 stories PASS,17 entries; `.lab-artifacts/ki-20/boot/manifest.json`.
-3. `node scripts/check-graphical.mjs --out .headless/graphical/followup-green` — **180/180 PASS**, including all38 rows both modes and all84 style samples with the approved dark role; `followup-green/report.json`.
+3. `node scripts/check-graphical.mjs --out .headless/graphical/timeless-green` — **180/180 PASS**, including all38 rows both modes and all84 style samples with the approved dark role and all font families installed; `timeless-green/report.json`.
 4. `node scripts/check-graphical.mjs --behavior-only --only ContextMenu --out .headless/graphical/context-guard` —22/22 PASS after final caller-cancellation guard.
 5. Initial one-off headless Playwright Caption check —2/2 modes PASS: asserts final wording, type/clear/blur invalid, fill/blur clears; the complete follow-up catalog repeats the interactions.
-6. `node scripts/check-theme-assets.mjs --allow-blocked-timeless` —13/13 dark contrast pairs pass; actual LT/Geist faces loaded; one explicit Timeless license gate.
+6. `node scripts/check-theme-assets.mjs` — all selected families/weights loaded; computed and real rendered Timeless400/500/600 in both modes, with Sans/upright axes;13/13 dark contrast pairs pass, no missing-font escape or license gate.
 
 ## Screenshots and artifacts
 
 Paths below are relative to `.headless/graphical/` unless noted:
 
-- Complete results/spec values/fonts/portals/errors: `followup-green/report.json` and `report.md`; command log: `.headless/followup-catalog.log`.
-- Full catalog light/dark: `followup-green/catalog-{light,dark}.png`.
-- Section captures: `followup-green/{controls,forms,disclosure,overlays,menus,feedback}-{light,dark}.png`.
-- Open modal/drawer/toast: `followup-green/{dialog,drawer,toast}-{light,dark}.png`.
-- Direct Input states: `followup-green/direct-input-states-{light,dark}.png`.
-- Reduced motion: `followup-green/{feedback-dark-reduced-motion,dialog-dark-reduced-motion}.png`.
-- Narrow viewport: `followup-green/catalog-light-390-{top,bottom}.png`, `followup-green/dialog-light-390.png`.
+- Complete results/spec values/fonts/portals/errors: `timeless-green/report.json` and `report.md`; command log: `.headless/timeless-catalog.log`.
+- Full catalog light/dark: `timeless-green/catalog-{light,dark}.png`.
+- Section captures: `timeless-green/{controls,forms,disclosure,overlays,menus,feedback}-{light,dark}.png`.
+- Open modal/drawer/toast: `timeless-green/{dialog,drawer,toast}-{light,dark}.png`.
+- Direct Input states: `timeless-green/direct-input-states-{light,dark}.png`.
+- Reduced motion: `timeless-green/{feedback-dark-reduced-motion,dialog-dark-reduced-motion}.png`.
+- Narrow viewport: `timeless-green/catalog-light-390-{top,bottom}.png`, `timeless-green/dialog-light-390.png`.
 - Durable font/contrast JSON and eight selected screenshots: `docs/review/ki-20/`.
 
 Full-page captures temporarily expose only preview scroller height/overflow for capture. Normal interaction and viewport captures use actual geometry. Screenshots were inspected for controls, forms, dark modal, direct invalid/readOnly states and narrow layout.
@@ -104,6 +104,6 @@ Full-page captures temporarily expose only preview scroller height/overflow for 
 ## Remaining limitations / external decisions
 
 - This is behavior coverage of all38 with sampled rendered style parity—not every-part/every-state pixel equivalence.
-- LT Superior Serif now loads real upright400/500/700; no vendor italic exists, so a browser slant is synthetic. Geist Mono is loaded. Timeless Sans is unshipped because the supplied v1.2 license §6 restricts bundling/redistribution and §8.4 retains the packaged contract. Need a v1.3-licensed archive or written repository permission. See `packages/ui/src/fonts/README.md`.
+- All selected upright families/weights are loaded. LT has no vendor italic, so a browser slant is synthetic; Timeless is deliberately registered upright only. The owner elected vendor v1.3 on 2026-10-31 under that version's §8.4; the older archive's §8.4 does not contain the later-election wording. Full contract/provenance and restrictions are in `packages/ui/src/fonts/README.md`. No font/license gate remains.
 - The owner approved dark role corrections using existing Neutral9/10 (with Neutral1 marks). Palette, light styles and internal identity remain unchanged. Thirteen rendered contrast assertions pass; no whole-app accessibility certification is implied.
 - Product app workflows and supplementary searchable Menu additions have separate parent verification, detailed in `docs/graphical-coverage.md`. No additional public primitive coverage claim.
