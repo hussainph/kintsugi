@@ -18,7 +18,7 @@ him.
 ## Git hosting
 
 - The repository lives on **GitHub**: `github.com/hussainph/kintsugi`
-  (private for now). `origin` points there; `master` is the main branch.
+  (private for now). `origin` points there; `main` is the default branch.
 - Use `gh` for forge work (repo, PRs, issues). Kintsugi is not hosted on
   Entire or any other forge; don't add other remotes.
 
