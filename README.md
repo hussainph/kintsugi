@@ -1,6 +1,6 @@
 # Kintsugi
 
-A writing app where your words stay at the center. Kintsugi is a minimal macOS editor for long-form Markdown and MDX, with a phone app for capturing and editing while you're away from the desk. The AI will help in the margins (suggestions, rewrites, research threads), but it never writes for you.
+Where scattered inspiration becomes writing. Kintsugi gathers everything you read, watch and hear into a local vault of plain files, and an agent reads it alongside you, keeping a wiki of what it has learned and offering ideas. Then you write: a minimal macOS editor for long-form Markdown and MDX, with a phone app for capturing and browsing away from the desk. The AI organizes, connects and suggests, but it never writes for you. See [docs/vision.md](docs/vision.md) for where it's going.
 
 Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by default `~/Documents/Kintsugi`). Each document's frontmatter holds a `status` of `draft` or `complete`.
 

@@ -6,12 +6,17 @@ but most often from his own work (earlier posts, drafts, notes, projects),
 so his own writing is a first-class source everywhere: in references,
 search and the margin. Captured outside inspiration sits alongside it.
 
+Around that, Kintsugi is growing into the loop that feeds the writing: a
+feed of new work, captured inspiration, and an agent that reads everything
+alongside him and keeps a wiki of what it learns (see `docs/vision.md`).
+
 Judge every feature by whether it makes writing and publishing a blog post
-easier or more pleasant. The AI helps in the margins and never writes for
-him.
+easier or more pleasant. The AI organizes, connects and offers ideas, and
+never writes his prose.
 
 - The blog: hussain.ph, an Astro + MDX site at `~/Desktop/code/3d-portfolio`
   (github.com/hussainph/hussain.ph)
+- Product direction: `docs/vision.md`
 - Product and contracts: `README.md`, `docs/inspiration.md`
 - Phone app conventions: `apps/mobile/AGENTS.md`
 
