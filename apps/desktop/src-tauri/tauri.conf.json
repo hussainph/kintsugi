@@ -35,6 +35,20 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true,
+    "category": "Productivity",
+    "copyright": "© 2026 Hussain Phalasiya",
+    "macOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI0NjYxQkZCMjk3OThFQkMKUldTOGpua3AreHRtdEp5cG15ZHV2QmZjTTI1by9IS0dUUG1rdTlUTjRUaEFOU3RhQTJqTmlOZloK",
+      "endpoints": [
+        "https://github.com/hussainph/kintsugi/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

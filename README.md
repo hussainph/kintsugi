@@ -108,3 +108,17 @@ Pi credentials for an AI check. For the phone app, build with
 never run `pnpm ios` or `expo run:ios` against a device. See
 [Testing without windows](AGENTS.md#testing-without-windows) for the exact
 commands, and [docs/headless.md](docs/headless.md) for the transport.
+
+## Releasing
+
+Releases are signed, notarized and published to [GitHub Releases](https://github.com/hussainph/kintsugi/releases). Installed copies check there at launch and every six hours, offer the update quietly, and restart only after your edits are saved.
+
+1. Bump `version` in `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/package.json` and the root `Cargo.toml`.
+2. With `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `APPLE_ID` and `APPLE_PASSWORD` (an app-specific password) in the environment, the updater key at `~/.tauri/kintsugi-updater.key`, and the Developer ID identity in your keychain:
+
+```sh
+pnpm release:desktop             # build, sign and notarize into target/release/bundle
+pnpm release:desktop --publish   # …and create the GitHub release with latest.json
+```
+
+The updater's public key lives in `tauri.conf.json`; keep the private key out of the repo. Losing it means installed copies can't verify future updates.

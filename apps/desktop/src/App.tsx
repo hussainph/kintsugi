@@ -18,6 +18,7 @@ import { Refine } from "@/refine/Refine";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
+import { useUpdates } from "@/lib/updates";
 import { Entry, flatten, parentDir, renamedPath, vault } from "@/lib/vault";
 
 const SAVE_DELAY = 400;
@@ -91,7 +92,7 @@ export default function App() {
     window.clearTimeout(timer.current);
     const writes = [...pending.current];
     pending.current.clear();
-    if (!writes.length) return;
+    if (!writes.length) return true;
     try {
       await Promise.all(writes.map(([path, contents]) => vault.write(path, contents)));
       setSave("saved");
@@ -99,8 +100,10 @@ export default function App() {
         metaChanged.current = false;
         await refresh();
       }
+      return true;
     } catch (e) {
       fail(e);
+      return false;
     }
   }, [refresh, fail]);
 
@@ -186,6 +189,9 @@ export default function App() {
   useEffect(() => {
     phone.status().then(setPhoneStatus).catch(() => {});
   }, []);
+
+  // An update restarts the app, so it waits for the same saves a close does.
+  useUpdates(async () => (await libraryRef.current?.flush()) !== false && (await flush()));
 
   // Never lose the last few keystrokes: save on blur and before the window closes.
   useEffect(() => {

@@ -15,7 +15,8 @@
     "lab:cli": "pnpm --filter @kintsugi/lab exec tsx src/cli.ts --root ../.. --entries apps/lab/entries",
     "lab:check": "pnpm lab:cli check",
     "lab:boot": "pnpm --filter @kintsugi/lab exec tsx src/boot.ts --url http://127.0.0.1:4315 --out ../../.lab-artifacts",
-    "lab:shots": "pnpm lab:boot"
+    "lab:shots": "pnpm lab:boot",
+    "release:desktop": "node scripts/release-desktop.mjs"
   },
   "packageManager": "pnpm@9.12.0"
 }

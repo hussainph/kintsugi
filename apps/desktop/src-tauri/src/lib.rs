@@ -40,7 +40,10 @@ fn builder() -> tauri::Builder<Runtime> {
             })
             .build())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init());
+        .plugin(tauri_plugin_opener::init())
+        // Signed updates from GitHub Releases; see README › Releasing.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
     builder
         .manage(vault::Vault::default())
         .manage(library::Library::default())

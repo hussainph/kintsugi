@@ -23,6 +23,8 @@
     "@tauri-apps/api": "catalog:",
     "@tauri-apps/plugin-dialog": "~2",
     "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/plugin-process": "~2",
+    "@tauri-apps/plugin-updater": "~2",
     "diff": "^9.0.0",
     "lucide-react": "catalog:",
     "qrcode": "^1.5.4",
