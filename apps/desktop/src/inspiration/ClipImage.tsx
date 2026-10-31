@@ -1,4 +1,4 @@
-import { ImageOff } from "lucide-react";
+import { ImageOff } from "@kintsugi/ui/icons";
 import { useEffect, useState } from "react";
 import { clips } from "./api";
 
@@ -25,8 +25,8 @@ export function ClipImage({ path, image, className, alt }: { path: string; image
   return url && !failed ? (
     <img draggable={false} src={url} alt={alt} className={className} decoding="async" onError={() => setFailed(true)} />
   ) : (
-    <div className={`${className ?? ""} flex items-center justify-center bg-muted text-muted-foreground`} role="img" aria-label={failed ? "Image unavailable" : "Loading image"}>
-      {failed && <ImageOff className="size-5 opacity-50" />}
+    <div className={`${className ?? ""} ki-image-placeholder flex items-center justify-center`} role="img" aria-label={failed ? "Image unavailable" : "Loading image"}>
+      {failed && <ImageOff className="size-[var(--size-m)]" />}
     </div>
   );
 }

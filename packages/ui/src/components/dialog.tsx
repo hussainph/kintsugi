@@ -5,7 +5,15 @@ import { cn } from "cn"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@kintsugi/ui/components/button"
-import { XIcon } from "lucide-react"
+import { XIcon } from "@kintsugi/ui/icons"
+
+import { graphicalPart } from "./graphical"
+
+const ThemedTrigger = graphicalPart(DialogPrimitive.Trigger, "dialog", "trigger", "ui-button")
+const ThemedOverlay = graphicalPart(DialogPrimitive.Overlay, "dialog", "backdrop", "ki-backdrop ki-large")
+const ThemedContent = graphicalPart(DialogPrimitive.Content, "dialog", "popover", "ki-modal ki-popup ki-large")
+const ThemedTitle = graphicalPart(DialogPrimitive.Title, "dialog", "title", "ui-title")
+const ThemedDescription = graphicalPart(DialogPrimitive.Description, "dialog", "description", "ui-copy")
 
 function Dialog({
   ...props
@@ -16,7 +24,8 @@ function Dialog({
 function DialogTrigger({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Trigger>) {
-  return <DialogPrimitive.Trigger data-slot="dialog-trigger" {...props} />
+  const Trigger = props.asChild ? DialogPrimitive.Trigger : ThemedTrigger
+  return <Trigger data-slot="dialog-trigger" {...props} />
 }
 
 function DialogPortal({
@@ -36,10 +45,10 @@ function DialogOverlay({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
   return (
-    <DialogPrimitive.Overlay
+    <ThemedOverlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-50",
         className
       )}
       {...props}
@@ -58,10 +67,10 @@ function DialogContent({
   return (
     <DialogPortal>
       <DialogOverlay />
-      <DialogPrimitive.Content
+      <ThemedContent
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 outline-none",
           className
         )}
         {...props}
@@ -71,7 +80,7 @@ function DialogContent({
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-2 right-2"
+              className="absolute top-(--space-s) right-(--space-s)"
               size="icon-sm"
             >
               <XIcon
@@ -80,7 +89,7 @@ function DialogContent({
             </Button>
           </DialogPrimitive.Close>
         )}
-      </DialogPrimitive.Content>
+      </ThemedContent>
     </DialogPortal>
   )
 }
@@ -89,7 +98,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("flex flex-col gap-(--space-xs)", className)}
       {...props}
     />
   )
@@ -107,7 +116,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end",
+        "mt-(--space-xs) flex flex-col-reverse flex-wrap gap-(--space-xs) sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -127,12 +136,9 @@ function DialogTitle({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Title>) {
   return (
-    <DialogPrimitive.Title
+    <ThemedTitle
       data-slot="dialog-title"
-      className={cn(
-        "font-heading text-base leading-none font-medium",
-        className
-      )}
+      className={cn(className)}
       {...props}
     />
   )
@@ -143,10 +149,10 @@ function DialogDescription({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Description>) {
   return (
-    <DialogPrimitive.Description
+    <ThemedDescription
       data-slot="dialog-description"
       className={cn(
-        "text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+        "*:[a]:underline *:[a]:underline-offset-3",
         className
       )}
       {...props}

@@ -3,51 +3,64 @@ import { RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 
-/** Raw MDX, styled to read like the page it will become: markup marks fade,
- *  headings grow, frontmatter recedes into small monospace. */
+/** Complete Graphical type roles, kept live in both color modes. Editing and
+ * preformatted content deliberately retain stable wrapping rather than pretty. */
+const editorial = (size: "m" | "l" | "xl" | "xxl", weight: "regular" | "medium" | "heavy" = "regular") => ({
+  fontFamily: "var(--font-editorial)",
+  fontWeight: `var(--weight-editorial-${weight})`,
+  fontSize: `calc(var(--size-${size}) * var(--editor-text-scale, 1))`,
+  lineHeight: `calc(var(--line-${size}) * var(--editor-text-scale, 1))`,
+  letterSpacing: `var(--letter-spacing-${size})`,
+});
+const data = (size: "xs" | "s") => ({
+  fontFamily: "var(--font-data)",
+  fontWeight: "var(--weight-data-regular)",
+  fontSize: `calc(var(--size-${size}) * var(--editor-text-scale, 1))`,
+  lineHeight: `calc(var(--line-${size}) * var(--editor-text-scale, 1))`,
+  letterSpacing: `var(--letter-spacing-${size})`,
+});
 export const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "19px", color: "var(--foreground)", backgroundColor: "transparent" },
+  "&": { height: "100%", ...editorial("l"), color: "var(--neutral-10)", backgroundColor: "transparent" },
   "&.cm-focused": { outline: "none" },
-  ".cm-scroller": { fontFamily: "var(--font-prose)", lineHeight: "1.7" },
+  ".cm-scroller": { ...editorial("l"), textWrap: "wrap" },
   ".cm-content": {
     width: "100%",
-    maxWidth: "calc(68ch + 64px)",
+    maxWidth: "calc(68ch + 2 * var(--space-xl))",
     margin: "0 auto",
-    padding: "88px 32px 40vh",
-    caretColor: "var(--primary)",
+    padding: "var(--space-xxl) var(--space-xl) 40vh",
+    caretColor: "var(--neutral-10)",
   },
-  ".cm-cursor, .cm-dropCursor": { borderLeft: "2px solid var(--primary)" },
+  ".cm-cursor, .cm-dropCursor": { borderLeft: "var(--border-l) solid var(--neutral-10)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground": {
-    backgroundColor: "var(--editor-selection)",
+    backgroundColor: "var(--neutral-5-transparent)",
   },
-  ".cm-line.cm-frontmatter": {
-    fontFamily: "var(--font-mono)",
-    fontSize: "13px",
-    lineHeight: "1.9",
-    color: "var(--editor-faint)",
+  ".cm-line.cm-frontmatter": { ...data("xs"), color: "var(--neutral-7)" },
+  ".cm-placeholder": { color: "var(--neutral-7)", fontStyle: "italic" },
+  ".cm-panels": {
+    backgroundColor: "var(--neutral-2)", color: "var(--neutral-10)",
+    fontFamily: "var(--font-ui)", fontWeight: "var(--weight-ui-regular)",
+    fontSize: "var(--size-s)", lineHeight: "var(--line-s)", letterSpacing: "var(--letter-spacing-s)",
   },
-  ".cm-placeholder": { color: "var(--editor-faint)", fontStyle: "italic" },
-  ".cm-panels": { backgroundColor: "var(--popover)", color: "var(--foreground)", fontFamily: "var(--font-sans)" },
-  ".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--border)" },
-  ".cm-searchMatch": { backgroundColor: "var(--editor-selection)" },
-  ".cm-searchMatch.cm-searchMatch-selected": { outline: "1px solid var(--primary)" },
+  ".cm-panels.cm-panels-top": { borderBottomWidth: "0", boxShadow: "inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4)" },
+  ".cm-searchMatch": { backgroundColor: "var(--color-3-transparent)" },
+  ".cm-searchMatch.cm-searchMatch-selected": { outline: "var(--border-l) solid var(--neutral-10)" },
 });
 
 export const highlight = HighlightStyle.define([
-  { tag: t.heading1, fontSize: "1.8em", fontWeight: "650", letterSpacing: "-0.01em" },
-  { tag: t.heading2, fontSize: "1.4em", fontWeight: "650" },
-  { tag: t.heading3, fontSize: "1.15em", fontWeight: "650" },
-  { tag: [t.heading4, t.heading5, t.heading6], fontWeight: "650" },
+  { tag: t.heading1, ...editorial("xxl", "heavy") },
+  { tag: t.heading2, ...editorial("xl", "heavy") },
+  { tag: t.heading3, ...editorial("l", "heavy") },
+  { tag: [t.heading4, t.heading5, t.heading6], ...editorial("m", "heavy") },
   { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strong, fontWeight: "700" },
+  { tag: t.strong, fontWeight: "var(--weight-editorial-heavy)" },
   { tag: t.strikethrough, textDecoration: "line-through" },
-  { tag: t.link, color: "var(--primary)" },
-  { tag: t.url, color: "var(--editor-faint)" },
-  { tag: t.monospace, fontFamily: "var(--font-mono)", fontSize: "0.82em" },
-  { tag: t.quote, color: "var(--muted-foreground)", fontStyle: "italic" },
+  { tag: t.link, color: "var(--neutral-10)", textDecoration: "underline" },
+  { tag: t.url, color: "var(--neutral-7)" },
+  { tag: t.monospace, ...data("s") },
+  { tag: t.quote, color: "var(--neutral-8)", fontStyle: "italic" },
   // Markdown's own marks: `#`, `*`, `_`, `` ` ``, `>`, list bullets.
-  { tag: [t.processingInstruction, t.contentSeparator, t.meta, t.comment], color: "var(--editor-faint)" },
-  { tag: [t.keyword, t.string, t.number, t.bool, t.atom, t.propertyName], color: "var(--muted-foreground)" },
+  { tag: [t.processingInstruction, t.contentSeparator, t.meta, t.comment], color: "var(--neutral-7)" },
+  { tag: [t.keyword, t.string, t.number, t.bool, t.atom, t.propertyName], color: "var(--neutral-8)" },
 ]);
 
 const frontmatterLine = Decoration.line({ class: "cm-frontmatter" });

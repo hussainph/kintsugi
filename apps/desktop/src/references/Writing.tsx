@@ -1,7 +1,7 @@
 import { isolateHistory } from "@codemirror/commands";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { PanelRight } from "lucide-react";
+import { PanelRight } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
 import type { Clip } from "@kintsugi/core/clips";
@@ -9,6 +9,7 @@ import { attributedQuote, linkFor, type ReferenceSource } from "@kintsugi/core/r
 import { Editor, type CommandSkill, type Commands, type KinAnchor } from "@kintsugi/editor/Editor";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { beginComment, reviewDraft } from "@/comments/api";
 import { useComments } from "@/comments/useComments";
 import { memory } from "@/lib/kin";
@@ -161,13 +162,13 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   return (
     <div className="reference-writing">
       <Editor {...editor} references={options} commands={commands} comments={comments} />
-      <button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} title="Reference margin" onClick={() => {
+      <Tooltip><TooltipTrigger asChild><button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} onClick={() => {
         const next = !margin; setMargin(next);
         try { localStorage.setItem("kintsugi:margin", next ? "visible" : "hidden"); } catch { /* A convenience only. */ }
-      }}><PanelRight size={15} /></button>
+      }}><PanelRight className="size-[var(--size-m)]" /></button></TooltipTrigger><TooltipContent>Reference margin</TooltipContent></Tooltip>
       {margin && hasMargin && <aside className="reference-margin" aria-label="Reference margin">
         <MarginSection title="Referenced here" sources={referenced} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
-        {unresolved.map((target) => <p className="reference-missing" key={target} title="No matching document or clip">{target}<span>not found</span></p>)}
+        {unresolved.map((target) => <Tooltip key={target}><TooltipTrigger asChild><p className="reference-missing">{target}<span>not found</span></p></TooltipTrigger><TooltipContent>No matching document or clip</TooltipContent></Tooltip>)}
         <MarginSection title="Along this paragraph" sources={related.map((item) => byPath.get(item.path) ?? item)} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
         <MarginSection title="Links here" sources={backlinks} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
       </aside>}
@@ -208,10 +209,10 @@ function MarginCard({ source, all, onOpen, onInsert, onQuote }: Omit<SectionProp
     event.dataTransfer.setData("application/x-kintsugi-reference", JSON.stringify({ text: dragText }));
     event.dataTransfer.setData("text/plain", dragText);
   }}>
-    <button className="reference-card-main" onClick={() => onOpen(source)} title={source.kind === "clip" ? "Open clip · drag to quote" : "Open document · drag to reference"}>
+    <Tooltip><TooltipTrigger asChild><button className="reference-card-main" onClick={() => onOpen(source)}>
       {source.image && <img src={source.image} alt="" loading="lazy" />}
       <span><strong>{source.title}</strong><small>{source.kind === "document" ? source.status ?? "Document" : source.site ?? "Clip"}</small></span>
-    </button>
+    </button></TooltipTrigger><TooltipContent>{source.kind === "clip" ? "Open clip · drag to quote" : "Open document · drag to reference"}</TooltipContent></Tooltip>
     {source.summary && <p>{source.summary}</p>}
     <div className="reference-card-actions"><button onClick={() => onInsert(link)}>Reference</button>{source.kind === "clip" && passage?.trim() && <button onClick={() => onQuote(source)}>Quote</button>}</div>
   </article>;
@@ -226,12 +227,12 @@ function ClipCard({ root, source, onClose, onQuote, onReference, onOpenDoc }: { 
     return () => { cancelled = true; };
   }, [source.path]);
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" onOpenAutoFocus={(event) => { event.preventDefault(); referenceButton.current?.focus(); }} onCloseAutoFocus={(event) => event.preventDefault()}>
-    <DialogTitle className="pr-6 leading-snug">{source.title}</DialogTitle>
+    <DialogTitle>{source.title}</DialogTitle>
     <DialogDescription>{source.site || "Inspiration"}{clip?.author ? ` · ${clip.author}` : ""}</DialogDescription>
-    {source.image && <img src={source.image} alt="" className="max-h-60 w-full rounded-md object-cover" />}
-    {source.summary && <p className="text-sm text-muted-foreground">{source.summary}</p>}
-    {error ? <p className="text-sm text-muted-foreground">{error}</p> : <p className="whitespace-pre-wrap select-text font-[family-name:var(--font-prose)] leading-relaxed">{clip ? clip.text || "No passage captured." : "Opening…"}</p>}
-    <div className="flex items-center gap-2"><Button ref={referenceButton} variant="outline" onClick={onReference}>Reference</Button><Button disabled={!clip?.text.trim()} onClick={onQuote}>Quote passage</Button>{clip?.url && /^https?:\/\//i.test(clip.url) && <button className="ml-auto text-xs text-muted-foreground hover:underline" onClick={() => { void openUrl(clip.url!).catch((error) => toast.error(String(error))); }}>Open source ↗</button>}</div>
+    {source.image && <img src={source.image} alt="" className="max-h-60 w-full rounded-(--radius-s) object-cover" />}
+    {source.summary && <p className="ki-text-s ki-muted">{source.summary}</p>}
+    {error ? <p className="ki-text-s ki-error" role="alert">{error}</p> : <p role={!clip ? "status" : undefined} className="ki-prose whitespace-pre-wrap select-text">{clip ? clip.text || "No passage captured." : "Opening…"}</p>}
+    <div className="flex items-center gap-[var(--space-xs)]"><Button ref={referenceButton} variant="outline" onClick={onReference}>Reference</Button><Button disabled={!clip?.text.trim()} onClick={onQuote}>Quote passage</Button>{clip?.url && /^https?:\/\//i.test(clip.url) && <button className="ki-source-link ki-text-xs ml-auto" onClick={() => { void openUrl(clip.url!).catch((error) => toast.error(String(error))); }}>Open source ↗</button>}</div>
     <UsedIn root={root} path={source.path} onOpen={(path) => { onClose(); onOpenDoc(path); }} />
   </DialogContent></Dialog>;
 }

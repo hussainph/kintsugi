@@ -2,6 +2,13 @@ import * as React from "react"
 import { cn } from "cn"
 import { Popover as PopoverPrimitive } from "radix-ui"
 
+import { graphicalPart, usePartAppearance } from "./graphical"
+
+const ThemedTrigger = graphicalPart(PopoverPrimitive.Trigger, "popover", "trigger", "ui-button")
+const ThemedTitle = graphicalPart("h2", "popover", "title", "ui-title")
+const ThemedDescription = graphicalPart("p", "popover", "description", "ui-copy")
+const ThemedContent = graphicalPart(PopoverPrimitive.Content, "popover", "popover", "ki-popover ki-popup")
+
 function Popover({
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Root>) {
@@ -11,23 +18,25 @@ function Popover({
 function PopoverTrigger({
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
-  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+  const Trigger = props.asChild ? PopoverPrimitive.Trigger : ThemedTrigger
+  return <Trigger data-slot="popover-trigger" {...props} />
 }
 
 function PopoverContent({
   className,
   align = "center",
-  sideOffset = 4,
+  sideOffset,
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+  const popup = usePartAppearance("popover", "popover")
   return (
     <PopoverPrimitive.Portal>
-      <PopoverPrimitive.Content
+      <ThemedContent
         data-slot="popover-content"
         align={align}
-        sideOffset={sideOffset}
+        sideOffset={sideOffset ?? popup?.gap}
         className={cn(
-          "z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "z-50 flex w-[300px] flex-col outline-none",
           className
         )}
         {...props}
@@ -46,7 +55,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="popover-header"
-      className={cn("flex flex-col gap-0.5 text-sm", className)}
+      className={cn("flex flex-col gap-(--space-xs)", className)}
       {...props}
     />
   )
@@ -54,9 +63,9 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
 
 function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
   return (
-    <div
+    <ThemedTitle
       data-slot="popover-title"
-      className={cn("font-medium", className)}
+      className={cn(className)}
       {...props}
     />
   )
@@ -67,9 +76,9 @@ function PopoverDescription({
   ...props
 }: React.ComponentProps<"p">) {
   return (
-    <p
+    <ThemedDescription
       data-slot="popover-description"
-      className={cn("text-muted-foreground", className)}
+      className={cn(className)}
       {...props}
     />
   )

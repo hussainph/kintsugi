@@ -3,8 +3,9 @@ import type { ClipPreview } from "./api";
 export type Tile = { clip: ClipPreview; x: number; y: number; width: number; height: number; bodyHeight: number };
 
 /** Stable sizes avoid layout shifts while media loads; only visible tiles mount. */
-export function masonry(clips: ClipPreview[], width: number) {
-  const gap = 24;
+export function masonry(clips: ClipPreview[], width: number, metrics = { gap: 24, captionHeight: 78 }) {
+  // Defaults preserve the pure layout API; the desktop supplies live theme metrics.
+  const { gap, captionHeight } = metrics;
   const columns = Math.max(1, Math.floor((width + gap) / (220 + gap)));
   const cardWidth = Math.max(1, (width - gap * (columns - 1)) / columns);
   const bottoms = Array<number>(columns).fill(0);
@@ -14,7 +15,7 @@ export function masonry(clips: ClipPreview[], width: number) {
     const bodyHeight = clip.image
       ? Math.round(Math.min(320, cardWidth * [0.78, 1.08, 0.92, 1.24][hash % 4]))
       : Math.min(260, Math.max(150, 100 + Math.ceil((clip.text || clip.summary || "").length / 28) * 22));
-    const height = bodyHeight + 78;
+    const height = bodyHeight + captionHeight;
     const tile = { clip, x: column * (cardWidth + gap), y: bottoms[column], width: cardWidth, height, bodyHeight };
     bottoms[column] += height + gap;
     return tile;
