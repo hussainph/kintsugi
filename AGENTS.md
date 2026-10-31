@@ -15,6 +15,13 @@ him.
 - Product and contracts: `README.md`, `docs/inspiration.md`
 - Phone app conventions: `apps/mobile/AGENTS.md`
 
+## Git hosting
+
+- The repository lives on **GitHub**: `github.com/hussainph/kintsugi`
+  (private for now). `origin` points there; `master` is the main branch.
+- Use `gh` for forge work (repo, PRs, issues). Kintsugi is not hosted on
+  Entire or any other forge; don't add other remotes.
+
 ## Toolchain
 
 - Xcode 27.1 (iOS 27.1 SDK and Simulator runtime, with the iPhone Duo
