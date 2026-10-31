@@ -45,6 +45,13 @@ const one = (dir, suffix) => {
 };
 const dmg = one("dmg", ".dmg");
 const archive = one("macos", ".app.tar.gz");
+
+// Tauri notarizes the app but not the disk image around it; Gatekeeper
+// rejects a downloaded DMG without its own ticket.
+console.log("Notarizing the DMG…");
+run("xcrun", ["notarytool", "submit", dmg, "--apple-id", env.APPLE_ID, "--password", env.APPLE_PASSWORD,
+  "--team-id", env.APPLE_TEAM_ID, "--wait"]);
+run("xcrun", ["stapler", "staple", dmg]);
 const signature = readFileSync(`${archive}.sig`, "utf8").trim();
 
 // The updater reads this from releases/latest/download/latest.json.

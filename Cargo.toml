@@ -20,3 +20,9 @@ lto = true
 opt-level = 3
 panic = "abort"
 strip = true
+
+# Proc macros and build scripts run on this machine during the build; Xcode
+# 27's `strip` leaves their dylibs unloadable ("mis-aligned LINKEDIT"), so
+# only the shipped binary is stripped.
+[profile.release.build-override]
+strip = false
