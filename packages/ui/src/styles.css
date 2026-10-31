@@ -9,6 +9,7 @@
 @import "./components/graphical.css";
 @import "./fonts/geist-mono.css";
 @import "./fonts/superior-serif.css";
+@import "./fonts/timeless-sans.css";
 
 @custom-variant dark (&:is(.dark *, [data-color-mode="dark"] *));
 
@@ -102,6 +103,10 @@
     --editor-selection: var(--color-2-transparent);
     border-color: var(--border);
     text-wrap: pretty;
+    /* Pin the UI face to Sans/upright, including roots mounted outside the app.
+       Property-level settings also cover WebKit, where the @font-face variation
+       descriptor is unsupported. Other shipped families ignore these axes. */
+    font-variation-settings: "STYL" 100, "ital" 0;
   }
   .graphical-theme {
     min-height: 100%;
@@ -112,7 +117,6 @@
     line-height: var(--line-s);
     letter-spacing: var(--letter-spacing-s);
     font-weight: var(--weight-ui-regular);
-    font-variation-settings: "STYL" 100, "ital" 0;
     -webkit-font-smoothing: antialiased;
   }
   .graphical-theme :where(button, input, textarea, select) {

@@ -1,0 +1,12 @@
+/* Unmodified owner-supplied Timeless Sans VF; owner elected Free Font License
+   v1.3 on 2026-10-31. See timeless-sans/{LICENSE,NOTICE}.txt.
+   The UI/portal scope also pins these axes: Safari does not support this
+   @font-face descriptor, and the default STYL=0 is Grotesk, not Sans. */
+@font-face {
+  font-family: "Timeless Sans";
+  src: url("./timeless-sans/TimelessSansVF.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+  font-variation-settings: "STYL" 100, "ital" 0;
+}

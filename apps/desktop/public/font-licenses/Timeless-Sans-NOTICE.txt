@@ -1,0 +1,33 @@
+Timeless Sans — Kintsugi license election and provenance
+
+Governing contract: Timeless Free Font License v1.3, dated 24 October 2026.
+Source: https://www.timeless.co/type/license
+Retrieved and checked: 2026-10-31 (web text and browser; full section 7 included).
+A complete plain-text copy is adjacent as LICENSE.txt.
+
+On 2026-10-31 the owner explicitly elected to follow v1.3 under its section 8.4
+("unless you choose to follow a later version instead") and authorized shipping
+this font as part of Kintsugi. Section 5.3 expressly permits a work's public or
+private code repository; section 5.5 requires the contract to accompany files.
+
+The vendor's re-downloaded archive still contains LICENSE.pdf v1.2. Its section
+8.4 does NOT include the later-version election sentence. We do not represent
+that old contract as v1.3 or include it as the governing license here. This
+installation follows the owner's express election of the vendor's current v1.3.
+
+Original archive: Timeless-Type-Family-1.094 (1).zip (same bytes as earlier copy)
+Archive SHA-256:
+510685dfce6010b74a1a250af7de1204e1b9901be152a39f5dd6be85fc6d6084
+Original member: Timeless-Type-Family-1.094/Sans-Grotesk/TimelessSansVF.woff2
+Font SHA-256:
+353b3fbb75b8e9b927db12d520ff8d446d89c36897b47a90d70dbe36e9eeb23a
+
+Only this unmodified WOFF2 is distributed. No renaming, conversion, subsetting,
+outline extraction, custom cut or font modification was performed. Archives in
+Downloads were read only. No Grotesk statics or Serif-Text fonts are included.
+
+CSS family alias: "Timeless Sans"; weights 300–800; upright only.
+The variable file also contains ital/STYL axes; this app pins ital=0 and
+STYL=100 (Sans) in CSS. No Timeless italic face is registered or shipped as such.
+The fonts are distributed only as part of the Kintsugi application/repository,
+not as a standalone font collection, service or package.

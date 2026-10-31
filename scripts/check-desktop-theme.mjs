@@ -26,7 +26,8 @@ for (const target of [url, backend]) {
 assert.ok(fragment.get('token'), 'A scratch headless capability is required.');
 const secret = fragment.get('token');
 const safe = value => String(value).replaceAll(capability, '[local capability]')
-  .replaceAll(secret, '[redacted]').replace(/(?:#|&|\b)token=[^\s"'<>]+/g, 'token=[redacted]');
+  .replaceAll(secret, '[redacted]').replace(/(?:#|&|\b)token=[^\s"'<>]+/g, 'token=[redacted]')
+  .replaceAll(root, '[workspace]/').replace(/\/(?:Users|home)\/[^\s"'<>:)]+/g, '[local path]');
 const root = fileURLToPath(new URL('..', import.meta.url));
 const out = resolve(root, '.lab-artifacts/ki-20/desktop');
 await mkdir(out, { recursive: true });
@@ -36,7 +37,7 @@ const report = {
   modes: {}, console: [], pageErrors: [], requestFailures: [], httpErrors: [], observations: [],
   limitations: [
     'Scratch-vault UI only; no native Tauri window, OS phone settings, provider credentials, or owner vault.',
-    'LT Superior Serif 400/500/700 and Geist Mono are loaded. Timeless Sans remains absent pending the supplied v1.2 license redistribution gate; no font-complete parity claim.',
+    'Timeless Sans is upright only. This checks real FontFace loads and inherited Sans axes; Lab CDP probes separately verify rendered glyphs, not Safari descriptor support.',
     'AI disabled: verify unauthenticated Refine error only; no generated revision or accept/retry network success.',
   ],
 };
@@ -59,7 +60,8 @@ async function style(locator) {
       inRootTheme: !!el.closest('.graphical-theme'),
       themeName: s.getPropertyValue('--theme-name').trim(), neutral1: s.getPropertyValue('--neutral-1').trim(),
       uiFont: s.getPropertyValue('--font-ui').trim(), editorialFont: s.getPropertyValue('--font-editorial').trim(),
-      font: s.fontFamily, weight: s.fontWeight, size: s.fontSize, line: s.lineHeight, tracking: s.letterSpacing,
+      font: s.fontFamily, weight: s.fontWeight, fontStyle: s.fontStyle, variationSettings: s.fontVariationSettings,
+      size: s.fontSize, line: s.lineHeight, tracking: s.letterSpacing,
       background: s.backgroundColor, color: s.color, borderWidth: s.borderWidth, shadow: s.boxShadow,
       padding: s.padding, radius: s.borderRadius, textWrap: s.textWrapStyle, colorScheme: s.colorScheme,
       tokenSpaceL: s.getPropertyValue('--space-l').trim(), tokenSizeL: s.getPropertyValue('--size-l').trim(),
@@ -82,14 +84,26 @@ async function check(mode, name, action, page) {
     try { await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); } catch {}
   }
 }
+function assertUiAxes(s, label) {
+  assert.match(s.font, /Timeless Sans/, `${label}: selected UI family`);
+  assert.equal(s.fontStyle, 'normal', `${label}: real upright UI face`);
+  const axes = [...s.variationSettings.matchAll(/["'](\w{4})["']\s+(-?[\d.]+)/g)];
+  assert.deepEqual(Object.fromEntries(axes.map(([, axis, value]) => [axis, Number(value)])), { STYL: 100, ital: 0 }, `${label}: Sans/upright axes reach actual UI`);
+}
 async function verifyPortal(locator, mode, component, { padding } = {}) {
   const s = await style(locator);
   assert.equal(s.component, component);
   assert.equal(s.part, 'popover');
-  assert.match(s.font, /Timeless Sans/);
+  assertUiAxes(s, `${mode} ${component} portal`);
   assert.equal(s.neutral1.toLowerCase(), mode === 'dark' ? '#191919' : '#ffffff');
   assert.equal(s.borderWidth, '0px');
   if (padding) assert.equal(s.padding, padding);
+  // Check a real nested UI consumer as well as the portalled scope itself.
+  const child = locator.locator('button, input, textarea, [role="menuitem"]').first();
+  if (await child.count()) {
+    s.uiChild = await style(child);
+    assertUiAxes(s.uiChild, `${mode} ${component} portal child`);
+  }
   return s;
 }
 async function openCraft(page) {
@@ -140,21 +154,30 @@ try {
     await page.emulateMedia({ colorScheme: mode });
     await page.locator(`.graphical-theme[data-color-mode="${mode}"]`).waitFor();
     const state = await page.evaluate(async () => {
-      const serif = [];
-      for (const weight of [400, 500, 700]) {
-        const faces = await document.fonts.load(`${weight} 16px "LT Superior Serif"`, 'Kintsugi');
-        serif.push({ weight, loaded: faces.some(face => face.family.replaceAll('"', '') === 'LT Superior Serif' && face.status === 'loaded') });
+      const loads = [];
+      for (const [family, weights] of [
+        ['LT Superior Serif', [400, 500, 700]], ['Sidebar Geist Mono', [400, 500, 600]], ['Timeless Sans', [400, 500, 600]],
+      ]) {
+        for (const weight of weights) {
+          const faces = await document.fonts.load(`${weight} 16px "${family}"`, 'Kintsugi');
+          loads.push({ family, weight, check: document.fonts.check(`${weight} 16px "${family}"`, 'Kintsugi'),
+            faces: faces.map(face => ({ family:face.family, status:face.status, weight:face.weight,
+              style:face.style, variationSettings:face.variationSettings ?? null })) });
+        }
       }
       return {
         hashCleared: location.hash === '', darkMedia: matchMedia('(prefers-color-scheme: dark)').matches,
         darkClass: document.documentElement.classList.contains('dark'),
         theme: document.querySelector('.graphical-theme')?.getAttribute('data-graphical-theme'),
         colorMode: document.querySelector('.graphical-theme')?.getAttribute('data-color-mode'),
-        fonts: [...document.fonts].map(f => ({family:f.family, status:f.status, weight:f.weight})),
-        serif,
+        loads,
       };
     });
-    assert(state.serif.every(face => face.loaded), 'Actual LT Superior Serif faces load at all requested weights');
+    assert.equal(state.loads.length, 9);
+    for (const load of state.loads) {
+      assert(load.check && load.faces.some(face => face.family.replaceAll('"', '').replaceAll("'", '') === load.family && face.status === 'loaded' && face.style === 'normal'), `${mode}: actual ${load.family} ${load.weight} face must load`);
+      if (load.family === 'Timeless Sans') assert(load.faces.every(face => face.weight === '300 800'), 'Timeless must use its truthful variable weight range');
+    }
     assert.ok(state.hashCleared); assert.equal(state.darkMedia, mode === 'dark'); assert.equal(state.darkClass, mode === 'dark');
     assert.equal(state.colorMode, mode); assert.ok(state.theme);
     await openCraft(page);
@@ -163,7 +186,7 @@ try {
     const data = await style(page.locator('.ki-document-status .ki-data'));
     assert.match(editor.font, /LT Superior Serif/); assert.equal(editor.weight, '400');
     assert.equal(editor.size, '23px'); assert.equal(editor.line, '31px'); assert.equal(editor.tracking, '-1.035px');
-    assert.match(sidebar.font, /Timeless Sans/); assert.match(data.font, /Sidebar Geist Mono/);
+    assertUiAxes(sidebar, `${mode} sidebar control`); assert.match(data.font, /Sidebar Geist Mono/);
     assert.equal(editor.neutral1.toLowerCase(), mode === 'dark' ? '#191919' : '#ffffff');
     report.modes[mode].root = state;
     report.modes[mode].typography = { editor, sidebar, data };
@@ -333,6 +356,7 @@ try {
     const toast = await visible(page.locator('[data-sonner-toast]').filter({hasText:'Saved to inspiration'}));
     const toastStyle = await style(toast);
     assert.equal(toastStyle.neutral1.toLowerCase(), mode === 'dark' ? '#191919' : '#ffffff');
+    assertUiAxes(toastStyle, `${mode} toast`);
     await shot(page, mode, 'capture-success');
     await page.getByRole('searchbox', {name:'Search inspiration'}).fill(`KI20 desktop capture ${mode} ${stamp}`);
     // Untitled note clips intentionally expose the accessible label “A thought”,
@@ -401,7 +425,7 @@ try {
     assert.equal(s.component, 'drawer'); assert.equal(s.part, 'popover');
     assert.equal(await sheet.getAttribute('data-mobile'), 'true');
     assert.equal(s.neutral1.toLowerCase(), mode === 'dark' ? '#191919' : '#ffffff');
-    assert.match(s.font, /Timeless Sans/); assert.equal(s.padding, '0px');
+    assertUiAxes(s, `${mode} responsive sidebar portal`); assert.equal(s.padding, '0px');
     const widthContract = await sheet.evaluate(el => ({
       declared:getComputedStyle(el).getPropertyValue('--sidebar-width').trim(),
       expected:18 * parseFloat(getComputedStyle(document.documentElement).fontSize),

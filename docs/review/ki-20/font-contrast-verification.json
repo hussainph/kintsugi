@@ -1,7 +1,8 @@
 {
-  "checkedAt": "2026-10-31T19:27:33.087Z",
+  "checkedAt": "2026-10-31T20:42:25.900Z",
   "fonts": [
     {
+      "mode": "light",
       "family": "LT Superior Serif",
       "loaded": true,
       "results": [
@@ -13,7 +14,8 @@
               "family": "LT Superior Serif",
               "weight": "400",
               "style": "normal",
-              "status": "loaded"
+              "status": "loaded",
+              "variationSettings": "normal"
             }
           ]
         },
@@ -25,7 +27,8 @@
               "family": "LT Superior Serif",
               "weight": "500",
               "style": "normal",
-              "status": "loaded"
+              "status": "loaded",
+              "variationSettings": "normal"
             }
           ]
         },
@@ -37,13 +40,15 @@
               "family": "LT Superior Serif",
               "weight": "700",
               "style": "normal",
-              "status": "loaded"
+              "status": "loaded",
+              "variationSettings": "normal"
             }
           ]
         }
       ]
     },
     {
+      "mode": "light",
       "family": "Sidebar Geist Mono",
       "loaded": true,
       "results": [
@@ -55,7 +60,8 @@
               "family": "Sidebar Geist Mono",
               "weight": "100 900",
               "style": "normal",
-              "status": "loaded"
+              "status": "loaded",
+              "variationSettings": "normal"
             }
           ]
         },
@@ -67,7 +73,8 @@
               "family": "Sidebar Geist Mono",
               "weight": "100 900",
               "style": "normal",
-              "status": "loaded"
+              "status": "loaded",
+              "variationSettings": "normal"
             }
           ]
         },
@@ -79,32 +86,400 @@
               "family": "Sidebar Geist Mono",
               "weight": "100 900",
               "style": "normal",
-              "status": "loaded"
+              "status": "loaded",
+              "variationSettings": "normal"
             }
           ]
         }
       ]
     },
     {
+      "mode": "light",
       "family": "Timeless Sans",
-      "loaded": false,
+      "loaded": true,
       "results": [
         {
           "weight": 400,
           "check": true,
-          "faces": []
+          "faces": [
+            {
+              "family": "Timeless Sans",
+              "weight": "300 800",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "\"STYL\" 100, \"ital\" 0"
+            }
+          ]
         },
         {
           "weight": 500,
           "check": true,
-          "faces": []
+          "faces": [
+            {
+              "family": "Timeless Sans",
+              "weight": "300 800",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "\"STYL\" 100, \"ital\" 0"
+            }
+          ]
         },
         {
           "weight": 600,
           "check": true,
-          "faces": []
+          "faces": [
+            {
+              "family": "Timeless Sans",
+              "weight": "300 800",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "\"STYL\" 100, \"ital\" 0"
+            }
+          ]
         }
       ]
+    },
+    {
+      "mode": "dark",
+      "family": "LT Superior Serif",
+      "loaded": true,
+      "results": [
+        {
+          "weight": 400,
+          "check": true,
+          "faces": [
+            {
+              "family": "LT Superior Serif",
+              "weight": "400",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "normal"
+            }
+          ]
+        },
+        {
+          "weight": 500,
+          "check": true,
+          "faces": [
+            {
+              "family": "LT Superior Serif",
+              "weight": "500",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "normal"
+            }
+          ]
+        },
+        {
+          "weight": 700,
+          "check": true,
+          "faces": [
+            {
+              "family": "LT Superior Serif",
+              "weight": "700",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "dark",
+      "family": "Sidebar Geist Mono",
+      "loaded": true,
+      "results": [
+        {
+          "weight": 400,
+          "check": true,
+          "faces": [
+            {
+              "family": "Sidebar Geist Mono",
+              "weight": "100 900",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "normal"
+            }
+          ]
+        },
+        {
+          "weight": 500,
+          "check": true,
+          "faces": [
+            {
+              "family": "Sidebar Geist Mono",
+              "weight": "100 900",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "normal"
+            }
+          ]
+        },
+        {
+          "weight": 600,
+          "check": true,
+          "faces": [
+            {
+              "family": "Sidebar Geist Mono",
+              "weight": "100 900",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "dark",
+      "family": "Timeless Sans",
+      "loaded": true,
+      "results": [
+        {
+          "weight": 400,
+          "check": true,
+          "faces": [
+            {
+              "family": "Timeless Sans",
+              "weight": "300 800",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "\"STYL\" 100, \"ital\" 0"
+            }
+          ]
+        },
+        {
+          "weight": 500,
+          "check": true,
+          "faces": [
+            {
+              "family": "Timeless Sans",
+              "weight": "300 800",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "\"STYL\" 100, \"ital\" 0"
+            }
+          ]
+        },
+        {
+          "weight": 600,
+          "check": true,
+          "faces": [
+            {
+              "family": "Timeless Sans",
+              "weight": "300 800",
+              "style": "normal",
+              "status": "loaded",
+              "variationSettings": "\"STYL\" 100, \"ital\" 0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "typography": [
+    {
+      "mode": "light",
+      "control": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "500",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "input": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "400",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      }
+    },
+    {
+      "mode": "light",
+      "portal": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "400",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": false
+      },
+      "portalAction": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "500",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": false
+      }
+    },
+    {
+      "mode": "dark",
+      "control": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "500",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "input": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "400",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      }
+    },
+    {
+      "mode": "dark",
+      "portal": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "400",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": false
+      },
+      "portalAction": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "500",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": false
+      }
+    }
+  ],
+  "renderedFonts": [
+    {
+      "mode": "light",
+      "weight": 400,
+      "computed": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "400",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "fonts": [
+        {
+          "familyName": "Timeless Sans Grotesk Light",
+          "postScriptName": "TimelessSans-GroteskLight_wght1900000_ital_STYL640000",
+          "isCustomFont": true,
+          "glyphCount": 46
+        }
+      ]
+    },
+    {
+      "mode": "light",
+      "weight": 500,
+      "computed": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "500",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "fonts": [
+        {
+          "familyName": "Timeless Sans Grotesk Light",
+          "postScriptName": "TimelessSans-SansMedium",
+          "isCustomFont": true,
+          "glyphCount": 46
+        }
+      ]
+    },
+    {
+      "mode": "light",
+      "weight": 600,
+      "computed": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "600",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "fonts": [
+        {
+          "familyName": "Timeless Sans Grotesk Light",
+          "postScriptName": "TimelessSans-SansSemibold",
+          "isCustomFont": true,
+          "glyphCount": 46
+        }
+      ]
+    },
+    {
+      "mode": "dark",
+      "weight": 400,
+      "computed": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "400",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "fonts": [
+        {
+          "familyName": "Timeless Sans Grotesk Light",
+          "postScriptName": "TimelessSans-GroteskLight_wght1900000_ital_STYL640000",
+          "isCustomFont": true,
+          "glyphCount": 46
+        }
+      ]
+    },
+    {
+      "mode": "dark",
+      "weight": 500,
+      "computed": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "500",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "fonts": [
+        {
+          "familyName": "Timeless Sans Grotesk Light",
+          "postScriptName": "TimelessSans-SansMedium",
+          "isCustomFont": true,
+          "glyphCount": 46
+        }
+      ]
+    },
+    {
+      "mode": "dark",
+      "weight": 600,
+      "computed": {
+        "family": "\"Timeless Sans\", sans-serif",
+        "weight": "600",
+        "style": "normal",
+        "variationSettings": "\"STYL\" 100, \"ital\" 0",
+        "inRootTheme": true
+      },
+      "fonts": [
+        {
+          "familyName": "Timeless Sans Grotesk Light",
+          "postScriptName": "TimelessSans-SansSemibold",
+          "isCustomFont": true,
+          "glyphCount": 46
+        }
+      ]
+    }
+  ],
+  "axes": [
+    {
+      "mode": "light",
+      "weight": 400,
+      "inheritedMatchesSans": true,
+      "sansDiffersFromGrotesk": true,
+      "sansSha256": "c846392541671390b86c28fda05898ef3d13b4c5540992bc9c6db026d223ead0",
+      "groteskSha256": "2ff98c8167e0c47cf02ebf5ce109eddd9caf7583bc3e1e9a28206359e7b3b24d"
+    },
+    {
+      "mode": "dark",
+      "weight": 400,
+      "inheritedMatchesSans": true,
+      "sansDiffersFromGrotesk": true,
+      "sansSha256": "c846392541671390b86c28fda05898ef3d13b4c5540992bc9c6db026d223ead0",
+      "groteskSha256": "2ff98c8167e0c47cf02ebf5ce109eddd9caf7583bc3e1e9a28206359e7b3b24d"
     }
   ],
   "contrast": [
@@ -215,13 +590,16 @@
   ],
   "errors": [],
   "screenshots": [
-    "controls-light.png",
-    "controls-dark.png",
-    "dark-input-focus.png",
-    "dark-preview-card.png"
-  ],
-  "blocked": [
-    "Timeless Sans: supplied v1.2 license repository-bundling gate; no face shipped"
+    ".headless/theme-assets/controls-light.png",
+    ".headless/theme-assets/timeless-light-styl100.png",
+    ".headless/theme-assets/timeless-light-styl0.png",
+    ".headless/theme-assets/popover-light.png",
+    ".headless/theme-assets/controls-dark.png",
+    ".headless/theme-assets/timeless-dark-styl100.png",
+    ".headless/theme-assets/timeless-dark-styl0.png",
+    ".headless/theme-assets/popover-dark.png",
+    ".headless/theme-assets/dark-input-focus.png",
+    ".headless/theme-assets/dark-preview-card.png"
   ],
   "identity": {
     "name": "Charter",
@@ -230,5 +608,6 @@
     "canvas": "rgb(25, 25, 25)",
     "neutral9": "#e0e0e0",
     "neutral10": "#f9f9f9"
-  }
+  },
+  "passed": true
 }
