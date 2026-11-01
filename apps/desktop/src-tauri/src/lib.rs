@@ -16,6 +16,11 @@ mod tools;
 mod vault;
 mod watch;
 
+/// `build.rs`'s sidecar freshness check, compiled here so its tests run.
+#[cfg(test)]
+#[path = "../build/sidecar.rs"]
+mod build_sidecar;
+
 #[cfg(all(feature = "headless", not(debug_assertions)))]
 compile_error!("headless is a debug-only development feature");
 #[cfg(all(feature = "headless", feature = "native"))]

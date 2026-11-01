@@ -57,8 +57,9 @@ Filters: `kinds`, and `within` (a folder: ids under `folder/`).
   summary, own text and extracted source. A clip file that doesn't parse is
   still indexed as plain text.
 - **Chunks**: a body is split into chunks of about 900 characters made of
-  whole paragraphs, up to 128 per document. Each chunk is embedded with its
-  title and tags in front of it.
+  whole paragraphs, up to about 300,000 characters per document: a clip's
+  whole source (its sidecar keeps up to 250,000) with its summary and own
+  text. Each chunk is embedded with its title and tags in front of it.
 
 ## Storage and refresh
 

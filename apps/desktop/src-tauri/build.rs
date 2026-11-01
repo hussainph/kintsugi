@@ -1,6 +1,9 @@
 use std::path::Path;
 use std::process::Command;
 
+#[path = "build/sidecar.rs"]
+mod sidecar;
+
 fn main() {
     swift_helper("transcribe", "podcast transcription");
     swift_helper("pdf", "reading PDFs");
@@ -23,11 +26,8 @@ fn swift_helper(name: &str, purpose: &str) {
     let target = std::env::var("TARGET").expect("cargo sets TARGET");
     let out = Path::new("binaries").join(format!("kintsugi-{name}-{target}"));
     std::fs::create_dir_all("binaries").expect("create binaries/");
-    let fresh = match (std::fs::metadata(&out).and_then(|m| m.modified()), std::fs::metadata(source).and_then(|m| m.modified())) {
-        (Ok(built), Ok(changed)) => built >= changed,
-        _ => false,
-    };
-    if fresh {
+    // Freshness is judged by file time, except that a stub is never fresh.
+    if sidecar::fresh(&out, source) {
         return;
     }
     let swift_target = match target.as_str() {
@@ -46,7 +46,15 @@ fn swift_helper(name: &str, purpose: &str) {
     });
     if !built {
         println!("cargo:warning=kintsugi-{name} was not built; {purpose} is unavailable in this build");
-        std::fs::write(&out, format!("#!/bin/sh\necho '{purpose} is not available in this build' >&2\nexit 3\n"))
+        if swift_target.is_some() {
+            // Swift should work here: a path that never exists makes Cargo run
+            // this script again on the next build, which retries instead of
+            // keeping the stub (`sidecar::fresh`).
+            println!("cargo:rerun-if-changed=binaries/.retry-kintsugi-{name}");
+            println!("cargo:rerun-if-env-changed=DEVELOPER_DIR");
+        }
+        let stub = String::from_utf8_lossy(sidecar::STUB_HEADER);
+        std::fs::write(&out, format!("{stub}echo '{purpose} is not available in this build' >&2\nexit 3\n"))
             .expect("write the helper stub");
         #[cfg(unix)]
         {
