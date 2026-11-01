@@ -879,6 +879,18 @@ mod tests {
                 call(&client, &bridge, "doc_read", json!({"path":"test.md"})).await["value"],
                 "Saved via real IPC"
             );
+            // A save from a stale base is refused, and a deleted file stays deleted.
+            std::fs::write(vault.join("test.md"), "Edited in another app").unwrap();
+            let stale = kintsugi_vault::version("Saved via real IPC");
+            let refused = call(&client, &bridge, "doc_write", json!({"path":"test.md","contents":"Typed here","base":stale})).await;
+            assert_eq!(refused["value"]["result"], "conflict", "{refused}");
+            assert_eq!(refused["value"]["current"]["text"], "Edited in another app");
+            assert_eq!(std::fs::read_to_string(vault.join("test.md")).unwrap(), "Edited in another app");
+            std::fs::remove_file(vault.join("test.md")).unwrap();
+            let gone = call(&client, &bridge, "doc_write", json!({"path":"test.md","contents":"Typed here","base":kintsugi_vault::version("Edited in another app")})).await;
+            assert_eq!(gone["value"]["result"], "gone", "{gone}");
+            assert!(!vault.join("test.md").exists());
+            std::fs::write(vault.join("test.md"), "Saved via real IPC").unwrap();
             assert_eq!(
                 call(
                     &client,

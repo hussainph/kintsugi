@@ -70,6 +70,7 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     }
     config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
     *app.state::<Vault>().0.lock().unwrap() = Some(path.to_path_buf());
+    crate::watch::start(app, path);
     crate::enrich::wake(app);
     crate::search::changed(app);
     Ok(())
@@ -96,15 +97,31 @@ pub fn doc_read(vault: State<Vault>, path: String) -> Result<String> {
     Ok(vault::read(&vault.root()?, &path)?.text)
 }
 
-/// The desktop editor holds the document, so its saves don't check versions.
+/// Saves the editor's text. `base` is the version the editor last had from
+/// disk: if another app changed the file since, or deleted or moved it,
+/// nothing is written and the editor is told (`conflict` / `gone`). Without a
+/// `base` the document is written as is; the editor only does that when the
+/// writer chose to keep a document another app removed.
 #[tauri::command]
-pub fn doc_write(app: AppHandle, vault: State<Vault>, path: String, contents: String) -> Result<()> {
+pub fn doc_write(
+    app: AppHandle,
+    vault: State<Vault>,
+    path: String,
+    contents: String,
+    base: Option<String>,
+) -> Result<vault::Write> {
     writing_path(&path)?;
     let root = vault.root()?;
     crate::blog::repo::refuse_mirror(&root, &path)?;
-    vault::write(&root, &path, &contents, None)?;
-    references_changed(&app);
-    Ok(())
+    let result = match base {
+        Some(base) => vault::update(&root, &path, &contents, &base)?,
+        None => vault::write(&root, &path, &contents, None)?,
+    };
+    if let vault::Write::Saved { .. } = result {
+        crate::watch::wrote(&app, &path, &contents);
+        references_changed(&app);
+    }
+    Ok(result)
 }
 
 /// Creates a draft in `dir` named after `title`; returns its path.

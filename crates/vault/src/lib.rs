@@ -60,6 +60,9 @@ pub enum Write {
     Saved { version: String },
     /// Someone else saved since `base`; nothing was written.
     Conflict { current: Versioned },
+    /// The document was deleted or moved since `base`; nothing was written.
+    /// Only [`update`] answers this: [`write`] creates missing documents.
+    Gone,
 }
 
 /// Identifies a document's contents, so a writer that read an older copy can
@@ -279,6 +282,21 @@ pub fn write(root: &Path, path: &str, text: &str, base: Option<&str>) -> Result<
     Ok(Write::Saved { version: version(text) })
 }
 
+/// Saves `text` over a document the writer already has open at `base`.
+/// Unlike [`write`], a document that is no longer there (deleted, renamed or
+/// moved by another app) is [`Write::Gone`] rather than written again, so an
+/// editor holding it never resurrects it by saving.
+pub fn update(root: &Path, path: &str, text: &str, base: &str) -> Result<Write> {
+    let target = resolve(root, path)?;
+    if !is_doc(&target) {
+        return Err(format!("not a document: {path}"));
+    }
+    if !target.is_file() {
+        return Ok(Write::Gone);
+    }
+    write(root, path, text, Some(base))
+}
+
 /// A document with its text, for devices that keep their own copy.
 #[derive(Serialize, Debug, PartialEq)]
 pub struct Document {
@@ -484,6 +502,41 @@ mod tests {
         );
         assert_eq!(read(root, &path).unwrap().text, "from the mac");
         assert!(write(root, "notes.txt", "x", None).is_err());
+    }
+
+    #[test]
+    fn update_refuses_a_stale_base_and_never_resurrects_a_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let path = create_doc(root, "", "Repair").unwrap();
+        let opened = read(root, &path).unwrap();
+
+        // Another editor (Obsidian, git, iCloud) saves while it is open here.
+        write_atomic(&root.join(&path), "from another editor").unwrap();
+        assert_eq!(
+            update(root, &path, "from kintsugi", &opened.version).unwrap(),
+            Write::Conflict {
+                current: Versioned { text: "from another editor".into(), version: version("from another editor") }
+            }
+        );
+        assert_eq!(read(root, &path).unwrap().text, "from another editor");
+
+        // Saving on top of the current version goes through.
+        let current = version("from another editor");
+        assert_eq!(
+            update(root, &path, "from kintsugi", &current).unwrap(),
+            Write::Saved { version: version("from kintsugi") }
+        );
+
+        // Deleted or renamed elsewhere: the save is refused, not written back.
+        fs::rename(root.join(&path), root.join("renamed.mdx")).unwrap();
+        assert_eq!(update(root, &path, "typed after the rename", &version("from kintsugi")).unwrap(), Write::Gone);
+        assert!(!root.join(&path).exists());
+        // Even with the empty version a new phone note would send.
+        assert_eq!(update(root, &path, "x", &version("")).unwrap(), Write::Gone);
+        assert!(!root.join(&path).exists());
+        assert!(update(root, "notes.txt", "x", &current).is_err());
+        assert!(update(root, "../escape.md", "x", &current).is_err());
     }
 
     #[test]
