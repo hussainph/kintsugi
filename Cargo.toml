@@ -16,6 +16,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3.27.0"
 
+# Debug builds: line tables for our own crates (readable backtraces), no
+# debug info for dependencies. Full debug info for ~800 crates made every
+# worktree's target/ 10+ GB; this keeps builds and tests the same otherwise.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1
