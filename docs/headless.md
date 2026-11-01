@@ -143,6 +143,10 @@ Patterns that made the suite fail now and then, mostly on a loaded machine:
 - **Reading a file the app writes after the event the test waited for.**
   A Kin helper's report is logged (and shown) before `jobs.json` marks the
   job done, on purpose. Wait for the table, not only the message.
+- **Waiting on a status that runs ahead of the work.** Settings → Blog
+  shows "2 posts, mirrored read-only" as soon as the folder is saved, from a
+  count of the repository; the import that writes the mirror runs after it.
+  Wait for the import's summary toast before reading the mirror.
 - **Counting before a batch is in.** Wait for the status that says the
   batch has arrived ("Two from Kin today"), then count rows.
 - **App races that look like flakiness.** As in KI-39, check the app before

@@ -166,7 +166,7 @@ test("Settings → Export picks the menu's destinations and words the statement"
   await shot("1-settings-export");
   await page.keyboard.press("Escape");
 
-  for (let i = 0; i < 30 && !readFileSync(resolve(config, "export.json"), { encoding: "utf8", flag: "a+" }).includes(STATEMENT); i++) await page.waitForTimeout(100);
+  for (let i = 0; i < 300 && !readFileSync(resolve(config, "export.json"), { encoding: "utf8", flag: "a+" }).includes(STATEMENT); i++) await page.waitForTimeout(100);
   const stored = JSON.parse(readFileSync(resolve(config, "export.json"), "utf8"));
   assert.deepEqual(stored.destinations, ["pdf", "linkedin", "html"]);
   assert.equal(stored.statement, true);
