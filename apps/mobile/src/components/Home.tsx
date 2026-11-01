@@ -1,36 +1,17 @@
-import { field } from '@kintsugi/core/frontmatter';
 import { Offline, type Remote, Unpaired } from '@kintsugi/core/remote';
 import { randomUUID } from 'expo-crypto';
 import { router, Stack, useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, AppState, Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AppState, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { StatusDot } from '@/components/StatusDot';
+import { WritingList } from '@/components/WritingList';
+import type { Filter } from '@/lib/browse';
 import { captureTarget } from '@/lib/capture-input';
 import { library, useLibrary } from '@/lib/documents';
-import { docTitle, type LocalDoc, unsent } from '@/lib/library';
+import { unsent } from '@/lib/library';
 import { capture, heldForMacUpdate, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
 import { usePairing } from '@/lib/pairing';
 import { fonts, useTheme } from '@/theme';
-
-type Row = LocalDoc & { title: string };
-type Section = { title: string; data: Row[] };
-
-/** One section per folder that has documents, the vault root first. */
-function sections(docs: LocalDoc[], vaultName: string): Section[] {
-  const folders = new Map<string, Row[]>();
-  for (const doc of docs) {
-    const folder = doc.path.includes('/') ? doc.path.slice(0, doc.path.lastIndexOf('/')) : '';
-    folders.set(folder, [...(folders.get(folder) ?? []), { ...doc, title: docTitle(doc) }]);
-  }
-  const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' });
-  return [...folders]
-    .sort(([a], [b]) => (a === '' ? -1 : b === '' ? 1 : byName(a, b)))
-    .map(([folder, rows]) => ({
-      title: folder || vaultName,
-      data: rows.sort((a, b) => byName(a.path.split('/').pop()!, b.path.split('/').pop()!)),
-    }));
-}
 
 /** Open where the owner left off, once per launch. */
 let restored = false;
@@ -44,7 +25,7 @@ function saveLabel(text: string): string {
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
-export function Home({ client }: { client: Remote }) {
+export function Home({ client, linked }: { client: Remote; linked?: Filter | null }) {
   const theme = useTheme();
   const { unpair, pairing } = usePairing();
   const outbox = useOutbox();
@@ -153,15 +134,6 @@ export function Home({ client }: { client: Remote }) {
     }
   };
 
-  const list = useMemo(() => {
-    const all = sections(docs, vaultName);
-    const q = query.trim().toLowerCase();
-    if (!q) return all;
-    return all
-      .map((s) => ({ ...s, data: s.data.filter((d) => d.title.toLowerCase().includes(q)) }))
-      .filter((s) => s.data.length);
-  }, [docs, vaultName, query]);
-
   const edits = docs.filter((d) => unsent(d) && !d.conflict).length;
   const conflicts = docs.filter((d) => d.conflict).length;
   const pending = [
@@ -194,17 +166,15 @@ export function Home({ client }: { client: Remote }) {
           </Stack.Toolbar.MenuAction>
         </Stack.Toolbar.Menu>
       </Stack.Toolbar>
-      <SectionList
-        contentInsetAdjustmentBehavior="automatic"
-        keyboardDismissMode="interactive"
-        keyboardShouldPersistTaps="handled"
-        style={{ backgroundColor: theme.background }}
-        sections={list}
-        keyExtractor={(doc) => doc.path}
+      <WritingList
+        dir=""
+        rootName={vaultName}
+        query={query}
+        linked={linked}
         refreshing={refreshing}
         onRefresh={refresh}
-        stickySectionHeadersEnabled={false}
-        ListHeaderComponent={
+        empty={connection === 'unknown' ? 'Fetching your writing from your Mac…' : 'No documents yet. Start a note above.'}
+        header={
           <View style={styles.header}>
             <View style={[styles.capture, { backgroundColor: theme.surface }]}>
               <TextInput
@@ -248,34 +218,6 @@ export function Home({ client }: { client: Remote }) {
             )}
           </View>
         }
-        renderSectionHeader={({ section }) => (
-          <Text style={[styles.sectionTitle, { color: theme.muted }]}>{section.title}</Text>
-        )}
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => router.push({ pathname: '/doc', params: { path: item.path } })}
-            style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.surface }]}
-          >
-            <StatusDot status={field(item.text, 'status')} />
-            <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.text }]}>
-              {item.title}
-            </Text>
-            {item.conflict ? (
-              <Text style={[styles.rowNote, { color: theme.danger }]}>Choose</Text>
-            ) : unsent(item) ? (
-              <Text style={[styles.rowNote, { color: theme.faint }]}>Not sent</Text>
-            ) : null}
-          </Pressable>
-        )}
-        ListEmptyComponent={
-          <Text style={[styles.status, { color: theme.muted }]}>
-            {query
-              ? 'Nothing matches.'
-              : connection === 'unknown'
-                ? 'Fetching your writing from your Mac…'
-                : 'No documents yet. Start a note above.'}
-          </Text>
-        }
       />
     </>
   );
@@ -288,14 +230,4 @@ const styles = StyleSheet.create({
   captureButton: { alignSelf: 'flex-end', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   captureButtonText: { fontSize: 15, fontWeight: '600' },
   status: { fontSize: 14, lineHeight: 19, paddingHorizontal: 4 },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 6,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 12 },
-  rowTitle: { flex: 1, fontSize: 17 },
-  rowNote: { fontSize: 13 },
 });

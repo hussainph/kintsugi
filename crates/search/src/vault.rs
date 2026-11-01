@@ -129,26 +129,9 @@ fn strip_front_matter(text: &str) -> &str {
     text
 }
 
-/// `tags: [a, b]` or a block list, from frontmatter.
+/// `tags: [a, b]`, a block list or a lone scalar, read as the tree reads them.
 fn front_matter_tags(text: &str) -> Vec<String> {
-    let Some(rest) = text.strip_prefix("---\n") else { return vec![] };
-    let mut lines = rest.lines().take_while(|l| l.trim_end() != "---");
-    let mut tags = Vec::new();
-    while let Some(line) = lines.next() {
-        let Some(value) = line.strip_prefix("tags:") else { continue };
-        let value = value.trim();
-        if value.is_empty() {
-            for item in lines.by_ref() {
-                let Some(item) = item.trim_start().strip_prefix("- ") else { break };
-                tags.push(item.trim().trim_matches(['"', '\'']).to_lowercase());
-            }
-        } else {
-            let inner = value.trim_start_matches('[').trim_end_matches(']');
-            tags.extend(inner.split(',').map(|t| t.trim().trim_matches(['"', '\'']).to_lowercase()).filter(|t| !t.is_empty()));
-        }
-        break;
-    }
-    tags
+    vault::doc_tags(text)
 }
 
 /// Text files under the root, with a stamp that changes when a file does.

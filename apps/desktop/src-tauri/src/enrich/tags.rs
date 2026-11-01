@@ -49,12 +49,9 @@ fn walk(dir: &Path, depth: usize, media: &Path, counts: &mut HashMap<String, usi
             }
         } else if kind.is_file() && (name.ends_with(".md") || name.ends_with(".mdx")) {
             if let Some(text) = read_text(&path) {
-                let mut seen = Vec::new();
-                for tag in tags(&text).iter().filter_map(|t| normal_tag(t)) {
-                    if !seen.contains(&tag) {
-                        *counts.entry(tag.clone()).or_insert(0) += 1;
-                        seen.push(tag);
-                    }
+                // Normalized and counted once per document.
+                for tag in kintsugi_vault::doc_tags(&text) {
+                    *counts.entry(tag).or_insert(0) += 1;
                 }
             }
         }
@@ -65,138 +62,6 @@ fn read_text(path: &Path) -> Option<String> {
     let meta = fs::symlink_metadata(path).ok()?;
     let file = meta.file_type().is_file() && meta.len() <= MAX_TEXT;
     file.then(|| fs::read_to_string(path).ok()).flatten()
-}
-
-/// `#Craft` and `  craft ` are the same tag: whitespace collapsed, `#` gone,
-/// lowercase, capped so one malformed line can't dominate the vocabulary.
-fn normal_tag(tag: &str) -> Option<String> {
-    let words = tag
-        .split_whitespace()
-        .filter(|w| !w.chars().any(char::is_control));
-    let tag: String = words
-        .collect::<Vec<_>>()
-        .join(" ")
-        .chars()
-        .take(64)
-        .collect();
-    let tag = tag.trim_start_matches('#').trim().to_lowercase();
-    (!tag.is_empty()).then_some(tag)
-}
-
-/// The `tags` field of flat frontmatter: an inline list, a block list, or a
-/// lone scalar. Only the first `tags` key is read, and the body is never
-/// scanned, so a `tags:` line written as prose can't leak into the vocabulary.
-fn tags(text: &str) -> Vec<String> {
-    let mut lines = text.split_inclusive('\n');
-    let Some(open) = lines.next() else {
-        return Vec::new();
-    };
-    if open.trim_end_matches(['\r', '\n']) != "---" {
-        return Vec::new();
-    }
-    let mut tags = Vec::new();
-    let mut found = false;
-    let mut block = false;
-    for line in lines {
-        let bare = line.trim_end_matches(['\r', '\n']);
-        if bare == "---" {
-            break;
-        }
-        if bare.trim().is_empty() || bare.trim_start().starts_with('#') {
-            continue;
-        }
-        if bare.starts_with(char::is_whitespace) {
-            if block {
-                if let Some(item) = bare.trim().strip_prefix("- ").and_then(scalar) {
-                    tags.push(item);
-                }
-            }
-            continue;
-        }
-        block = false;
-        let Some((key, value)) = bare.split_once(':') else {
-            continue;
-        };
-        if found || key.trim() != "tags" {
-            continue;
-        }
-        found = true;
-        let value = value.trim();
-        if value.is_empty() {
-            block = true;
-        } else if value.starts_with('[') {
-            tags.extend(list(value).unwrap_or_default());
-        } else if !value.starts_with('#') {
-            if let Some(tag) = scalar(value) {
-                tags.push(tag);
-            }
-        }
-    }
-    tags
-}
-
-/// A quoted or plain scalar without its trailing comment. `None` for YAML we
-/// don't interpret, so it can never invent a tag.
-fn scalar(value: &str) -> Option<String> {
-    let value = value.trim();
-    if let Some(q) = value.chars().next().filter(|c| *c == '"' || *c == '\'') {
-        let end = quoted_end(value, q)?;
-        let tail = value[end..].trim();
-        if !tail.is_empty() && !tail.starts_with('#') {
-            return None;
-        }
-        return if q == '"' {
-            serde_json::from_str(&value[..end]).ok()
-        } else {
-            Some(value[1..end - 1].replace("''", "'"))
-        };
-    }
-    if value.starts_with(['|', '>', '{', '[', '&', '*', '!', '%', '@', '`']) {
-        return None;
-    }
-    let plain = value.split_once(" #").map_or(value, |(v, _)| v).trim();
-    (!plain.is_empty()).then(|| plain.into())
-}
-
-fn quoted_end(value: &str, quote: char) -> Option<usize> {
-    let mut chars = value.char_indices().skip(1).peekable();
-    while let Some((index, c)) = chars.next() {
-        if quote == '"' && c == '\\' {
-            chars.next();
-        } else if c == quote {
-            if quote == '\'' && chars.peek().is_some_and(|(_, c)| *c == '\'') {
-                chars.next();
-            } else {
-                return Some(index + 1);
-            }
-        }
-    }
-    None
-}
-
-fn list(value: &str) -> Option<Vec<String>> {
-    let mut rest = value.strip_prefix('[')?.trim_start();
-    let mut items = Vec::new();
-    loop {
-        if let Some(tail) = rest.strip_prefix(']') {
-            let tail = tail.trim();
-            return (tail.is_empty() || tail.starts_with('#')).then_some(items);
-        }
-        let end = match rest.chars().next()? {
-            q @ ('"' | '\'') => quoted_end(rest, q)?,
-            _ => rest.find([',', ']'])?,
-        };
-        if end == 0 {
-            return None;
-        }
-        items.push(scalar(&rest[..end])?);
-        rest = rest[end..].trim_start();
-        if let Some(tail) = rest.strip_prefix(',') {
-            rest = tail.trim_start();
-        } else if !rest.starts_with(']') {
-            return None;
-        }
-    }
 }
 
 #[cfg(test)]

@@ -1,0 +1,50 @@
+# Headless acceptance for browsing and filtering writing on the phone (KI-29).
+# Generated into .headless/browse-acceptance/project by run.sh; nothing here
+# is part of the app. XCTest drives the installed Kintsugi app by bundle id
+# (and approves iOS's first-use Open alert for the pairing link); the host
+# app exists only because a UI test bundle needs one.
+name: BrowseHarness
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+targets:
+  BrowseHarness:
+    type: application
+    platform: iOS
+    sources:
+      - path: Host
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.phalasiya.kintsugi.browseharness
+        GENERATE_INFOPLIST_FILE: "YES"
+        INFOPLIST_KEY_UILaunchScreen_Generation: "YES"
+  BrowseHarnessUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: BrowseHarness
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.phalasiya.kintsugi.browseharness.uitests
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: BrowseHarness
+schemes:
+  BrowseHarness:
+    build:
+      targets:
+        BrowseHarness: all
+        BrowseHarnessUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - BrowseHarnessUITests
+      parallelizable: false
+      gatherCoverageData: false
