@@ -2,14 +2,14 @@
 
 Where scattered inspiration becomes writing. Kintsugi brings everything you read, watch and hear into one place: a feed of new work from sources you follow, and a curated library of what's worth keeping, all in a local vault of plain files. Kin, its agent, reads it all alongside you and offers ideas. Then you write: a focused Markdown and MDX editor on the Mac, and a phone app that works like a notes app. Kin finds, connects and suggests, but it never writes for you. See [docs/vision.md](docs/vision.md) for where it's going.
 
-Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by default `~/Documents/Kintsugi`). Each document's frontmatter holds a `status` of `draft` or `complete`.
+Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by default `~/Documents/Kintsugi`). Each document's frontmatter holds a `status` of `draft` or `complete`, and any `tags` you like (`tags: [essay, craft]`; Obsidian's block lists work too). Organize in folders and tags when you want to; nothing asks you to. Add or remove a document's tags from the footer beside its status, filter the sidebar with the tag button beside the vault name, and type `#tag` in ⌘P to jump among tagged documents. See [docs/writing.md](docs/writing.md).
 
 ## Shortcuts
 
 | Keys | Action |
 | --- | --- |
 | ⌘N / ⇧⌘N | New document / folder |
-| ⌘P | Jump to a document |
+| ⌘P | Jump to a document; `#tag` filters by tag |
 | ⌘\ | Toggle the sidebar |
 | ⌘K | Edit the selection (or paragraph) with AI: tighten, rephrase, synonyms, your `/` skills; or find supporting clips, ask who disagrees, discuss it with Kin, see ideas for this draft |
 | `/` | Insert a block (headings, lists, quote, callout, code, table…) or run a skill on the paragraph |
@@ -28,7 +28,7 @@ The Kintsugi phone app is a notes app for your vault. It keeps its own copy of y
 2. In Kintsugi on the Mac, click **Connect your phone** at the bottom of the sidebar and turn on phone access. Kintsugi runs `tailscale serve` to publish `https://<your-mac>.<tailnet>.ts.net:47474`.
 3. Scan the QR code with the phone's camera, or click **Copy link** and paste it into the app.
 
-It opens where you left off. Tap the pencil, or type into **Capture an idea…**, to start a note; new notes go to `inbox/`, named after their first line. Paste a URL, or share a URL, text, image or screenshot into Kintsugi from another iPhone app, to save inspiration in `inspiration/`. Shares save on the phone first, then send to your Mac. If the Mac is asleep, they wait on the phone and send when it's back. Edits carry the version they started from, so the phone never overwrites something you changed on the Mac. If both devices changed a document, edits to different parts merge on their own; only when both changed the same paragraph are you asked which version to keep. **Unpair phones** makes a new pairing code and signs out every phone that used the old one.
+Your folders are browsable, and chips above the list filter by **Drafts**, **Complete** and your tags. It opens where you left off. Tap the pencil, or type into **Capture an idea…**, to start a note; new notes go to `inbox/`, named after their first line. Paste a URL, or share a URL, text, image or screenshot into Kintsugi from another iPhone app, to save inspiration in `inspiration/`. Shares save on the phone first, then send to your Mac. If the Mac is asleep, they wait on the phone and send when it's back. Edits carry the version they started from, so the phone never overwrites something you changed on the Mac. If both devices changed a document, edits to different parts merge on their own; only when both changed the same paragraph are you asked which version to keep. **Unpair phones** makes a new pairing code and signs out every phone that used the old one.
 
 ## Develop
 

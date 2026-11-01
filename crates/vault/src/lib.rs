@@ -10,8 +10,10 @@ mod clip_frontmatter;
 mod clips;
 mod quotes;
 mod references;
+mod tags;
 pub use clips::*;
 pub use quotes::{QuoteAttribution, QuoteSource, leading_passage, quote_attribution};
+pub use tags::{doc_tags, normal_tag};
 pub use references::{
     ReferenceDocument, ReferenceIndex, ReferenceLink, Wikilink, reference_index, wikilinks,
 };
@@ -40,6 +42,8 @@ pub enum Entry {
         path: String,
         title: Option<String>,
         status: Option<String>,
+        /// From the `tags` frontmatter field ([`doc_tags`]); never required.
+        tags: Vec<String>,
     },
 }
 
@@ -149,14 +153,15 @@ fn tree_in(root: &Path, dir: &Path) -> Result<Vec<Entry>> {
                 name,
             });
         } else if is_doc(&path) {
-            let (title, status) = fs::read_to_string(&path)
-                .map(|text| front_matter(&text))
+            let ((title, status), tags) = fs::read_to_string(&path)
+                .map(|text| (front_matter(&text), doc_tags(&text)))
                 .unwrap_or_default();
             entries.push(Entry::Doc {
                 path: relative(root, &path),
                 name,
                 title,
                 status,
+                tags,
             });
         }
     }
@@ -429,7 +434,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         fs::create_dir_all(root.join("essays")).unwrap();
-        fs::write(root.join("b.md"), "---\nstatus: draft\n---\n").unwrap();
+        fs::write(root.join("b.md"), "---\nstatus: draft\ntags:\n  - Essay\n  - craft\n---\n").unwrap();
         fs::write(root.join("essays/a.mdx"), "hi").unwrap();
         fs::write(root.join("notes.txt"), "skip").unwrap();
         fs::write(root.join(".hidden.md"), "skip").unwrap();
@@ -444,14 +449,16 @@ mod tests {
                         name: "a.mdx".into(),
                         path: "essays/a.mdx".into(),
                         title: None,
-                        status: None
+                        status: None,
+                        tags: vec![],
                     }],
                 },
                 Entry::Doc {
                     name: "b.md".into(),
                     path: "b.md".into(),
                     title: None,
-                    status: Some("draft".into())
+                    status: Some("draft".into()),
+                    tags: vec!["essay".into(), "craft".into()],
                 },
             ]
         );

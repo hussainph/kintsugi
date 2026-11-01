@@ -11,7 +11,7 @@ Here the pieces are fragments of inspiration, and the gold is what connects
 them.
 
 This document holds the product's shape and direction, as decided with the owner on
-2026-11-01. Contracts for built parts live beside it (`docs/inspiration.md`,
+2026-11-01. Contracts for built parts live beside it (`docs/writing.md`, `docs/inspiration.md`,
 `docs/ingest.md`, `docs/feed.md`, `docs/ranking.md`).
 Where they disagree, the contract describes what exists and this document
 describes where it's going. Tickets on the board carry the build plan.

@@ -1,5 +1,5 @@
 import { Bookmark, ChevronRight, FileText, Folder, Lightbulb, Rss, Settings, Smartphone, UserRound } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
 import {
   ContextMenu,
@@ -25,7 +25,9 @@ import {
 } from "@kintsugi/ui/components/sidebar";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { openAboutYou, openSettings } from "@/lib/kin";
-import { displayName, Entry, parentDir } from "@/lib/vault";
+import { displayName, Entry, filterTree, flatten, parentDir } from "@/lib/vault";
+import { hasTags, vocabulary } from "@kintsugi/core/tags";
+import { TagChips, TagFilter } from "./Tags";
 
 type Props = {
   tree: Entry[];
@@ -46,10 +48,29 @@ type Props = {
   onTrash: (path: string) => void;
   phoneOn: boolean;
   onPhone: () => void;
+  /** Show only documents carrying every one of these tags. Kept here when
+   *  the parent doesn't hold it (the Lab's previews). */
+  tagFilter?: string[];
+  onTagFilter?: (tags: string[]) => void;
 };
 
 export function Sidebar(props: Props) {
   const [renaming, setRenaming] = useState<string | null>(null);
+  const [ownFilter, setOwnFilter] = useState<string[]>([]);
+  const { tree } = props;
+  const tagFilter = props.tagFilter ?? ownFilter;
+  const setTagFilter = props.onTagFilter ?? setOwnFilter;
+  const docs = useMemo(() => flatten(tree), [tree]);
+  const tags = useMemo(() => vocabulary(docs.map((d) => d.tags)), [docs]);
+  const counts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const doc of docs) for (const tag of doc.tags ?? []) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    return counts;
+  }, [docs]);
+  const shown = useMemo(
+    () => (tagFilter.length ? filterTree(tree, (doc) => hasTags(doc.tags, tagFilter)) : tree),
+    [tree, tagFilter],
+  );
 
   const rename = (entry: Entry) => (
     <Input
@@ -186,8 +207,19 @@ export function Sidebar(props: Props) {
           >
             {props.vaultName}
           </SidebarGroupLabel>
+          <TagFilter vocabulary={tags} counts={counts} selected={tagFilter} onChange={setTagFilter} />
+          <TagChips
+            className="px-2 pb-1"
+            tags={tagFilter}
+            onRemove={(tag) => setTagFilter(tagFilter.filter((t) => t !== tag))}
+          />
           <SidebarGroupContent>
-            <SidebarMenu>{props.tree.map(render)}</SidebarMenu>
+            <SidebarMenu>{shown.map(render)}</SidebarMenu>
+            {tagFilter.length > 0 && !shown.length && (
+              <p className="px-2 py-1 text-xs text-muted-foreground">
+                No documents are tagged {tagFilter.map((t) => `#${t}`).join(" and ")}.
+              </p>
+            )}
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>

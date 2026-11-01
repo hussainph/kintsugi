@@ -8,6 +8,7 @@ import { Palette, PaletteMode } from "@/components/Palette";
 import { PhoneDialog } from "@/components/PhoneDialog";
 import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
 import { Sidebar } from "@/components/Sidebar";
+import { DocTags } from "@/components/Tags";
 import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
@@ -34,6 +35,7 @@ import { Picked } from "@/feed/Picked";
 import { Export } from "@/export/Export";
 import { ExportMenu } from "@/export/ExportMenu";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
+import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
 import { useUpdates } from "@/lib/updates";
@@ -47,7 +49,7 @@ type SaveState = "saved" | "editing" | "error";
 type Blocked = { failures: Failure[]; action: string; resolve: (choice: UnsavedChoice) => void };
 
 /** What the tree shows for a document; when it changes, the tree reloads. */
-const meta = (text: string) => `${field(text, "title")}|${field(text, "status")}`;
+const meta = (text: string) => `${field(text, "title")}|${field(text, "status")}|${tagsOf(text).join(",")}`;
 
 const lastOpened = {
   key: (root: string) => `kintsugi:last:${root}`,
@@ -85,6 +87,8 @@ export default function App() {
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
   const [blocked, setBlocked] = useState<Blocked | null>(null);
+  // The sidebar's tag filter; it belongs to the vault it was chosen in.
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
 
   const viewRef = useRef<EditorView | null>(null);
   const libraryRef = useRef<LibraryHandle>(null);
@@ -261,6 +265,7 @@ export default function App() {
       }
       setText("");
       setSelectedDir("");
+      setTagFilter([]);
       const all = flatten(await refresh());
       const last = lastOpened.get(path);
       const pick = all.find((d) => d.path === last) ?? all[0];
@@ -372,6 +377,17 @@ export default function App() {
     if (field(current, "mirror")) return;
     const next = field(current, "status") === "complete" ? "draft" : "complete";
     view.dispatch({ changes: setField(current, "status", next) });
+  };
+
+  // Tags live in the frontmatter, so adding one is an edit like any other:
+  // it saves, undoes and syncs with the writing.
+  const changeTags = (update: (tags: string[]) => string[]) => {
+    const view = viewRef.current;
+    if (!view) return;
+    const current = view.state.doc.toString();
+    if (field(current, "mirror")) return;
+    const change = setTags(current, update(tagsOf(current)));
+    if (change) view.dispatch({ changes: change });
   };
 
   // ⌘K: the selection, or the paragraph under the cursor when nothing is selected.
@@ -491,6 +507,8 @@ export default function App() {
 
   const status = field(text, "status");
   const mirror = field(text, "mirror");
+  const docTags = useMemo(() => tagsOf(text), [text]);
+  const tagsInUse = useMemo(() => vocabulary(docs.map((d) => d.tags)), [docs]);
   const vaultName = root?.split("/").filter(Boolean).pop() ?? "";
 
   return (
@@ -514,6 +532,8 @@ export default function App() {
         onTrash={trash}
         phoneOn={phoneStatus?.enabled ?? false}
         onPhone={() => setPhoneOpen(true)}
+        tagFilter={tagFilter}
+        onTagFilter={setTagFilter}
       />
       <SidebarInset className="relative h-svh min-w-0">
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
@@ -562,6 +582,7 @@ export default function App() {
               <span title="Generated from the blog repository; edit the post there">Read-only mirror of {mirror}</span>
             ) : (
               <>
+                <DocTags tags={docTags} vocabulary={tagsInUse} onChange={changeTags} />
                 <Badge asChild variant={status === "complete" ? "default" : "outline"}>
                   <button onClick={toggleStatus} title="Toggle status (⇧⌘D)">
                     {status ?? "no status"}

@@ -135,6 +135,8 @@ Frontmatter fields. All optional except `kind` and `captured`:
 
 The frontmatter is flat: scalars, plus lists written inline (`[a, b]`).
 Readers also accept block lists (`tags:\n  - a`), because Obsidian writes them.
+Writing documents use the same `tags` convention and normalization
+(`docs/writing.md`), so clips and drafts share one tag vocabulary.
 
 ## Capture
 
