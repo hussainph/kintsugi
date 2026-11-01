@@ -15,6 +15,7 @@ dom_query = { version = "0.29", features = ["markdown"] }
 futures-util = "0.3.34"
 reqwest = { version = "0.13.5", default-features = false, features = ["stream", "rustls"] }
 tokio = { version = "1.54.1", features = ["time"] }
+feed-rs = "3"
 
 [dev-dependencies]
 tokio = { version = "1.54.1", features = ["time", "rt", "net"] }

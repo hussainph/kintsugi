@@ -1,0 +1,7 @@
+{
+ "resultCount": 2,
+ "results": [
+  {"wrapperType": "track", "kind": "podcast", "collectionId": 1200, "collectionName": "Repair Hour", "artistName": "Repair Collective", "feedUrl": "https://pod.example/feed", "artworkUrl600": "https://is1.example/art600.jpg", "collectionViewUrl": "https://podcasts.apple.com/podcast/id1200", "genres": ["Arts"]},
+  {"wrapperType": "track", "kind": "podcast", "collectionId": 1201, "collectionName": "No Feed Show", "artistName": "Somebody"}
+ ]
+}

@@ -93,7 +93,7 @@ Frontmatter fields. All optional except `kind` and `captured`:
 | `author` | Author or account handle |
 | `image` | Path relative to the clip file |
 | `captured` | The capturing device's local time, `YYYY-MM-DDTHH:MM`, as inbox captures use |
-| `via` | `mac`, `phone`, `share` (a share sheet or extension) |
+| `via` | `mac`, `phone`, `share` (a share sheet or extension), `feed` (saved from the Feed; see `docs/feed.md`) |
 | `tags` | Lowercase tags. Enrichment adds them, preferring tags already in use. The writer may edit them |
 | `summary` | One sentence, written by enrichment |
 | `enriched` | When enrichment finished. Absent means "not yet" |

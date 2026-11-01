@@ -1,4 +1,4 @@
-import { Bookmark, ChevronRight, FileText, Folder, Settings, Smartphone, UserRound } from "lucide-react";
+import { Bookmark, ChevronRight, FileText, Folder, Rss, Settings, Smartphone, UserRound } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
 import {
@@ -33,6 +33,8 @@ type Props = {
   active: string | null;
   libraryOpen: boolean;
   onLibrary: () => void;
+  feedOpen: boolean;
+  onFeed: () => void;
   selectedDir: string;
   onOpen: (path: string) => void;
   onSelectDir: (path: string) => void;
@@ -151,6 +153,13 @@ export function Sidebar(props: Props) {
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} title="Feed (⇧⌘F)">
+                <Rss />
+                <span>Feed</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘F</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
             <SidebarMenuItem>
               <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} title="Inspiration (⇧⌘I)">
                 <Bookmark />

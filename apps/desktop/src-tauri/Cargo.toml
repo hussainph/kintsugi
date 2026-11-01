@@ -41,6 +41,9 @@ futures-util = "0.3.34"
 base64 = "0.23.1"
 reqwest = { version = "0.13.5", default-features = false, features = ["json", "stream", "rustls", "form"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rusqlite = { version = "0.41", features = ["bundled"] }
+quick-xml = "0.42"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 tempfile.workspace = true

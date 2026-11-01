@@ -23,6 +23,7 @@ import { editorChips } from "@/kin/screen";
 import { useScreenContext } from "@/lib/chat";
 import { Settings } from "@/kin/Settings";
 import { AboutYou } from "@/kin/AboutYou";
+import { Feed } from "@/feed/Feed";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
@@ -68,6 +69,7 @@ export default function App() {
   const [refine, setRefine] = useState<{ from: number; to: number } | null>(null);
   const [external, setExternal] = useState<External | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
   const [openClip, setOpenClip] = useState<{ path: string; seq: number }>();
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
@@ -83,6 +85,8 @@ export default function App() {
   const rootRef = useRef<string | null>(null);
 
   const docs = useMemo(() => flatten(tree), [tree]);
+  // The editor stays mounted (and keeps its state) behind the library and feed.
+  const away = libraryOpen || feedOpen;
 
   const fail = useCallback((e: unknown) => {
     toast.error(String(e));
@@ -209,6 +213,7 @@ export default function App() {
       setPalette(null);
       if (!(await settle("opened that document"))) return;
       setLibraryOpen(false);
+      setFeedOpen(false);
       try {
         const contents = await vault.read(path);
         known.current.set(path, meta(contents));
@@ -370,7 +375,18 @@ export default function App() {
     viewRef.current?.contentDOM.blur();
     setRefine(null);
     setOpenClip(undefined);
+    setFeedOpen(false);
     setLibraryOpen(true);
+  }, [settleDocs]);
+
+  // The Feed keeps its own data (not the vault), so it only needs the editor settled.
+  const showFeed = useCallback(async () => {
+    if ((await libraryRef.current?.flush()) === false) return;
+    if (!(await settleDocs("opened the feed"))) return;
+    viewRef.current?.contentDOM.blur();
+    setRefine(null);
+    setLibraryOpen(false);
+    setFeedOpen(true);
   }, [settleDocs]);
 
   // The editor can open a clip without coupling its state to the library.
@@ -382,6 +398,7 @@ export default function App() {
       viewRef.current?.contentDOM.blur();
       setRefine(null);
       setOpenClip({ path, seq: Date.now() });
+      setFeedOpen(false);
       setLibraryOpen(true);
     };
     window.addEventListener("kintsugi:open-clip", open);
@@ -415,10 +432,11 @@ export default function App() {
     if (key === "p" && !e.shiftKey) run(() => setPalette({ kind: "open" }));
     else if (key === "n") run(() => setPalette({ kind: e.shiftKey ? "new-folder" : "new-doc", dir: selectedDir }));
     else if (key === "i" && e.shiftKey) run(showLibrary);
-    else if (key === "d" && e.shiftKey && !libraryOpen) run(toggleStatus);
-    else if (key === "s" && !e.shiftKey) run(() => { if (libraryOpen) void libraryRef.current?.flush(); else void flush(); });
+    else if (key === "f" && e.shiftKey) run(showFeed);
+    else if (key === "d" && e.shiftKey && !away) run(toggleStatus);
+    else if (key === "s" && !e.shiftKey) run(() => { if (libraryOpen) void libraryRef.current?.flush(); else if (!feedOpen) void flush(); });
     else if (key === "o" && e.shiftKey) run(openVault);
-    else if (key === "k" && !e.shiftKey && doc && !libraryOpen) run(openRefine);
+    else if (key === "k" && !e.shiftKey && doc && !away) run(openRefine);
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => shortcuts.current(e);
@@ -427,7 +445,7 @@ export default function App() {
   }, []);
 
   // What Kin's chat picks up from the editor: the selection, the document.
-  useScreenContext("writing", doc && !libraryOpen ? () => editorChips(viewRef.current, doc.path) : null, [doc?.path]);
+  useScreenContext("writing", doc && !away ? () => editorChips(viewRef.current, doc.path) : null, [doc?.path]);
 
   const status = field(text, "status");
   const vaultName = root?.split("/").filter(Boolean).pop() ?? "";
@@ -437,9 +455,11 @@ export default function App() {
       <Sidebar
         tree={tree}
         vaultName={vaultName}
-        active={libraryOpen ? null : doc?.path ?? null}
+        active={away ? null : doc?.path ?? null}
         libraryOpen={libraryOpen}
         onLibrary={showLibrary}
+        feedOpen={feedOpen}
+        onFeed={showFeed}
         selectedDir={selectedDir}
         onOpen={openDoc}
         onSelectDir={setSelectedDir}
@@ -453,7 +473,8 @@ export default function App() {
       <SidebarInset className="relative h-svh min-w-0">
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
         {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} renderUsedIn={(clip) => <UsedIn root={root} path={clip.path} onOpen={openDoc} />} />}
-        <div inert={libraryOpen} className={libraryOpen ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
+        {feedOpen && <Feed />}
+        <div inert={away} className={away ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
         {doc ? (
           <Writing
             key={root}
@@ -477,7 +498,7 @@ export default function App() {
           </div>
         )}
         </div>
-        {doc && !libraryOpen && (
+        {doc && !away && (
           <footer className="absolute right-18 bottom-3 flex items-center gap-3 text-xs text-muted-foreground opacity-60 transition-opacity hover:opacity-100">
             <Badge asChild variant={status === "complete" ? "default" : "outline"}>
               <button onClick={toggleStatus} title="Toggle status (⇧⌘D)">

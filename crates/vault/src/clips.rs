@@ -70,6 +70,8 @@ pub enum ClipVia {
     Mac,
     Phone,
     Share,
+    /// Saved from the Feed: the only way feed items reach Inspiration.
+    Feed,
 }
 
 /// The path is the stable identity, even after the title changes. Optional

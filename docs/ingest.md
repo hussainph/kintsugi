@@ -16,7 +16,7 @@ in camelCase):
 
 | Field | Meaning |
 | --- | --- |
-| `source` | Which adapter made it: `web` (more to come: `rss`, `x`, `youtube`, `pdf`…) |
+| `source` | Which adapter made it: `web` or `rss` (more to come: `x`, `youtube`, `pdf`…) |
 | `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL. Feeds deduplicate on it |
 | `url` | Canonical URL, if any: no fragment, no tracking parameters (`utm_*`, `fbclid`, `gclid`, `mc_cid`, `mc_eid`, `igshid`, `ref_src`) |
 | `title`, `author`, `site`, `description` | As the source declared them, whitespace-collapsed and length-bounded |
@@ -38,9 +38,14 @@ An `Adapter` has three jobs:
   URL (`Target::url` accepts only credential-free HTTP(S)) or a local file.
 - `capture(target, { want_media })`: fetch and normalize one item.
 - `poll(subscription)`: return items newer than the subscription's opaque
-  `cursor`, plus the next cursor. Sources that can't be followed keep the
-  default, which reports "unsupported". The web adapter can't be polled yet.
-  "Follow this page" change detection will add it.
+  `cursor`, plus the next cursor and, when the source sent a fresh document,
+  what it says about itself (`source`: title, home page URL, image).
+  Sources that can't be followed keep the default, which reports
+  "unsupported". The web adapter can't be polled yet. "Follow this page"
+  change detection will add it.
+
+An `Arc<A>` of an adapter is an adapter too, so one instance can sit in an
+engine and still be called directly for its own extras.
 
 The `Engine` holds adapters in priority order and gives a target to the
 first that matches. Specific adapters (X, YouTube, PDFs) go before the
@@ -49,6 +54,38 @@ generic web adapter, which accepts any web URL.
 The AI is not an extractor. Downstream consumers may use it to clean up
 or summarize an item (clip enrichment does), but every body comes from a
 deterministic extractor.
+
+## Feeds
+
+`feed::FeedAdapter` (`source: rss`) polls RSS 0.x/1.0/2.0, Atom and JSON
+Feed documents, parsed with [feed-rs](https://github.com/feed-rs/feed-rs)
+(MIT). It covers blogs, YouTube channels, podcasts and Hacker News
+(hnrss.org). Feeds are followed, never captured: `matches` is always false,
+so a single URL still goes to the web adapter.
+
+- **Polling** makes a conditional request. The cursor is JSON holding the
+  last `ETag` and `Last-Modified`; a 304 returns no items and the same
+  cursor. A changed feed returns all its current entries, newest first as
+  listed, and consumers deduplicate on `id`.
+- **Items**: `id` is `rss:<entry id>` (feed-rs generates one when the feed
+  has none); `site` is the feed's title; `description` is the entry summary
+  as plain text (≤600 characters); `body` is the entry's content (or
+  summary, or media description) as Markdown, with scripts, styles, iframes
+  and forms dropped; `media` is the entry's thumbnail or first inline image
+  (URL only); `published` is RFC 3339; `extras.media` is `article`,
+  `video` (YouTube links, video media) or `audio` (audio enclosures).
+- **Discovery**: `discover(url)` returns the URL if it is a feed, else the
+  first working feed the page advertises with `<link rel="alternate">`
+  (RSS, Atom or JSON types), or a YouTube channel page's uploads feed, else
+  `NotAFeed`. `youtube_channel(page)` reads a channel page's `UC…` ID.
+  `search_podcasts(term)` asks iTunes Search and keeps results with a
+  public `feedUrl`.
+- **Limits**: 8 MB per document, a 10-second connect and 25-second request
+  timeout, at most 5 redirects, each checked against the URL policy.
+- **Errors** add `Status(code)` ("source answered HTTP 503", a number,
+  never content) and `NotAFeed`.
+
+The Feed (`docs/feed.md`) is the consumer.
 
 ## Web pages
 
@@ -125,7 +162,7 @@ webview, so they use static extraction only.
 ## Testing
 
 `cargo test -p kintsugi-ingest` runs on saved fixtures in
-`crates/ingest/fixtures/` and a loopback HTTP server, with no internet. The
+`crates/ingest/fixtures/` (feeds in `fixtures/feed/`) and a loopback HTTP server, with no internet. The
 renderer is tested through a fake that returns a saved Defuddle result
 (`spa.rendered.json`). `live_article_and_video_metadata` is `#[ignore]`d
 and is the only test that touches the network.

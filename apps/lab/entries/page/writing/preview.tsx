@@ -151,6 +151,8 @@ export function WritingPreview({
               setClip(undefined);
               setLibrary(true);
             }}
+            feedOpen={false}
+            onFeed={() => {}}
             selectedDir={selectedDir}
             onSelectDir={setSelectedDir}
             onOpen={openDocument}

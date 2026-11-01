@@ -21,6 +21,7 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
+pub mod feed;
 mod markdown;
 pub mod media;
 pub mod web;
@@ -39,12 +40,15 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum SourceType {
     /// Any web page: an article, a blog post, a social post's public page.
     Web,
+    /// An entry in a followed RSS, Atom or JSON Feed.
+    Rss,
 }
 
 impl SourceType {
     pub fn as_str(self) -> &'static str {
         match self {
             SourceType::Web => "web",
+            SourceType::Rss => "rss",
         }
     }
 }
@@ -127,6 +131,10 @@ pub enum Error {
     TimedOut,
     /// The client could not be started.
     Setup,
+    /// The source answered with this HTTP error status (a number, never content).
+    Status(u16),
+    /// The document is not an RSS, Atom or JSON feed, and links to none.
+    NotAFeed,
 }
 
 impl fmt::Display for Error {
@@ -138,6 +146,8 @@ impl fmt::Display for Error {
             Error::TooLarge => "source exceeds download limit",
             Error::TimedOut => "page fetch timed out",
             Error::Setup => "could not start page fetcher",
+            Error::Status(code) => return write!(f, "source answered HTTP {code}"),
+            Error::NotAFeed => "source is not a feed",
         })
     }
 }
@@ -180,6 +190,17 @@ pub struct Polled {
     pub items: Vec<Item>,
     /// Store this for the next poll.
     pub cursor: Option<String>,
+    /// What the source said about itself, when it sent a fresh document.
+    pub source: Option<SourceInfo>,
+}
+
+/// A followed source's own title, home page and image.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceInfo {
+    pub title: Option<String>,
+    pub url: Option<String>,
+    pub image: Option<String>,
 }
 
 /// One kind of source. Object-safe so the engine can hold a list of them.
@@ -194,6 +215,23 @@ pub trait Adapter: Send + Sync {
     fn poll<'a>(&'a self, subscription: &'a Subscription) -> BoxFuture<'a, Result<Polled>> {
         let _ = subscription;
         Box::pin(async { Err(Error::Unsupported) })
+    }
+}
+
+/// A shared adapter is still an adapter, so one instance can sit in an
+/// engine and be called directly for its own extras (feed discovery).
+impl<A: Adapter + ?Sized> Adapter for std::sync::Arc<A> {
+    fn source(&self) -> SourceType {
+        (**self).source()
+    }
+    fn matches(&self, target: &Target) -> bool {
+        (**self).matches(target)
+    }
+    fn capture<'a>(&'a self, target: &'a Target, options: CaptureOptions) -> BoxFuture<'a, Result<Item>> {
+        (**self).capture(target, options)
+    }
+    fn poll<'a>(&'a self, subscription: &'a Subscription) -> BoxFuture<'a, Result<Polled>> {
+        (**self).poll(subscription)
     }
 }
 

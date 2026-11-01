@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+  <link rel="self" href="http://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv"/>
+  <id>yt:channel:abcdefghijklmnopqrstuv</id>
+  <yt:channelId>abcdefghijklmnopqrstuv</yt:channelId>
+  <title>Slow Craft</title>
+  <link rel="alternate" href="https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv"/>
+  <author><name>Slow Craft</name><uri>https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv</uri></author>
+  <published>2020-01-01T00:00:00+00:00</published>
+  <entry>
+    <id>yt:video:abc123def45</id>
+    <yt:videoId>abc123def45</yt:videoId>
+    <yt:channelId>UCabcdefghijklmnopqrstuv</yt:channelId>
+    <title>Hand-cut dovetails, slowly</title>
+    <link rel="alternate" href="https://www.youtube.com/watch?v=abc123def45"/>
+    <author><name>Slow Craft</name><uri>https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv</uri></author>
+    <published>2026-10-29T12:00:00+00:00</published>
+    <updated>2026-10-29T13:00:00+00:00</updated>
+    <media:group>
+      <media:title>Hand-cut dovetails, slowly</media:title>
+      <media:content url="https://www.youtube.com/v/abc123def45?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+      <media:thumbnail url="https://i.ytimg.com/vi/abc123def45/hqdefault.jpg" width="480" height="360"/>
+      <media:description>An hour of quiet joinery, no music.</media:description>
+    </media:group>
+  </entry>
+</feed>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Repair Hour</title>
+    <link>https://pod.example/</link>
+    <itunes:author>Repair Hour</itunes:author>
+    <item>
+      <title>Episode 12: Mending</title>
+      <guid isPermaLink="false">repair-12</guid>
+      <link>https://pod.example/12</link>
+      <pubDate>Thu, 29 Oct 2026 06:00:00 GMT</pubDate>
+      <description>Why broken things are interesting.</description>
+      <enclosure url="https://pod.example/12.mp3" length="1234" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>

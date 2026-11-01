@@ -110,6 +110,22 @@ pub(crate) fn scratch_path(path: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// A file the save dialog chose (an OPML export): only inside this run's
+/// scratch vault or config directory, never a symlink.
+pub(crate) fn scratch_file(path: &Path) -> Result<PathBuf> {
+    let parent = path.parent().ok_or("a file needs a folder")?;
+    let parent = checked_directory(parent)?;
+    let inside = parent.starts_with(required_dir("KINTSUGI_VAULT")?) || parent.starts_with(config_directory()?);
+    if !inside {
+        return Err("headless only writes files inside this run's scratch vault or config".into());
+    }
+    let file = parent.join(path.file_name().ok_or("a file needs a name")?);
+    if std::fs::symlink_metadata(&file).is_ok_and(|m| m.file_type().is_symlink()) {
+        return Err("refusing to write through a symlink".into());
+    }
+    Ok(file)
+}
+
 pub(crate) fn config_directory() -> Result<PathBuf> {
     required_dir("KINTSUGI_CONFIG_DIR")
 }
@@ -204,6 +220,8 @@ pub fn run() -> Result<()> {
     if ai_enabled() {
         crate::enrich::start(app.handle());
     }
+    // Polls only sources subscribed in this run's scratch config.
+    crate::feed::start(app.handle());
     let bridge = Bridge {
         app: app.handle().clone(),
         clients,

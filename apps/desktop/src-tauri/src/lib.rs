@@ -2,6 +2,7 @@ mod ai;
 mod clip_capture;
 mod config;
 mod enrich;
+mod feed;
 mod library;
 #[cfg(not(feature = "headless"))]
 mod navigation;
@@ -56,6 +57,7 @@ fn builder() -> tauri::Builder<Runtime> {
         .manage(ai::Chat::default())
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
+        .manage(feed::Feed::default())
         .invoke_handler(tauri::generate_handler![
             vault::vault_current,
             vault::vault_open,
@@ -100,6 +102,20 @@ fn builder() -> tauri::Builder<Runtime> {
             phone::phone_status,
             phone::phone_enable,
             phone::phone_reset,
+            feed::feed_sources,
+            feed::feed_subscribe,
+            feed::feed_unsubscribe,
+            feed::feed_mute,
+            feed::feed_refresh,
+            feed::feed_podcast_search,
+            feed::feed_opml_import,
+            feed::feed_opml_export,
+            feed::feed_items,
+            feed::feed_read,
+            feed::feed_act,
+            feed::feed_note,
+            feed::feed_impressions,
+            feed::feed_save,
         ])
 }
 
@@ -109,6 +125,8 @@ pub fn run() {
     builder()
         .setup(|app| {
             ai::init(app.handle());
+            // App data, not the vault, so it runs in scratch vault runs too.
+            feed::start(app.handle());
             if !config::isolated_dev() {
                 enrich::start(app.handle());
                 phone::restore(app.handle());

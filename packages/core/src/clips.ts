@@ -1,6 +1,6 @@
 /** Vault clip types and the app's capture envelope, using camelCase fields. */
 export type ClipKind = "link" | "post" | "video" | "image" | "quote" | "note";
-export type ClipVia = "mac" | "phone" | "share";
+export type ClipVia = "mac" | "phone" | "share" | "feed";
 
 export type ClipSummary = {
   path: string;

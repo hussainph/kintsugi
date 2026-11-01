@@ -1,0 +1,15 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Field Notes",
+  "home_page_url": "https://notes.example/",
+  "feed_url": "https://notes.example/feed.json",
+  "items": [
+    {
+      "id": "attention",
+      "url": "https://notes.example/2026/attention",
+      "title": "Attention",
+      "content_html": "<p>Attention is a garden.</p><p>Tend it.</p>",
+      "date_published": "2026-10-31T08:00:00Z"
+    }
+  ]
+}

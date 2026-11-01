@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>The Quiet Blog</title>
+    <link>https://quiet.example/</link>
+    <description>Essays on tools and attention</description>
+    <item>
+      <title>Tools that shape thinking</title>
+      <link>https://quiet.example/posts/tools</link>
+      <guid>https://quiet.example/posts/tools</guid>
+      <dc:creator>Ada Writer</dc:creator>
+      <pubDate>Fri, 30 Oct 2026 09:00:00 GMT</pubDate>
+      <description>Every tool is an argument about what matters.</description>
+      <content:encoded><![CDATA[<p><img src="https://quiet.example/tools.jpg" alt=""></p><p>Every tool is an argument.</p><script>alert(1)</script><p>The pencil argues for <em>slowness</em>.</p>]]></content:encoded>
+    </item>
+    <item>
+      <title>On mending</title>
+      <link>https://quiet.example/posts/mending</link>
+      <guid>https://quiet.example/posts/mending</guid>
+      <pubDate>Wed, 28 Oct 2026 09:00:00 GMT</pubDate>
+      <description><![CDATA[<p>Repair as a <b>design</b> material.</p>]]></description>
+    </item>
+    <item>
+      <title>Small software</title>
+      <link>https://quiet.example/posts/small</link>
+      <guid>https://quiet.example/posts/small</guid>
+      <pubDate>Mon, 26 Oct 2026 09:00:00 GMT</pubDate>
+      <description>Software for one.</description>
+    </item>
+  </channel>
+</rss>

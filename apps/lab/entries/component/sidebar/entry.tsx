@@ -76,6 +76,8 @@ function SidebarPreview({
             "Inspiration selected. Explore the full page in the Inspiration library entry.",
           );
         }}
+        feedOpen={false}
+        onFeed={() => setNotice("Feed selected. The Feed has no Lab entry yet.")}
         selectedDir={dir}
         onSelectDir={setDir}
         onOpen={(path) => {
