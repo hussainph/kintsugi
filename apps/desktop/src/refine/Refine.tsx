@@ -63,6 +63,8 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
   const start = view.coordsAtPos(from);
   const end = view.coordsAtPos(to) ?? start;
   const words = original.trim().split(/\s+/).length;
+  // A read-only mirror (KI-9) keeps the actions that write nothing.
+  const locked = view.state.readOnly;
   const actions = ACTIONS.filter((a) => a.shape !== "choices" || words <= 4);
 
   const run = async (next: Action, retry = false) => {
@@ -182,7 +184,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
         onOpenAutoFocus={(e) => (action || initial) && e.preventDefault()}
       >
         {found ? (
-          <Supporting found={found} onReference={reference} onOpen={(clip) => {
+          <Supporting found={found} onReference={locked ? null : reference} onOpen={(clip) => {
             onClose();
             window.dispatchEvent(new CustomEvent("kintsugi:open-clip", { detail: { path: clip } }));
           }} onBack={() => setFound(null)} />
@@ -191,11 +193,11 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
             <CommandInput
               value={query}
               onValueChange={setQuery}
-              placeholder="Edit the selection, or describe a change…"
+              placeholder={locked ? "Read-only: find, discuss or see ideas…" : "Edit the selection, or describe a change…"}
               autoFocus
             />
             <CommandList>
-              {query.trim() && (
+              {query.trim() && !locked && (
                 <CommandGroup>
                   {/* The typed text as an instruction, always offered first. */}
                   <CommandItem
@@ -211,14 +213,14 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                   </CommandItem>
                 </CommandGroup>
               )}
-              <CommandGroup heading="Edit">
+              {!locked && <CommandGroup heading="Edit">
                 {actions.map((a) => (
                   <CommandItem key={a.id} value={a.label} onSelect={() => run(a)}>
                     {a.label}
                   </CommandItem>
                 ))}
-              </CommandGroup>
-              {skills.length > 0 && (
+              </CommandGroup>}
+              {skills.length > 0 && !locked && (
                 <CommandGroup heading="Skills">
                   {skills.map((skill) => (
                     <CommandItem key={skill.name} value={`skill ${skill.name} ${skill.description}`} onSelect={() => run(skillAction(skill))}>
@@ -314,7 +316,8 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
  *  after the passage; opening it shows the clip. */
 function Supporting({ found, onReference, onOpen, onBack }: {
   found: { clips: Found[] | null; error?: string };
-  onReference: (link: string) => void;
+  /** Null in a read-only document: the clips can only be opened. */
+  onReference: ((link: string) => void) | null;
   onOpen: (path: string) => void;
   onBack: () => void;
 }) {
@@ -336,7 +339,7 @@ function Supporting({ found, onReference, onOpen, onBack }: {
         ) : (
           <CommandGroup>
             {found.clips.map(({ source, link }) => (
-              <CommandItem key={source.path} value={source.path} onSelect={() => onReference(link)} className="items-start">
+              <CommandItem key={source.path} value={source.path} onSelect={() => (onReference ? onReference(link) : onOpen(source.path))} className="items-start">
                 <Bookmark className="mt-0.5" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{source.title}</span>
@@ -358,7 +361,7 @@ function Supporting({ found, onReference, onOpen, onBack }: {
         )}
       </CommandList>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-2 text-xs text-muted-foreground">
-        <span><Kbd>↵</Kbd> add its link after the passage</span>
+        <span><Kbd>↵</Kbd> {onReference ? "add its link after the passage" : "open it"}</span>
         <span><Kbd>⌫</Kbd> back</span>
         <span className="ml-auto"><Kbd>esc</Kbd> close</span>
       </div>

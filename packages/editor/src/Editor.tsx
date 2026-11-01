@@ -9,7 +9,7 @@ import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view
 import { RefObject, useEffect, useRef } from "react";
 import { frontmatter } from "@kintsugi/core/frontmatter";
 import { frontmatterLines, highlight, theme } from "./theme";
-import { commandExtensions, type Commands } from "./commands";
+import { commandExtensions, refreshCommands, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
 
 export type { KinAnchor, References } from "./references";
@@ -102,6 +102,12 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
     const view = viewRef.current;
     if (view) view.dispatch({ effects: refreshReferences.of(null) });
   }, [references?.sources, references?.search, viewRef]);
+
+  // Skills load after the editor mounts; an open / menu picks them up.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch({ effects: refreshCommands.of(null) });
+  }, [commands?.skills, commands?.actions, viewRef]);
 
   // A wrapper may attach the paragraph callback after the editor mounts.
   useEffect(() => {

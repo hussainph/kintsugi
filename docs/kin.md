@@ -288,7 +288,8 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   as one undoable change. Skills with `command: true` (`kin_skills`) follow
   under "Kin skills"; one runs on the paragraph (or, on a blank line, the one
   above) through ⌘K's rewrite path, so the result is a diff he accepts with
-  Enter. Nothing is written until then.
+  Enter. Nothing is written until then. Host actions (`Commands.actions`)
+  come last under "Kin": the desktop adds *Ideas for this draft*.
 - **`@`** opens the `[[` picker and writes the same `[[link]]`; title matches
   lead in both. **Kin** is first while the query could be "kin": choosing it
   takes `@Kin` back out and calls `References.onKin(anchor)` with the
@@ -303,6 +304,8 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   (sends that question to the chat with the paragraph, via
   `discuss(chips, text, { send: true })`) and *Discuss this paragraph* (opens
   the chat with it, unsent) and *Ideas for this draft* (`ideasForDraft(path)`).
+  In a read-only mirror (KI-9) only the actions that write nothing are
+  offered, and a supporting clip can only be opened.
 - **Phone width.** Both menus fit `100vw − 16px`, rows are at least 44 px
   on a coarse pointer, and touch hints replace the key hints there.
 - **Headless.** With `KINTSUGI_HEADLESS_KIN=mock`, `ai_providers` offers the

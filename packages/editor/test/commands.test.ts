@@ -200,3 +200,15 @@ test("host actions (Ideas for this draft) run without writing, after blocks", ()
   assert.equal(e.text(), "Prose ");
   assert.equal(menuItems("", [], [ideas]).at(-1)?.kind, "action");
 });
+
+test("skills that arrive while the menu is open are listed", async () => {
+  const { refreshCommands } = await import("../src/commands.ts");
+  const commands: Commands = { skills: [] };
+  const e = editor("", { commands });
+  e.type("/steel");
+  assert.equal(e.menu(), false);
+  e.type("");
+  commands.skills = [steelman];
+  e.view.dispatch({ effects: refreshCommands.of(null) });
+  assert.equal(e.menu(), true);
+});
