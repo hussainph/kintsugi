@@ -247,17 +247,59 @@ pub fn write(root: &Path, path: &str, text: &str, base: Option<&str>) -> Result<
     if !is_doc(&target) {
         return Err(format!("not a document: {path}"));
     }
-    if let Some(base) = base {
-        if let Ok(current) = fs::read_to_string(&target) {
-            if version(&current) != base {
+    match fs::read_to_string(&target) {
+        // Already saved: a retry after a lost reply, or the same edit made on
+        // both devices. Nothing to write and nothing to conflict with.
+        Ok(current) if current == text => return Ok(Write::Saved { version: version(text) }),
+        Ok(current) => {
+            if base.is_some_and(|base| version(&current) != base) {
                 return Ok(Write::Conflict {
                     current: Versioned { version: version(&current), text: current },
                 });
             }
         }
+        // A new document, such as a note started offline on the phone.
+        Err(_) => {
+            if path.split('/').any(|part| part.starts_with('.')) {
+                return Err(format!("not a document: {path}"));
+            }
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent).map_err(err)?;
+            }
+        }
     }
     write_atomic(&target, text)?;
     Ok(Write::Saved { version: version(text) })
+}
+
+/// A document with its text, for devices that keep their own copy.
+#[derive(Serialize, Debug, PartialEq)]
+pub struct Document {
+    pub path: String,
+    pub text: String,
+    pub version: String,
+}
+
+/// Every document in the tree with its text and version, so the phone can
+/// keep a full copy of the writing and work offline.
+pub fn library(root: &Path) -> Result<Vec<Document>> {
+    fn walk(root: &Path, entries: Vec<Entry>, out: &mut Vec<Document>) -> Result<()> {
+        for entry in entries {
+            match entry {
+                Entry::Folder { children, .. } => walk(root, children, out)?,
+                Entry::Doc { path, .. } => {
+                    // A file removed mid-walk is simply not in this copy.
+                    if let Ok(Versioned { text, version }) = read(root, &path) {
+                        out.push(Document { path, text, version });
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    walk(root, tree(root)?, &mut out)?;
+    Ok(out)
 }
 
 fn quoted(value: &str) -> String {
@@ -433,6 +475,65 @@ mod tests {
         );
         assert_eq!(read(root, &path).unwrap().text, "from the mac");
         assert!(write(root, "notes.txt", "x", None).is_err());
+    }
+
+    #[test]
+    fn versions_match_the_phone() {
+        // packages/core/src/remote.test.ts pins the same value.
+        assert_eq!(version("Café — 🙂\n"), "c6a213f66a7e4fbb");
+        assert_eq!(version(""), "cbf29ce484222325");
+    }
+
+    #[test]
+    fn writing_the_text_already_saved_is_not_a_conflict() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let path = create_doc(root, "", "Repair").unwrap();
+        let first = read(root, &path).unwrap();
+        write(root, &path, "edited", Some(&first.version)).unwrap();
+        // A retry whose first reply was lost still carries the old base.
+        assert_eq!(
+            write(root, &path, "edited", Some(&first.version)).unwrap(),
+            Write::Saved { version: version("edited") }
+        );
+    }
+
+    #[test]
+    fn new_documents_are_written_with_their_folder_but_not_into_hidden_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let empty = version("");
+        assert_eq!(
+            write(root, "inbox/offline-note.mdx", "written on a plane", Some(&empty)).unwrap(),
+            Write::Saved { version: version("written on a plane") }
+        );
+        assert_eq!(read(root, "inbox/offline-note.mdx").unwrap().text, "written on a plane");
+        // Someone else took the name meanwhile: their text is not replaced.
+        assert!(matches!(
+            write(root, "inbox/offline-note.mdx", "another note", Some(&empty)).unwrap(),
+            Write::Conflict { .. }
+        ));
+        assert!(write(root, ".git/x.md", "x", Some(&empty)).is_err());
+        assert!(!root.join(".git").exists());
+    }
+
+    #[test]
+    fn library_holds_every_document_with_its_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("essays")).unwrap();
+        fs::create_dir_all(root.join(INSPIRATION)).unwrap();
+        fs::write(root.join("essays/a.mdx"), "alpha").unwrap();
+        fs::write(root.join("b.md"), "beta").unwrap();
+        fs::write(root.join("inspiration/clip.md"), "a clip").unwrap();
+        fs::write(root.join("notes.txt"), "skip").unwrap();
+        assert_eq!(
+            library(root).unwrap(),
+            vec![
+                Document { path: "essays/a.mdx".into(), text: "alpha".into(), version: version("alpha") },
+                Document { path: "b.md".into(), text: "beta".into(), version: version("beta") },
+            ]
+        );
     }
 
     #[test]

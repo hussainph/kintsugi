@@ -155,6 +155,19 @@ xcrun simctl io "$UDID" screenshot "$PWD/.headless/ios/screenshot.png"
 xcrun simctl shutdown "$UDID"
 ```
 
+To give the Simulator a Mac to talk to, serve the real phone API on a
+scratch vault (no desktop app, Tailscale or owner config involved; it refuses
+any vault outside a `.headless` folder) and pair through the link it prints:
+
+```sh
+pnpm desktop:seed "$PWD/.headless/phone-vault"
+KINTSUGI_PHONE_DEV_VAULT="$PWD/.headless/phone-vault" \
+  cargo test -p kintsugi phone_dev_server -- --ignored --nocapture
+xcrun simctl openurl "$UDID" 'kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A47475&token=TEST-TOKEN'
+```
+
+Stop that shell to take the "Mac" offline.
+
 `xcrun simctl` talks to CoreSimulator without showing a window. If Device Hub
 is already open on the owner's screen, leave it alone; don't activate it and
 don't use it to inspect the app. Use `simctl io … screenshot` for evidence.

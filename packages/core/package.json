@@ -5,6 +5,7 @@
   "exports": {
     "./clips": "./src/clips.ts",
     "./frontmatter": "./src/frontmatter.ts",
+    "./merge": "./src/merge.ts",
     "./remote": "./src/remote.ts",
     "./references": "./src/references.ts",
     "./vault": "./src/vault.ts"

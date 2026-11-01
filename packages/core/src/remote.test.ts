@@ -322,3 +322,12 @@ for (const { name, call } of clipCalls) {
     await result;
   });
 }
+
+test("versions match kintsugi_vault::version", async () => {
+  const { version } = await import("./remote.ts");
+  // FNV-1a 64 reference values; crates/vault checks the non-ASCII one too.
+  assert.equal(version(""), "cbf29ce484222325");
+  assert.equal(version("a"), "af63dc4c8601ec8c");
+  assert.equal(version("foobar"), "85944171f73967e8");
+  assert.equal(version("Café — 🙂\n"), "c6a213f66a7e4fbb");
+});

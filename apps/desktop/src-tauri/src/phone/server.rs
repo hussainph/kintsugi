@@ -70,6 +70,7 @@ pub fn router(host: Host, token: &str) -> Router {
     Router::new()
         .route("/v1/hello", get(hello))
         .route("/v1/tree", get(tree))
+        .route("/v1/library", get(library))
         .route("/v1/doc", get(read).put(write))
         .route("/v1/docs", post(create))
         .route("/v1/capture", post(capture))
@@ -129,11 +130,16 @@ fn same(a: &[u8], b: &[u8]) -> bool {
 async fn hello(State(ctx): State<Ctx>) -> Reply<serde_json::Value> {
     let root = ctx.root()?;
     let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    Ok(Json(json!({ "app": "kintsugi", "api": 2, "vault": name })))
+    Ok(Json(json!({ "app": "kintsugi", "api": 3, "vault": name })))
 }
 
 async fn tree(State(ctx): State<Ctx>) -> Reply<Vec<vault::Entry>> {
     Ok(Json(vault::tree(&ctx.root()?)?))
+}
+
+/// Every document's text and version: the phone's offline copy. Since API 3.
+async fn library(State(ctx): State<Ctx>) -> Reply<Vec<vault::Document>> {
+    Ok(Json(vault::library(&ctx.root()?)?))
 }
 
 #[derive(Deserialize)]
@@ -324,6 +330,40 @@ mod tests {
         url
     }
 
+    /// The real phone API on a scratch vault, for driving the app in the iOS
+    /// Simulator without the desktop app, Tailscale or the owner's vault:
+    ///
+    /// KINTSUGI_PHONE_DEV_VAULT="$PWD/.headless/phone-vault" \
+    ///   cargo test -p kintsugi phone_dev_server -- --ignored --nocapture
+    ///
+    /// It listens on 127.0.0.1:47475 (KINTSUGI_PHONE_DEV_PORT) and prints the
+    /// pair link; open it with `xcrun simctl openurl`. Stop it with Ctrl-C.
+    #[test]
+    #[ignore]
+    fn phone_dev_server() {
+        let vault = std::env::var("KINTSUGI_PHONE_DEV_VAULT").expect("set KINTSUGI_PHONE_DEV_VAULT");
+        let root = std::fs::canonicalize(&vault).expect("the scratch vault must exist");
+        assert!(
+            root.components().any(|c| c.as_os_str() == ".headless"),
+            "refusing {}: use a scratch vault under a .headless folder",
+            root.display()
+        );
+        let port: u16 = std::env::var("KINTSUGI_PHONE_DEV_PORT").map_or(47475, |p| p.parse().unwrap());
+        let config = tempfile::tempdir().unwrap();
+        let host = Host {
+            capture_ids: config.path().join("clip-capture-ids.json"),
+            root: Arc::new(move || Ok(root.clone())),
+            changed: Arc::new(|c| println!("changed: {}", c.path)),
+            clip_changed: Arc::new(|path| println!("clip changed: {path}")),
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            let listener = TcpListener::bind(("127.0.0.1", port)).await.unwrap();
+            println!("kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A{port}&token={TOKEN}");
+            axum::serve(listener, router(host, TOKEN)).await.unwrap();
+        });
+    }
+
     /// Serves a temp vault on a free port and runs `test` against it.
     fn with_server(
         test: impl AsyncFnOnce(
@@ -438,6 +478,48 @@ mod tests {
     }
 
     #[test]
+    fn library_and_offline_notes_round_trip() {
+        with_server(async |base, http, root, changes, _| {
+            std::fs::create_dir_all(root.join("essays")).unwrap();
+            let path = vault::create_doc(&root, "essays", "Repair").unwrap();
+            std::fs::create_dir_all(root.join("inspiration")).unwrap();
+            std::fs::write(root.join("inspiration/clip.md"), "a clip").unwrap();
+            let docs: serde_json::Value = http
+                .get(format!("{base}/v1/library"))
+                .bearer_auth(TOKEN)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+            let text = std::fs::read_to_string(root.join(&path)).unwrap();
+            assert_eq!(docs, json!([{ "path": path, "text": text, "version": vault::version(&text) }]));
+
+            // A note started offline: written where the phone put it, with
+            // its folder, once, even if the phone sends it again.
+            let put = || {
+                http.put(format!("{base}/v1/doc"))
+                    .bearer_auth(TOKEN)
+                    .json(&json!({ "path": "inbox/on-a-plane.mdx", "text": "on a plane", "base": vault::version("") }))
+                    .send()
+            };
+            assert_eq!(put().await.unwrap().status(), 200);
+            assert_eq!(put().await.unwrap().status(), 200);
+            assert_eq!(std::fs::read_to_string(root.join("inbox/on-a-plane.mdx")).unwrap(), "on a plane");
+            assert_eq!(changes.lock().unwrap().len(), 2);
+            let taken = http
+                .put(format!("{base}/v1/doc"))
+                .bearer_auth(TOKEN)
+                .json(&json!({ "path": "inbox/on-a-plane.mdx", "text": "a different note", "base": vault::version("") }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(taken.status(), 409);
+        });
+    }
+
+    #[test]
     fn captures_go_to_the_inbox() {
         with_server(async |base, http, root, changes, _| {
             let reply: serde_json::Value = http
@@ -473,7 +555,7 @@ mod tests {
             let body: serde_json::Value = response.json().await.unwrap();
             assert_eq!(
                 body,
-                json!({ "app": "kintsugi", "api": 2, "vault": root.file_name().unwrap().to_str().unwrap() })
+                json!({ "app": "kintsugi", "api": 3, "vault": root.file_name().unwrap().to_str().unwrap() })
             );
         });
     }

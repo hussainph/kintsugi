@@ -20,13 +20,13 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 
 ## Your phone
 
-The Kintsugi phone app reads, edits and captures into your vault while Kintsugi is open on your Mac. It connects over [Tailscale](https://tailscale.com), so nothing is exposed to the internet and there's no cloud copy of your writing.
+The Kintsugi phone app is a notes app for your vault. It keeps its own copy of your writing (text only), so you can open, edit and start documents anywhere, and it syncs with Kintsugi on your Mac whenever the Mac is reachable. It connects over [Tailscale](https://tailscale.com), so nothing is exposed to the internet and there's no cloud copy of your writing.
 
 1. Install Tailscale on the Mac and the phone, signed in to the same tailnet. In the Tailscale admin console, turn on **DNS → HTTPS Certificates**.
 2. In Kintsugi on the Mac, click **Connect your phone** at the bottom of the sidebar and turn on phone access. Kintsugi runs `tailscale serve` to publish `https://<your-mac>.<tailnet>.ts.net:47474`.
 3. Scan the QR code with the phone's camera, or click **Copy link** and paste it into the app.
 
-Ideas captured as text go to `inbox/` as new drafts. Paste a URL, or share a URL, text, image or screenshot into Kintsugi from another iPhone app, to save inspiration in `inspiration/`. Shares save on the phone first, then send to your Mac. If the Mac is asleep, they wait on the phone and send when it's back. Edits carry the version they started from, so the phone never overwrites something you changed on the Mac; you'll be asked which copy to keep. **Unpair phones** makes a new pairing code and signs out every phone that used the old one.
+It opens where you left off. Tap the pencil, or type into **Capture an idea…**, to start a note; new notes go to `inbox/`, named after their first line. Paste a URL, or share a URL, text, image or screenshot into Kintsugi from another iPhone app, to save inspiration in `inspiration/`. Shares save on the phone first, then send to your Mac. If the Mac is asleep, they wait on the phone and send when it's back. Edits carry the version they started from, so the phone never overwrites something you changed on the Mac. If both devices changed a document, edits to different parts merge on their own; only when both changed the same paragraph are you asked which version to keep. **Unpair phones** makes a new pairing code and signs out every phone that used the old one.
 
 ## Develop
 
