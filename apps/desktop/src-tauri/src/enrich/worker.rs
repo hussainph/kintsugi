@@ -3,10 +3,10 @@
 
 use crate::AppHandle;
 use super::{
-    fetch,
     storage::{Clip, Store, Update, VaultStore},
     think,
 };
+use kintsugi_ingest::{CaptureOptions, Engine as Ingest, Item, Target};
 use std::{future::Future, path::Path, time::Duration};
 use tauri::{Listener, Manager};
 use tokio::sync::Notify;
@@ -37,8 +37,8 @@ pub fn start(app: &AppHandle) {
         // Initializes the last/default vault even before the webview asks.
         let _ = crate::vault::current(&app);
         let engine = loop {
-            match fetch::Fetcher::new() {
-                Ok(fetcher) => break Enricher(fetcher),
+            match super::ingest_engine(&app) {
+                Ok(ingest) => break Enricher(ingest),
                 Err(_) => {
                     eprintln!("Could not start clip enrichment; retrying.");
                     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -72,30 +72,69 @@ trait Engine {
     fn enrich(&self, clip: &Clip, existing_tags: Vec<String>) -> impl Future<Output = Result<Update>> + Send;
 }
 
-struct Enricher(fetch::Fetcher);
+/// Enrichment is one consumer of the ingest engine: the clip's URL becomes a
+/// normalized item, and the item's Markdown body becomes the clip's source.
+struct Enricher(Ingest);
+
+impl Enricher {
+    async fn page(&self, clip: &Clip) -> Result<Page> {
+        let Some(url) = &clip.summary.url else {
+            return Ok(Page::default());
+        };
+        let options = CaptureOptions {
+            want_media: clip.summary.image.is_none(),
+        };
+        let item = match Target::url(url) {
+            Ok(target) => self.0.capture(&target, options).await,
+            Err(error) => Err(error),
+        };
+        source_or_shared(clip, item.map(Page::from).map_err(|e| e.to_string()))
+    }
+}
 
 impl Engine for Enricher {
     async fn enrich(&self, clip: &Clip, existing_tags: Vec<String>) -> Result<Update> {
-        let page = match &clip.summary.url {
-            Some(url) => source_or_shared(clip, self.0.fetch(url, clip.summary.image.is_none()).await)?,
-            None => fetch::Page::default(),
-        };
+        let page = self.page(clip).await?;
         build_update(clip, page, existing_tags).await
+    }
+}
+
+/// What enrichment takes from an ingested item.
+#[derive(Debug, Default)]
+struct Page {
+    title: Option<String>,
+    site: Option<String>,
+    author: Option<String>,
+    description: Option<String>,
+    source_text: String,
+    image: Option<kintsugi_ingest::MediaData>,
+}
+
+impl From<Item> for Page {
+    fn from(mut item: Item) -> Self {
+        Page {
+            image: item.media.first_mut().and_then(|m| m.data.take()),
+            title: item.title,
+            site: item.site,
+            author: item.author,
+            description: item.description,
+            source_text: item.body,
+        }
     }
 }
 
 /// A login wall or dead URL must not prevent organizing a shared passage.
 /// Bare URLs still retry; without any source, the model would only be guessing.
-fn source_or_shared(clip: &Clip, fetched: Result<fetch::Page>) -> Result<fetch::Page> {
+fn source_or_shared(clip: &Clip, fetched: Result<Page>) -> Result<Page> {
     match fetched {
         Err(_) if !clip.text.trim().is_empty() || clip.source.as_deref().is_some_and(|s| !s.trim().is_empty()) => {
-            Ok(fetch::Page::default())
+            Ok(Page::default())
         }
         other => other,
     }
 }
 
-async fn build_update(clip: &Clip, page: fetch::Page, existing_tags: Vec<String>) -> Result<Update> {
+async fn build_update(clip: &Clip, page: Page, existing_tags: Vec<String>) -> Result<Update> {
     // The think module owns prompt construction and structured-output checks.
     let baseline = &clip.summary;
     let input = think::Input {
@@ -276,6 +315,49 @@ mod tests {
             .build()
             .unwrap()
             .block_on(f)
+    }
+
+    #[test]
+    fn clip_urls_are_ingested_as_markdown_source_through_the_engine() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/post", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.read(&mut [0; 4096]);
+            let body = include_bytes!("../../../../../crates/ingest/fixtures/blog.html");
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(body).unwrap();
+        });
+        let enricher = Enricher(Ingest::new().with(kintsugi_ingest::web::WebAdapter::new().unwrap()));
+        let mut link = clip();
+        link.summary.url = Some(url);
+        // A clip that already has its image never downloads another.
+        link.summary.image = Some("media/shot.png".into());
+        let page = futures_block(enricher.page(&link)).unwrap();
+        server.join().unwrap();
+        assert_eq!(page.title.as_deref(), Some("On slow software"));
+        assert_eq!(page.site.as_deref(), Some("Field Notes"));
+        assert!(page.source_text.contains("## What waiting looks like"));
+        assert!(!page.source_text.contains("Popular posts"));
+        assert!(page.image.is_none());
+
+        // Unfetchable URLs fail with the engine's fixed message, which the
+        // retry loop stores as `enrich_error` for bare links.
+        let mut bare = clip();
+        bare.text.clear();
+        bare.summary.url = Some("https://user:secret@example.org/".into());
+        let error = futures_block(enricher.page(&bare)).unwrap_err();
+        assert_eq!(error, "source must use http or https without credentials");
+    }
+
+    fn futures_block<T>(f: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
     }
 
     #[test]

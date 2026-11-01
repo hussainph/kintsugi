@@ -1,0 +1,20 @@
+[package]
+name = "kintsugi-ingest"
+description = "Kintsugi's ingestion engine: source adapters that turn anything into normalized Markdown items"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Readability port with Markdown output (MIT).
+dom_smoothie = "0.19"
+dom_query = { version = "0.29", features = ["markdown"] }
+futures-util = "0.3.34"
+reqwest = { version = "0.13.5", default-features = false, features = ["stream", "rustls"] }
+tokio = { version = "1.54.1", features = ["time"] }
+
+[dev-dependencies]
+tokio = { version = "1.54.1", features = ["time", "rt", "net"] }

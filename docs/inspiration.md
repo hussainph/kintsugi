@@ -73,8 +73,8 @@ The writer's own note, if any.
 <!-- kintsugi:source -->
 ## Source
 
-Readable text extracted from the page, for search and the AI. Up to ~20k
-characters. Everything above the invisible boundary comment is the clip's
+Readable Markdown extracted from the page, for search and the AI. Up to
+20,000 characters. Everything above the invisible boundary comment is the clip's
 own text. New captures keep the comment even before a source is available,
 so a captured note can itself contain `## Source` or an unfinished code
 fence without losing words. The exact `<!-- kintsugi:source -->` comment is
@@ -238,11 +238,14 @@ clip files are skipped by listing, while reading one reports an error.
 A background worker picks up clips without `enriched` (on capture, at
 launch, and when a vault opens), one at a time:
 
-1. **Fetch**: the URL's HTML: OpenGraph / Twitter card / `<title>` metadata,
+1. **Fetch**: the clip's URL is captured through the ingest engine
+   ([ingest.md](ingest.md)): OpenGraph / Twitter card / `<title>` metadata,
    oEmbed where the platform offers it (YouTube, X, Bluesky, TikTok, Vimeo),
-   readable main text, and the hero image if the clip has none, saved to
-   `media/`. Socials behind a login wall give little; the clip keeps what the
-   share sheet sent (text, screenshot).
+   the readable article as Markdown (Readability via `dom_smoothie`, with a
+   hidden-webview Defuddle fallback for pages that need JavaScript), and
+   the hero image if the clip has none, saved to `media/`. The item's
+   Markdown body becomes the `## Source` section. Socials behind a login wall
+   give little; the clip keeps what the share sheet sent (text, screenshot).
 2. **Think**: one AI call (the `edit`-quality model via the existing
    harness) given the metadata, own text and source text, plus the vault's
    existing tags from both writing documents and clips. Prefer that shared
@@ -259,7 +262,10 @@ remove that field to try again. Captures wake the worker, and a five-second
 scan also finds clips added by plain-file tools. Only HTTP(S) URLs without
 embedded credentials are fetched, including redirects. Downloads are capped
 at 2 MB for HTML, 256 KB for oEmbed and 8 MB for hero images, with a 15-second
-request timeout and a 45-second overall fetch deadline. Image failures are
+request timeout and a 45-second overall fetch deadline. That deadline also
+covers the JavaScript fallback, which gets at most 20 seconds of it in a
+hidden, incognito webview with no IPC access, and only when the static page
+had almost no readable text. Image failures are
 best-effort; existing capture images are never replaced. A shared passage or
 existing source text can still be summarized and tagged if fetching fails;
 that clip completes with the text already available, rather than waiting for

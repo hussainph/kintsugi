@@ -34,6 +34,10 @@ fn builder() -> tauri::Builder<Runtime> {
     let builder = tauri::Builder::default()
         .plugin(tauri::plugin::Builder::<Runtime, ()>::new("app-navigation")
             .on_navigation(|webview, url| {
+                // Hidden page readers load the web, never the app's origin.
+                if webview.label().starts_with(enrich::render::LABEL_PREFIX) {
+                    return kintsugi_ingest::web::render::allowed_navigation(url);
+                }
                 let config = webview.app_handle().config();
                 let dev = if cfg!(debug_assertions) { config.build.dev_url.as_ref() } else { None };
                 navigation::allowed(url, dev)

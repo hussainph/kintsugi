@@ -42,6 +42,7 @@ A pnpm + Cargo monorepo:
 | `apps/lab` | Kintsugi's catalog, fixtures and experiments (never part of the app build) |
 | `packages/ui` | shadcn/ui components and the theme (`pnpm exec shadcn add …` from here) |
 | `crates/vault` | The vault on disk: reading, versioned writes, captures |
+| `crates/ingest` | The ingestion engine: source adapters to normalized Markdown items ([docs/ingest.md](docs/ingest.md)) |
 
 ```sh
 pnpm install

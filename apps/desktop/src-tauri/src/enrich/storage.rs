@@ -2,7 +2,8 @@
 //! The vault owns Markdown/source boundaries, media names and concurrent edits;
 //! the worker never renders a clip file or saves a previously read body.
 
-use super::{fetch::Image, tags};
+use super::tags;
+use kintsugi_ingest::{MediaData as Image, media::image_mime};
 use kintsugi_vault::{self as vault, ClipKind, ClipUpdate};
 use std::path::Path;
 
@@ -78,7 +79,7 @@ impl Store for VaultStore {
         };
         if baseline.image.is_none() {
             if let Some(image) = &update.image {
-                if super::fetch::image_mime(&image.bytes) == Some(image.mime.as_str()) {
+                if image_mime(&image.bytes) == Some(image.mime.as_str()) {
                     // Best effort. The shared lock makes an arriving screenshot
                     // win, and a trashed clip cannot be resurrected by media.
                     let _ = vault::clip_save_media(root, &baseline.path, &image.bytes, &image.mime);
