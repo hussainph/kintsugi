@@ -224,18 +224,27 @@ export function KinChat() {
     };
     window.addEventListener("keydown", key, true);
     const offOpen = onOpenKin(() => showRef.current());
-    const offDiscuss = onDiscuss(({ chips: brought, text }) => {
+    const offDiscuss = onDiscuss(({ chips: brought, text, send: sendNow }) => {
       setPinned((old) => mergeChips(brought, old, new Set()));
       setRemoved((old) => {
         const next = new Set(old);
         for (const c of brought) next.delete(chipKey(c));
         return next;
       });
-      if (text) setDraft(text);
       const now = readScreen();
+      const attached = mergeChips(brought, now, new Set());
+      if (text && sendNow) {
+        chat.send(text, attached).then((entry) => {
+          if (entry.topic !== viewRef.current) setView(entry.topic);
+          else void reload();
+        }).catch((e) => {
+          setDraft(text);
+          toast.error(String(e));
+        });
+      } else if (text) setDraft(text);
       setOpen(true);
       setUnread(false);
-      void follow(mergeChips(brought, now, new Set()));
+      void follow(attached);
       requestAnimationFrame(() => input.current?.focus());
     });
     return () => {
@@ -243,7 +252,7 @@ export function KinChat() {
       offOpen();
       offDiscuss();
     };
-  }, [readScreen, follow, close]);
+  }, [readScreen, follow, close, reload]);
 
   // While open, follow the screen: another document brings its own thread;
   // a new selection becomes a chip.

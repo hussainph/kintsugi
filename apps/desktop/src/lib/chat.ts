@@ -136,15 +136,17 @@ export function useScreenContext(id: string, source: Source | null, deps: unknow
 const DISCUSS = "kintsugi:discuss";
 const OPEN = "kintsugi:open-kin";
 
-export type Discuss = { chips: Chip[]; text?: string };
+/** `send` sends `text` at once: for a question he picked from a menu
+ *  ("Who disagrees?"), rather than one he's still to write. */
+export type Discuss = { chips: Chip[]; text?: string; send?: boolean };
 
 /**
  * Opens the chat with these items attached, first among the chips. Anything
- * with a Discuss button calls this: clips here, and the Feed (KI-25) with
- * `{ kind: "feed", path: <item id>, label: <title> }`.
+ * with a Discuss button calls this: clips here, the editor's ⌘K and `@Kin`,
+ * and the Feed (KI-25) with `{ kind: "feed", path: <item id>, label: <title> }`.
  */
-export function discuss(chips: Chip | Chip[], text?: string) {
-  window.dispatchEvent(new CustomEvent<Discuss>(DISCUSS, { detail: { chips: Array.isArray(chips) ? chips : [chips], text } }));
+export function discuss(chips: Chip | Chip[], text?: string, options: { send?: boolean } = {}) {
+  window.dispatchEvent(new CustomEvent<Discuss>(DISCUSS, { detail: { chips: Array.isArray(chips) ? chips : [chips], text, send: options.send } }));
 }
 
 export function onDiscuss(listener: (d: Discuss) => void) {

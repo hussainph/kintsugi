@@ -64,7 +64,17 @@ pub struct ProviderStatus {
 /// Every provider Kintsugi speaks, and whether it can be used right now.
 #[tauri::command]
 pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
-    statuses()
+    #[allow(unused_mut)]
+    let mut statuses = statuses()?;
+    // A mock run offers the webview's first edit model, answered by
+    // `scripted::edit` in `ai_stream`; Rust's own model choice is unchanged.
+    #[cfg(feature = "headless")]
+    if crate::headless::kin_mock() && !crate::headless::ai_enabled() {
+        if let Some(edit) = preferences(Task::Edit).first() {
+            statuses.iter_mut().filter(|p| p.id == edit.provider).for_each(|p| p.auth = "mock");
+        }
+    }
+    Ok(statuses)
 }
 
 fn statuses() -> Result<Vec<ProviderStatus>> {
@@ -340,6 +350,22 @@ fn truncated(reason: &str) -> bool {
 pub fn ai_stream(app: AppHandle, ai: State<Ai>, request: Request, on_event: Channel<Event>) -> Result<()> {
     let provider = wire::provider(&request.provider).ok_or_else(|| format!("unknown provider {}", request.provider))?;
     let id = request.id.clone();
+    #[cfg(feature = "headless")]
+    if crate::headless::kin_mock() && !crate::headless::ai_enabled() {
+        let text = scripted::edit(&request.system, &request.messages);
+        let task = async_runtime::spawn(async move {
+            for word in text.split_inclusive(' ') {
+                tokio::time::sleep(Duration::from_millis(40)).await;
+                let _ = on_event.send(Event::Delta { text: word.into() });
+            }
+            let _ = on_event.send(Event::Done { stop_reason: Some("mock".into()) });
+            app.state::<Ai>().0.lock().unwrap().remove(&id);
+        });
+        if let Some(previous) = ai.0.lock().unwrap().insert(request.id.clone(), task) {
+            previous.abort();
+        }
+        return Ok(());
+    }
     let task = async_runtime::spawn({
         let id = id.clone();
         async move {

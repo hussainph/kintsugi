@@ -382,3 +382,46 @@ mod tests {
         }
     }
 }
+
+/// The webview's ⌘K edits (and `/` skills) in a mock run: a deterministic
+/// edit of `<passage>`, so a diff can be reviewed without a provider. It
+/// drops filler words; asked for alternatives, it lists a few; retried,
+/// it says which attempt this is.
+pub fn edit(system: &str, messages: &[super::wire::Message]) -> String {
+    use super::wire::Role;
+    let first = messages.iter().find(|m| matches!(m.role, Role::User)).map(|m| m.content.as_str()).unwrap_or_default();
+    let passage = first.split("<passage>").nth(1).and_then(|rest| rest.split("</passage>").next()).unwrap_or_default();
+    if system.contains("alternatives") {
+        let word = passage.trim();
+        return format!("{word} (mock one)\n{word} (mock two)\n{word} (mock three)");
+    }
+    const FILLER: [&str; 6] = ["really", "very", "just", "actually", "quite", "basically"];
+    let mut out: Vec<&str> = passage.split(' ').filter(|w| !FILLER.contains(&w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()))).collect();
+    let retries = messages.iter().filter(|m| matches!(m.role, Role::Assistant)).count();
+    let tag;
+    if retries > 0 {
+        tag = format!("(mock version {})", retries + 1);
+        out.push(&tag);
+    }
+    out.join(" ").trim().to_string()
+}
+
+#[cfg(test)]
+mod edit_tests {
+    use super::super::wire::{Message, Role};
+    use super::edit;
+
+    fn ask(passage: &str) -> Vec<Message> {
+        vec![Message { role: Role::User, content: format!("<context_before></context_before>\n<passage>{passage}</passage>\n<context_after></context_after>\n\nTighten.") }]
+    }
+
+    #[test]
+    fn mock_edits_drop_filler_and_vary_on_retry() {
+        assert_eq!(edit("rewrite", &ask("It was really very good.")), "It was good.");
+        let mut retry = ask("Plain words.");
+        retry.push(Message { role: Role::Assistant, content: "Plain words.".into() });
+        retry.push(Message { role: Role::User, content: "Give me a different version.".into() });
+        assert_eq!(edit("rewrite", &retry), "Plain words. (mock version 2)");
+        assert_eq!(edit("Reply with up to six alternatives", &ask("gold")).lines().count(), 3);
+    }
+}

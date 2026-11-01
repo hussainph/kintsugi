@@ -9,9 +9,12 @@ import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view
 import { RefObject, useEffect, useRef } from "react";
 import { frontmatter } from "@kintsugi/core/frontmatter";
 import { frontmatterLines, highlight, theme } from "./theme";
+import { commandExtensions, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
 
-export type { References } from "./references";
+export type { KinAnchor, References } from "./references";
+export type { CommandSkill, Commands } from "./commands";
+export { paragraphNear, paragraphRange } from "./references";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -27,11 +30,13 @@ type Props = {
   references?: References;
   /** Opens this document read-only (a mirror of a published post). */
   readOnly?: boolean;
+  /** The `/` menu's skills. Its Markdown blocks are always there. */
+  commands?: Commands;
 };
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references, readOnly = false }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references, commands, readOnly = false }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
@@ -39,6 +44,8 @@ export function Editor({ path, text, onChange, external, viewRef, references, re
   onChangeRef.current = onChange;
   const referencesRef = useRef(references);
   referencesRef.current = references;
+  const commandsRef = useRef(commands);
+  commandsRef.current = commands;
 
   const create = (docPath: string, doc: string) =>
     EditorState.create({
@@ -57,6 +64,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, re
         placeholder("Start writing…"),
         EditorState.readOnly.of(readOnly),
         referenceExtensions(() => referencesRef.current && { ...referencesRef.current, currentPath: docPath }),
+        commandExtensions(() => commandsRef.current),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged) return;

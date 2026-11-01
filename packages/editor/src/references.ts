@@ -3,6 +3,11 @@ import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Exten
 import { Decoration, EditorView, hoverTooltip, keymap, showTooltip, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { attributedQuote, isReferenceContext, linkFor, parseWikilinks, resolveReference, searchReferences, type ReferenceSource, type Wikilink } from "@kintsugi/core/references";
 import { splitFrontmatter } from "@kintsugi/core/frontmatter";
+import { element, hint, menuTheme, reveal } from "./menu.ts";
+
+/** Where Kin is asked in: the paragraph under the cursor once `@Kin` is gone
+ *  (or the one above a blank line). KI-38 anchors a comment thread here. */
+export type KinAnchor = { from: number; to: number; text: string; fromLine: number; toLine: number };
 
 export type References = {
   sources: ReferenceSource[];
@@ -15,18 +20,44 @@ export type References = {
   onError?: (error: unknown) => void;
   onOpen: (source: ReferenceSource) => void;
   onParagraph?: (text: string) => void;
+  /** `@Kin` at the top of the `@` picker. Without it, `@` lists only references. */
+  onKin?: (anchor: KinAnchor) => void;
 };
 
 export const refreshReferences = StateEffect.define<null>();
 const referenceMime = "application/x-kintsugi-reference";
-type Picker = { from: number; to: number; query: string; results: ReferenceSource[]; index: number; loading: boolean };
+/** `[[` and `@` open the same picker and write the same `[[link]]`; `@` also
+ *  offers Kin first. */
+type Picker = { trigger: "link" | "mention"; from: number; to: number; query: string; results: ReferenceSource[]; index: number; loading: boolean; kin: boolean };
+type Option = ReferenceSource | "kin";
+const options = (picker: Picker): Option[] => picker.kin ? ["kin", ...picker.results] : picker.results;
+const optionKey = (option: Option | undefined) => option === "kin" ? "kin" : option?.path;
+const indexOf = (picker: Picker, key: string | undefined) => Math.max(0, options(picker).findIndex((option) => optionKey(option) === key));
 const setPicker = StateEffect.define<Picker | null>();
+/** Escape remembers where it closed, so typing on doesn't reopen it there. */
+const dismissPicker = StateEffect.define<number>();
+const dismissedField = StateField.define<number | null>({
+  create: () => null,
+  update(value, tr) {
+    if (value !== null && tr.docChanged) value = tr.changes.mapPos(value, -1);
+    for (const effect of tr.effects) if (effect.is(dismissPicker)) value = effect.value;
+    // Leaving the line (or deleting the trigger) forgets it.
+    if (value !== null && (value >= tr.state.doc.length || tr.state.doc.lineAt(value).number !== tr.state.doc.lineAt(tr.state.selection.main.head).number)) value = null;
+    return value;
+  },
+});
 const searchResults = StateEffect.define<{ from: number; query: string; sources: ReferenceSource[] }>();
-// Keep clips within reach even in a large writing vault. Documents still lead.
-const pickerResults = (sources: ReferenceSource[]) => [
-  ...sources.filter((source) => source.kind === "document").slice(0, 24),
-  ...sources.filter((source) => source.kind === "clip").slice(0, 16),
-];
+// Keep clips within reach even in a large writing vault. Documents still
+// lead, after anything whose title matches: "@golden" finds Golden joinery
+// before a draft that only mentions it.
+function pickerResults(sources: ReferenceSource[], query: string) {
+  const documents = sources.filter((source) => source.kind === "document").slice(0, 24);
+  const clips = sources.filter((source) => source.kind === "clip").slice(0, 16);
+  const terms = query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!terms.length) return [...documents, ...clips];
+  const titled = (source: ReferenceSource) => terms.every((term) => source.title.toLocaleLowerCase().includes(term));
+  return [...documents.filter(titled), ...clips.filter(titled), ...documents.filter((s) => !titled(s)), ...clips.filter((s) => !titled(s))];
+}
 
 function pickerAt(state: EditorState, config: References | undefined): Picker | null {
   if (!config || !state.selection.main.empty) return null;
@@ -34,7 +65,7 @@ function pickerAt(state: EditorState, config: References | undefined): Picker | 
   const line = state.doc.lineAt(head);
   const before = state.sliceDoc(line.from, head);
   const match = /\[\[([^\[\]\n|#]*)$/.exec(before);
-  if (!match) return null;
+  if (!match) return mentionAt(state, config, line.from, before);
   const from = line.from + match.index;
   const prefix = before.slice(0, match.index);
   if ((prefix.match(/\\+$/)?.[0].length ?? 0) % 2 || !isReferenceContext(state.doc.toString(), from)) return null;
@@ -42,7 +73,26 @@ function pickerAt(state: EditorState, config: References | undefined): Picker | 
   const tail = state.sliceDoc(head, line.to);
   const closing = /^[^\[\]]*\]\]/.exec(tail);
   const to = closing ? head + closing[0].length : head;
-  return { from, to, query: match[1], results: pickerResults(searchReferences(match[1], config.sources.filter((source) => source.path !== config.currentPath))), index: 0, loading: !!config.search };
+  if (state.field(dismissedField, false) === from) return null;
+  return { trigger: "link", from, to, query: match[1], results: localResults(match[1], config), index: 0, loading: !!config.search, kin: false };
+}
+
+const localResults = (query: string, config: References) => pickerResults(searchReferences(query, config.sources.filter((source) => source.path !== config.currentPath)), query);
+
+/** `@` after a space, an opening bracket or a line start (never mid-word, as
+ *  in an email address). A space ends it unless a title still matches, so
+ *  "@karpathy said" stays prose. */
+function mentionAt(state: EditorState, config: References, lineFrom: number, before: string): Picker | null {
+  const match = /(?:^|[\s([{"'“‘])@([^\s@\[\]|#][^@\[\]\n|#]{0,39})?$/u.exec(before);
+  if (!match) return null;
+  const from = lineFrom + match.index + match[0].indexOf("@");
+  if (!isReferenceContext(state.doc.toString(), from) || state.field(dismissedField, false) === from) return null;
+  const query = match[1] ?? "";
+  const results = localResults(query, config);
+  const kin = !!config.onKin && "kin".startsWith(query.toLocaleLowerCase());
+  const needle = query.trim().toLocaleLowerCase();
+  if (/\s/.test(query) && !results.some((source) => source.title.toLocaleLowerCase().includes(needle))) return null;
+  return { trigger: "mention", from, to: from + 1 + query.length, query, results, index: 0, loading: !!config.search, kin };
 }
 
 function merged(local: readonly ReferenceSource[], remote: readonly ReferenceSource[]): ReferenceSource[] {
@@ -71,13 +121,6 @@ function insert(view: EditorView, from: number, to: number, text: string, quote 
     scrollIntoView: true,
   });
   view.focus();
-}
-
-function element<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-  const dom = document.createElement(tag);
-  dom.className = className;
-  if (text !== undefined) dom.textContent = text;
-  return dom;
 }
 
 function thumbnail(source: ReferenceSource, className: string): HTMLImageElement | null {
@@ -121,16 +164,16 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
         const previous = value;
         value = pickerAt(tr.state, getConfig());
         if (value && previous && value.from === previous.from && value.query === previous.query) {
-          const selected = previous.results[previous.index]?.path;
-          value = { ...value, index: Math.max(0, value.results.findIndex((source) => source.path === selected)) };
+          value = { ...value, index: indexOf(value, optionKey(options(previous)[previous.index])) };
         }
       }
       for (const effect of tr.effects) {
         if (effect.is(setPicker)) value = effect.value;
         if (effect.is(searchResults) && value && effect.value.from === value.from && effect.value.query === value.query) {
-          const selected = value.results[value.index]?.path;
-          const results = pickerResults(merged(value.results, effect.value.sources).filter((source) => source.path !== getConfig()?.currentPath));
-          value = { ...value, results, index: Math.max(0, results.findIndex((source) => source.path === selected)), loading: false };
+          const selected = optionKey(options(value)[value.index]);
+          const results = pickerResults(merged(value.results, effect.value.sources).filter((source) => source.path !== getConfig()?.currentPath), value.query);
+          value = { ...value, results, loading: false };
+          value = { ...value, index: indexOf(value, selected) };
         }
       }
       return value;
@@ -138,16 +181,31 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
     provide: (field) => showTooltip.from(field, (picker) => picker ? { pos: picker.from, above: false, create: createPicker } : null),
   });
 
-  function choose(view: EditorView, source?: ReferenceSource, quote = false): boolean {
+  function choose(view: EditorView, option?: Option, quote = false): boolean {
     const picker = view.state.field(pickerField);
     const config = getConfig();
     if (!picker || !config) return false;
-    source ??= picker.results[picker.index];
-    if (!source) return true;
+    option ??= options(picker)[picker.index];
+    // A mention with nothing to choose is just prose: let Enter through.
+    if (!option) return picker.trigger === "link";
+    if (option === "kin") return askKin(view, picker, config);
+    const source = option;
     const link = linkFor(source, merged(config.sources, picker.results));
     if (quote && source.kind === "clip") {
       insertQuote(view, source, picker.from, picker.to, link);
     } else insert(view, picker.from, picker.to, link);
+    return true;
+  }
+
+  /** Takes `@Kin` back out and hands Kin the paragraph. Nothing is written. */
+  function askKin(view: EditorView, picker: Picker, config: References): boolean {
+    view.dispatch({ changes: { from: picker.from, to: picker.to }, selection: EditorSelection.cursor(picker.from), effects: setPicker.of(null), userEvent: "delete.mention" });
+    const range = paragraphNear(view.state, picker.from);
+    const doc = view.state.doc;
+    const anchor: KinAnchor = range
+      ? { ...range, text: view.state.sliceDoc(range.from, range.to), fromLine: doc.lineAt(range.from).number, toLine: doc.lineAt(range.to).number }
+      : { from: picker.from, to: picker.from, text: "", fromLine: doc.lineAt(picker.from).number, toLine: doc.lineAt(picker.from).number };
+    config.onKin?.(anchor);
     return true;
   }
 
@@ -165,48 +223,57 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
   }
 
   function createPicker(view: EditorView) {
-    const dom = element("div", "cm-reference-picker");
+    const dom = element("div", "cm-reference-picker cm-kintsugi-menu");
     dom.setAttribute("aria-label", "Insert a reference");
     dom.setAttribute("role", "dialog");
-    const list = element("div", "cm-reference-options");
+    const list = element("div", "cm-reference-options cm-kintsugi-menu-options");
     list.id = `kintsugi-references-${Math.random().toString(36).slice(2)}`;
     list.setAttribute("role", "listbox");
     list.setAttribute("aria-label", "Documents and clips");
-    const hint = element("div", "cm-reference-hint");
-    hint.setAttribute("aria-live", "polite");
-    dom.append(list, hint);
+    const hintRow = element("div", "cm-reference-hint cm-kintsugi-menu-hint");
+    hintRow.setAttribute("aria-live", "polite");
+    dom.append(list, hintRow);
     dom.addEventListener("mousedown", (event) => event.preventDefault());
     function render() {
       const picker = view.state.field(pickerField);
       if (!picker) return;
       list.replaceChildren();
-      picker.results.forEach((source, index) => {
-        const row = element("div", "cm-reference-option");
+      options(picker).forEach((source, index) => {
+        const row = element("div", "cm-reference-option cm-kintsugi-menu-option");
         row.id = `${list.id}-${index}`;
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", String(index === picker.index));
+        if (source === "kin") {
+          row.classList.add("cm-reference-kin");
+          const labels = element("div", "cm-kintsugi-menu-labels");
+          labels.append(element("div", "cm-kintsugi-menu-title", "Kin"), element("div", "cm-kintsugi-menu-meta", "Ask Kin about this paragraph"));
+          row.append(element("span", "cm-kintsugi-menu-icon", "@"), labels);
+          row.addEventListener("click", () => choose(view, "kin"));
+          list.append(row);
+          return;
+        }
         const image = source.kind === "clip" ? thumbnail(source, "cm-reference-thumbnail") : null;
         if (image) row.append(image);
-        const labels = element("div", "cm-reference-option-labels");
-        labels.append(element("div", "cm-reference-option-title", source.title));
-        labels.append(element("div", "cm-reference-option-meta", source.kind === "document" ? source.status || "Document" : source.site || "Clip"));
+        const labels = element("div", "cm-reference-option-labels cm-kintsugi-menu-labels");
+        labels.append(element("div", "cm-reference-option-title cm-kintsugi-menu-title", source.title));
+        labels.append(element("div", "cm-reference-option-meta cm-kintsugi-menu-meta", source.kind === "document" ? source.status || "Document" : source.site || "Clip"));
         row.append(labels);
         row.addEventListener("click", (event) => choose(view, source, event.shiftKey));
         list.append(row);
       });
-      const selected = picker.results[picker.index];
-      const canQuote = selected?.kind === "clip" && !!attributedQuote(selected.text ?? "", "[[reference]]");
-      hint.textContent = picker.results.length
-        ? `↑↓ Choose · Enter Insert link${canQuote ? " · Shift+Enter Quote clip" : ""} · Esc Close${picker.loading ? " · Searching…" : ""}`
-        : picker.loading ? "Searching… · Esc Close" : "No references found · Esc Close";
+      const all = options(picker);
+      const selected = all[picker.index];
+      const canQuote = selected !== "kin" && selected?.kind === "clip" && !!attributedQuote(selected.text ?? "", "[[reference]]");
+      const searching = picker.loading ? " · Searching…" : "";
+      if (!all.length) hint(hintRow, picker.loading ? "Searching… · Esc Close" : "No references found · Esc Close", picker.loading ? "Searching…" : "No references found");
+      else if (selected === "kin") hint(hintRow, `↑↓ Choose · Enter Ask Kin · Esc Close${searching}`, `Tap Kin to ask about this paragraph, or a reference to link it${searching}`);
+      else hint(hintRow, `↑↓ Choose · Enter Insert link${canQuote ? " · Shift+Enter Quote clip" : ""} · Esc Close${searching}`, `Tap to insert a link${searching}`);
       view.contentDOM.setAttribute("aria-controls", list.id);
       view.contentDOM.setAttribute("aria-expanded", "true");
       view.contentDOM.setAttribute("aria-autocomplete", "list");
       if (selected) view.contentDOM.setAttribute("aria-activedescendant", `${list.id}-${picker.index}`);
       else view.contentDOM.removeAttribute("aria-activedescendant");
-      const row = list.children[picker.index] as HTMLElement | undefined;
-      if (row && row.offsetTop < list.scrollTop) list.scrollTop = row.offsetTop;
-      else if (row && row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+      reveal(list, list.children[picker.index] as HTMLElement | undefined);
     }
     render();
     return {
@@ -315,20 +382,20 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
   function move(view: EditorView, direction: number) {
     const picker = view.state.field(pickerField);
     if (!picker) return false;
-    const length = picker.results.length;
+    const length = options(picker).length;
     view.dispatch({ effects: setPicker.of({ ...picker, index: length ? (picker.index + direction + length) % length : 0 }) });
     return true;
   }
 
   return [
-    pickerField, asyncSearch, chips, hover,
+    dismissedField, pickerField, asyncSearch, chips, hover,
     Prec.highest(keymap.of([
       { key: "ArrowDown", run: (view) => move(view, 1) },
       { key: "ArrowUp", run: (view) => move(view, -1) },
       { key: "Enter", run: (view) => choose(view) },
       { key: "Shift-Enter", run: (view) => choose(view, undefined, true) },
       { key: "Tab", run: (view) => choose(view) },
-      { key: "Escape", run: (view) => { if (!view.state.field(pickerField)) return false; view.dispatch({ effects: setPicker.of(null) }); return true; } },
+      { key: "Escape", run: (view) => { const picker = view.state.field(pickerField); if (!picker) return false; view.dispatch({ effects: [setPicker.of(null), dismissPicker.of(picker.from)] }); return true; } },
     ])),
     EditorView.domEventHandlers({
       mousedown(event, view) {
@@ -371,41 +438,54 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
         return true;
       },
     }),
-    referenceTheme,
+    menuTheme, referenceTheme,
   ];
 }
 
 /** Blank-line-delimited paragraph under the primary cursor, without YAML. */
 export function currentParagraph(state: EditorState): string {
-  const head = state.selection.main.head;
-  const line = state.doc.lineAt(head);
+  const range = paragraphRange(state);
+  return range ? state.sliceDoc(range.from, range.to) : "";
+}
+
+/** The paragraph's extent at `pos` (the cursor by default), trimmed of
+ *  surrounding whitespace; null on a blank line, in YAML or code. */
+export function paragraphRange(state: EditorState, pos = state.selection.main.head): { from: number; to: number } | null {
+  const line = state.doc.lineAt(pos);
   const text = state.doc.toString();
-  if (!isReferenceContext(text, head)) return "";
+  if (!isReferenceContext(text, pos) || !line.text.trim()) return null;
   const bodyStart = splitFrontmatter(text).head.length;
   const boundary = (text: string) => !text.trim() || /^ {0,3}(?:>\s*)*(`{3,}|~{3,})/.test(text);
   let first = line.number;
   let last = line.number;
-  if (!line.text.trim()) return "";
   while (first > 1 && state.doc.line(first - 1).from >= bodyStart && !boundary(state.doc.line(first - 1).text)) first--;
   while (last < state.doc.lines && !boundary(state.doc.line(last + 1).text)) last++;
-  return state.sliceDoc(state.doc.line(first).from, state.doc.line(last).to).trim();
+  let from = state.doc.line(first).from;
+  let to = state.doc.line(last).to;
+  while (from < to && /\s/.test(text[from])) from++;
+  while (to > from && /\s/.test(text[to - 1])) to--;
+  return from < to ? { from, to } : null;
+}
+
+/** The paragraph at `pos`, or on a blank line the nearest one above it. */
+export function paragraphNear(state: EditorState, pos = state.selection.main.head): { from: number; to: number } | null {
+  const here = paragraphRange(state, pos);
+  if (here) return here;
+  for (let number = state.doc.lineAt(pos).number - 1; number >= 1; number--) {
+    const line = state.doc.line(number);
+    if (line.text.trim()) return paragraphRange(state, line.from);
+  }
+  return null;
 }
 
 const referenceTheme = EditorView.theme({
   ".cm-reference-chip": { display: "inline", padding: "2px 6px", borderRadius: "5px", backgroundColor: "color-mix(in srgb, var(--muted-foreground) 8%, transparent)", color: "var(--foreground)", fontSize: ".85em", boxDecorationBreak: "clone", cursor: "text" },
   ".cm-reference-site": { color: "var(--muted-foreground)", fontSize: ".85em", marginLeft: "6px" },
   ".cm-reference-unresolved": { color: "var(--muted-foreground)", backgroundColor: "transparent", textDecoration: "underline dotted", textUnderlineOffset: "4px" },
-  ".cm-tooltip.cm-reference-picker, .cm-tooltip.cm-reference-card": { border: "1px solid var(--border)", borderRadius: "8px", backgroundColor: "var(--popover)", color: "var(--foreground)", boxShadow: "0 8px 24px #0002", overflow: "hidden", fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: "400", fontStyle: "normal", lineHeight: "1.45", letterSpacing: "normal" },
-  ".cm-reference-picker": { width: "min(380px, 85vw)" },
-  ".cm-reference-options": { maxHeight: "280px", overflowY: "auto", padding: "4px", position: "relative", scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent" },
-  ".cm-reference-option": { display: "flex", alignItems: "center", gap: "10px", padding: "8px", borderRadius: "4px", cursor: "pointer" },
-  '.cm-reference-option[aria-selected="true"], .cm-reference-option:hover': { backgroundColor: "var(--muted)" },
+  ".cm-tooltip.cm-reference-card": { border: "1px solid var(--border)", borderRadius: "8px", backgroundColor: "var(--popover)", color: "var(--foreground)", boxShadow: "0 8px 24px #0002", overflow: "hidden", fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: "400", fontStyle: "normal", lineHeight: "1.45", letterSpacing: "normal" },
   ".cm-reference-thumbnail": { width: "38px", height: "38px", objectFit: "cover", borderRadius: "4px", flexShrink: "0" },
-  ".cm-reference-option-labels": { minWidth: "0" },
-  ".cm-reference-option-title": { fontWeight: "500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  ".cm-reference-option-meta, .cm-reference-card-meta": { color: "var(--muted-foreground)", fontSize: "11px", marginTop: "2px" },
-  ".cm-reference-hint": { padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: "10px", color: "var(--muted-foreground)", lineHeight: "1.5" },
-  ".cm-reference-card": { padding: "12px", width: "min(300px, 85vw)", lineHeight: "1.5" },
+  ".cm-reference-card-meta": { color: "var(--muted-foreground)", fontSize: "11px", marginTop: "2px" },
+  ".cm-reference-card": { padding: "12px", width: "min(300px, calc(100vw - 16px))", boxSizing: "border-box", lineHeight: "1.5" },
   ".cm-reference-card-image": { width: "100%", maxHeight: "150px", objectFit: "cover", borderRadius: "4px", marginBottom: "8px" },
   ".cm-reference-card-title": { fontWeight: "600", overflowWrap: "anywhere" },
   ".cm-reference-card-summary": { color: "var(--muted-foreground)", whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "10px 0" },
