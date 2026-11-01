@@ -4,6 +4,7 @@ mod blog;
 mod clip_capture;
 mod config;
 mod enrich;
+mod export;
 mod feed;
 mod library;
 #[cfg(not(feature = "headless"))]
@@ -64,6 +65,7 @@ fn builder() -> tauri::Builder<Runtime> {
         .manage(phone::Phone::default())
         .manage(feed::Feed::default())
         .manage(blog::Blog::default())
+        .manage(export::Export::default())
         .invoke_handler(tauri::generate_handler![
             vault::vault_current,
             vault::vault_open,
@@ -148,6 +150,12 @@ fn builder() -> tauri::Builder<Runtime> {
             feed::picked::feed_picked,
             feed::picked::feed_correct,
             feed::picked::feed_effect,
+            export::export_settings,
+            export::export_configure,
+            export::export_images,
+            export::export_assets,
+            export::export_pdf,
+            export::export_write,
         ])
 }
 

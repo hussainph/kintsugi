@@ -46,6 +46,13 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 rusqlite = { version = "0.41", features = ["bundled"] }
 quick-xml = "0.42"
 uuid = { version = "1", features = ["v4"] }
+# PDF export: Typst typesets pieces in-process with its bundled fonts, the
+# same in the native app and headless runs (see docs/export.md).
+typst = "0.15.1"
+typst-layout = "0.15.1"
+typst-pdf = "0.15.1"
+typst-svg = "0.15.1"
+typst-assets = { version = "0.15.1", features = ["fonts"] }
 
 [dev-dependencies]
 tempfile.workspace = true
