@@ -1,0 +1,34 @@
+# KI-28 spike: XCUITest driver for the dev-only editor spike screen.
+# Drives the installed Kintsugi debug build (dev.phalasiya.kintsugi) by
+# bundle id; Host is only the empty app XCUITest requires. See README.md.
+name: EditorSpikeUITests
+options:
+  deploymentTarget:
+    iOS: "18.0"
+targets:
+  Host:
+    type: application
+    platform: iOS
+    sources: [Host]
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+      PRODUCT_BUNDLE_IDENTIFIER: dev.phalasiya.kintsugi.spikehost
+      CODE_SIGNING_ALLOWED: NO
+  SpikeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Host
+    settings:
+      GENERATE_INFOPLIST_FILE: YES
+      PRODUCT_BUNDLE_IDENTIFIER: dev.phalasiya.kintsugi.spikeuitests
+      TEST_TARGET_NAME: Host
+      CODE_SIGNING_ALLOWED: NO
+schemes:
+  SpikeUITests:
+    build:
+      targets:
+        SpikeUITests: [test]
+    test:
+      targets: [SpikeUITests]
