@@ -109,6 +109,12 @@ list, so the tool array (part of the cached prefix) never changes mid-turn.
 
 - `search` uses the app's shared index (`Tools::with_searcher`). Without
   one, as in tests, it indexes the vault in memory, by words only.
+- `search`'s `in` is a vault-relative folder however it's written
+  (`./posts`, `/posts/`, `posts`); `.`, `./` and `/` mean the whole vault.
+  `kind: note` means `inbox/` only, and the schema says so: a `notes/`
+  folder is `writing`. When `in` or `kind` hides every match, the result is
+  `[]` plus one line naming up to five matches without the filter, so an
+  empty answer never reads as "nothing in the vault".
 - Feed items and the ranking tools go through `Tools::with_feed`
   (`feed::kin_hook`): the Feed lives in app data, not the vault. Items Kin's
   `shortlist` and `similar_to` return are logged as `kin_pick` events, which

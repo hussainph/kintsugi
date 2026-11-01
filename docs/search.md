@@ -43,7 +43,9 @@ Each result is compact and never contains the full text:
   match uses FTS5's `snippet()` around the match. A meaning-only match uses
   the start of its nearest chunk.
 
-Filters: `kinds`, and `within` (a folder: ids under `folder/`).
+Filters: `kinds`, and `within` (a folder: ids under `folder/`). A folder
+is vault-relative however it's written (`./posts`, `/posts/`, `posts`), and
+`.`, `./`, `/` or blank mean the whole vault.
 
 ## What's indexed
 
@@ -130,6 +132,12 @@ microseconds on the CPU and makes no network call.
   (`src/lib/search.ts`). `k` defaults to 20, with a maximum of 100.
 
 ## Testing
+
+The first search after a cold start syncs before it answers, so it finds by
+words at once, with no model or before any vectors exist
+(`a_cold_index_finds_by_words_on_the_first_search`, and
+`apps/desktop/test/runtime-search.test.ts` for the Library and Kin on a
+freshly seeded headless run).
 
 `cargo test -p kintsugi-search` runs offline. `embed::fixture` builds a
 tiny real model2vec model (a word-level tokenizer and a one-hot table in
