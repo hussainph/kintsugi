@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Palette, PaletteMode } from "@/components/Palette";
 import { PhoneDialog } from "@/components/PhoneDialog";
+import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
 import { Sidebar } from "@/components/Sidebar";
 import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
@@ -18,13 +19,16 @@ import { Refine } from "@/refine/Refine";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
+import { Failure, Saves } from "@/lib/saves";
 import { useUpdates } from "@/lib/updates";
 import { Entry, flatten, parentDir, renamedPath, vault } from "@/lib/vault";
 
 const SAVE_DELAY = 400;
+const SAVE_TOAST = "kintsugi-save-failed";
 const requestClip = (path: string) => window.dispatchEvent(new CustomEvent("kintsugi:open-clip", { detail: { path } }));
 
 type SaveState = "saved" | "editing" | "error";
+type Blocked = { failures: Failure[]; action: string; resolve: (choice: UnsavedChoice) => void };
 
 /** What the tree shows for a document; when it changes, the tree reloads. */
 const meta = (text: string) => `${field(text, "title")}|${field(text, "status")}`;
@@ -61,10 +65,12 @@ export default function App() {
   const [openClip, setOpenClip] = useState<{ path: string; seq: number }>();
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
+  const [blocked, setBlocked] = useState<Blocked | null>(null);
 
   const viewRef = useRef<EditorView | null>(null);
   const libraryRef = useRef<LibraryHandle>(null);
-  const pending = useRef(new Map<string, string>());
+  const saves = useRef(new Saves(vault.write));
+  const blockedRef = useRef<Blocked | null>(null);
   const known = useRef(new Map<string, string>());
   const metaChanged = useRef(false);
   const timer = useRef<number | undefined>(undefined);
@@ -88,24 +94,87 @@ export default function App() {
     }
   }, [fail]);
 
-  const flush = useCallback(async () => {
+  // Writes every pending change; returns the ones that failed. They stay
+  // pending, so a later save (autosave, ⌘S, Try again) retries them.
+  const write = useCallback(async (): Promise<Failure[]> => {
     window.clearTimeout(timer.current);
-    const writes = [...pending.current];
-    pending.current.clear();
-    if (!writes.length) return true;
-    try {
-      await Promise.all(writes.map(([path, contents]) => vault.write(path, contents)));
-      setSave("saved");
-      if (metaChanged.current) {
-        metaChanged.current = false;
-        await refresh();
-      }
-      return true;
-    } catch (e) {
-      fail(e);
-      return false;
+    if (!saves.current.size) return [];
+    const result = await saves.current.flush();
+    if (!result.ok) {
+      const [first] = result.failures;
+      setSave("error");
+      toast.error(`Couldn’t save ${first.path}: ${first.error}`, {
+        id: SAVE_TOAST,
+        duration: Infinity,
+        action: { label: "Try again", onClick: () => void flushRef.current() },
+      });
+      return result.failures;
     }
-  }, [refresh, fail]);
+    toast.dismiss(SAVE_TOAST);
+    // Keystrokes typed during the write have their own autosave coming.
+    if (!saves.current.size) setSave("saved");
+    if (metaChanged.current) {
+      metaChanged.current = false;
+      await refresh();
+    }
+    return [];
+  }, [refresh]);
+
+  const flush = useCallback(async () => !(await write()).length, [write]);
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
+  const ask = useCallback((failures: Failure[], action: string) => {
+    // Only one question at a time; an older one is answered "stay".
+    blockedRef.current?.resolve("stay");
+    return new Promise<UnsavedChoice>((resolve) => {
+      const next = { failures, action, resolve };
+      blockedRef.current = next;
+      setBlocked(next);
+    });
+  }, []);
+
+  const answer = (choice: UnsavedChoice) => {
+    const current = blockedRef.current;
+    blockedRef.current = null;
+    setBlocked(null);
+    current?.resolve(choice);
+  };
+
+  /**
+   * Before leaving the open document (another document, another vault, the
+   * library, closing): every change must be on disk, or the writer must say
+   * to discard it. False means stay where we are.
+   */
+  const settleDocs = useCallback(
+    async (action: string): Promise<false | "saved" | "discarded"> => {
+      for (;;) {
+        const failures = await write();
+        if (!failures.length) {
+          if (!saves.current.size) return "saved";
+          continue;
+        }
+        const choice = await ask(failures, action);
+        if (choice === "stay") return false;
+        if (choice === "discard") {
+          saves.current.discard();
+          metaChanged.current = false;
+          toast.dismiss(SAVE_TOAST);
+          setSave("saved");
+          return "discarded";
+        }
+      }
+    },
+    [write, ask],
+  );
+
+  const settle = useCallback(
+    async (action: string) => {
+      if ((await libraryRef.current?.flush()) === false) return false;
+      return settleDocs(action);
+    },
+    [settleDocs],
+  );
 
   const onChange = useCallback(
     (path: string, next: string, fromElsewhere: boolean) => {
@@ -115,7 +184,7 @@ export default function App() {
         setText(next);
         return;
       }
-      pending.current.set(path, next);
+      saves.current.set(path, next);
       const m = meta(next);
       if (known.current.get(path) !== m) {
         known.current.set(path, m);
@@ -131,9 +200,8 @@ export default function App() {
 
   const openDoc = useCallback(
     async (path: string) => {
-      if (await libraryRef.current?.flush() === false) return;
       setPalette(null);
-      await flush();
+      if (!(await settle("opened that document"))) return;
       setLibraryOpen(false);
       try {
         const contents = await vault.read(path);
@@ -146,7 +214,7 @@ export default function App() {
         fail(e);
       }
     },
-    [flush, fail],
+    [settle, fail],
   );
 
   const loadVault = useCallback(
@@ -177,8 +245,8 @@ export default function App() {
     const off = listen<Changed>("vault:changed", ({ payload }) => {
       refresh();
       if (payload.text == null) return;
-      pending.current.delete(payload.path);
-      if (!pending.current.size) setSave("saved");
+      saves.current.drop(payload.path);
+      if (!saves.current.size) setSave("saved");
       setExternal({ path: payload.path, text: payload.text, seq: Date.now() });
     });
     return () => {
@@ -191,20 +259,20 @@ export default function App() {
   }, []);
 
   // An update restarts the app, so it waits for the same saves a close does.
-  useUpdates(async () => (await libraryRef.current?.flush()) !== false && (await flush()));
+  useUpdates(async () => (await settle("restarted")) !== false);
 
-  // Never lose the last few keystrokes: save on blur and before the window closes.
+  // Never lose the last few keystrokes: save on blur, and don't close until
+  // everything is on disk or the writer discards it.
   useEffect(() => {
     const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
-      if (await libraryRef.current?.flush() === false) { event.preventDefault(); return; }
-      await flush();
+      if (!(await settle("closed the window"))) event.preventDefault();
     });
     window.addEventListener("blur", flush);
     return () => {
       unlisten.then((off) => off());
       window.removeEventListener("blur", flush);
     };
-  }, [flush]);
+  }, [flush, settle]);
 
   const create = async (mode: PaletteMode, name: string) => {
     setPalette(null);
@@ -227,12 +295,14 @@ export default function App() {
     // Keep a document a document: "draft" becomes "draft.mdx".
     const ext = /\.mdx?$/.exec(path)?.[0];
     if (ext && !/\.mdx?$/.test(name)) name += ext;
-    await flush();
+    const settled = await settleDocs("renamed it");
+    if (!settled) return;
     try {
       const to = await vault.rename(path, name);
       const moved = doc && renamedPath(doc.path, path, to);
       if (moved) {
-        const current = viewRef.current?.state.doc.toString() ?? text;
+        // Discarded changes leave the editor; the disk's copy comes back.
+        const current = settled === "discarded" ? await vault.read(moved) : viewRef.current?.state.doc.toString() ?? text;
         known.current.set(moved, meta(current));
         setDoc({ path: moved, text: current });
         if (rootRef.current) lastOpened.set(rootRef.current, moved);
@@ -245,7 +315,7 @@ export default function App() {
   };
 
   const trash = async (path: string) => {
-    await flush();
+    if (!(await settleDocs("moved it to the Trash"))) return;
     try {
       await vault.trash(path);
       const all = flatten(await refresh());
@@ -280,8 +350,7 @@ export default function App() {
   const openVault = async () => {
     const picked = await pickFolder({ directory: true, title: "Open a vault" });
     if (typeof picked !== "string") return;
-    if (await libraryRef.current?.flush() === false) return;
-    await flush();
+    if (!(await settle("switched vaults"))) return;
     try {
       await loadVault(await vault.open(picked));
     } catch (e) {
@@ -291,20 +360,19 @@ export default function App() {
 
   const showLibrary = useCallback(async () => {
     if (await libraryRef.current?.showGrid() === false) return;
-    await flush();
+    if (!(await settleDocs("opened the library"))) return;
     viewRef.current?.contentDOM.blur();
     setRefine(null);
     setOpenClip(undefined);
     setLibraryOpen(true);
-  }, [flush]);
+  }, [settleDocs]);
 
   // The editor can open a clip without coupling its state to the library.
   useEffect(() => {
     const open = async (event: Event) => {
       const path = (event as CustomEvent<{ path: string }>).detail?.path;
       if (typeof path !== "string") return;
-      if (await libraryRef.current?.flush() === false) return;
-      await flush();
+      if (!(await settle("opened the clip"))) return;
       viewRef.current?.contentDOM.blur();
       setRefine(null);
       setOpenClip({ path, seq: Date.now() });
@@ -312,7 +380,7 @@ export default function App() {
     };
     window.addEventListener("kintsugi:open-clip", open);
     return () => window.removeEventListener("kintsugi:open-clip", open);
-  }, [flush]);
+  }, [settle]);
 
   // HTML drops must never navigate the webview to a Finder file. Components
   // still receive the event (the library captures images; CodeMirror edits text).
@@ -426,6 +494,7 @@ export default function App() {
         />
       )}
       <Palette mode={palette} docs={docs} onOpen={openDoc} onCreate={create} onClose={() => setPalette(null)} />
+      <UnsavedDialog failures={blocked?.failures ?? null} action={blocked?.action ?? ""} onChoose={answer} />
       <PhoneDialog
         open={phoneOpen}
         status={phoneStatus}

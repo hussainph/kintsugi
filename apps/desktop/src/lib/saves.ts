@@ -1,0 +1,64 @@
+/**
+ * The documents the writer has changed and the disk hasn't seen yet.
+ *
+ * A write that fails stays pending: nothing leaves this queue until the disk
+ * has it or the writer discards it. Navigation asks `flush()` first and only
+ * moves on when it reports everything saved.
+ */
+export type Failure = { path: string; error: string };
+export type Flushed = { ok: true } | { ok: false; failures: Failure[] };
+
+export class Saves {
+  #pending = new Map<string, string>();
+  #write: (path: string, contents: string) => Promise<unknown>;
+  // One flush at a time, so an older write can never land after a newer one.
+  #tail: Promise<unknown> = Promise.resolve();
+
+  constructor(write: (path: string, contents: string) => Promise<unknown>) {
+    this.#write = write;
+  }
+
+  get size() {
+    return this.#pending.size;
+  }
+
+  paths() {
+    return [...this.#pending.keys()];
+  }
+
+  set(path: string, contents: string) {
+    this.#pending.set(path, contents);
+  }
+
+  /** The disk already has a newer version of this document (the phone saved it). */
+  drop(path: string) {
+    this.#pending.delete(path);
+  }
+
+  /** The writer chose to lose these changes. */
+  discard() {
+    const paths = this.paths();
+    this.#pending.clear();
+    return paths;
+  }
+
+  /** Writes everything pending. Failed writes stay pending for the next try. */
+  flush(): Promise<Flushed> {
+    const run = this.#tail.then(() => this.#flushNow());
+    this.#tail = run.catch(() => {});
+    return run;
+  }
+
+  async #flushNow(): Promise<Flushed> {
+    const writes = [...this.#pending];
+    const results = await Promise.allSettled(writes.map(([path, contents]) => this.#write(path, contents)));
+    const failures: Failure[] = [];
+    results.forEach((result, i) => {
+      const [path, contents] = writes[i];
+      if (result.status === "rejected") failures.push({ path, error: String(result.reason) });
+      // Keystrokes that arrived during the write are still pending.
+      else if (this.#pending.get(path) === contents) this.#pending.delete(path);
+    });
+    return failures.length ? { ok: false, failures } : { ok: true };
+  }
+}

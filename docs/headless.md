@@ -96,6 +96,18 @@ pnpm --filter @kintsugi/core test
 pnpm typecheck
 ```
 
+`pnpm test:headless` includes `pnpm --filter @kintsugi/desktop test:runtime`:
+it starts `pnpm desktop:headless` on free ports with a fresh seeded scratch
+vault and drives the real app in headless Chromium (Playwright; no native
+window). It makes a save fail with a read-only folder and checks that
+switching documents, switching vaults and closing the window wait until a
+retry succeeds or the writer discards the change (KI-14). The first run builds
+the headless backend; set `KINTSUGI_RUNTIME_TIMEOUT` (ms) if that is slow.
+It needs Playwright's headless shell once:
+`pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`
+(set `PLAYWRIGHT_BROWSERS_PATH`, e.g. to `.headless/ms-playwright`, to keep it
+in the worktree).
+
 Headless integration tests exercise authenticated HTTP/SSE, command errors,
 real document writes and clip events, the real `ai_stream` Channel's disabled
 error, and config/receipt isolation without credentials or native windows.
