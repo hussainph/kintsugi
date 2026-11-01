@@ -3,11 +3,10 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
-import { Switch } from "@kintsugi/ui/components/switch";
 import { blog, importSummary, type BlogStatus } from "@/lib/blog";
 
-/** Settings → Blog: where the blog repository is, the sources appendix
- *  default, and importing its posts into the vault (a read-only mirror). */
+/** Settings → Blog: where the blog repository is, and importing its posts
+ *  into the vault (a read-only mirror). Provenance lives in Settings → Export. */
 export function BlogSettings() {
   const [status, setStatus] = useState<BlogStatus | null>(null);
   const [path, setPath] = useState("");
@@ -75,17 +74,9 @@ export function BlogSettings() {
         </p>
       )}
       <div className="flex items-center justify-between gap-3">
-        <label className="flex items-center gap-2">
-          <Switch
-            checked={status?.appendix ?? false}
-            onCheckedChange={async (on) => { try { setStatus(await blog.configure({ appendix: on })); } catch (e) { toast.error(String(e)); } }}
-            aria-label="Add a sources appendix by default"
-          />
-          Sources appendix by default
-        </label>
+        <p className="text-xs text-muted-foreground">The sources appendix and the “written by a human” statement are under Export.</p>
         <Button size="sm" variant="ghost" disabled={busy || !status?.path || !!status.error} onClick={importNow}>Import posts now</Button>
       </div>
-      <p className="text-xs text-muted-foreground">The appendix lists the clips a piece references, at the end of the post.</p>
     </section>
   );
 }

@@ -30,6 +30,8 @@ import { ideasForDraft, onOpenIdeas } from "@/ideas/api";
 import { Publish } from "@/publish/Publish";
 import { openPublish } from "@/lib/blog";
 import { Picked } from "@/feed/Picked";
+import { Export } from "@/export/Export";
+import { ExportMenu } from "@/export/ExportMenu";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
@@ -553,6 +555,7 @@ export default function App() {
                 {status === "complete" && <button className="hover:text-foreground" onClick={openPublish} title="Publish to the blog (⇧⌘P)">Publish…</button>}
               </>
             )}
+            <ExportMenu mirror={!!mirror} />
             <span>{wordCount(text).toLocaleString()} words</span>
             <button onClick={() => ideasForDraft(doc.path)} className="hover:text-foreground" title="Ideas for this draft">
               Ideas
@@ -583,6 +586,7 @@ export default function App() {
         onClose={() => setPhoneOpen(false)}
       />
       <Publish root={root} path={doc && !away ? doc.path : null} viewRef={viewRef} flush={flush} />
+      <Export root={root} path={doc && !away ? doc.path : null} viewRef={viewRef} flush={flush} />
       <Settings />
       <AboutYou />
       <KinDev />

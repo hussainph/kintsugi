@@ -53,7 +53,8 @@ no social APIs.
 - **Blog folder:** the repository's root, chosen with the folder picker. It
   must look like the blog: `src/content.config.ts` plus
   `src/content/writing/`. Status shows the post count or what's wrong.
-- **Sources appendix:** off by default (see Provenance below).
+- **Provenance** (the sources appendix and the "written by a human"
+  statement) moved to Settings → Export; see [export.md](export.md).
 - **Import posts now:** refreshes the mirror on demand.
 - Stored as `blog.json` in the app's config folder (beside `config.json`),
   so a scratch config (headless, KI-7 isolated runs) never touches the
@@ -189,9 +190,9 @@ colocated assets would add optimisation; the mapping is one function.)
 - Obsidian-only syntax that the blog renders as literal text (`==highlight==`,
   `%%comments%%`) is a warning.
 
-**Provenance: sources appendix.** Optional, off by default (a Settings
-default, overridable per publish). It lists the clips the piece references,
-in order of first reference, as
+**Provenance: sources appendix and statement.** Both optional and off by
+default (Settings → Export, overridable per publish). The appendix lists the
+clips the piece references, in order of first reference, as
 
 ```md
 ## Sources
@@ -200,7 +201,17 @@ in order of first reference, as
 ```
 
 A clip without a URL is listed by title. The "written by a human" statement
-from the vision is later work.
+(KI-44) ends the post after a rule, in italics, in the writer's own wording:
+
+```md
+---
+
+*Written by a human. I use AI to find sources and to question my drafts, not to write the words.*
+```
+
+The link resolution, the appendix and the statement are shared with every
+export destination (`resolveLinks`, `sourcesAppendix`, `HUMAN_STATEMENT` in
+`publish.ts`; see [export.md](export.md)).
 
 ### 2. Check (`blog_check`)
 

@@ -47,6 +47,8 @@ export type PublishInput = {
   published: readonly PublishedDoc[];
   clips: readonly ClipInfo[];
   appendix: boolean;
+  /** The "written by a human" statement to end the post with, if any. */
+  statement?: string | null;
   /** Absent on the first pass, before the backend has checked anything. */
   check?: BlogCheck;
 };
@@ -84,7 +86,7 @@ export const COLLECTIONS: Record<PostKind, { folder: string; route: string; labe
   note: { folder: "src/content/notes", route: "notes", label: "Note", slugLength: 52 },
 };
 const IMAGE_FOLDER = "public/posts";
-const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
+export const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|avif|svg)$/i;
 const POST_FILE = /^src\/content\/(writing|notes)\/(\d{4}-\d{2}-\d{2})-([a-z0-9-]+)\.(mdx?)$/;
 
 /** The blog's slugifier (scripts/new-essay.mjs, new-note.mjs). */
@@ -126,7 +128,7 @@ function rawField(text: string, key: string): string[] | string | null {
 
 const unquote = (value: string) => value.trim().replace(/^(["'])(.*)\1$/, "$2").trim();
 
-function scalar(text: string, key: string): string | null {
+export function scalar(text: string, key: string): string | null {
   const value = rawField(text, key);
   return typeof value === "string" ? unquote(value) || null : null;
 }
@@ -176,7 +178,7 @@ function blogHref(url: string, site: string): string {
 type Span = { from: number; to: number };
 
 /** Fenced code, inline code and HTML comments: never rewritten as links or images. */
-function protectedSpans(body: string): { code: Span[]; comments: Span[] } {
+export function protectedSpans(body: string): { code: Span[]; comments: Span[] } {
   const code: Span[] = [];
   const comments: Span[] = [];
   let fence: { marker: string; from: number } | null = null;
@@ -227,8 +229,8 @@ function normalize(path: string): string | null {
   return parts.length ? parts.join("/") : null;
 }
 
-const isRemote = (ref: string) => /^[a-z][a-z0-9+.-]*:/i.test(ref) || ref.startsWith("//");
-const decode = (ref: string) => {
+export const isRemote = (ref: string) => /^[a-z][a-z0-9+.-]*:/i.test(ref) || ref.startsWith("//");
+export const decodeRef = (ref: string) => {
   try {
     return decodeURI(ref);
   } catch {
@@ -238,17 +240,17 @@ const decode = (ref: string) => {
 
 /** The vault paths a local image reference could mean, best first. */
 export function imageCandidates(ref: string, docPath: string): string[] {
-  const clean = decode(ref.split(/[?#]/)[0]);
+  const clean = decodeRef(ref.split(/[?#]/)[0]);
   const dir = docPath.includes("/") ? docPath.slice(0, docPath.lastIndexOf("/")) : "";
   const candidates = clean.startsWith("/") ? [normalize(clean)] : [normalize(`${dir}/${clean}`), normalize(clean)];
   return [...new Set(candidates.filter((c): c is string => !!c))];
 }
 
-type Edit = { from: number; to: number; insert: string };
+export type Edit = { from: number; to: number; insert: string };
 
-const MD_IMAGE = /!\[([^\]\n]*)\]\(\s*(<[^>\n]+>|[^)\s]+)(?:\s+(?:"([^"\n]*)"|'([^'\n]*)'))?\s*\)/g;
+export const MD_IMAGE = /!\[([^\]\n]*)\]\(\s*(<[^>\n]+>|[^)\s]+)(?:\s+(?:"([^"\n]*)"|'([^'\n]*)'))?\s*\)/g;
 const JSX_TAG = /<([A-Z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*)[\s/>]/g;
-const ESM = /^(import|export)\s/;
+export const ESM = /^(import|export)\s/;
 
 function safeName(name: string, taken: Set<string>): string {
   const dot = name.lastIndexOf(".");
@@ -319,7 +321,7 @@ export function planPublish(input: PublishInput): PublishPlan {
   const byKey = new Map<string, PublishImage | null>();
   const local = (key: string, ref: string, embed: boolean): string | null => {
     if (!imageRefs.some((r) => r.key === key)) {
-      imageRefs.push({ key, embed, candidates: imageCandidates(ref, path), name: decode(ref).split("/").pop() ?? ref });
+      imageRefs.push({ key, embed, candidates: imageCandidates(ref, path), name: decodeRef(ref).split("/").pop() ?? ref });
     }
     if (!input.check) return null;
     if (byKey.has(key)) return byKey.get(key)?.url ?? null;
@@ -353,51 +355,19 @@ export function planPublish(input: PublishInput): PublishPlan {
   if (remote) say("warning", `${remote === 1 ? "An image loads" : `${remote} images load`} from another site; the post depends on it staying there.`);
 
   // [[Wikilinks]] become blog links, or plain text when the target isn't published.
-  const publishedByPath = new Map(input.published.map((p) => [p.path, p]));
-  const clipsByPath = new Map(input.clips.map((c) => [c.path, c]));
-  const unpublished = new Set<string>();
-  const referencedClips: ClipInfo[] = [];
-  for (const link of parseWikilinks(original)) {
-    if (shielded(link.from)) continue;
-    const embed = original[link.from - 1] === "!" && original[link.from - 2] !== "\\";
-    const from = embed ? link.from - 1 : link.from;
-    const destination = link.target.split("#")[0].trim();
-    if (embed && IMAGE_EXTENSIONS.test(destination)) {
+  const links = resolveLinks(original, {
+    path, sources: input.sources, published: input.published, clips: input.clips, shielded,
+    href: (url) => blogHref(url, site),
+    image: (destination, alias) => {
       const url = local(`embed:${destination}`, destination, true);
-      if (url) edits.push({ from, to: link.to, insert: `![${link.alias ?? ""}](${url})` });
-      continue;
-    }
-    const source = resolveReference(link.target, input.sources);
-    const readable = (s: ReferenceSource | null) => link.alias ?? s?.title ?? destination.split("/").pop()!.replace(/\.mdx?$/, "").replace(/[-_]+/g, " ");
-    const label = readable(source).replace(/([[\]])/g, "\\$1");
-    let insert = label;
-    if (source?.kind === "document" && source.path === path) {
-      // A link to itself is just its words.
-    } else if (source?.kind === "document" && publishedByPath.has(source.path)) {
-      insert = `[${label}](${blogHref(publishedByPath.get(source.path)!.url, site)})`;
-    } else if (source?.kind === "clip") {
-      const clip = clipsByPath.get(source.path);
-      if (clip && !referencedClips.includes(clip)) referencedClips.push(clip);
-      if (clip?.url && /^https?:\/\//i.test(clip.url)) insert = `[${label}](${clip.url})`;
-      else unpublished.add(`${readable(source)} (a clip without a link)`);
-    } else if (source) {
-      unpublished.add(`${readable(source)} (not published)`);
-    } else {
-      unpublished.add(`${link.target} (not found)`);
-    }
-    edits.push({ from, to: link.to, insert });
-  }
-  for (const target of unpublished) say("warning", `[[${target.replace(/ \(.*\)$/, "")}]] becomes plain text: ${/\((.*)\)$/.exec(target)?.[1]}.`);
+      return url ? `![${alias ?? ""}](${url})` : null;
+    },
+  });
+  edits.push(...links.edits);
+  const referencedClips = links.clips;
+  checks.push(...links.checks);
 
-  // Apply, last first so offsets stay valid; skip anything overlapping.
-  edits.sort((a, b) => b.from - a.from || b.to - a.to);
-  let rewritten = original;
-  let floor = Infinity;
-  for (const edit of edits) {
-    if (edit.to > floor) continue;
-    rewritten = rewritten.slice(0, edit.from) + edit.insert + rewritten.slice(edit.to);
-    floor = edit.from;
-  }
+  const rewritten = applyEdits(original, edits);
   let body = rewritten.replace(/^\s*\n/, "").replace(/\s+$/, "") + "\n";
 
   // MDX: components need imports, and imports need to exist in the repo.
@@ -437,18 +407,14 @@ export function planPublish(input: PublishInput): PublishPlan {
   if (proseLines.some((line) => /==[^=\s][^=]*==/.test(line))) say("warning", "==Highlights== aren't Markdown on the blog; they show as typed.");
   if (proseLines.some((line) => /%%/.test(line))) say("warning", "%%Comments%% aren't Markdown on the blog; they show as typed.");
 
-  // Provenance: a sources appendix from the clips the piece references.
+  // Provenance: a sources appendix from the clips the piece references, and
+  // the writer's own statement that a human wrote it.
   if (input.appendix) {
-    if (referencedClips.length) {
-      const items = referencedClips.map((clip) => {
-        const name = (clip.title || clip.path.split("/").pop()!.replace(/\.md$/, "")).replace(/([[\]])/g, "\\$1");
-        const linked = clip.url && /^https?:\/\//i.test(clip.url) ? `[${name}](${clip.url})` : name;
-        const by = [clip.author, clip.site].filter(Boolean).join(", ");
-        return `- ${linked}${by ? `, ${by}` : ""}`;
-      });
-      body += `\n## Sources\n\n${items.join("\n")}\n`;
-    } else say("note", "No clips are referenced, so there's no sources appendix.");
+    const appendix = sourcesAppendix(referencedClips);
+    if (appendix) body += `\n${appendix}`;
+    else say("note", "No clips are referenced, so there's no sources appendix.");
   }
+  if (input.statement?.trim()) body += `\n---\n\n*${escapeInline(input.statement.trim())}*\n`;
 
   // The blog's frontmatter: only what its schema accepts.
   const { tags, changed } = blogTags(documentTags(text));
@@ -484,3 +450,98 @@ export function planPublish(input: PublishInput): PublishPlan {
 export function publishedFields(plan: PublishPlan): [string, string][] {
   return [["post", plan.file], ["url", plan.url], ["published", plan.date]];
 }
+
+/** Applies non-overlapping edits, last first so offsets stay valid; an edit
+ *  overlapping a later one is skipped. */
+export function applyEdits(text: string, edits: readonly Edit[]): string {
+  const sorted = [...edits].sort((a, b) => b.from - a.from || b.to - a.to);
+  let out = text;
+  let floor = Infinity;
+  for (const edit of sorted) {
+    if (edit.to > floor) continue;
+    out = out.slice(0, edit.from) + edit.insert + out.slice(edit.to);
+    floor = edit.from;
+  }
+  return out;
+}
+
+/** Backslash-escapes what Markdown would read as emphasis or links. */
+export const escapeInline = (text: string) => text.replace(/([\\`*_[\]<>])/g, "\\$1");
+
+export type LinkOptions = {
+  /** The document being exported (a link to itself is just its words). */
+  path: string;
+  sources: readonly ReferenceSource[];
+  published: readonly PublishedDoc[];
+  clips: readonly ClipInfo[];
+  /** Offsets inside code or comments, which stay as typed. */
+  shielded: (at: number) => boolean;
+  /** How a published document's URL is written (site-relative on the blog). */
+  href: (url: string) => string;
+  /** An `![[image.png|alt]]` embed, as Markdown, or null to leave it. */
+  image: (destination: string, alias: string | undefined) => string | null;
+};
+
+/** [[Wikilinks]] become Markdown links to where their targets live on the
+ *  web (a published post, a clip's source), or plain text with a warning.
+ *  Shared by Publish and every export destination. */
+export function resolveLinks(original: string, o: LinkOptions): { edits: Edit[]; clips: ClipInfo[]; checks: Check[] } {
+  const publishedByPath = new Map(o.published.map((p) => [p.path, p]));
+  const clipsByPath = new Map(o.clips.map((c) => [c.path, c]));
+  const unpublished = new Set<string>();
+  const clips: ClipInfo[] = [];
+  const edits: Edit[] = [];
+  for (const link of parseWikilinks(original)) {
+    if (o.shielded(link.from)) continue;
+    const embed = original[link.from - 1] === "!" && original[link.from - 2] !== "\\";
+    const from = embed ? link.from - 1 : link.from;
+    const destination = link.target.split("#")[0].trim();
+    if (embed && IMAGE_EXTENSIONS.test(destination)) {
+      const insert = o.image(destination, link.alias);
+      if (insert != null) edits.push({ from, to: link.to, insert });
+      continue;
+    }
+    const source = resolveReference(link.target, o.sources);
+    const readable = (s: ReferenceSource | null) => link.alias ?? s?.title ?? destination.split("/").pop()!.replace(/\.mdx?$/, "").replace(/[-_]+/g, " ");
+    const label = readable(source).replace(/([[\]])/g, "\\$1");
+    let insert = label;
+    if (source?.kind === "document" && source.path === o.path) {
+      // A link to itself is just its words.
+    } else if (source?.kind === "document" && publishedByPath.has(source.path)) {
+      insert = `[${label}](${o.href(publishedByPath.get(source.path)!.url)})`;
+    } else if (source?.kind === "clip") {
+      const clip = clipsByPath.get(source.path);
+      if (clip && !clips.includes(clip)) clips.push(clip);
+      if (clip?.url && /^https?:\/\//i.test(clip.url)) insert = `[${label}](${clip.url})`;
+      else unpublished.add(`${readable(source)} (a clip without a link)`);
+    } else if (source) {
+      unpublished.add(`${readable(source)} (not published)`);
+    } else {
+      unpublished.add(`${link.target} (not found)`);
+    }
+    edits.push({ from, to: link.to, insert });
+  }
+  const checks: Check[] = [...unpublished].map((target) => ({
+    level: "warning",
+    message: `[[${target.replace(/ \(.*\)$/, "")}]] becomes plain text: ${/\((.*)\)$/.exec(target)?.[1]}.`,
+  }));
+  return { edits, clips, checks };
+}
+
+/** The optional sources appendix: the clips a piece references, in order of
+ *  first reference, as Markdown. Null when there are none. */
+export function sourcesAppendix(clips: readonly ClipInfo[]): string | null {
+  if (!clips.length) return null;
+  const items = clips.map((clip) => {
+    const name = (clip.title || clip.path.split("/").pop()!.replace(/\.md$/, "")).replace(/([[\]])/g, "\\$1");
+    const linked = clip.url && /^https?:\/\//i.test(clip.url) ? `[${name}](${clip.url})` : name;
+    const by = [clip.author, clip.site].filter(Boolean).join(", ");
+    return `- ${linked}${by ? `, ${by}` : ""}`;
+  });
+  return `## Sources\n\n${items.join("\n")}\n`;
+}
+
+/** The vision's "written by a human" statement, as first offered. The
+ *  writer edits it in Settings → Export; it is off until he turns it on. */
+export const HUMAN_STATEMENT =
+  "Written by a human. I use AI to find sources and to question my drafts, not to write the words.";

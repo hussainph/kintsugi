@@ -1,0 +1,12 @@
+.export-dialog { grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+.export-pane { min-height: 22rem; background: var(--muted); border-radius: 8px; }
+.export-pages { display: grid; gap: 14px; padding: 16px; justify-items: center; }
+.export-pages img { width: min(100%, 34rem); background: white; box-shadow: 0 1px 3px rgb(0 0 0 / .12), 0 6px 18px rgb(0 0 0 / .06); }
+.export-pages p { font-size: 12px; color: var(--muted-foreground); }
+.export-text { font-family: var(--font-sans); font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--background); max-width: 34rem; margin: 16px auto; padding: 16px 18px; border-radius: 8px; border: 1px solid var(--border); }
+.export-fold { display: inline; color: var(--muted-foreground); margin: 0 4px; padding: 0 4px; border-radius: 4px; background: var(--muted); font-size: 12px; }
+.export-frame { display: block; width: 100%; height: 100%; min-height: 22rem; border: 0; background: white; border-radius: 8px; }
+.export-menu { display: grid; gap: 1px; }
+.export-menu button { display: grid; text-align: left; gap: 1px; padding: 6px 8px; border-radius: 6px; }
+.export-menu button:hover, .export-menu button:focus-visible { background: var(--muted); outline: none; }
+.export-menu button span { font-size: 12px; color: var(--muted-foreground); }

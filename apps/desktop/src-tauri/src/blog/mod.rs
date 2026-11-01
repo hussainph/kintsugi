@@ -48,7 +48,7 @@ pub struct Blog {
 
 /// `<config>/<name>`. An isolated dev run without a scratch config keeps
 /// everything in memory, so it never touches the real app's settings.
-fn config_file(app: &AppHandle, name: &str) -> Option<PathBuf> {
+pub(crate) fn config_file(app: &AppHandle, name: &str) -> Option<PathBuf> {
     #[cfg(not(feature = "headless"))]
     if crate::config::isolated_dev() && std::env::var_os("KINTSUGI_CONFIG_DIR").is_none_or(|p| p.is_empty()) {
         return None;
@@ -67,6 +67,11 @@ fn settings(app: &AppHandle) -> Settings {
                 .unwrap_or_default()
         })
         .clone()
+}
+
+/// The appendix default as KI-9 stored it; Settings → Export owns it now.
+pub(crate) fn appendix_default(app: &AppHandle) -> bool {
+    settings(app).appendix
 }
 
 fn save(app: &AppHandle, next: Settings) -> Result<()> {

@@ -3,13 +3,13 @@ import { AlertCircle, AlertTriangle, Check as CheckIcon, Copy, Info } from "luci
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { field, setField } from "@kintsugi/core/frontmatter";
-import { localDate, planPublish, publishedFields, type ClipInfo, type PostKind, type PublishInput, type PublishPlan } from "@kintsugi/core/publish";
-import type { ReferenceSource } from "@kintsugi/core/references";
+import { localDate, planPublish, publishedFields, type PostKind, type PublishInput, type PublishPlan } from "@kintsugi/core/publish";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Switch } from "@kintsugi/ui/components/switch";
 import { blog, importSummary, type BlogStatus, type Published } from "@/lib/blog";
-import { useReferenceIndex } from "@/references/useReferenceIndex";
+import { exporting, statementFor } from "@/lib/exporting";
+import { usePieceSources } from "@/export/sources";
 import { Preview } from "./Preview";
 import "./publish.css";
 
@@ -30,25 +30,19 @@ type Phase =
   | { kind: "writing"; plan: PublishPlan; repo: string }
   | { kind: "done"; plan: PublishPlan; result: Published };
 
-const name = (path: string) => path.replace(/^.*\//, "").replace(/\.mdx?$/, "");
 const shellQuote = (value: string) => (/^[\w./@-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`);
 
 /** Publish… (⇧⌘P): a preview, a checks summary, then the post and its images
  *  written into the blog repository's working tree. Never git. Also keeps the
  *  vault's mirror of the blog fresh when a vault opens. */
 export function Publish({ root, path, viewRef, flush }: Props) {
-  const index = useReferenceIndex(root);
+  const { sources, clips } = usePieceSources(root);
   const [phase, setPhase] = useState<Phase>({ kind: "closed" });
   const [kind, setKind] = useState<PostKind | undefined>();
   const [appendix, setAppendix] = useState<boolean | undefined>();
+  const [statement, setStatement] = useState<boolean | undefined>();
   const [tab, setTab] = useState<"preview" | "file">("preview");
   const run = useRef(0);
-
-  const sources = useMemo<ReferenceSource[]>(() => [
-    ...index.documents.map((d) => ({ kind: "document" as const, path: d.path, title: d.title || name(d.path), status: d.status })),
-    ...index.clips.map((c) => ({ kind: "clip" as const, path: c.path, title: c.title || name(c.path), site: c.site })),
-  ], [index.documents, index.clips]);
-  const clips = useMemo<ClipInfo[]>(() => index.clips.map((c) => ({ path: c.path, title: c.title, url: c.url, site: c.site, author: c.author })), [index.clips]);
 
   // The mirror follows the blog: refresh it whenever a vault opens.
   useEffect(() => {
@@ -60,7 +54,7 @@ export function Publish({ root, path, viewRef, flush }: Props) {
     return () => { cancelled = true; };
   }, [root]);
 
-  const prepare = useCallback(async (options: { kind?: PostKind; appendix?: boolean } = {}) => {
+  const prepare = useCallback(async (options: { kind?: PostKind; appendix?: boolean; statement?: boolean } = {}) => {
     if (!path) return;
     const id = ++run.current;
     setPhase((p) => (p.kind === "plan" ? p : { kind: "loading" }));
@@ -72,14 +66,18 @@ export function Publish({ root, path, viewRef, flush }: Props) {
         return;
       }
       const text = viewRef.current?.state.doc.toString() ?? "";
+      const provenance = await exporting.settings();
+      const withStatement = options.statement ?? provenance.statement;
       const input: PublishInput = {
         path, text, today: localDate(), kind: options.kind, site: status.site, sources, clips,
-        published: await blog.links(), appendix: options.appendix ?? status.appendix,
+        published: await blog.links(), appendix: options.appendix ?? provenance.appendix,
+        statement: withStatement ? statementFor({ ...provenance, statement: true }) : null,
       };
       const first = planPublish(input);
       const check = await blog.check({ source: path, file: first.file, replaces: first.replaces, imports: first.imports, images: first.imageRefs });
       if (id !== run.current) return;
       setAppendix(input.appendix);
+      setStatement(withStatement);
       setKind(first.kind);
       setPhase({ kind: "plan", plan: planPublish({ ...input, check }), repo: check.repo });
     } catch (e) {
@@ -92,6 +90,7 @@ export function Publish({ root, path, viewRef, flush }: Props) {
     setTab("preview");
     setKind(undefined);
     setAppendix(undefined);
+    setStatement(undefined);
     void prepare();
   }, [path, prepare]);
 
@@ -118,7 +117,7 @@ export function Publish({ root, path, viewRef, flush }: Props) {
     const view = viewRef.current;
     if (!view) return;
     view.dispatch({ changes: setField(view.state.doc.toString(), "status", "complete") });
-    await prepare({ kind, appendix });
+    await prepare({ kind, appendix, statement });
   };
 
   const write = async () => {
@@ -177,14 +176,18 @@ export function Publish({ root, path, viewRef, flush }: Props) {
             <div className="publish-bar">
               <div role="radiogroup" aria-label="Kind of post" className="publish-segments">
                 {(["writing", "note"] as const).map((k) => (
-                  <button key={k} role="radio" aria-checked={plan.kind === k} disabled={phase.kind === "writing"} onClick={() => { setKind(k); void prepare({ kind: k, appendix }); }}>
+                  <button key={k} role="radio" aria-checked={plan.kind === k} disabled={phase.kind === "writing"} onClick={() => { setKind(k); void prepare({ kind: k, appendix, statement }); }}>
                     {k === "writing" ? "Essay" : "Note"}
                   </button>
                 ))}
               </div>
               <label className="publish-toggle">
-                <Switch checked={!!appendix} disabled={phase.kind === "writing"} onCheckedChange={(on) => { setAppendix(on); void prepare({ kind, appendix: on }); }} aria-label="Sources appendix" />
+                <Switch checked={!!appendix} disabled={phase.kind === "writing"} onCheckedChange={(on) => { setAppendix(on); void prepare({ kind, appendix: on, statement }); }} aria-label="Sources appendix" />
                 Sources appendix
+              </label>
+              <label className="publish-toggle">
+                <Switch checked={!!statement} disabled={phase.kind === "writing"} onCheckedChange={(on) => { setStatement(on); void prepare({ kind, appendix, statement: on }); }} aria-label="Written by a human" />
+                Written by a human
               </label>
               <span className="publish-target" title={plan.file}>{new URL(plan.url).pathname}</span>
             </div>

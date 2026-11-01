@@ -203,7 +203,7 @@ pub fn write_atomic(path: &Path, contents: &str) -> Result<()> {
     write_bytes_atomic(path, contents.as_bytes())
 }
 
-fn write_bytes_atomic(path: &Path, contents: &[u8]) -> Result<()> {
+pub fn write_bytes_atomic(path: &Path, contents: &[u8]) -> Result<()> {
     write_bytes(path, contents, true)
 }
 
