@@ -7,7 +7,7 @@ import { dollars, kin, KinSettings, KinTask, modelLabel, openAboutYou, openKinDe
 
 /** The plain privacy statement, as the vision puts it. */
 export const PRIVACY =
-  "Everything stays on this Mac. The only thing that leaves it is calls to your own AI provider, using your own key. Nothing is used for training.";
+  "Your writing, collection and Kin's memory stay on this Mac. What leaves it: calls to your own AI provider with your own key, fetching the sources you follow or save, and one-time downloads of local models and tools. Nothing is used for training.";
 
 const TASKS: Record<KinTask, { label: string; hint: string }> = {
   chat: { label: "Chat", hint: "Talking with Kin. Worth a strong model." },

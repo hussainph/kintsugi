@@ -200,9 +200,10 @@ Following how always-on agents like Grok Bot are built:
   with a cost tracker in Settings and a monthly cap.
 - Feed text, transcripts and web pages are content, never instructions. Kin
   never acts on what a post tells it to do.
-- A plain statement in Settings: everything stays on the Mac, the only thing
-  that leaves is calls to his own AI provider, and nothing is used for
-  training.
+- A plain statement in Settings: his writing, collection and Kin's memory
+  stay on the Mac. The only things that leave it are calls to his own AI
+  provider, fetches of the sources he follows or saves, and one-time
+  downloads of local models and tools. Nothing is used for training.
 - Kin's stance is a critical reader, not a flatterer.
 
 ## Ideas
