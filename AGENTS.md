@@ -94,6 +94,9 @@ reports native window count, Dock policy and focus.
   no auth. Set `KINTSUGI_HEADLESS_PI_READONLY=1` only for a read-only AI check;
   Pi credentials are then read without lock, refresh or write, so an expired
   login cannot be refreshed in headless mode.
+- To try Kin's chat without any provider, set `KINTSUGI_HEADLESS_KIN=mock`: a
+  scripted local model answers (no credentials read, nothing leaves the
+  machine, $0). See `docs/kin.md` › The chat.
 - A supplied `KINTSUGI_VAULT` is not seeded automatically. Build a scratch
   vault first:
 

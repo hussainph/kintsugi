@@ -17,7 +17,10 @@ import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
 import { Refine } from "@/refine/Refine";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
+import { KinChat } from "@/kin/Chat";
 import { KinDev } from "@/kin/KinDev";
+import { editorChips } from "@/kin/screen";
+import { useScreenContext } from "@/lib/chat";
 import { Settings } from "@/kin/Settings";
 import { AboutYou } from "@/kin/AboutYou";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
@@ -423,6 +426,9 @@ export default function App() {
     return () => window.removeEventListener("keydown", handler, true);
   }, []);
 
+  // What Kin's chat picks up from the editor: the selection, the document.
+  useScreenContext("writing", doc && !libraryOpen ? () => editorChips(viewRef.current, doc.path) : null, [doc?.path]);
+
   const status = field(text, "status");
   const vaultName = root?.split("/").filter(Boolean).pop() ?? "";
 
@@ -472,7 +478,7 @@ export default function App() {
         )}
         </div>
         {doc && !libraryOpen && (
-          <footer className="absolute right-4 bottom-3 flex items-center gap-3 text-xs text-muted-foreground opacity-60 transition-opacity hover:opacity-100">
+          <footer className="absolute right-18 bottom-3 flex items-center gap-3 text-xs text-muted-foreground opacity-60 transition-opacity hover:opacity-100">
             <Badge asChild variant={status === "complete" ? "default" : "outline"}>
               <button onClick={toggleStatus} title="Toggle status (⇧⌘D)">
                 {status ?? "no status"}
@@ -507,6 +513,7 @@ export default function App() {
       <Settings />
       <AboutYou />
       <KinDev />
+      <KinChat />
       <Toaster position="bottom-center" />
     </SidebarProvider>
   );

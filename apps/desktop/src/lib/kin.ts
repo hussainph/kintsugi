@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ModelRef } from "./ai";
+import type { Chip } from "./chips";
 
 /** Mirrors `ai::Task::KIN` in src-tauri/src/ai/mod.rs. */
 export type KinTask = "chat" | "ideas" | "triage";
@@ -29,7 +30,7 @@ export type KinEvent =
   | { type: "error"; message: string };
 
 /** Something on screen, passed as a reference Kin reads on demand. */
-export type Chip = { kind: string; path: string; label?: string };
+export type { Chip } from "./chips";
 
 /** Mirrors `cost::Report`. */
 export type UsageReport = {

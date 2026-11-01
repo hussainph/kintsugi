@@ -29,7 +29,6 @@ pub fn store(app: &AppHandle, root: &Path) -> Result<Store> {
 /// A background review that updates memory runs the agent loop with this
 /// snapshot and `Tools::with_memory(Access { store, source: Source::Review { .. }, remember: true })`,
 /// and skips conversations marked "don't remember this".
-#[allow(dead_code)] // The seam for KI-31's helper jobs.
 pub fn snapshot(app: &AppHandle, root: &Path) -> Result<Memory> {
     let store = store(app, root)?;
     let memory = store.snapshot();

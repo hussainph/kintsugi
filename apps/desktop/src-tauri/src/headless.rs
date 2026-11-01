@@ -60,6 +60,12 @@ struct Bridge {
     base: String,
 }
 
+/// Kin answers with a scripted local stand-in (`KINTSUGI_HEADLESS_KIN=mock`):
+/// no credentials, no provider, no cost. For testing the chat in a tab.
+pub(crate) fn kin_mock() -> bool {
+    std::env::var("KINTSUGI_HEADLESS_KIN").as_deref() == Ok("mock")
+}
+
 pub(crate) fn ai_enabled() -> bool {
     std::env::var("KINTSUGI_HEADLESS_PI_READONLY").as_deref() == Ok("1")
 }

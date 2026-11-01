@@ -36,6 +36,45 @@ pub(crate) fn data_dir(app: &AppHandle) -> Option<PathBuf> {
     crate::config::directory(app).ok().map(|d| d.join("kin"))
 }
 
+/// A model Kin can talk to: a real provider, or (headless runs opted in with
+/// `KINTSUGI_HEADLESS_KIN=mock`) a scripted stand-in that never calls out.
+pub enum Connected {
+    Remote(Remote),
+    #[cfg(feature = "headless")]
+    Mock(super::scripted::Scripted),
+}
+
+impl agent::Model for Connected {
+    fn model(&self) -> &super::ModelRef {
+        match self {
+            Connected::Remote(r) => r.model(),
+            #[cfg(feature = "headless")]
+            Connected::Mock(m) => m.model(),
+        }
+    }
+
+    async fn send(&self, ex: &wire::Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> Result<wire::Reply> {
+        match self {
+            Connected::Remote(r) => r.send(ex, on_text).await,
+            #[cfg(feature = "headless")]
+            Connected::Mock(m) => m.send(ex, on_text).await,
+        }
+    }
+}
+
+/// The model for a Kin task, with credentials resolved in Rust.
+pub(crate) async fn connect(task: Task) -> Result<Connected> {
+    #[cfg(feature = "headless")]
+    if crate::headless::kin_mock() {
+        return Ok(Connected::Mock(super::scripted::Scripted::default()));
+    }
+    let model = chosen_model(task, &statuses()?, &meter().settings())
+        .ok_or("No AI provider is set up. Run `pi`, log in or add an API key.")?;
+    let provider = wire::provider(&model.provider).ok_or("unknown provider")?;
+    let auth = resolve(provider).await?;
+    Ok(Connected::Remote(Remote { model, provider, base_url: provider.base_url.into(), auth }))
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnRequest {
@@ -106,11 +145,7 @@ async fn start(app: &AppHandle, turn: TurnRequest, task: Task, cancel: &Cancel, 
     if turn.background && meter.allows(true).is_err() {
         return Err(super::cost::CapReached::MESSAGE.into());
     }
-    let model = chosen_model(task, &statuses()?, &meter.settings())
-        .ok_or("No AI provider is set up. Run `pi`, log in or add an API key.")?;
-    let provider = wire::provider(&model.provider).ok_or("unknown provider")?;
-    let auth = resolve(provider).await?;
-    let remote = Remote { model, provider, base_url: provider.base_url.into(), auth };
+    let remote = connect(task).await?;
     // One snapshot per conversation (today, a turn), frozen for its prefix.
     let store = super::about::store(app, &root)?;
     let memory = store.snapshot();
@@ -124,6 +159,8 @@ async fn start(app: &AppHandle, turn: TurnRequest, task: Task, cancel: &Cancel, 
         chips: turn.context,
         today: chrono::Local::now().format("%Y-%m-%d").to_string(),
         remember: turn.remember,
+        history: vec![],
+        recap: None,
     };
     // The loop emits its own error event; don't send a second one.
     let harness = agent::Harness { tools: &tools, meter, memory: &memory, cancel, limits: Limits::default() };
@@ -205,8 +242,10 @@ pub fn kin_settings() -> Result<SettingsView> {
 
 /// Sets or clears (`None`) the monthly cap, in US dollars.
 #[tauri::command]
-pub fn kin_set_cap(cap_usd: Option<f64>) -> Result<Report> {
+pub fn kin_set_cap(chat: State<super::chat::Chat>, cap_usd: Option<f64>) -> Result<Report> {
     meter().update_settings(|s| s.monthly_cap_usd = cap_usd)?;
+    // Helpers waiting on the cap may run now.
+    super::chat::cap_changed(&chat);
     Ok(meter().report())
 }
 

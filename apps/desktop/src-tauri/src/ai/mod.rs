@@ -9,17 +9,26 @@
 //! - `kin`: the Tauri commands for Kin and its settings.
 //! - `memory`: Kin's capped memory and skills in `.kintsugi/agent/`.
 //! - `about`: the About you commands, and the memory snapshot for helpers.
+//! - `history`: the one conversation log, its inferred threads and summaries.
+//! - `jobs`: the helper job table.
+//! - `chat`: the live conversation: batching, interrupts, helpers.
 
 pub mod about;
 mod agent;
+pub mod chat;
 pub mod cost;
+mod history;
+mod jobs;
 pub mod kin;
 pub mod memory;
 mod pi_auth;
 pub mod prompt;
+#[cfg(feature = "headless")]
+mod scripted;
 mod tools;
 mod wire;
 
+pub use chat::Chat;
 pub use kin::Kin;
 
 use crate::AppHandle;
@@ -193,6 +202,7 @@ pub fn meter() -> &'static cost::Meter {
 /// any AI work, in native and headless runs alike.
 pub fn init(app: &AppHandle) {
     let _ = METER.set(cost::Meter::open(kin::data_dir(app)));
+    chat::init(app);
 }
 
 /// One bounded, non-streamed completion for background work (no webview).

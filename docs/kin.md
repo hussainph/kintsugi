@@ -1,6 +1,6 @@
 # Kin's harness
 
-What exists today (KI-26). `docs/vision.md` describes where Kin is going;
+What exists today (KI-26, and KI-31's chat). `docs/vision.md` describes where Kin is going;
 this file describes what is built. Code: `apps/desktop/src-tauri/src/ai/`.
 
 ## The loop
@@ -33,7 +33,8 @@ short schemas:
 | `tool` | Runs an extra tool by name; with only a name, returns its usage |
 
 Extra tools, loaded on demand through `tool`: `outline` (a document's
-headings) and `recent` (recently changed documents). New tools join this
+headings), `recent` (recently changed documents) and `history` (searches
+the whole conversation log, or reads around one entry with `{"around": seq}`). New tools join this
 list, so the tool array (part of the cached prefix) never changes mid-turn.
 
 - Paths stay inside the vault: no `..`, absolute paths, hidden entries or
@@ -53,8 +54,13 @@ list, so the tool array (part of the cached prefix) never changes mid-turn.
    Anthropic gets `cache_control` on the system block and a rolling breakpoint
    on the newest message; OpenAI and Codex get `prompt_cache_key: "kin"`.
 2. **Conversation**: only appended to within a turn.
-3. **Dynamic context**, at the end of the user message: the date and
-   on-screen chips as paths to read on demand.
+3. **Dynamic context**, at the end of the user message: the date,
+   on-screen chips as paths to read on demand (a selected paragraph carries
+   its line range), and the thread's running summary.
+
+A chat turn's conversation is its thread's latest answered exchanges (at
+most six, newer than the summary), then the new message. Interrupted and
+failed replies stay in the log but are never sent back to the model.
 
 ## Memory and skills
 
@@ -144,8 +150,50 @@ without `KINTSUGI_CONFIG_DIR` keeps both in memory.
   for still runs and reports `capReached: true`.
 - A cancelled request's tokens are unknown and aren't recorded.
 
+## The chat (KI-31)
+
+Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
+`ai/jobs.rs` (helpers); webview: `src/kin/Chat.tsx`, `src/lib/chat.ts`.
+
+- **One avatar, one chat.** A placeholder avatar (KI-23/KI-41 design the
+  real one) sits bottom-right on every screen; it and ⌘J open the chat.
+  Screens say what they show through `useScreenContext` (the editor: the
+  selection, then the document; an open clip), and the chat attaches it as
+  removable chips. `discuss(chip)` from `src/lib/chat.ts` opens the chat with
+  an item pinned first: clips use it, and the Feed's Discuss (KI-25) calls it
+  with `{ kind: "feed", path: <item id>, label: <title> }`.
+- **One log.** `<config>/kin/conversation/log.jsonl`, append-only, never in
+  the vault and never shortened. Each owner message's topic is inferred: the
+  first chip's subject (a paragraph belongs to its document), else a known
+  thread the message names, else the previous topic if it was under 30
+  minutes ago, else general. A thread is the entries sharing a topic, with a
+  running summary in `threads.json`; opening the chat on draft X shows X's
+  thread, and the next turn sends X's summary and recent exchanges.
+- **Batching and interrupts.** Messages land in the log at once. Kin answers
+  after 1.2 s of quiet, every waiting message in one turn. A keystroke
+  (`kin_chat_typing`, throttled) or a new message cancels the running turn;
+  its partial reply is logged as interrupted, and its messages are answered
+  by the next turn, 3.5 s after typing stops or 1.2 s after the next message.
+  Stop ends the turn and settles its messages.
+- **Idle summaries.** Two minutes after the last activity, threads with six
+  or more new entries get a new running summary from the chat model. It's
+  background work: it stops at the cap and when he comes back.
+- **Helper jobs.** `kin_job_create({ kind, brief, task?, topic? })` (or
+  `jobs.create` in `src/lib/chat.ts`) records a job in `<config>/kin/jobs.json`
+  and runs it as its own agent: one at a time, `background: true` (so it
+  waits as `waiting` at the cap and resumes when a cap change or the
+  five-minute check allows), with only its brief plus the memory snapshot
+  (`about::snapshot`) in the prefix, and no memory-writing tools. Chat turns
+  take a fresh snapshot and can update memory like any conversation. A job running when the app quit is queued again on start. It
+  reports back quietly as a helper entry in the log (a dot on the avatar, no
+  popup). Feed ranking and Ideas are meant to use this.
+- Headless runs can try it all without a provider: `KINTSUGI_HEADLESS_KIN=mock`
+  swaps in a scripted local model that reads the first chip (or searches),
+  then answers slowly, word by word. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
+  the idle wait. `test/runtime-kin.test.ts` drives it in headless Chromium.
+
 ## Settings
 
 Settings (⌘, or the sidebar) shows the privacy statement, this month's
 spend by task, the monthly cap and the model for each Kin task. ⇧⌘K opens a
-minimal developer panel to run one turn (with a "don't remember this" box); the real chat UI is KI-31.
+minimal developer panel to run one turn (with a "don't remember this" box).

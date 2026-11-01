@@ -155,7 +155,16 @@ pub const EXTRAS: &[Extra] = &[
         summary: "documents changed most recently",
         usage: r#"recent: {"in"?: folder, "limit"?: integer (default 15)}. Documents by last change, newest first."#,
     },
+    Extra {
+        name: "history",
+        summary: "search everything you and Hussain have said before (the whole conversation log)",
+        usage: r#"history: {"query": string, "about"?: thread (a path, or "" for general), "limit"?: integer (default 10)} finds past messages; {"around": seq} reads the messages around one."#,
+    },
 ];
+
+/// Searches the conversation log for the `history` tool. It lives outside
+/// the vault, so the vault tools reach it through this hook.
+pub type History = std::sync::Arc<dyn Fn(&Value) -> String + Send + Sync>;
 
 /// What a tool call produced. `content` goes to the model.
 #[derive(Debug, Clone, PartialEq)]
@@ -180,6 +189,7 @@ pub struct Tools {
     turn: String,
     /// Kin's memory and skills; without it, `memory` and `skill` refuse.
     memory: Option<Access>,
+    history: Option<History>,
 }
 
 impl Tools {
@@ -190,12 +200,18 @@ impl Tools {
         if outputs.starts_with(given) || outputs.starts_with(&root) || resolved.starts_with(&root) {
             return Err("Kin's outputs must live outside the vault".into());
         }
-        Ok(Tools { root, outputs, turn: safe_name(turn), memory: None })
+        Ok(Tools { root, outputs, turn: safe_name(turn), memory: None, history: None })
     }
 
     /// Gives the turn Kin's memory and skills.
     pub fn with_memory(mut self, access: Access) -> Self {
         self.memory = Some(access);
+        self
+    }
+
+    /// Lets Kin search the conversation log.
+    pub fn with_history(mut self, history: History) -> Self {
+        self.history = Some(history);
         self
     }
 
@@ -234,6 +250,10 @@ impl Tools {
         match extra.name {
             "outline" if inner["path"].is_string() => self.outline(inner),
             "recent" => self.recent(inner),
+            "history" if inner["query"].is_string() || inner["around"].is_u64() => match &self.history {
+                Some(history) => Ok(history(inner)),
+                None => Err("The conversation history isn't available here.".into()),
+            },
             _ => Ok(format!("Usage: {}", extra.usage)),
         }
     }
@@ -661,7 +681,13 @@ pub(crate) mod tests {
         assert!(tools.run(&call("delete", json!({}))).is_error);
         // The schema's enum lists exactly the extras.
         let names = &specs()[5].parameters["properties"]["name"]["enum"];
-        assert_eq!(names, &json!(["outline", "recent"]));
+        assert_eq!(names, &json!(["outline", "recent", "history"]));
+        // History is a hook: unavailable without one, wrapped as data with one.
+        assert!(tools.run(&call("tool", json!({ "name": "history", "args": { "query": "kiln" } }))).is_error);
+        let (with, _out2) = self::tools(vault.path());
+        let with = with.with_history(std::sync::Arc::new(|args: &Value| format!("found {}", args["query"])));
+        let found = with.run(&call("tool", json!({ "name": "history", "args": { "query": "kiln" } }))).content;
+        assert_eq!(found, "<data tool=\"tool\">\nfound \"kiln\"\n</data>");
     }
 
     #[test]

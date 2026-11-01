@@ -67,7 +67,7 @@ export function run() {
   process.on('SIGINT', () => stop());
   process.on('SIGTERM', () => stop());
   process.on('exit', () => stop());
-  console.log(`Scratch run: ${runDir}\nAI: ${env.KINTSUGI_HEADLESS_PI_READONLY === '1' ? 'read-only Pi opt-in' : 'disabled (no credentials read)'}`);
+  console.log(`Scratch run: ${runDir}\nAI: ${env.KINTSUGI_HEADLESS_PI_READONLY === '1' ? 'read-only Pi opt-in' : 'disabled (no credentials read)'}${env.KINTSUGI_HEADLESS_KIN === 'mock' ? '\nKin: scripted mock model (no provider, $0)' : ''}`);
   start('cargo', ['run', '-p', 'kintsugi', '--bin', 'kintsugi', '--no-default-features', '--features', 'headless', '-j', env.VOLLI_CONCURRENCY_HINT || '1']);
   start('pnpm', ['--filter', '@kintsugi/desktop', 'dev']);
 }

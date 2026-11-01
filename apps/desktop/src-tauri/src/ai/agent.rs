@@ -30,6 +30,16 @@ pub trait Model: Send + Sync {
     fn send(&self, ex: &Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> impl Future<Output = Result<Reply>> + Send;
 }
 
+impl<M: Model> Model for std::sync::Arc<M> {
+    fn model(&self) -> &ModelRef {
+        (**self).model()
+    }
+
+    fn send(&self, ex: &Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> impl Future<Output = Result<Reply>> + Send {
+        (**self).send(ex, on_text)
+    }
+}
+
 /// A real provider, with credentials resolved in Rust.
 pub struct Remote {
     pub model: ModelRef,
@@ -91,6 +101,11 @@ pub struct Turn {
     pub today: String,
     /// False when the conversation is marked "don't remember this".
     pub remember: bool,
+    /// Earlier exchanges in this conversation, oldest first: what the owner
+    /// said and what Kin answered. Sent as plain messages after the prefix.
+    pub history: Vec<(String, String)>,
+    /// The running summary of the conversation, older than `history`.
+    pub recap: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -179,7 +194,12 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
     let Harness { tools, meter, memory, cancel, limits } = *harness;
     let reference = model.model();
     let system = prompt::system(memory);
-    let mut items = vec![Item::User(prompt::user_message(&turn.question, &turn.chips, &turn.today, turn.remember))];
+    let mut items = Vec::with_capacity(turn.history.len() * 2 + 1);
+    for (said, answered) in &turn.history {
+        items.push(Item::User(said.clone()));
+        items.push(Item::Assistant { text: answered.clone(), calls: vec![] });
+    }
+    items.push(Item::User(prompt::user_message(&turn.question, &turn.chips, &turn.today, turn.remember, turn.recap.as_deref())));
     let mut summary = Summary {
         text: String::new(),
         stop: Stop::StepLimit,
@@ -350,6 +370,8 @@ pub(crate) mod tests {
             chips: vec![],
             today: "2026-11-02".into(),
             remember: true,
+            history: vec![],
+            recap: None,
         }
     }
 
@@ -445,7 +467,7 @@ pub(crate) mod tests {
         let other = Mock::new(vec![answer("Hi.")]);
         let mut later = turn(false);
         later.today = "2027-01-15".into();
-        later.chips = vec![Chip { kind: "doc".into(), path: "drafts/tools.mdx".into(), label: None }];
+        later.chips = vec![Chip { kind: "doc".into(), path: "drafts/tools.mdx".into(), label: None, lines: None }];
         run_turn(&f, &other, &later, &Cancel::default()).0.unwrap();
 
         let seen = mock.seen.lock().unwrap();

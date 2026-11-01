@@ -53,6 +53,7 @@ fn builder() -> tauri::Builder<Runtime> {
         .manage(library::Library::default())
         .manage(ai::Ai::default())
         .manage(ai::Kin::default())
+        .manage(ai::Chat::default())
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .invoke_handler(tauri::generate_handler![
@@ -87,6 +88,15 @@ fn builder() -> tauri::Builder<Runtime> {
             ai::about::kin_memory_edit,
             ai::about::kin_skills,
             ai::about::kin_skill,
+            ai::chat::kin_chat_send,
+            ai::chat::kin_chat_typing,
+            ai::chat::kin_chat_stop,
+            ai::chat::kin_chat_log,
+            ai::chat::kin_chat_topic,
+            ai::chat::kin_chat_search,
+            ai::chat::kin_job_create,
+            ai::chat::kin_jobs,
+            ai::chat::kin_job_cancel,
             phone::phone_status,
             phone::phone_enable,
             phone::phone_reset,

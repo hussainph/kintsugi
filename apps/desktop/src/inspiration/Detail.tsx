@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ArrowUpRight, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, MessageCircle, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { toast } from "sonner";
 import type { Clip, ClipChanged, ClipEdit } from "@kintsugi/core/clips";
@@ -8,6 +8,7 @@ import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
 import { Textarea } from "@kintsugi/ui/components/textarea";
+import { discuss, useScreenContext } from "@/lib/chat";
 import { clipLabel, clips, clipSite, sourceUrl } from "./api";
 import { parseTags } from "./capture";
 import { ClipImage } from "./ClipImage";
@@ -106,6 +107,10 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
     setStatus("Editing");
   };
 
+  // Kin's chat picks up the open clip.
+  const chip = clip && { kind: "clip", path: clip.path, label: clip.title || clipLabel(clip) };
+  useScreenContext("clip", chip ? () => [chip] : null, [chip?.path, chip?.label]);
+
   if (!clip) return <div className="flex flex-1 flex-col items-center justify-center gap-4 text-sm text-muted-foreground">
     <p role={error ? "alert" : "status"}>{error || "Opening inspiration…"}</p>
     <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Back to library</Button>{error && <Button variant="outline" onClick={load}>Try again</Button>}</div>
@@ -116,7 +121,10 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
     <div className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">
       <div className="mb-8 flex items-center justify-between gap-3">
         <Button autoFocus variant="ghost" className="-ml-2 text-muted-foreground" onClick={async () => { await save(); if (!Object.keys(edits.current).length) onClose(); }}><ArrowLeft />All inspiration</Button>
-        <span className={`text-xs ${status.startsWith("Not saved") ? "text-destructive" : "text-muted-foreground"}`} role="status">{status}</span>
+        <div className="flex items-center gap-3">
+          <span className={`text-xs ${status.startsWith("Not saved") ? "text-destructive" : "text-muted-foreground"}`} role="status">{status}</span>
+          <Button variant="outline" size="sm" onClick={() => discuss({ kind: "clip", path: clip.path, label: clip.title || clipLabel(clip) })}><MessageCircle />Discuss</Button>
+        </div>
       </div>
       {error && <p className="mb-4 text-sm text-destructive" role="alert">{error}</p>}
       <div className={`grid gap-10 ${clip.image ? "lg:grid-cols-[minmax(0,1.3fr)_minmax(280px,1fr)]" : "mx-auto max-w-2xl"}`}>
