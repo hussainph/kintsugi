@@ -27,6 +27,8 @@ import { Feed } from "@/feed/Feed";
 import { Ideas } from "@/ideas/Ideas";
 import { IdeasBeside } from "@/ideas/Beside";
 import { ideasForDraft, onOpenIdeas } from "@/ideas/api";
+import { Publish } from "@/publish/Publish";
+import { openPublish } from "@/lib/blog";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
@@ -350,6 +352,7 @@ export default function App() {
     const view = viewRef.current;
     if (!view) return;
     const current = view.state.doc.toString();
+    if (field(current, "mirror")) return;
     const next = field(current, "status") === "complete" ? "draft" : "complete";
     view.dispatch({ changes: setField(current, "status", next) });
   };
@@ -470,6 +473,7 @@ export default function App() {
   useScreenContext("writing", doc && !away ? () => editorChips(viewRef.current, doc.path) : null, [doc?.path]);
 
   const status = field(text, "status");
+  const mirror = field(text, "mirror");
   const vaultName = root?.split("/").filter(Boolean).pop() ?? "";
 
   return (
@@ -521,6 +525,7 @@ export default function App() {
             onChange={onChange}
             external={external}
             viewRef={viewRef}
+            readOnly={!!field(doc.text, "mirror")}
           />
         ) : (
           <div className="m-auto space-y-2 text-center text-sm text-muted-foreground">
@@ -535,11 +540,18 @@ export default function App() {
         </div>
         {doc && !away && (
           <footer className="absolute right-18 bottom-3 flex items-center gap-3 text-xs text-muted-foreground opacity-60 transition-opacity hover:opacity-100">
-            <Badge asChild variant={status === "complete" ? "default" : "outline"}>
-              <button onClick={toggleStatus} title="Toggle status (⇧⌘D)">
-                {status ?? "no status"}
-              </button>
-            </Badge>
+            {mirror ? (
+              <span title="Generated from the blog repository; edit the post there">Read-only mirror of {mirror}</span>
+            ) : (
+              <>
+                <Badge asChild variant={status === "complete" ? "default" : "outline"}>
+                  <button onClick={toggleStatus} title="Toggle status (⇧⌘D)">
+                    {status ?? "no status"}
+                  </button>
+                </Badge>
+                {status === "complete" && <button className="hover:text-foreground" onClick={openPublish} title="Publish to the blog (⇧⌘P)">Publish…</button>}
+              </>
+            )}
             <span>{wordCount(text).toLocaleString()} words</span>
             <button onClick={() => ideasForDraft(doc.path)} className="hover:text-foreground" title="Ideas for this draft">
               Ideas
@@ -569,6 +581,7 @@ export default function App() {
         onStatus={setPhoneStatus}
         onClose={() => setPhoneOpen(false)}
       />
+      <Publish root={root} path={doc && !away ? doc.path : null} viewRef={viewRef} flush={flush} />
       <Settings />
       <AboutYou />
       <KinDev />

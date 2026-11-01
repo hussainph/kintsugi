@@ -4,6 +4,7 @@ import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
 import { OptionalTools } from "@/components/OptionalTools";
+import { BlogSettings } from "@/publish/BlogSettings";
 import { dollars, kin, KinSettings, KinTask, modelLabel, openAboutYou, openKinDev, sameModel, UsageReport } from "@/lib/kin";
 
 /** The plain privacy statement, as the vision puts it. */
@@ -84,7 +85,7 @@ export function Settings() {
       <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Settings</DialogTitle>
-          <DialogDescription>Privacy, AI spending, Kin's models and optional tools.</DialogDescription>
+          <DialogDescription>Privacy, AI spending, Kin's models, optional tools and the blog.</DialogDescription>
         </DialogHeader>
 
         <section className="space-y-2 text-sm">
@@ -173,6 +174,8 @@ export function Settings() {
         </section>
 
         <OptionalTools open={open} />
+
+        <BlogSettings />
 
         <Button variant="ghost" size="sm" className="justify-self-start" onClick={() => { setOpen(false); openAboutYou(); }}>
           What Kin remembers (About you)

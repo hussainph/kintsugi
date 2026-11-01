@@ -1,5 +1,6 @@
 mod ai;
 mod books;
+mod blog;
 mod clip_capture;
 mod config;
 mod enrich;
@@ -62,6 +63,7 @@ fn builder() -> tauri::Builder<Runtime> {
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .manage(feed::Feed::default())
+        .manage(blog::Blog::default())
         .invoke_handler(tauri::generate_handler![
             vault::vault_current,
             vault::vault_open,
@@ -137,6 +139,12 @@ fn builder() -> tauri::Builder<Runtime> {
             tools::tools_install,
             tools::tools_update,
             tools::tools_remove,
+            blog::blog_status,
+            blog::blog_configure,
+            blog::blog_import,
+            blog::blog_links,
+            blog::blog_check,
+            blog::blog_publish,
         ])
 }
 

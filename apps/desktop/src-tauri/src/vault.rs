@@ -100,7 +100,9 @@ pub fn doc_read(vault: State<Vault>, path: String) -> Result<String> {
 #[tauri::command]
 pub fn doc_write(app: AppHandle, vault: State<Vault>, path: String, contents: String) -> Result<()> {
     writing_path(&path)?;
-    vault::write(&vault.root()?, &path, &contents, None)?;
+    let root = vault.root()?;
+    crate::blog::repo::refuse_mirror(&root, &path)?;
+    vault::write(&root, &path, &contents, None)?;
     references_changed(&app);
     Ok(())
 }
@@ -126,6 +128,7 @@ pub fn folder_create(vault: State<Vault>, dir: String, name: String) -> Result<S
 pub fn entry_rename(app: AppHandle, vault: State<Vault>, path: String, name: String) -> Result<String> {
     writing_path(&path)?;
     writing_path(&std::path::Path::new(&path).with_file_name(&name).to_string_lossy())?;
+    crate::blog::repo::refuse_mirror(&vault.root()?, &path)?;
     let renamed = vault::rename(&vault.root()?, &path, &name)?;
     references_changed(&app);
     Ok(renamed)
@@ -155,7 +158,7 @@ fn move_to_trash(targets: &[PathBuf]) -> Result<()> {
 
 /// A single invalidation for the margin, document backlinks and Used in.
 /// Search refreshes from the same writes.
-fn references_changed(app: &AppHandle) {
+pub(crate) fn references_changed(app: &AppHandle) {
     crate::search::changed(app);
     let _ = app.emit("references:changed", ());
 }

@@ -17,7 +17,7 @@ ghostwrites: prose is his, apart from edits he explicitly asks for.
 - The blog: hussain.ph, an Astro + MDX site at `~/Desktop/code/3d-portfolio`
   (github.com/hussainph/hussain.ph)
 - Product direction: `docs/vision.md`
-- Product and contracts: `README.md`, `docs/vision.md`, `docs/inspiration.md`, `docs/feed.md`
+- Product and contracts: `README.md`, `docs/vision.md`, `docs/inspiration.md`, `docs/feed.md`, `docs/publishing.md`
 - Phone app conventions: `apps/mobile/AGENTS.md`
 
 ## Git hosting

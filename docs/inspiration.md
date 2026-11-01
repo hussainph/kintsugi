@@ -456,8 +456,9 @@ existing links yet. Offering a reviewed link update on rename is follow-up
 work; unresolved links remain visible, never silently rebound to an
 arbitrary duplicate.
 
-## Publishing (to be designed)
+## Publishing
 
 Most complete documents end up on the blog: hussain.ph, an Astro + MDX site
 (`~/Desktop/code/3d-portfolio`). Publishing a document there, and importing
-the blog's existing posts so they can be referenced, get their own design.
+the blog's posts as a read-only mirror so they can be referenced, are
+specified in [publishing.md](publishing.md).

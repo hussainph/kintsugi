@@ -126,6 +126,22 @@ pub(crate) fn scratch_file(path: &Path) -> Result<PathBuf> {
     Ok(file)
 }
 
+/// The blog repository a headless run may publish into: only a scratch copy
+/// inside a `.headless/` folder, never the owner's checkout of the blog.
+pub(crate) fn scratch_blog(path: &Path) -> Result<PathBuf> {
+    let path = checked_directory(path)?;
+    let home = PathBuf::from(std::env::var_os("HOME").ok_or("HOME missing")?);
+    let real = home.join("Desktop/code/3d-portfolio");
+    let real = real.canonicalize().unwrap_or(real);
+    if path.starts_with(&real) || real.starts_with(&path) {
+        return Err("headless refuses the owner's blog repository; use a scratch copy under .headless/".into());
+    }
+    if !path.components().any(|c| c.as_os_str() == ".headless") {
+        return Err("headless only publishes into a scratch blog copy under a .headless/ folder".into());
+    }
+    Ok(path)
+}
+
 pub(crate) fn config_directory() -> Result<PathBuf> {
     required_dir("KINTSUGI_CONFIG_DIR")
 }

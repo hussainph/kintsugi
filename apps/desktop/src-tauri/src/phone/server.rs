@@ -168,6 +168,7 @@ async fn write(State(ctx): State<Ctx>, Json(body): Json<WriteBody>) -> Result<Re
     if vault::is_inspiration_path(&body.path) {
         return Err("use clip endpoints for inspiration".to_string().into());
     }
+    crate::blog::repo::refuse_mirror(&ctx.root()?, &body.path)?;
     let result = vault::write(&ctx.root()?, &body.path, &body.text, body.base.as_deref())?;
     let status = match result {
         Write::Saved { .. } => {

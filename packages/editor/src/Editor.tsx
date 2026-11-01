@@ -25,11 +25,13 @@ type Props = {
   external?: External | null;
   viewRef: RefObject<EditorView | null>;
   references?: References;
+  /** Opens this document read-only (a mirror of a published post). */
+  readOnly?: boolean;
 };
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references, readOnly = false }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
@@ -53,6 +55,7 @@ export function Editor({ path, text, onChange, external, viewRef, references }: 
         frontmatterLines,
         theme,
         placeholder("Start writing…"),
+        EditorState.readOnly.of(readOnly),
         referenceExtensions(() => referencesRef.current && { ...referencesRef.current, currentPath: docPath }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
