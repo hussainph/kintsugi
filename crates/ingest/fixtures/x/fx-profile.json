@@ -1,0 +1,1038 @@
+{
+ "code": 200,
+ "results": [
+  {
+   "type": "status",
+   "url": "https://x.com/levelsio/status/2115805396753383750",
+   "id": "2115805396753383750",
+   "text": "X should have a zero tolerance policy for AI replies\n\nLike you do one and your account is suspended for life\n\nReplies are a nightmare now and it's never ever been this bad\n\nAI replies are an an existential threat to the future of this platform, because people will simply stop using it if the vast majority of replies are AI bots",
+   "author": {
+    "screen_name": "levelsio",
+    "name": "@levelsio",
+    "url": "https://x.com/levelsio",
+    "id": "1577241403"
+   },
+   "replies": 1141,
+   "reposts": 124,
+   "likes": 4796,
+   "bookmarks": 169,
+   "quotes": 149,
+   "embed_card": "tweet",
+   "created_at": "Thu Oct 29 13:58:11 +0000 2026",
+   "created_timestamp": 1793282291,
+   "views": 296473,
+   "is_note_tweet": true,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "id": "12497"
+   }
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115821668350435645",
+   "id": "2115821668350435645",
+   "text": "Fascinating case study of the sharpest edge of what you can do with agentic engineering in the Fable era - my eyebrows raised at least a dozen times while reading this",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 196,
+   "reposts": 74,
+   "likes": 1658,
+   "bookmarks": 2531,
+   "quotes": 23,
+   "embed_card": "tweet",
+   "created_at": "Thu Oct 29 15:02:50 +0000 2026",
+   "created_timestamp": 1793286170,
+   "views": 191041,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "quote": {
+    "type": "status",
+    "url": "https://x.com/jsnnsa/status/2115623382721126826",
+    "id": "2115623382721126826",
+    "text": "https://x.com/i/article/2115540320373104640",
+    "author": {
+     "screen_name": "jsnnsa",
+     "name": "jacob",
+     "url": "https://x.com/jsnnsa",
+     "id": "1052605092057243648"
+    },
+    "replies": 263,
+    "reposts": 322,
+    "likes": 3626,
+    "bookmarks": 10336,
+    "quotes": 428,
+    "embed_card": "tweet",
+    "created_at": "Thu Oct 29 01:54:55 +0000 2026",
+    "created_timestamp": 1793238895,
+    "possibly_sensitive": false,
+    "views": 1123683,
+    "is_note_tweet": false,
+    "community_note": null,
+    "lang": null,
+    "replying_to": null,
+    "media": {},
+    "article": {
+     "created_at": "1970-01-01T00:00:00.000Z",
+     "modified_at": "1970-01-01T00:00:00.000Z",
+     "id": "2115540320373104640",
+     "title": "How I Built the Most AI-Pilled Company in the World",
+     "preview_text": "Spawn is ten people. We spend 30x payroll on AI tokens and ship almost as much as Anthropic.\nIn the last 30 days, Spawn shipped 77,000 substantial changes. That's about 108 an hour, around the clock.",
+     "cover_media": {},
+     "content": {
+      "blocks": [],
+      "entityMap": []
+     },
+     "media_entities": []
+    },
+    "provider": "twitter",
+    "reposted_by": null
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115822698341519520",
+   "id": "2115822698341519520",
+   "text": "Inspired me to try out https://spawn.co on my phone. Here's me flying a dragon around a castle, I prompted both the castle and the dragon into existence using the in-game \"Savi\" chatbot",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 19,
+   "reposts": 2,
+   "likes": 66,
+   "bookmarks": 14,
+   "quotes": 3,
+   "embed_card": "summary_large_image",
+   "created_at": "Thu Oct 29 15:06:56 +0000 2026",
+   "created_timestamp": 1793286416,
+   "possibly_sensitive": false,
+   "views": 20288,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2115821668350435645",
+    "url": "https://x.com/simonw/status/2115821668350435645",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {
+    "all": [
+     {
+      "type": "photo",
+      "id": "2115822694205972480",
+      "url": "https://pbs.twimg.com/media/HVzph7_bYAA2HoP.jpg?name=orig",
+      "width": 1226,
+      "height": 2048,
+      "altText": "Screenshot of a mobile 3D voxel-style game: a first-person view from the saddle of a small teal dragon, its neck with pa"
+     },
+     {
+      "type": "photo",
+      "id": "2115822694285627392",
+      "url": "https://pbs.twimg.com/media/HVzph8Sa0AAgvKj.jpg?name=orig",
+      "width": 1230,
+      "height": 2048,
+      "altText": "Screenshot of the same game with the chat panel open over the castle scene. Top bar: \"your den\" dropdown, \"+ new game\". "
+     }
+    ],
+    "photos": [
+     {
+      "type": "photo",
+      "id": "2115822694205972480",
+      "url": "https://pbs.twimg.com/media/HVzph7_bYAA2HoP.jpg?name=orig",
+      "width": 1226,
+      "height": 2048,
+      "altText": "Screenshot of a mobile 3D voxel-style game: a first-person view from the saddle of a small teal dragon, its neck with pa"
+     },
+     {
+      "type": "photo",
+      "id": "2115822694285627392",
+      "url": "https://pbs.twimg.com/media/HVzph8Sa0AAgvKj.jpg?name=orig",
+      "width": 1230,
+      "height": 2048,
+      "altText": "Screenshot of the same game with the chat panel open over the castle scene. Top bar: \"your den\" dropdown, \"+ new game\". "
+     }
+    ]
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115858560823538152",
+   "id": "2115858560823538152",
+   "text": "Wrote some more notes on this on my blog https://simonwillison.net/2026/Oct/29/how-i-built-the-most-ai-pilled-company-in-the-world/",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 4,
+   "reposts": 1,
+   "likes": 35,
+   "bookmarks": 21,
+   "quotes": 0,
+   "embed_card": "tweet",
+   "created_at": "Thu Oct 29 17:29:26 +0000 2026",
+   "created_timestamp": 1793294966,
+   "possibly_sensitive": false,
+   "views": 9238,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2115822698341519520",
+    "url": "https://x.com/simonw/status/2115822698341519520",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {},
+   "card": {
+    "url": "https://simonwillison.net/2026/Oct/29/how-i-built-the-most-ai-pilled-company-in-the-world/",
+    "title": "Building a multiplayer game world with autonomous Fable-class models",
+    "description": "Don't be put off by the clickbait headline, this piece by Jacob Sansbury describing how they are building Spawn is a fascinating exploration of the bleeding edge of what's possible …",
+    "domain": "simonwillison.net",
+    "image": {
+     "width": 420,
+     "height": 420,
+     "url": "https://pbs.twimg.com/card_img/2115858416937902080/6hJU88_Y?format=jpg&name=420x420_2"
+    }
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/DynamicWebPaige/status/2115806200424018427",
+   "id": "2115806200424018427",
+   "text": "the secret to becoming an expert is embarrassingly boring: build in public, write down what you learned and the process behind it, teach all that to someone, help them ship\n\nrepeat for a few years, and you're solid",
+   "author": {
+    "screen_name": "DynamicWebPaige",
+    "name": "👩‍💻 Paige Bailey",
+    "url": "https://x.com/DynamicWebPaige",
+    "id": "18104734"
+   },
+   "replies": 45,
+   "reposts": 47,
+   "likes": 748,
+   "bookmarks": 252,
+   "quotes": 8,
+   "embed_card": "tweet",
+   "created_at": "Thu Oct 29 14:01:22 +0000 2026",
+   "created_timestamp": 1793282482,
+   "views": 29684,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "id": "12497"
+   }
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/trq212/status/2115544056038350960",
+   "id": "2115544056038350960",
+   "text": "very weird thing happening rn\n\ntechnical people are sad, they think their skills are now useless\n\nnon-technical people are desperately wishing they were more technical so they could use agents better",
+   "author": {
+    "screen_name": "trq212",
+    "name": "Thariq",
+    "url": "https://x.com/trq212",
+    "id": "352806502"
+   },
+   "replies": 1565,
+   "reposts": 2403,
+   "likes": 36937,
+   "bookmarks": 5140,
+   "quotes": 676,
+   "embed_card": "tweet",
+   "created_at": "Wed Oct 28 20:39:42 +0000 2026",
+   "created_timestamp": 1793219982,
+   "views": 1925622,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "id": "12497"
+   }
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115444742595260551",
+   "id": "2115444742595260551",
+   "text": "I think October represents another inflection point in capabilities for coding agents and the models that drive them: Claude Opus 5.5 can now build video games that are actually fun https://simonwillison.net/2026/Oct/28/vibe-game-development/",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 404,
+   "reposts": 75,
+   "likes": 1355,
+   "bookmarks": 782,
+   "quotes": 75,
+   "embed_card": "tweet",
+   "created_at": "Wed Oct 28 14:05:04 +0000 2026",
+   "created_timestamp": 1793196304,
+   "possibly_sensitive": false,
+   "views": 118444,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "card": {
+    "url": "https://simonwillison.net/2026/Oct/28/vibe-game-development/",
+    "title": "The October inflection point for vibe game development",
+    "description": "I’ve written before about how November 2025 was an inflection point for coding agents—the point where Opus 4.5 and GPT-5.1 crossed a tipping point that meant their respective coding agents …",
+    "domain": "simonwillison.net",
+    "image": {
+     "width": 420,
+     "height": 420,
+     "url": "https://pbs.twimg.com/card_img/2115442970161971200/p50reEaT?format=jpg&name=420x420_2"
+    }
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115128326922883517",
+   "id": "2115128326922883517",
+   "text": "These ones are pretty great!",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 36,
+   "reposts": 1,
+   "likes": 79,
+   "bookmarks": 1,
+   "quotes": 1,
+   "embed_card": "summary_large_image",
+   "created_at": "Tue Oct 27 17:07:44 +0000 2026",
+   "created_timestamp": 1793120864,
+   "views": 22938,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "quote": {
+    "type": "status",
+    "url": "https://x.com/benjedwards/status/2115120640906727914",
+    "id": "2115120640906727914",
+    "text": "Apple II Agent (Opus 5.5) drew a pretty  good pelican riding a bicycle (cc: @simonw) on the Apple Ii\n\nSeen here in both color and monochrome",
+    "author": {
+     "screen_name": "benjedwards",
+     "name": "Benj Edwards",
+     "url": "https://x.com/benjedwards",
+     "id": "19948217"
+    },
+    "replies": 1,
+    "reposts": 2,
+    "likes": 13,
+    "bookmarks": 0,
+    "quotes": 1,
+    "embed_card": "summary_large_image",
+    "created_at": "Tue Oct 27 16:37:12 +0000 2026",
+    "created_timestamp": 1793119032,
+    "possibly_sensitive": false,
+    "views": 20554,
+    "is_note_tweet": false,
+    "community_note": null,
+    "lang": "en",
+    "replying_to": null,
+    "media": {
+     "all": [
+      {
+       "type": "photo",
+       "id": "2115120636288757760",
+       "url": "https://pbs.twimg.com/media/HVprAycW8AAvkF7.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      },
+      {
+       "type": "photo",
+       "id": "2115120636255154176",
+       "url": "https://pbs.twimg.com/media/HVprAyUWMAA8d4i.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      },
+      {
+       "type": "photo",
+       "id": "2115120636288733184",
+       "url": "https://pbs.twimg.com/media/HVprAycWkAA0ny2.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      },
+      {
+       "type": "photo",
+       "id": "2115120636322283520",
+       "url": "https://pbs.twimg.com/media/HVprAykWgAA81dg.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      }
+     ],
+     "photos": [
+      {
+       "type": "photo",
+       "id": "2115120636288757760",
+       "url": "https://pbs.twimg.com/media/HVprAycW8AAvkF7.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      },
+      {
+       "type": "photo",
+       "id": "2115120636255154176",
+       "url": "https://pbs.twimg.com/media/HVprAyUWMAA8d4i.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      },
+      {
+       "type": "photo",
+       "id": "2115120636288733184",
+       "url": "https://pbs.twimg.com/media/HVprAycWkAA0ny2.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      },
+      {
+       "type": "photo",
+       "id": "2115120636322283520",
+       "url": "https://pbs.twimg.com/media/HVprAykWgAA81dg.jpg?name=orig",
+       "width": 2048,
+       "height": 1536
+      }
+     ]
+    },
+    "provider": "twitter",
+    "reposted_by": null
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2113691493823369246",
+   "id": "2113691493823369246",
+   "text": "Pretty solid pelican https://tools.simonwillison.net/markdown-svg-renderer?url=https%3A%2F%2Fgist.github.com%2Fsimonw%2F9b7181492209387da1d4f53002f26663",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 72,
+   "reposts": 6,
+   "likes": 226,
+   "bookmarks": 13,
+   "quotes": 0,
+   "embed_card": "summary_large_image",
+   "created_at": "Fri Oct 23 17:58:17 +0000 2026",
+   "created_timestamp": 1792778297,
+   "possibly_sensitive": false,
+   "views": 38949,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {
+    "all": [
+     {
+      "type": "photo",
+      "id": "2113691487519248384",
+      "url": "https://pbs.twimg.com/media/HVVXNYZaEAAkEo2.jpg?name=orig",
+      "width": 317,
+      "height": 238,
+      "altText": "A pelican riding a bicycle. Bicycle frame is correct shape, the pelican has a nice pelican pouch, the feet are on the pe"
+     }
+    ],
+    "photos": [
+     {
+      "type": "photo",
+      "id": "2113691487519248384",
+      "url": "https://pbs.twimg.com/media/HVVXNYZaEAAkEo2.jpg?name=orig",
+      "width": 317,
+      "height": 238,
+      "altText": "A pelican riding a bicycle. Bicycle frame is correct shape, the pelican has a nice pelican pouch, the feet are on the pe"
+     }
+    ]
+   },
+   "quote": {
+    "type": "status",
+    "url": "https://x.com/Kimi_Moonshot/status/2113680701770068067",
+    "id": "2113680701770068067",
+    "text": "Introducing Kimi K3.1 Pro: our most capable 3T-class open-weight model.\n\n🔹 1M-token context, 2.8T total / 104B active params (MoE), Multimodal.\n🔹 Full-project coding: games in Unreal, Unity & Godot.\n🔹 Excels at parametric 3D modeling in Blender & CAD.\n🔹 More reliable at finance work: Accurate modeling with hallucination down by 65%.\n🔹 Matching the strongest proprietary models across coding, agentic and knowledge benchmarks.\n\nKimi K3.1 Pro and K3.1 Pro Highspeed (2–3× faster) are now live on http://Kimi.ai, Kimi Work, Kimi Code, and the Kimi API.  \n\nOpen weights by Nov 4, 2026.\n\n🔗 API: http://platform.kimi.ai \n🔗 Tech blog: http://kimi.ai/blog/kimi-k3-1-pro",
+    "author": {
+     "screen_name": "Kimi_Moonshot",
+     "name": "Kimi.ai",
+     "url": "https://x.com/Kimi_Moonshot",
+     "id": "1863959670169501696"
+    },
+    "replies": 1274,
+    "reposts": 3238,
+    "likes": 30225,
+    "bookmarks": 7019,
+    "quotes": 2365,
+    "embed_card": "summary_large_image",
+    "created_at": "Fri Oct 23 17:15:24 +0000 2026",
+    "created_timestamp": 1792775724,
+    "possibly_sensitive": false,
+    "views": 4120839,
+    "is_note_tweet": true,
+    "community_note": null,
+    "lang": "en",
+    "replying_to": null,
+    "media": {
+     "all": [
+      {
+       "type": "photo",
+       "id": "2113679764737368064",
+       "url": "https://pbs.twimg.com/media/HVVMjBoaIAAZncD.jpg?name=orig",
+       "width": 3013,
+       "height": 4096
+      }
+     ],
+     "photos": [
+      {
+       "type": "photo",
+       "id": "2113679764737368064",
+       "url": "https://pbs.twimg.com/media/HVVMjBoaIAAZncD.jpg?name=orig",
+       "width": 3013,
+       "height": 4096
+      }
+     ]
+    },
+    "provider": "twitter",
+    "reposted_by": null
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2113718487529267593",
+   "id": "2113718487529267593",
+   "text": "More notes on Kimi K3.1 - this one is I big deal, first time an open weights (well, soon-to-be open weights) model has competed this credibly with the current frontier https://simonwillison.net/2026/Oct/23/kimi-k31-pro/",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 65,
+   "reposts": 6,
+   "likes": 104,
+   "bookmarks": 20,
+   "quotes": 6,
+   "embed_card": "tweet",
+   "created_at": "Fri Oct 23 19:45:33 +0000 2026",
+   "created_timestamp": 1792784733,
+   "possibly_sensitive": false,
+   "views": 21860,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2113691493823369246",
+    "url": "https://x.com/simonw/status/2113691493823369246",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {},
+   "card": {
+    "url": "https://simonwillison.net/2026/Oct/23/kimi-k31-pro/",
+    "title": "Introducing Kimi K3.1 Pro",
+    "description": "Kimi K3.1 Pro landed on the Kimi API today - it's not yet open weights, but Moonshot promise \"Full model weights will be released by Nov 4, 2026\". They're also …",
+    "domain": "simonwillison.net",
+    "image": {
+     "width": 420,
+     "height": 420,
+     "url": "https://pbs.twimg.com/card_img/2116255345043709952/mhxY14Ns?format=jpg&name=420x420_2"
+    }
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2113633667583287786",
+   "id": "2113633667583287786",
+   "text": "Given the current vulnerability apocalypse, is there anyone left who thinks holding assets in cryptocurrency - where mistaken transactions are irreversible - is still a good idea?",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 166,
+   "reposts": 23,
+   "likes": 818,
+   "bookmarks": 96,
+   "quotes": 10,
+   "embed_card": "tweet",
+   "created_at": "Fri Oct 23 14:08:30 +0000 2026",
+   "created_timestamp": 1792764510,
+   "views": 88490,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2113356466770121166",
+   "id": "2113356466770121166",
+   "text": "Spotted a familiar creature at 00:45s in this new music video for FREEDOM by De Staad https://www.youtube.com/watch?v=hKO4pQtIXow",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 21,
+   "reposts": 8,
+   "likes": 425,
+   "bookmarks": 15,
+   "quotes": 0,
+   "embed_card": "player",
+   "created_at": "Thu Oct 22 19:47:00 +0000 2026",
+   "created_timestamp": 1792698420,
+   "possibly_sensitive": false,
+   "views": 34810,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {
+    "all": [
+     {
+      "id": "2113356400651046913",
+      "url": "https://video.twimg.com/amplify_video/2113356400651046913/vid/avc1/1280x720/-mYOAd4fpE-5vQfT.mp4?tag=29",
+      "thumbnail_url": "https://pbs.twimg.com/amplify_video_thumb/2113356400651046913/img/NVpKP3CPesN3gSM1.jpg",
+      "duration": 3,
+      "width": 1280,
+      "height": 720,
+      "format": "video/mp4",
+      "type": "video",
+      "publisher": null
+     }
+    ],
+    "videos": [
+     {
+      "id": "2113356400651046913",
+      "url": "https://video.twimg.com/amplify_video/2113356400651046913/vid/avc1/1280x720/-mYOAd4fpE-5vQfT.mp4?tag=29",
+      "thumbnail_url": "https://pbs.twimg.com/amplify_video_thumb/2113356400651046913/img/NVpKP3CPesN3gSM1.jpg",
+      "duration": 3,
+      "width": 1280,
+      "height": 720,
+      "format": "video/mp4",
+      "type": "video",
+      "publisher": null
+     }
+    ],
+    "external": {
+     "type": "video",
+     "url": "https://www.youtube.com/embed/hKO4pQtIXow",
+     "thumbnail_url": "https://img.youtube.com/vi/hKO4pQtIXow/maxresdefault.jpg",
+     "width": 1280,
+     "height": 720
+    }
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/fiveoutofnine/status/2113045722744717360",
+   "id": "2113045722744717360",
+   "text": "So basically, today PHP got two critical bugs that let anyone run code on your server without even logging in, which is bad, and then the details leaked before the patch was even out, which is worse, and it works on WordPress and MediaWiki and Magento and Joomla and Laravel, and Censys says like 1.5 million servers are running a\n version with no fix, so the NSA was like \"take your system offline,\" and the FBI was like \"take your system offline,\" and CISA and the UK and CERT-EU were all like \"take your system offline,\" and then the Prime Minister of Japan, the actual Prime Minister, posted at 5:55 in the morning telling 48.8 million people to take their system offline, so everyone took their system offline, like the Dutch cybersecurity agency took its own website offline, and the Dutch parliament went offline, and the Port of Rotterdam went offline, and Finland and France and Denmark started pulling government sites, and Wikipedia went down, and http://Archive.org went down, and Asana and GOG and Something Awful went down, and the University of Vienna's webmail went down for some reason, and that's just PHP. Because GitLab also dropped a CVSS 10.0, which is the highest score they give out, for a bug that's been there since 2014, so that's every self-hosted GitLab for twelve years, and then LiteLLM 1.107.0 got hijacked and shipped a credential stealer and a remote access trojan in every single wheel and the Docker images, including latest, and you didn't even have to import it, just installing it was enough, and it's the second time this year, and then Railway paused every deployment on the entire platform because someone got into the environment variables, so now everyone has to rotate every secret they've ever stored there, and TiDB Cloud said someone was walking around inside with stolen credentials for basically a month and an extortion group says they took 10.6 terabytes, and Zeabur got breached for the second time in two months and is just shutting down, like the whole company, and Node.js patched remote code execution and a TLS bypass, and CISA says Plex is being actively exploited, and someone took over 300 Tor exit relays to steal SSH passwords, and SafePay ransomware has hit over 600 critical infrastructure orgs, and India's biggest bank filed a data loss incident, and Japan has been in an official state of emergency in cyberspace since October 9, which honestly explains the 5:55 AM post. Oh, and eMudhra, a certificate authority that's issued over 60 million certificates, whose entire job is proving websites are who they say they are, was supposed to be using private keys that are random numbers over a hundred digits long, and one of them was 4. Just 4. And the others were like 66 and 237. Anyway, it's Wednesday.",
+   "author": {
+    "screen_name": "fiveoutofnine",
+    "name": "⁵⁄₉",
+    "url": "https://x.com/fiveoutofnine",
+    "id": "1269561030272643076"
+   },
+   "replies": 1077,
+   "reposts": 8933,
+   "likes": 69337,
+   "bookmarks": 22931,
+   "quotes": 1654,
+   "embed_card": "tweet",
+   "created_at": "Wed Oct 21 23:12:13 +0000 2026",
+   "created_timestamp": 1792624333,
+   "views": 4226798,
+   "is_note_tweet": true,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "id": "12497"
+   }
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/mitsuhiko/status/2113207589978636646",
+   "id": "2113207589978636646",
+   "text": "As fun as AI is, we built so much bad software over the last 30 years, and now the universe is punishing us for our sins.",
+   "author": {
+    "screen_name": "mitsuhiko",
+    "name": "Armin Ronacher ⇌",
+    "url": "https://x.com/mitsuhiko",
+    "id": "12963432"
+   },
+   "replies": 76,
+   "reposts": 110,
+   "likes": 1438,
+   "bookmarks": 60,
+   "quotes": 21,
+   "embed_card": "tweet",
+   "created_at": "Thu Oct 22 09:55:25 +0000 2026",
+   "created_timestamp": 1792662925,
+   "views": 47367,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "id": "12497"
+   }
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2112944161670488423",
+   "id": "2112944161670488423",
+   "text": "There's a French fork of Battle Drones with new models and music (and a cinematic intro video) and it is SO cool! https://menufactory43.github.io/panache/\n\nHere's the old v.s. new Goliath model",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 50,
+   "reposts": 8,
+   "likes": 102,
+   "bookmarks": 8,
+   "quotes": 4,
+   "embed_card": "summary_large_image",
+   "created_at": "Wed Oct 21 16:28:39 +0000 2026",
+   "created_timestamp": 1792600119,
+   "possibly_sensitive": false,
+   "views": 20716,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {
+    "all": [
+     {
+      "type": "photo",
+      "id": "2112944118326550531",
+      "url": "https://pbs.twimg.com/media/HVKvexMa4AM-HuP.jpg?name=orig",
+      "width": 1804,
+      "height": 872,
+      "altText": "On the left: blue stomping mech robot, missile launcher shoulders, classic sci-fi robot look. On the right: gold, steamp"
+     }
+    ],
+    "photos": [
+     {
+      "type": "photo",
+      "id": "2112944118326550531",
+      "url": "https://pbs.twimg.com/media/HVKvexMa4AM-HuP.jpg?name=orig",
+      "width": 1804,
+      "height": 872,
+      "altText": "On the left: blue stomping mech robot, missile launcher shoulders, classic sci-fi robot look. On the right: gold, steamp"
+     }
+    ]
+   },
+   "quote": {
+    "type": "status",
+    "url": "https://x.com/Meffysto69/status/2112908755654365220",
+    "id": "2112908755654365220",
+    "text": "Merci @simonw! 🎩 I forked Battle Drones into Panache: a French Belle Époque RTS, with dirigibles, steam tractors, clockwork soldiers in képis and Gargantua, a walking steam fortress. Fully in French, built with Claude Code.\n\nhttps://github.com/menufactory43/panache",
+    "author": {
+     "screen_name": "Meffysto69",
+     "name": "meff",
+     "url": "https://x.com/Meffysto69",
+     "id": "1383719843044630530"
+    },
+    "replies": 5,
+    "reposts": 0,
+    "likes": 8,
+    "bookmarks": 2,
+    "quotes": 2,
+    "embed_card": "tweet",
+    "created_at": "Wed Oct 21 14:07:57 +0000 2026",
+    "created_timestamp": 1792591677,
+    "possibly_sensitive": false,
+    "views": 18240,
+    "is_note_tweet": false,
+    "community_note": null,
+    "lang": "en",
+    "replying_to": null,
+    "media": {},
+    "quote": {
+     "type": "tombstone",
+     "provider": "twitter",
+     "reason": "unavailable",
+     "message": "This post is unavailable",
+     "id": "2112630778068881543",
+     "url": "https://x.com/i/status/2112630778068881543",
+     "author": {}
+    },
+    "card": {
+     "url": "https://github.com/menufactory43/panache",
+     "title": "GitHub - menufactory43/panache: Panache — RTS Belle Époque pour mobile (adaptation française de...",
+     "description": "Panache — RTS Belle Époque pour mobile (adaptation française de Battle Drones) - menufactory43/panache",
+     "domain": "github.com",
+     "image": {
+      "width": 800,
+      "height": 419,
+      "url": "https://pbs.twimg.com/card_img/2115445526367797248/X-bivMHj?format=jpg&name=800x419"
+     }
+    },
+    "provider": "twitter",
+    "reposted_by": null
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2112944299906347425",
+   "id": "2112944299906347425",
+   "text": "When I slapped an Apache 2.0 License on the code yesterday I did not expect anything this neat to come out of it, and certainly not so fast https://simonwillison.net/2026/Oct/20/battledrones/",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Williso\nn",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 19,
+   "reposts": 1,
+   "likes": 38,
+   "bookmarks": 10,
+   "quotes": 2,
+   "embed_card": "tweet",
+   "created_at": "Wed Oct 21 16:29:12 +0000 2026",
+   "created_timestamp": 1792600152,
+   "possibly_sensitive": false,
+   "views": 10715,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2112944161670488423",
+    "url": "https://x.com/simonw/status/2112944161670488423",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {},
+   "card": {
+    "url": "https://simonwillison.net/2026/Oct/20/battledrones/",
+    "title": "Battle Drones—a vibe coded RTS with audio-based multiplayer",
+    "description": "My latest vibe coded game experiment is a Command & Conquer style RTS (Real Time Strategy) game called Battle Drones (play it here). Unlike my previous experiments, this one is …",
+    "domain": "simonwillison.net",
+    "image": {
+     "width": 420,
+     "height": 420,
+     "url": "https://pbs.twimg.com/card_img/2115166523010772992/yhbMgr5x?format=jpg&name=420x420_2"
+    }
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2112630778068881543",
+   "id": "2112630778068881543",
+   "text": "I built a Command & Conquer style RTS called Battle Drones, mainly using Claude Opus 5.5, which runs in the browser and includes device-to-device multiplayer over an audio link https://simonwillison.net/2026/Oct/20/battledrones/",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 191,
+   "reposts": 41,
+   "likes": 788,
+   "bookmarks": 267,
+   "quotes": 30,
+   "embed_card": "summary_large_image",
+   "created_at": "Tue Oct 20 19:43:22 +0000 2026",
+   "created_timestamp": 1792525402,
+   "possibly_sensitive": false,
+   "views": 56345,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {
+    "all": [
+     {
+      "type": "photo",
+      "id": "2112630135119814656",
+      "url": "https://pbs.twimg.com/media/HVGR6imaIAA62ik.jpg?name=orig",
+      "width": 1728,
+      "height": 1117,
+      "altText": "Screenshot of a 3D isometric real-time strategy game in progress. HUD at top reads \"1:49\", \"4×\", \"Ironclad · Industry\" ("
+     },
+     {
+      "type": "photo",
+      "id": "2112630724704813056",
+      "url": "https://pbs.twimg.com/media/HVGSc2-bQAA5kzf.jpg?name=orig",
+      "width": 1275,
+      "height": 870,
+      "altText": "Screenshot of the same strategy game, now on a snowy winter map in replay mode. HUD at top reads \"6:27\", \"1×\", \"anthropi"
+     }
+    ],
+    "photos": [
+     {
+      "type": "photo",
+      "id": "2112630135119814656",
+      "url": "https://pbs.twimg.com/media/HVGR6imaIAA62ik.jpg?name=orig",
+      "width": 1728,
+      "height": 1117,
+      "altText": "Screenshot of a 3D isometric real-time strategy game in progress. HUD at top reads \"1:49\", \"4×\", \"Ironclad · Industry\" ("
+     },
+     {
+      "type": "photo",
+      "id": "2112630724704813056",
+      "url": "https://pbs.twimg.com/media/HVGSc2-bQAA5kzf.jpg?name=orig",
+      "width": 1275,
+      "height": 870,
+      "altText": "Screenshot of the same strategy game, now on a snowy winter map in replay mode. HUD at top reads \"6:27\", \"1×\", \"anthropi"
+     }
+    ]
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2112657717227843942",
+   "id": "2112657717227843942",
+   "text": "Warning if you're going to try this: the audio multiplayer plays a high pitched noise throughout the game - annoying at best, and at worst might give you an actual headache\n\n(Natalie: \"why do my teeth hurt?\")",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 6,
+   "reposts": 1,
+   "likes": 24,
+   "bookmarks": 0,
+   "quotes": 0,
+   "embed_card": "tweet",
+   "created_at": "Tue Oct 20 21:30:25 +0000 2026",
+   "created_timestamp": 1792531825,
+   "views": 8832,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2112632287250743641",
+    "url": "https://x.com/simonw/status/2112632287250743641",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2112689291570938255",
+   "id": "2112689291570938255",
+   "text": "OK, that headache bug was really bad!\n\nIt inspired me to add proper online multiplayer to Battle Drones (via a tiny @flydotio hosted WebSockets relay server) - now you can start an online game and send a link to a friend so they can join you https://simonwillison.net/2026/Oct/20/battledrones/#update-online-multiplayer-support",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497",
+    "avatar_url": "https://pbs.twimg.com/profile_images/378800000261649705/be9cc55e64014e6d7663c50d7cb9fc75_200x200.jpeg"
+   },
+   "replies": 8,
+   "reposts": 0,
+   "likes": 18,
+   "bookmarks": 3,
+   "quotes": 0,
+   "embed_card": "tweet",
+   "created_at": "Tue Oct 20 23:35:53 +0000 2026",
+   "created_timestamp": 1792539353,
+   "possibly_sensitive": false,
+   "views": 6888,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2112657717227843942",
+    "url": "https://x.com/simonw/status/2112657717227843942",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {},
+   "provider": "twitter",
+   "reposted_by": null
+  }
+ ],
+ "cursor": {
+  "top": "DAAHCgABHWAkMIAAJxELAAIAAAATMjExNjAzODk3MzM5NTI2MzgxNQgAAwAAAAEAAA",
+  "bottom": "DAAHCgABHWAkMH____ILAAIAAAATMjExMjYzMTIwODU4MDY0NTEzMAgAAwAAAAIAAA"
+ }
+}

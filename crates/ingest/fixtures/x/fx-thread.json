@@ -1,0 +1,268 @@
+{
+ "code": 200,
+ "status": {
+  "type": "status",
+  "url": "https://x.com/simonw/status/2115822698341519520",
+  "id": "2115822698341519520",
+  "text": "Inspired me to try out https://spawn.co on my phone. Here's me flying a dragon around a castle, I prompted both the castle and the dragon into existence using the in-game \"Savi\" chatbot",
+  "author": {
+   "screen_name": "simonw",
+   "name": "Simon Willison",
+   "url": "https://x.com/simonw",
+   "id": "12497"
+  },
+  "replies": 19,
+  "reposts": 2,
+  "likes": 66,
+  "bookmarks": 14,
+  "quotes": 3,
+  "embed_card": "summary_large_image",
+  "created_at": "Thu Oct 29 15:06:56 +0000 2026",
+  "created_timestamp": 1793286416,
+  "possibly_sensitive": false,
+  "views": 20288,
+  "is_note_tweet": false,
+  "community_note": null,
+  "lang": "en",
+  "replying_to": {
+   "screen_name": "simonw",
+   "status": "2115821668350435645",
+   "url": "https://x.com/simonw/status/2115821668350435645",
+   "profile_url": "https://x.com/simonw"
+  },
+  "media": {
+   "all": [
+    {
+     "type": "photo",
+     "id": "2115822694205972480",
+     "url": "https://pbs.twimg.com/media/HVzph7_bYAA2HoP.jpg?name=orig",
+     "width": 1226,
+     "height": 2048,
+     "altText": "Screenshot of a mobile 3D voxel-style game: a first-person view from the saddle of a small teal dragon, its neck with pa"
+    },
+    {
+     "type": "photo",
+     "id": "2115822694285627392",
+     "url": "https://pbs.twimg.com/media/HVzph8Sa0AAgvKj.jpg?name=orig",
+     "width": 1230,
+     "height": 2048,
+     "altText": "Screenshot of the same game with the chat panel open over the castle scene. Top bar: \"your den\" dropdown, \"+ new game\". "
+    }
+   ],
+   "photos": [
+    {
+     "type": "photo",
+     "id": "2115822694205972480",
+     "url": "https://pbs.twimg.com/media/HVzph7_bYAA2HoP.jpg?name=orig",
+     "width": 1226,
+     "height": 2048,
+     "altText": "Screenshot of a mobile 3D voxel-style game: a first-person view from the saddle of a small teal dragon, its neck with pa"
+    },
+    {
+     "type": "photo",
+     "id": "2115822694285627392",
+     "url": "https://pbs.twimg.com/media/HVzph8Sa0AAgvKj.jpg?name=orig",
+     "width": 1230,
+     "height": 2048,
+     "altText": "Screenshot of the same game with the chat panel open over the castle scene. Top bar: \"your den\" dropdown, \"+ new game\". "
+    }
+   ]
+  },
+  "provider": "twitter",
+  "reposted_by": null
+ },
+ "thread": [
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115821668350435645",
+   "id": "2115821668350435645",
+   "text": "Fascinating case study of the sharpest edge of what you can do with agentic engineering in the Fable era - my eyebrows raised at least a dozen times while reading this",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497"
+   },
+   "replies": 196,
+   "reposts": 74,
+   "likes": 1658,
+   "bookmarks": 2531,
+   "quotes": 23,
+   "embed_card": "tweet",
+   "created_at": "Thu Oct 29 15:02:50 +0000 2026",
+   "created_timestamp": 1793286170,
+   "views": 191041,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": null,
+   "media": {},
+   "quote": {
+    "type": "status",
+    "url": "https://x.com/jsnnsa/status/2115623382721126826",
+    "id": "2115623382721126826",
+    "text": "https://x.com/i/article/2115540320373104640",
+    "author": {
+     "screen_name": "jsnnsa",
+     "name": "jacob",
+     "url": "https://x.com/jsnnsa",
+     "id": "1052605092057243648"
+    },
+    "replies": 263,
+    "reposts": 322,
+    "likes": 3626,
+    "bookmarks": 10336,
+    "quotes": 428,
+    "embed_card": "tweet",
+    "created_at": "Thu Oct 29 01:54:55 +0000 2026",
+    "created_timestamp": 1793238895,
+    "possibly_sensitive": false,
+    "views": 1123683,
+    "is_note_tweet": false,
+    "community_note": null,
+    "lang": null,
+    "replying_to": null,
+    "media": {},
+    "article": {
+     "created_at": "1970-01-01T00:00:00.000Z",
+     "modified_at": "1970-01-01T00:00:00.000Z",
+     "id": "2115540320373104640",
+     "title": "How I Built the Most AI-Pilled Company in the World",
+     "preview_text": "Spawn is ten people. We spend 30x payroll on AI tokens and ship almost as much as Anthropic.\nIn the last 30 days, Spawn shipped 77,000 substantial changes. That's about 108 an hour, around the clock.",
+     "cover_media": {},
+     "content": {
+      "blocks": [],
+      "entityMap": []
+     },
+     "media_entities": []
+    },
+    "provider": "twitter",
+    "reposted_by": null
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115822698341519520",
+   "id": "2115822698341519520",
+   "text": "Inspired me to try out https://spawn.co on my phone. Here's me flying a dragon around a castle, I prompted both the castle and the dragon into existence using the in-game \"Savi\" chatbot",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497"
+   },
+   "replies": 19,
+   "reposts": 2,
+   "likes": 66,
+   "bookmarks": 14,
+   "quotes": 3,
+   "embed_card": "summary_large_image",
+   "created_at": "Thu Oct 29 15:06:56 +0000 2026",
+   "created_timestamp": 1793286416,
+   "possibly_sensitive": false,
+   "views": 20288,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2115821668350435645",
+    "url": "https://x.com/simonw/status/2115821668350435645",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {
+    "all": [
+     {
+      "type": "photo",
+      "id": "2115822694205972480",
+      "url": "https://pbs.twimg.com/media/HVzph7_bYAA2HoP.jpg?name=orig",
+      "width": 1226,
+      "height": 2048,
+      "altText": "Screenshot of a mobile 3D voxel-style game: a first-person view from the saddle of a small teal dragon, its neck with pa"
+     },
+     {
+      "type": "photo",
+      "id": "2115822694285627392",
+      "url": "https://pbs.twimg.com/media/HVzph8Sa0AAgvKj.jpg?name=orig",
+      "width": 1230,
+      "height": 2048,
+      "altText": "Screenshot of the same game with the chat panel open over the castle scene. Top bar: \"your den\" dropdown, \"+ new game\". "
+     }
+    ],
+    "photos": [
+     {
+      "type": "photo",
+      "id": "2115822694205972480",
+      "url": "https://pbs.twimg.com/media/HVzph7_bYAA2HoP.jpg?name=orig",
+      "width": 1226,
+      "height": 2048,
+      "altText": "Screenshot of a mobile 3D voxel-style game: a first-person view from the saddle of a small teal dragon, its neck with pa"
+     },
+     {
+      "type": "photo",
+      "id": "2115822694285627392",
+      "url": "https://pbs.twimg.com/media/HVzph8Sa0AAgvKj.jpg?name=orig",
+      "width": 1230,
+      "height": 2048,
+      "altText": "Screenshot of the same game with the chat panel open over the castle scene. Top bar: \"your den\" dropdown, \"+ new game\". "
+     }
+    ]
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  },
+  {
+   "type": "status",
+   "url": "https://x.com/simonw/status/2115858560823538152",
+   "id": "2115858560823538152",
+   "text": "Wrote some more notes on this on my blog https://simonwillison.net/2026/Oct/29/how-i-built-the-most-ai-pilled-company-in-the-world/",
+   "author": {
+    "screen_name": "simonw",
+    "name": "Simon Willison",
+    "url": "https://x.com/simonw",
+    "id": "12497"
+   },
+   "replies": 4,
+   "reposts": 1,
+   "likes": 35,
+   "bookmarks": 21,
+   "quotes": 0,
+   "embed_card": "tweet",
+   "created_at": "Thu Oct 29 17:29:26 +0000 2026",
+   "created_timestamp": 1793294966,
+   "possibly_sensitive": false,
+   "views": 9238,
+   "is_note_tweet": false,
+   "community_note": null,
+   "lang": "en",
+   "replying_to": {
+    "screen_name": "simonw",
+    "status": "2115822698341519520",
+    "url": "https://x.com/simonw/status/2115822698341519520",
+    "profile_url": "https://x.com/simonw"
+   },
+   "media": {},
+   "card": {
+    "url": "https://simonwillison.net/2026/Oct/29/how-i-built-the-most-ai-pilled-company-in-the-world/",
+    "title": "Building a multiplayer game world with autonomous Fable-class models",
+    "description": "Don't be put off by the clickbait headline, this piece by Jacob Sansbury describing how they are building Spawn is a fascinating exploration of the bleeding edge of what's possible …",
+    "domain": "simonwillison.net",
+    "image": {
+     "width": 420,
+     "height": 420,
+     "url": "https://pbs.twimg.com/card_img/2115858416937902080/6hJU88_Y?format=jpg&name=420x420_2"
+    }
+   },
+   "provider": "twitter",
+   "reposted_by": null
+  }
+ ],
+ "author": {
+  "screen_name": "simonw",
+  "name": "Simon Willison",
+  "url": "https://x.com/simonw",
+  "id": "12497"
+ }
+}

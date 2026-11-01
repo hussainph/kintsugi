@@ -1,0 +1,70 @@
+[
+ {
+  "kind": "Listing",
+  "data": {
+   "children": [
+    {
+     "kind": "t3",
+     "data": {
+      "id": "1ogal01",
+      "name": "t3_1oabc12",
+      "title": "My desk setup",
+      "author": "ferris_fan",
+      "subreddit": "battlestations",
+      "subreddit_name_prefixed": "r/battlestations",
+      "selftext": "",
+      "is_self": false,
+      "url": "https://www.reddit.com/gallery/1ogal01",
+      "permalink": "/r/battlestations/comments/1ogal01/my_desk_setup/",
+      "created_utc": 1793286416.0,
+      "score": 412,
+      "num_comments": 87,
+      "over_18": false,
+      "thumbnail": "self",
+      "is_gallery": true,
+      "gallery_data": {
+       "items": [
+        {
+         "media_id": "m2",
+         "id": 1
+        },
+        {
+         "media_id": "m1",
+         "id": 2
+        }
+       ]
+      },
+      "media_metadata": {
+       "m1": {
+        "status": "valid",
+        "e": "Image",
+        "m": "image/jpg",
+        "s": {
+         "u": "https://preview.redd.it/m1.jpg?width=2000&s=1",
+         "x": 2000,
+         "y": 1500
+        }
+       },
+       "m2": {
+        "status": "valid",
+        "e": "Image",
+        "m": "image/jpg",
+        "s": {
+         "u": "https://preview.redd.it/m2.jpg?width=2000&s=2",
+         "x": 2000,
+         "y": 1500
+        }
+       }
+      }
+     }
+    }
+   ]
+  }
+ },
+ {
+  "kind": "Listing",
+  "data": {
+   "children": []
+  }
+ }
+]

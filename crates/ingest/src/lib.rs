@@ -22,9 +22,15 @@ use std::path::PathBuf;
 use std::pin::Pin;
 
 pub mod feed;
+pub mod api;
 mod markdown;
 pub mod media;
+pub mod reddit;
+#[cfg(test)]
+mod test_server;
+mod text;
 pub mod web;
+pub mod x;
 
 pub use reqwest::Url;
 
@@ -42,6 +48,10 @@ pub enum SourceType {
     Web,
     /// An entry in a followed RSS, Atom or JSON Feed.
     Rss,
+    /// An X (Twitter) post or thread, or a followed account's posts.
+    X,
+    /// A Reddit post with its comments.
+    Reddit,
 }
 
 impl SourceType {
@@ -49,6 +59,8 @@ impl SourceType {
         match self {
             SourceType::Web => "web",
             SourceType::Rss => "rss",
+            SourceType::X => "x",
+            SourceType::Reddit => "reddit",
         }
     }
 }
@@ -135,6 +147,8 @@ pub enum Error {
     Status(u16),
     /// The document is not an RSS, Atom or JSON feed, and links to none.
     NotAFeed,
+    /// The source asked us to slow down; nothing is sent until it allows.
+    RateLimited,
 }
 
 impl fmt::Display for Error {
@@ -148,6 +162,7 @@ impl fmt::Display for Error {
             Error::Setup => "could not start page fetcher",
             Error::Status(code) => return write!(f, "source answered HTTP {code}"),
             Error::NotAFeed => "source is not a feed",
+            Error::RateLimited => "source is rate limiting requests",
         })
     }
 }
