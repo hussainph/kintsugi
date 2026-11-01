@@ -220,12 +220,16 @@ export default function App() {
   );
 
   const openDoc = useCallback(
-    async (path: string) => {
+    /** `behind`: load it into the editor without leaving the view that's
+     *  showing (the startup open must not undo ⇧⌘E pressed meanwhile). */
+    async (path: string, behind?: boolean) => {
       setPalette(null);
       if (!(await settle("opened that document"))) return;
-      setLibraryOpen(false);
-      setFeedOpen(false);
-      setIdeasOpen(null);
+      if (behind !== true) {
+        setLibraryOpen(false);
+        setFeedOpen(false);
+        setIdeasOpen(null);
+      }
       try {
         const contents = await vault.read(path);
         known.current.set(path, meta(contents));
@@ -242,17 +246,26 @@ export default function App() {
 
   const loadVault = useCallback(
     async (path: string) => {
+      // Switching vaults lands in the editor. On first load (which dev
+      // StrictMode runs twice) nothing is open yet, unless he opened it while
+      // the vault was loading: leave that be.
+      const switching = rootRef.current !== null && rootRef.current !== path;
       rootRef.current = path;
       setRoot(path);
       setDoc(null);
       setOpenClip(undefined);
-      setLibraryOpen(false);
+      if (switching) {
+        setLibraryOpen(false);
+        setFeedOpen(false);
+        setIdeasOpen(null);
+      }
       setText("");
       setSelectedDir("");
       const all = flatten(await refresh());
       const last = lastOpened.get(path);
       const pick = all.find((d) => d.path === last) ?? all[0];
-      if (pick) await openDoc(pick.path);
+      // A view opened while the vault loaded (Feed, Inspiration, Ideas) stays open.
+      if (pick) await openDoc(pick.path, true);
     },
     [refresh, openDoc],
   );
