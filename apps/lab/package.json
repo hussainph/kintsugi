@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc",
-    "test": "node --import tsx --test --test-concurrency=${VOLLI_CONCURRENCY_HINT:-1} bridge/*.test.ts entries/page/inspiration-library/*.test.ts entries/experiment/idea-cards/*.test.ts",
+    "test": "node --import tsx --test --test-concurrency=${VOLLI_CONCURRENCY_HINT:-1} bridge/*.test.ts entries/page/inspiration-library/*.test.ts entries/experiment/idea-cards/*.test.ts entries/experiment/clip-shape/*.test.ts",
     "check": "tsx ../../packages/lab/src/cli.ts --root ../.. --entries apps/lab/entries check"
   },
   "dependencies": {

@@ -1,0 +1,171 @@
+{
+ "article": {
+  "source": "web",
+  "id": "web:https://paulgraham.com/words.html",
+  "url": "https://paulgraham.com/words.html",
+  "title": "Putting Ideas into Words",
+  "author": null,
+  "site": null,
+  "description": "Writing about something, even something you know well, usually shows you that you didn't know it as well as you thought. Putting ideas into words is a severe test. The first words you choose are usually wrong; you have to rewrite sentences over and over",
+  "published": null,
+  "captured": "2026-11-01T05:42:33Z",
+  "extras": {
+   "extractor": "readability"
+  },
+  "bodyChars": 6623,
+  "media": []
+ },
+ "hn-thread": {
+  "source": "web",
+  "id": "web:https://news.ycombinator.com/item?id=19804478",
+  "url": "https://news.ycombinator.com/item?id=19804478",
+  "title": "Local-first software: You own your data, in spite of the cloud | Hacker News",
+  "author": null,
+  "site": null,
+  "description": "I've been thinking on and off about this problem space for about a decade now - having worked on google wave, ShareJS and ShareDB. The architecture I want is something like this:",
+  "published": null,
+  "captured": "2026-11-01T05:42:49Z",
+  "extras": {
+   "extractor": "readability",
+   "lang": "en"
+  },
+  "bodyChars": 19595,
+  "media": []
+ },
+ "paper": {
+  "source": "pdf",
+  "id": "pdf:https://www.inkandswitch.com/local-first/static/local-first.pdf",
+  "url": "https://www.inkandswitch.com/local-first/static/local-first.pdf",
+  "title": "Local-First Software:You Own Your Data, in spite of the Cloud",
+  "author": "Martin Kleppmann, Adam Wiggins, Peter van Hardenberg, and Mark McGranaghan",
+  "site": null,
+  "description": "- Human-centered computing -> Collaborative content creation.Ubiquitous and mobile computing systems and tools.- Computer systems organization -> Peer-to-peer architectures.- Software and its engineering -> Peer-to-peer architectures.Organizing principles for web applications.",
+  "published": "2019-09-23T13:53:21Z",
+  "captured": "2026-11-01T05:42:44Z",
+  "extras": {
+   "extractor": "pdfkit",
+   "keywords": [
+    "collaboration software",
+    "mobile computing",
+    "data ownership",
+    "CRDTs",
+    "peer-to-peer communication"
+   ],
+   "pages": 25
+  },
+  "bodyChars": 19962,
+  "media": [
+   null
+  ]
+ },
+ "podcast": {
+  "source": "podcast",
+  "id": "podcast:https://feeds.buzzsprout.com/231452.rss#Buzzsprout-20042854",
+  "url": "https://op3.dev/e/https://dts.podtrac.com/redirect.mp3/www.buzzsprout.com/231452/episodes/20042854-your-podcast-idea-doesn-t-have-to-be-perfect-to-get-started.mp3",
+  "title": "Your Podcast Idea Doesn’t Have To Be Perfect To Get Started",
+  "author": "Buzzsprout",
+  "site": "Buzzcast",
+  "description": "Have a podcast idea you keep putting off because you haven’t found the perfect name or figured out the artwork? We talk about getting past those first hurdles with Buzzsprout’s new Podcast Starter Kit, which turns a few answers about your idea into name suggestions, a description, cover art, and categories.Try the Starter Kit and send us Fan Mail with what you come up with. We want to hear about your next podcast!Contact BuzzcastSend us Fan MailTweet us at @buzzcastpodcast, @albanbrooke, @kfinn, and @JordanPodsThanks for listening and Keep Podcasting!",
+  "published": "Fri, 30 Oct 2026 08:00:00 -0400",
+  "captured": "2026-11-01T05:42:41Z",
+  "extras": {
+   "audioUrl": "https://op3.dev/e/https://dts.podtrac.com/redirect.mp3/www.buzzsprout.com/231452/episodes/20042854-your-podcast-idea-doesn-t-have-to-be-perfect-to-get-started.mp3",
+   "duration": 751,
+   "extractor": "podcast",
+   "lang": "en-us",
+   "transcript": "publisher",
+   "transcriptType": "application/json"
+  },
+  "bodyChars": 18426,
+  "media": [
+   "https://storage.buzzsprout.com/r8lrzwe62jw11ti3yzms9wnvy4jb?.jpg"
+  ]
+ },
+ "reddit": {
+  "source": "reddit",
+  "id": "reddit:1rqzo93",
+  "url": "https://www.reddit.com/r/PKMS/comments/1rqzo93/does_it_seem_to_anyone_that_their_pkm_system/",
+  "title": "Does it seem to anyone that their PKM system fails as soon as the writing begins?",
+  "author": "u/DrewJohn22323",
+  "site": "r/PKMS",
+  "description": null,
+  "published": "2026-03-11T17:08:44Z",
+  "captured": "2026-11-01T05:45:26Z",
+  "extras": {
+   "assembled": "arctic-shift archive, served on loopback",
+   "comments": 3,
+   "extractor": "reddit-json",
+   "includedComments": 5,
+   "score": 0,
+   "subreddit": "PKMS"
+  },
+  "bodyChars": 2254,
+  "media": []
+ },
+ "screenshot": {
+  "source": "web",
+  "id": "web:https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Kintsugi_art.jpg/960px-Kintsugi_art.jpg",
+  "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Kintsugi_art.jpg/960px-Kintsugi_art.jpg",
+  "title": null,
+  "author": null,
+  "site": null,
+  "description": null,
+  "published": null,
+  "captured": "2026-11-01T05:46:09Z",
+  "extras": {
+   "extractor": "image"
+  },
+  "bodyChars": 0,
+  "media": [
+   "https://upload.wikimedia.org/wikipedia/commons/thumb/9/92/Kintsugi_art.jpg/960px-Kintsugi_art.jpg"
+  ]
+ },
+ "x-thread": {
+  "source": "x",
+  "id": "x:2039805659525644595",
+  "url": "https://x.com/karpathy/status/2039805659525644595",
+  "title": "LLM Knowledge Bases",
+  "author": "Andrej Karpathy (@karpathy)",
+  "site": "X",
+  "description": null,
+  "published": "2026-04-02T20:42:21Z",
+  "captured": "2026-11-01T05:42:35Z",
+  "extras": {
+   "complete": true,
+   "extractor": "fxtwitter",
+   "handle": "karpathy",
+   "lang": "en",
+   "likes": 61047,
+   "posts": 1,
+   "quotes": 2217,
+   "replies": 2939,
+   "reposts": 7398,
+   "views": 22006357
+  },
+  "bodyChars": 3446,
+  "media": []
+ },
+ "youtube": {
+  "source": "youtube",
+  "id": "youtube:vtIzMaLkCaM",
+  "url": "https://www.youtube.com/watch?v=vtIzMaLkCaM",
+  "title": "LEADERSHIP LAB: The Craft of Writing Effectively",
+  "author": "UChicago Social Sciences",
+  "site": "YouTube",
+  "description": "Do you worry about the effectiveness of your writing style? As emerging scholars, perfecting the craft of writing is an essential component of developing as graduate students, and yet resources for honing these skills are largely under utilized. Larry McEnerney, Director of the University of Chicago's Writing Program, led this session in an effort to communicate helpful rules, skills, and resources that are available to graduate students interested in further developing their writing style.",
+  "published": "2014-06-26",
+  "captured": "2026-11-01T05:43:46Z",
+  "extras": {
+   "channelUrl": "https://www.youtube.com/channel/UCil2G-oUNzJ7Bzfv11kDjNQ",
+   "duration": 4911,
+   "extractor": "yt-dlp",
+   "lang": "en-US",
+   "toolVersion": "2026.10.26",
+   "transcript": "subtitles"
+  },
+  "bodyChars": 80100,
+  "media": [
+   "https://i.ytimg.com/vi/vtIzMaLkCaM/maxresdefault.jpg"
+  ]
+ }
+}
