@@ -170,9 +170,10 @@ export function Sidebar(props: Props) {
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} title="Ideas from Kin">
+              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} title="Ideas from Kin (⇧⌘E)">
                 <Lightbulb />
                 <span>Ideas</span>
+                <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘E</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -61,7 +61,8 @@ pub struct Wikilink {
 /// so a concurrent rename/trash does not poison the next refresh.
 pub fn reference_index(root: &Path) -> Result<ReferenceIndex> {
     let mut documents = Vec::new();
-    scan_documents(root, root, &mut documents)?;
+    let mut ideas = HashMap::new();
+    scan_documents(root, root, &mut documents, &mut ideas)?;
     documents.sort_by(|a, b| {
         a.path
             .to_lowercase()
@@ -77,7 +78,9 @@ pub fn reference_index(root: &Path) -> Result<ReferenceIndex> {
     let mut links = Vec::new();
     for document in &documents {
         let mut seen = HashSet::new();
-        for link in wikilinks_in_body(&document.text) {
+        // Prose links, then the clips of ideas adopted into it (KI-39).
+        let adopted = ideas.remove(&document.path).unwrap_or_default();
+        for link in wikilinks_in_body(&document.text).into_iter().chain(adopted) {
             let target = resolver.resolve(&link.target);
             let identity = match target {
                 Some(target) => (true, target.path.clone()),
@@ -99,7 +102,12 @@ pub fn reference_index(root: &Path) -> Result<ReferenceIndex> {
     })
 }
 
-fn scan_documents(root: &Path, dir: &Path, documents: &mut Vec<ReferenceDocument>) -> Result<()> {
+fn scan_documents(
+    root: &Path,
+    dir: &Path,
+    documents: &mut Vec<ReferenceDocument>,
+    ideas: &mut HashMap<String, Vec<Wikilink>>,
+) -> Result<()> {
     let entries = match fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(e) if dir != root && e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -121,7 +129,7 @@ fn scan_documents(root: &Path, dir: &Path, documents: &mut Vec<ReferenceDocument
         };
         let path = entry.path();
         if file_type.is_dir() {
-            scan_documents(root, &path, documents)?;
+            scan_documents(root, &path, documents, ideas)?;
         } else if file_type.is_file() && is_doc(&path) {
             let text = match fs::read_to_string(&path) {
                 Ok(text) => text,
@@ -129,8 +137,13 @@ fn scan_documents(root: &Path, dir: &Path, documents: &mut Vec<ReferenceDocument
                 Err(e) => return Err(err(e)),
             };
             let (title, status) = front_matter(text.trim_start_matches('\u{feff}'));
+            let rel = relative(root, &path);
+            let adopted = idea_clip_links(&text);
+            if !adopted.is_empty() {
+                ideas.insert(rel.clone(), adopted);
+            }
             documents.push(ReferenceDocument {
-                path: relative(root, &path),
+                path: rel,
                 title,
                 status,
                 text: body(&text).to_string(),
@@ -138,6 +151,40 @@ fn scan_documents(root: &Path, dir: &Path, documents: &mut Vec<ReferenceDocument
         }
     }
     Ok(())
+}
+
+/// The clips of ideas adopted into a draft (KI-39): wikilinks inside the
+/// frontmatter's top-level `ideas:` list. Other frontmatter fields are not
+/// edges, and an unfinished block has none.
+pub fn idea_clip_links(text: &str) -> Vec<Wikilink> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let mut lines = text.lines();
+    if lines.next().map(str::trim_end) != Some("---") {
+        return Vec::new();
+    }
+    let mut links = Vec::new();
+    let mut inside = false;
+    for line in lines {
+        if matches!(line.trim_end(), "---" | "...") {
+            return links;
+        }
+        if !line.starts_with(char::is_whitespace) {
+            inside = line.split(':').next().map(str::trim_end) == Some("ideas");
+            continue;
+        }
+        // Only list items (the clips), not the hunch or title text.
+        let item = line.trim_start();
+        if !inside || !item.starts_with("- ") {
+            continue;
+        }
+        let value = item[2..].trim().trim_matches(|c| c == '"' || c == '\'');
+        if let Some(inner) = value.strip_prefix("[[").and_then(|v| v.strip_suffix("]]"))
+            && let Some(link) = parse_link(inner)
+        {
+            links.push(link);
+        }
+    }
+    Vec::new()
 }
 
 /// Strip only a leading YAML block, regardless of the YAML fields it contains.
@@ -762,6 +809,30 @@ mod tests {
         let index = reference_index(root).unwrap();
         assert_eq!(index.documents[0].text, "---\n[[target]]\n");
         assert_eq!(index.links[0].resolved.as_deref(), Some("target.md"));
+    }
+
+    #[test]
+    fn adopted_ideas_clips_are_edges_but_other_frontmatter_is_not() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let path = capture(root, "Golden joinery", "The repair is not hidden.");
+        let clip = path.trim_end_matches(".md").to_string();
+        put(
+            root,
+            "drafts/what-repair-costs.mdx",
+            &format!(
+                "---\ntitle: \"What repair costs\"\nref: [[not-an-edge]]\nideas:\n  - id: idea-1\n    from: kin\n    title: \"About [[not-a-clip]]\"\n    clips:\n      - \"[[{clip}]]\"\n      - \"[[notes/repair]]\"\n  - id: idea-2\n    clips: []\ntags: [repair]\n---\n\n"
+            ),
+        );
+        put(root, "notes/repair.md", "Repair body");
+        put(root, "drafts/unfinished.md", "---\nideas:\n  - id: x\n    clips:\n      - \"[[notes/repair]]\"\n");
+        let index = reference_index(root).unwrap();
+        let edges: Vec<(&str, Option<&str>)> = index.links.iter().map(|l| (l.source.as_str(), l.resolved.as_deref())).collect();
+        assert_eq!(
+            edges,
+            [("drafts/what-repair-costs.mdx", Some(path.as_str())), ("drafts/what-repair-costs.mdx", Some("notes/repair.md"))]
+        );
+        assert!(index.documents.iter().all(|d| !d.text.contains("ideas:")), "frontmatter stays out of the body");
     }
 
     #[test]

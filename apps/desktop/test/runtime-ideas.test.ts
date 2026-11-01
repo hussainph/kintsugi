@@ -119,7 +119,9 @@ const shot = (name: string) => page.screenshot({ path: resolve(shots, `${name}.p
 const section = () => page.getByRole("region", { name: "Ideas" });
 const rows = () => section().locator("li[data-idea]");
 const openIdeas = async () => {
-  await page.getByRole("button", { name: "Ideas", exact: true }).first().click();
+  // ⇧⌘E, like ⇧⌘F for the Feed and ⇧⌘I for Inspiration; the sidebar shows it.
+  await page.locator('[title="Ideas from Kin (⇧⌘E)"]').waitFor();
+  await page.keyboard.press("Meta+Shift+e");
   await section().waitFor();
 };
 
@@ -229,10 +231,24 @@ test("an idea can be added to a draft already started; Ideas for this draft filt
   await shot("08-ideas-for-this-draft");
   await section().getByRole("button", { name: "Show all ideas" }).click();
   await section().getByRole("heading", { name: "Ideas", exact: true }).waitFor();
+
+  // A new draft's only links are its ideas' clips, in frontmatter: the
+  // reference index (and so each clip's "Used in") counts them.
+  const fresh = readdirSync(resolve(vault, "drafts")).find((f) => f.endsWith(".mdx"))!;
+  const draft = `drafts/${fresh}`;
+  const clips = [...readFileSync(resolve(vault, draft), "utf8").matchAll(/- "\[\[([^\]]+)\]\]"/g)].map((m) => m[1]);
+  assert.ok(clips.length >= 2);
+  const index = await page.evaluate(() =>
+    (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string) => Promise<{ links: { source: string; resolved: string | null }[] }> } })
+      .__TAURI_INTERNALS__.invoke("reference_index"),
+  );
+  const resolved = index.links.filter((l) => l.source === draft).map((l) => l.resolved?.replace(/\.(mdx?|md)$/, ""));
+  assert.deepEqual(resolved.sort(), clips.sort());
 });
 
 test("unused ideas thin from day three and fade after a week; adopted ones don't", { timeout: 240_000 }, async () => {
   // An unused idea to watch fade: ask for more.
+  await openIdeas();
   await section().getByRole("button", { name: "Ask for more" }).click();
   await page.waitForFunction(() => document.querySelectorAll("li[data-idea]").length >= 3, null, { timeout: 60_000 }).catch(() => {});
   stop();

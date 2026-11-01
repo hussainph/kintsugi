@@ -197,6 +197,7 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
 ## Ideas (KI-39)
 
 Code: `ai/ideas/` (store, grounding, briefs, Adopt); webview: `src/ideas/`.
+Ideas opens from the sidebar or ⇧⌘E.
 
 - **A helper makes them.** A batch is a helper job of kind `ideas` on the
   `ideas` model task, so it is background work and waits at the monthly
@@ -245,7 +246,10 @@ Code: `ai/ideas/` (store, grounding, briefs, Adopt); webview: `src/ideas/`.
 
   A draft never links to itself; Feed quotes aren't clips and stay out of
   the list. An open draft sees the change through `vault:changed`, and the
-  idea and its clips sit beside it (`src/ideas/Beside.tsx`).
+  idea and its clips sit beside it (`src/ideas/Beside.tsx`). The reference
+  index reads those clip links as edges (`idea_clip_links` in
+  `crates/vault/src/references.rs`), so the draft shows under each clip's
+  Used in.
 - **Refine** is a helper job of kind `ideas-refine` with the idea and his
   request. The result passes the same checks, replaces the idea and keeps
   the earlier version; Undo restores it. **Discuss** opens the chat with an

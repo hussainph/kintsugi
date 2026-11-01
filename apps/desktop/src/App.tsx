@@ -454,6 +454,7 @@ export default function App() {
     else if (key === "n") run(() => setPalette({ kind: e.shiftKey ? "new-folder" : "new-doc", dir: selectedDir }));
     else if (key === "i" && e.shiftKey) run(showLibrary);
     else if (key === "f" && e.shiftKey) run(showFeed);
+    else if (key === "e" && e.shiftKey) run(() => void showIdeas());
     else if (key === "d" && e.shiftKey && !away) run(toggleStatus);
     else if (key === "s" && !e.shiftKey) run(() => { if (libraryOpen) void libraryRef.current?.flush(); else if (!feedOpen) void flush(); });
     else if (key === "o" && e.shiftKey) run(openVault);
