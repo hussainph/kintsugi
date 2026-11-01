@@ -14,6 +14,7 @@ mod references;
 mod search;
 mod tools;
 mod vault;
+mod watch;
 
 #[cfg(all(feature = "headless", not(debug_assertions)))]
 compile_error!("headless is a debug-only development feature");
@@ -56,6 +57,7 @@ fn builder() -> tauri::Builder<Runtime> {
         .plugin(tauri_plugin_process::init());
     builder
         .manage(vault::Vault::default())
+        .manage(watch::Watch::default())
         .manage(library::Library::default())
         .manage(search::Search::default())
         .manage(ai::Ai::default())

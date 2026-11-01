@@ -151,6 +151,15 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
   return <div className="min-h-0 flex-1 cursor-text select-text" ref={host} />;
 }
 
+/** Replaces the view's text with `text` right away, changing only the part
+ *  that differs so the cursor stays put. Remote (on disk already) unless
+ *  `local`, which reaches `onChange` as the writer's own edit and so saves.
+ *  Synchronous, so keystrokes can't land between reading the view and this. */
+export function replaceText(view: EditorView, text: string, local = false) {
+  const change = difference(view.state.doc.toString(), text);
+  if (change) view.dispatch({ changes: change, annotations: local ? [] : Transaction.remote.of(true) });
+}
+
 /** The single replacement that turns `a` into `b`, trimming what they share. */
 function difference(a: string, b: string) {
   if (a === b) return null;

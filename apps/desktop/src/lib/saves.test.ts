@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Saves } from "./saves.ts";
+import { HELD, Saves } from "./saves.ts";
 
 const disk = () => {
   const files = new Map<string, string>();
@@ -70,4 +70,28 @@ test("the phone's newer copy replaces a pending write", async () => {
   saves.drop("a.md");
   await saves.flush();
   assert.equal(d.files.has("a.md"), false);
+});
+
+test("a held change is neither written nor dropped until it is released", async () => {
+  const d = disk();
+  const saves = new Saves(d.write);
+  saves.set("a.md", "mine");
+  saves.set("b.md", "fine");
+  saves.hold("a.md");
+  assert.deepEqual(await saves.flush(), { ok: false, failures: [{ path: "a.md", error: HELD, held: true }] });
+  assert.equal(d.files.has("a.md"), false);
+  assert.equal(d.files.get("b.md"), "fine");
+  assert.deepEqual(saves.paths(), ["a.md"]);
+  saves.release("a.md");
+  assert.deepEqual(await saves.flush(), { ok: true });
+  assert.equal(d.files.get("a.md"), "mine");
+});
+
+test("a write that finds another app's edit can hold its change", async () => {
+  const saves = new Saves(async (path) => {
+    saves.hold(path);
+  });
+  saves.set("a.md", "mine");
+  assert.equal((await saves.flush()).ok, false);
+  assert.deepEqual(saves.paths(), ["a.md"], "still pending");
 });

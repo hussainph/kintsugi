@@ -171,7 +171,7 @@
     <text x="936" y="112" font-size="12.5" fill="#6b665d">inspiration/  clips + sources</text>
     <text x="936" y="132" font-size="12.5" fill="#6b665d">.kintsugi/  Kin memory, comments</text>
     <text x="936" y="152" font-size="12.5" fill="#6b665d">Readable in Obsidian or any editor</text>
-    <text x="936" y="172" font-size="12.5" fill="#a3372b">⚠ outside edits aren't detected</text>
+    <text x="936" y="172" font-size="12.5" fill="#6b665d">Outside edits reload or merge (KI-49)</text>
     <rect x="920" y="210" width="240" height="120" rx="14" fill="#fff" stroke="#d9d1c2"/>
     <text x="936" y="236" font-size="14" font-weight="600">App data · rebuildable</text>
     <text x="936" y="262" font-size="12.5" fill="#6b665d">feed.sqlite, search index</text>
@@ -343,7 +343,7 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
     <div class="card">
       <h3>Typing → file</h3>
       <p style="font-size:13.5px;margin:0">Saves run 400 ms after you stop typing, one at a time: temp file → fsync → rename, so a crash never leaves half a file. A failed save stays pending, shows "Not saved", and blocks switching documents, closing and updates until you retry or discard (KI-14).</p>
-      <p style="font-size:13.5px;margin:8px 0 0"><span class="tag fix">Fix</span> The desktop save never checks whether the file changed on disk. There's no file watcher, so an edit made in Obsidian, git or iCloud to an open note is silently overwritten.</p>
+      <p style="font-size:13.5px;margin:8px 0 0">Each save carries the version it started from, so it never lands on an edit made in Obsidian, git or iCloud. A watcher (FSEvents) notices those edits; Kintsugi's own saves and temp files are ignored. An open note with nothing unsaved reloads; unsaved changes merge line by line like the phone's, and only a true collision asks ("Use the file on disk" or "Keep mine"). A note deleted or moved outside is never written back by a later save (KI-49).</p>
     </div>
     <div class="card">
       <h3>Phone sync</h3>

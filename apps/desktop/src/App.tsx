@@ -7,13 +7,14 @@ import { toast } from "sonner";
 import { Palette, PaletteMode } from "@/components/Palette";
 import { PhoneDialog } from "@/components/PhoneDialog";
 import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
+import { OutsideChoice, OutsideDialog } from "@/components/OutsideDialog";
 import { Sidebar } from "@/components/Sidebar";
 import { DocTags } from "@/components/Tags";
 import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
-import { External, paragraphRange } from "@kintsugi/editor/Editor";
+import { External, paragraphRange, replaceText } from "@kintsugi/editor/Editor";
 import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
 import { Refine } from "@/refine/Refine";
@@ -38,8 +39,10 @@ import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
+import { decide, removes } from "@/lib/outside";
+import { version } from "@kintsugi/core/remote";
 import { useUpdates } from "@/lib/updates";
-import { Entry, flatten, parentDir, renamedPath, vault } from "@/lib/vault";
+import { Entry, flatten, Outside, parentDir, renamedPath, vault } from "@/lib/vault";
 
 const SAVE_DELAY = 400;
 const SAVE_TOAST = "kintsugi-save-failed";
@@ -47,6 +50,7 @@ const requestClip = (path: string) => window.dispatchEvent(new CustomEvent("kint
 
 type SaveState = "saved" | "editing" | "error";
 type Blocked = { failures: Failure[]; action: string; resolve: (choice: UnsavedChoice) => void };
+type Collision = { path: string; disk: string | null };
 
 /** What the tree shows for a document; when it changes, the tree reloads. */
 const meta = (text: string) => `${field(text, "title")}|${field(text, "status")}|${tagsOf(text).join(",")}`;
@@ -87,12 +91,22 @@ export default function App() {
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
   const [blocked, setBlocked] = useState<Blocked | null>(null);
+  const [collision, setCollision] = useState<Collision | null>(null);
   // The sidebar's tag filter; it belongs to the vault it was chosen in.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
 
   const viewRef = useRef<EditorView | null>(null);
   const libraryRef = useRef<LibraryHandle>(null);
-  const saves = useRef(new Saves(vault.write));
+  // The write is defined below; it needs the outside-edit handling.
+  const writeDoc = useRef<(path: string, contents: string) => Promise<void>>(async () => {});
+  const saves = useRef(new Saves((path, contents) => writeDoc.current(path, contents)));
+  // Each document's text as Kintsugi last knew it on disk: saves send its
+  // version, so another app's edit is never saved over, and it is the base
+  // for merging such an edit with unsaved changes.
+  const bases = useRef(new Map<string, string>());
+  const collisionRef = useRef<Collision | null>(null);
+  const docPath = useRef<string | null>(null);
+  docPath.current = doc?.path ?? null;
   const blockedRef = useRef<Blocked | null>(null);
   const known = useRef(new Map<string, string>());
   const metaChanged = useRef(false);
@@ -126,13 +140,16 @@ export default function App() {
     if (!saves.current.size) return [];
     const result = await saves.current.flush();
     if (!result.ok) {
-      const [first] = result.failures;
-      setSave("error");
-      toast.error(`Couldn’t save ${first.path}: ${first.error}`, {
-        id: SAVE_TOAST,
-        duration: Infinity,
-        action: { label: "Try again", onClick: () => void flushRef.current() },
-      });
+      // A held change waits on the outside-edit question, which is already showing.
+      const first = result.failures.find((f) => !f.held);
+      if (first) {
+        setSave("error");
+        toast.error(`Couldn’t save ${first.path}: ${first.error}`, {
+          id: SAVE_TOAST,
+          duration: Infinity,
+          action: { label: "Try again", onClick: () => void flushRef.current() },
+        });
+      }
       return result.failures;
     }
     toast.dismiss(SAVE_TOAST);
@@ -159,6 +176,11 @@ export default function App() {
     });
   }, []);
 
+  const showCollision = useCallback((next: Collision | null) => {
+    collisionRef.current = next;
+    setCollision(next);
+  }, []);
+
   const answer = (choice: UnsavedChoice) => {
     const current = blockedRef.current;
     blockedRef.current = null;
@@ -179,9 +201,12 @@ export default function App() {
           if (!saves.current.size) return "saved";
           continue;
         }
+        // Another app's edit collided with this one: answer that first.
+        if (failures.every((f) => f.held)) return false;
         const choice = await ask(failures, action);
         if (choice === "stay") return false;
         if (choice === "discard") {
+          if (collisionRef.current) showCollision(null);
           saves.current.discard();
           metaChanged.current = false;
           toast.dismiss(SAVE_TOAST);
@@ -190,7 +215,7 @@ export default function App() {
         }
       }
     },
-    [write, ask],
+    [write, ask, showCollision],
   );
 
   const settle = useCallback(
@@ -236,9 +261,17 @@ export default function App() {
       }
       try {
         const contents = await vault.read(path);
-        known.current.set(path, meta(contents));
-        setDoc({ path, text: contents });
-        setText(contents);
+        // Already open (clicked again, or the startup open raced a click):
+        // the editor's text is newer than this read, so leave it be.
+        if (docPath.current !== path) {
+          known.current.set(path, meta(contents));
+          bases.current.set(path, contents);
+          setDoc({ path, text: contents });
+          setText(contents);
+          // The editor keeps the state of documents opened before; bring it
+          // up to the disk, which another app (or a discard) may have changed.
+          setExternal({ path, text: contents, seq: Date.now() });
+        }
         setSelectedDir(parentDir(path));
         if (rootRef.current) lastOpened.set(rootRef.current, path);
       } catch (e) {
@@ -247,6 +280,117 @@ export default function App() {
     },
     [settle, fail],
   );
+
+  /**
+   * Another app changed `path` on disk to `disk`, or removed it (null). The
+   * open document reloads when it has nothing unsaved, merges line by line
+   * when it does, and asks only when the two edits collide (as the phone
+   * does). `movedTo`: where a removed document's text turned up, if anywhere.
+   */
+  const fromOutside = useCallback(
+    (path: string, disk: string | null, movedTo?: string) => {
+      const view = docPath.current === path ? viewRef.current : null;
+      if (!view) {
+        // Not in the editor; opening it reads the disk again.
+        if (disk === null) {
+          bases.current.delete(path);
+          saves.current.release(path);
+          saves.current.drop(path);
+        } else if (!saves.current.paths().includes(path)) bases.current.set(path, disk);
+        return;
+      }
+      const name = path.split("/").pop();
+      const settled = () => {
+        saves.current.release(path);
+        saves.current.drop(path);
+        if (collisionRef.current?.path === path) showCollision(null);
+        if (!saves.current.size) setSave("saved");
+      };
+      const decision = decide(bases.current.get(path), view.state.doc.toString(), disk);
+      switch (decision.kind) {
+        case "none":
+          return;
+        case "reload":
+          bases.current.set(path, decision.text);
+          settled();
+          replaceText(view, decision.text);
+          return;
+        case "merged":
+          bases.current.set(path, disk!);
+          saves.current.release(path);
+          if (collisionRef.current?.path === path) showCollision(null);
+          // Arrives as the writer's own edit, so it saves (against the new base).
+          replaceText(view, decision.text, true);
+          toast(`Merged changes to “${name}” from another app.`);
+          return;
+        case "gone":
+          bases.current.delete(path);
+          settled();
+          if (movedTo) {
+            void openDoc(movedTo);
+            return;
+          }
+          toast(`“${name}” was moved or deleted in another app.`);
+          setDoc(null);
+          setText("");
+          return;
+        case "collision":
+          // Keep the writer's text pending, but write nothing until they choose.
+          saves.current.set(path, view.state.doc.toString());
+          saves.current.hold(path);
+          setSave("editing");
+          showCollision({ path, disk: decision.disk });
+          return;
+      }
+    },
+    [openDoc, showCollision],
+  );
+
+  const chooseOutside = (choice: OutsideChoice) => {
+    const current = collisionRef.current;
+    if (!current) return;
+    const { path, disk } = current;
+    showCollision(null);
+    saves.current.release(path);
+    if (choice === "disk") {
+      saves.current.drop(path);
+      if (!saves.current.size) setSave("saved");
+      if (disk === null) {
+        bases.current.delete(path);
+        if (docPath.current === path) {
+          setDoc(null);
+          setText("");
+        }
+      } else {
+        bases.current.set(path, disk);
+        const view = docPath.current === path ? viewRef.current : null;
+        if (view) replaceText(view, disk);
+      }
+      return;
+    }
+    // Keep mine: save it over the disk's current version, or as a new file.
+    if (disk === null) bases.current.delete(path);
+    else bases.current.set(path, disk);
+    const mine = docPath.current === path ? viewRef.current?.state.doc.toString() : undefined;
+    if (mine !== undefined) saves.current.set(path, mine);
+    // Written back on purpose: the tree shows it again.
+    void flush().then(() => {
+      if (disk === null) void refresh();
+    });
+  };
+
+  // Every save sends the version it started from; the disk may have moved on.
+  writeDoc.current = async (path, contents) => {
+    const base = bases.current.get(path);
+    const result = await vault.write(path, contents, base === undefined ? null : version(base));
+    if (result.result === "saved") {
+      bases.current.set(path, contents);
+      return;
+    }
+    const disk = result.result === "gone" ? null : result.current.text;
+    if (docPath.current === path) return fromOutside(path, disk);
+    throw new Error(disk === null ? "it was moved or deleted in another app" : "it changed in another app");
+  };
 
   const loadVault = useCallback(
     async (path: string) => {
@@ -286,9 +430,31 @@ export default function App() {
     const off = listen<Changed>("vault:changed", ({ payload }) => {
       refresh();
       if (payload.text == null) return;
+      bases.current.set(payload.path, payload.text);
       saves.current.drop(payload.path);
       if (!saves.current.size) setSave("saved");
       setExternal({ path: payload.path, text: payload.text, seq: Date.now() });
+    });
+    return () => {
+      off.then((stop) => stop());
+    };
+  }, [refresh]);
+
+  // Another app (Obsidian, git, iCloud, an editor) changed the vault. The
+  // backend has already left out Kintsugi's own saves and temp files.
+  const fromOutsideRef = useRef(fromOutside);
+  fromOutsideRef.current = fromOutside;
+  useEffect(() => {
+    const off = listen<Outside>("vault:outside", ({ payload }) => {
+      void refresh();
+      for (const { path, text } of payload.docs) fromOutsideRef.current(path, text);
+      for (const path of [...bases.current.keys()]) {
+        if (!payload.gone.some((gone) => removes(gone, path))) continue;
+        // A rename shows up as a removal plus a document with the same text.
+        const known = bases.current.get(path);
+        const movedTo = payload.docs.find((d) => d.text === known && d.path !== path)?.path;
+        fromOutsideRef.current(path, null, movedTo);
+      }
     });
     return () => {
       off.then((stop) => stop());
@@ -345,6 +511,7 @@ export default function App() {
         // Discarded changes leave the editor; the disk's copy comes back.
         const current = settled === "discarded" ? await vault.read(moved) : viewRef.current?.state.doc.toString() ?? text;
         known.current.set(moved, meta(current));
+        bases.current.set(moved, current);
         setDoc({ path: moved, text: current });
         if (rootRef.current) lastOpened.set(rootRef.current, moved);
       }
@@ -618,6 +785,7 @@ export default function App() {
       )}
       <Palette mode={palette} docs={docs} onOpen={openDoc} onCreate={create} onClose={() => setPalette(null)} />
       <UnsavedDialog failures={blocked?.failures ?? null} action={blocked?.action ?? ""} onChoose={answer} />
+      <OutsideDialog collision={collision} onChoose={chooseOutside} />
       <PhoneDialog
         open={phoneOpen}
         status={phoneStatus}

@@ -176,6 +176,8 @@ async fn write(State(ctx): State<Ctx>, Json(body): Json<WriteBody>) -> Result<Re
             StatusCode::OK
         }
         Write::Conflict { .. } => StatusCode::CONFLICT,
+        // `write` creates a missing document (a note started offline).
+        Write::Gone => StatusCode::NOT_FOUND,
     };
     Ok((status, Json(result)).into_response())
 }

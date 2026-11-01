@@ -492,7 +492,7 @@ pub fn adopt_in(store: &mut Store, root: &Path, id: &str, title: Option<&str>, i
             let text = adopt::attach(&current.text, &idea, &offered, into)?;
             match kintsugi_vault::write(root, into, &text, Some(&current.version))? {
                 kintsugi_vault::Write::Saved { .. } => {}
-                kintsugi_vault::Write::Conflict { .. } => return Err("That draft changed while the idea was being added. Try again.".into()),
+                kintsugi_vault::Write::Conflict { .. } | kintsugi_vault::Write::Gone => return Err("That draft changed while the idea was being added. Try again.".into()),
             }
             (into.to_string(), text, false)
         }
