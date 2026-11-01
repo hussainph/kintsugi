@@ -46,13 +46,9 @@ pub enum Auth {
     Bearer { token: String, account_id: Option<String> },
 }
 
-/// Non-secret: which kind of credential Pi holds for a provider.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Kind {
-    ApiKey,
-    Oauth,
-}
+pub use super::credentials::Kind;
+use super::credentials::Lookup;
+use super::wire::{Provider, Wire};
 
 /// `$PI_CODING_AGENT_DIR` (with `~` expanded), else `~/.pi/agent`: Pi's own rule.
 pub fn agent_dir() -> Result<PathBuf> {
@@ -135,13 +131,19 @@ impl Store {
         }
     }
 
-    /// Every provider Pi holds a credential for.
-    pub fn list(&self) -> Result<Vec<(String, Kind)>> {
-        Ok(self
-            .read()?
-            .into_iter()
-            .filter_map(|(id, cred)| kind(&cred).map(|k| (id, k)))
-            .collect())
+    /// What Pi holds for `provider`, without the secret. An expiring Codex
+    /// login counts as usable where it can be refreshed (not read-only).
+    pub fn lookup(&self, provider: &Provider) -> Result<Lookup> {
+        let Some(cred) = self.read()?.remove(provider.id) else { return Ok(Lookup::Missing) };
+        Ok(match kind(&cred) {
+            Some(Kind::ApiKey) if str_field(&cred, "key").is_some() => Lookup::Usable(Kind::ApiKey),
+            // A Claude subscription login: Kintsugi only uses Anthropic API keys.
+            Some(Kind::Oauth) if provider.wire == Wire::Anthropic => Lookup::Unsupported,
+            Some(Kind::Oauth) if fresh(&cred) => Lookup::Usable(Kind::Oauth),
+            Some(Kind::Oauth) if !self.read_only && provider.id == "openai-codex" => Lookup::Usable(Kind::Oauth),
+            Some(Kind::Oauth) => Lookup::Expired,
+            _ => Lookup::Missing,
+        })
     }
 
     /// A usable credential for `provider`, refreshing an expiring OAuth token
@@ -324,14 +326,20 @@ mod tests {
     }
 
     #[test]
-    fn lists_kinds() {
-        let (_dir, store) = store_with(json!({
+    fn looks_up_kinds_and_expiry() {
+        let p = |id| crate::ai::wire::provider(id).unwrap();
+        let (_dir, mut store) = store_with(json!({
             "zai": { "type": "api_key", "key": "k" },
             "anthropic": { "type": "oauth", "access": "a", "refresh": "r", "expires": 0 },
+            "openai-codex": { "type": "oauth", "access": "a", "refresh": "r", "expires": 0 },
         }));
-        let mut kinds = store.list().unwrap();
-        kinds.sort_by(|a, b| a.0.cmp(&b.0));
-        assert_eq!(kinds, vec![("anthropic".into(), Kind::Oauth), ("zai".into(), Kind::ApiKey)]);
+        assert_eq!(store.lookup(p("zai")).unwrap(), Lookup::Usable(Kind::ApiKey));
+        assert_eq!(store.lookup(p("anthropic")).unwrap(), Lookup::Unsupported);
+        assert_eq!(store.lookup(p("openrouter")).unwrap(), Lookup::Missing);
+        // Refreshable natively; expired where nothing may be written.
+        assert_eq!(store.lookup(p("openai-codex")).unwrap(), Lookup::Usable(Kind::Oauth));
+        store.read_only = true;
+        assert_eq!(store.lookup(p("openai-codex")).unwrap(), Lookup::Expired);
     }
 
     #[test]

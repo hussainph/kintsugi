@@ -6,6 +6,7 @@ import { Input } from "@kintsugi/ui/components/input";
 import { OptionalTools } from "@/components/OptionalTools";
 import { BlogSettings } from "@/publish/BlogSettings";
 import { ExportSettings } from "@/export/ExportSettings";
+import { credentialLabel, providers, ProviderStatus } from "@/lib/ai";
 import { dollars, kin, KinSettings, KinTask, modelLabel, openAboutYou, openKinDev, sameModel, UsageReport } from "@/lib/kin";
 
 /** The plain privacy statement, as the vision puts it. */
@@ -25,12 +26,14 @@ export function Settings() {
   const [usage, setUsage] = useState<UsageReport | null>(null);
   const [settings, setSettings] = useState<KinSettings | null>(null);
   const [cap, setCap] = useState("");
+  const [creds, setCreds] = useState<ProviderStatus[] | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [u, s] = await Promise.all([kin.usage(), kin.settings()]);
+      const [u, s, p] = await Promise.all([kin.usage(), kin.settings(), providers()]);
       setUsage(u);
       setSettings(s);
+      setCreds(p);
       setCap(s.capUsd == null ? "" : String(s.capUsd));
     } catch (e) {
       toast.error(String(e));
@@ -172,6 +175,25 @@ export function Settings() {
               </label>
             );
           })}
+        </section>
+
+        <section className="space-y-2 text-sm" data-testid="credentials">
+          <h3 className="font-medium">AI providers</h3>
+          <p className="text-xs text-muted-foreground">
+            Kintsugi signs in nowhere itself. It uses your OpenCode login first, then Pi's, then API keys in the
+            environment. Log in or add keys in OpenCode (<code>opencode auth login</code>). A Claude subscription
+            login can't be used: Kintsugi uses only Anthropic API keys.
+          </p>
+          <ul className="space-y-1">
+            {creds?.map((p) => (
+              <li key={p.id} className="flex justify-between gap-3" data-provider={p.id}>
+                <span className="shrink-0">{p.name}</span>
+                <span className={`text-right text-xs ${["unsupported_login", "expired_login"].includes(p.auth) ? "text-destructive" : "text-muted-foreground"}`}>
+                  {credentialLabel(p)}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <OptionalTools open={open} />

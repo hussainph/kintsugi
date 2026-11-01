@@ -1,6 +1,7 @@
 //! Three wire formats cover every provider Kintsugi talks to: Anthropic
 //! Messages, OpenAI-compatible chat completions (OpenAI, OpenRouter, Z.AI,
-//! local servers), and the ChatGPT Codex Responses backend.
+//! OpenCode Zen and Go, local servers), and the ChatGPT Codex Responses
+//! backend.
 //!
 //! One streamed request is an [`Exchange`]: a system prompt, optional tools
 //! and a provider-neutral history of [`Item`]s. It comes back as a [`Reply`]
@@ -26,7 +27,8 @@ pub struct Provider {
     pub name: &'static str,
     pub base_url: &'static str,
     pub wire: Wire,
-    /// Read when Pi holds no credential (GUI apps rarely inherit shell env).
+    /// Read when neither OpenCode nor Pi holds a credential (GUI apps rarely
+    /// inherit shell env).
     pub env_key: Option<&'static str>,
     /// Local servers take no key at all.
     pub keyless: bool,
@@ -38,6 +40,10 @@ pub const PROVIDERS: &[Provider] = &[
     Provider { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1", wire: Wire::OpenAiChat, env_key: Some("OPENAI_API_KEY"), keyless: false },
     Provider { id: "openrouter", name: "OpenRouter", base_url: "https://openrouter.ai/api/v1", wire: Wire::OpenAiChat, env_key: Some("OPENROUTER_API_KEY"), keyless: false },
     Provider { id: "zai", name: "Z.AI", base_url: "https://api.z.ai/api/coding/paas/v4", wire: Wire::OpenAiChat, env_key: Some("ZAI_API_KEY"), keyless: false },
+    // OpenCode's gateways serve every text model over chat completions,
+    // translating where a model's native API differs (opencode.ai/docs, Console › Harnesses).
+    Provider { id: "opencode", name: "OpenCode Zen", base_url: "https://opencode.ai/inference/openai/v1", wire: Wire::OpenAiChat, env_key: Some("OPENCODE_API_KEY"), keyless: false },
+    Provider { id: "opencode-go", name: "OpenCode Go", base_url: "https://opencode.ai/inference/go/openai/v1", wire: Wire::OpenAiChat, env_key: None, keyless: false },
     Provider { id: "ollama", name: "Ollama (local)", base_url: "http://localhost:11434/v1", wire: Wire::OpenAiChat, env_key: None, keyless: true },
 ];
 
@@ -228,7 +234,11 @@ pub async fn send(endpoint: Endpoint<'_>, ex: &Exchange<'_>, mut on_text: impl F
                 .json(&anthropic_body(ex))
         }
         Wire::OpenAiChat => {
-            let builder = client.post(format!("{base_url}/chat/completions")).json(&openai_body(provider.id, ex));
+            let mut builder = client.post(format!("{base_url}/chat/completions")).json(&openai_body(provider.id, ex));
+            if provider.id.starts_with("opencode") {
+                // OpenCode routes and caches by session; Go requires one.
+                builder = builder.header("x-opencode-session", opencode_session(ex));
+            }
             match auth {
                 Some(Auth::ApiKey(key)) | Some(Auth::Bearer { token: key, .. }) => builder.bearer_auth(key),
                 None => builder,
@@ -236,7 +246,7 @@ pub async fn send(endpoint: Endpoint<'_>, ex: &Exchange<'_>, mut on_text: impl F
         }
         Wire::Codex => {
             let Some(Auth::Bearer { token, account_id: Some(account) }) = auth else {
-                return Err("ChatGPT needs a Codex login; run `pi` and log in to OpenAI Codex".into());
+                return Err("ChatGPT needs a ChatGPT login; log in to OpenAI in OpenCode (or Pi)".into());
             };
             client
                 .post(format!("{base_url}/codex/responses"))
@@ -271,6 +281,17 @@ pub async fn send(endpoint: Endpoint<'_>, ex: &Exchange<'_>, mut on_text: impl F
     }
     // Some servers just close the stream.
     Ok(decoder.finish())
+}
+
+/// A stable session id for OpenCode's gateways: requests sharing a model
+/// and a fixed prefix (Kin's conversation, one helper's brief) share one, so
+/// they're routed together and reuse the prompt cache. No randomness, no
+/// content: only a hash.
+fn opencode_session(ex: &Exchange) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (ex.model, ex.system, ex.cache_key).hash(&mut hasher);
+    format!("ses_kintsugi_{:016x}", hasher.finish())
 }
 
 /// Marks a block as the end of a cacheable prefix (Anthropic).
@@ -868,6 +889,16 @@ mod tests {
         assert_eq!(input[3], json!({ "type": "function_call_output", "call_id": "c1", "output": "posts/kiln.md" }));
         assert_eq!(body["tools"][0]["type"], "function");
         assert_eq!(body["instructions"], "sys");
+    }
+
+    #[test]
+    fn opencode_sessions_are_stable_per_prefix() {
+        let items = sample_items();
+        let a = exchange(&items, &[]);
+        assert_eq!(opencode_session(&a), opencode_session(&exchange(&items[..1], &[])));
+        assert!(opencode_session(&a).starts_with("ses_"));
+        let other = Exchange { system: "another brief", ..a.clone() };
+        assert_ne!(opencode_session(&a), opencode_session(&other));
     }
 
     #[test]

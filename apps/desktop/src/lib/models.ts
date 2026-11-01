@@ -9,7 +9,7 @@ export type Task = "edit" | "complete";
 const PREFERENCES: Record<Task, ModelRef[]> = preferences;
 
 /** Mirrors `ai::usable` in src-tauri/src/ai/mod.rs. */
-const usable = (p: ProviderStatus) => p.auth !== "none" && p.auth !== "unsupported_login" && p.auth !== "local";
+const usable = (p: ProviderStatus) => !["none", "unsupported_login", "expired_login", "local"].includes(p.auth);
 
 let cached: Promise<ProviderStatus[]> | null = null;
 
@@ -19,7 +19,7 @@ export async function modelFor(task: Task): Promise<ModelRef> {
   const model = PREFERENCES[task].find((m) => ready.has(m.provider));
   if (!model) {
     cached = null;
-    throw new Error("No AI provider is set up. Run `pi`, log in or add an API key, then try again.");
+    throw new Error("No AI provider is set up. Log in with OpenCode (or Pi), or add an API key, then try again.");
   }
   return model;
 }

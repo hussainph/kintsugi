@@ -14,9 +14,14 @@ function canonical(path) {
   return resolve(canonical(parent), relative(parent, path));
 }
 const contains = (parent, child) => child === parent || child.startsWith(parent + sep);
-export function scratchPath(path, home = homedir()) {
+// The owner's vault and config, and the credential stores Kin reads (Pi's,
+// OpenCode's under $XDG_DATA_HOME or ~/.local/share).
+const OWNER_PATHS = ['Documents/Kintsugi', 'Library/Application Support/dev.phalasiya.kintsugi', 'Library/Application Support/Kintsugi', '.ssh', '.pi', '.local/share/opencode'];
+export function scratchPath(path, home = homedir(), xdgData = process.env.XDG_DATA_HOME) {
   const target = canonical(resolve(path));
-  for (const forbidden of ['Documents/Kintsugi', 'Library/Application Support/dev.phalasiya.kintsugi', 'Library/Application Support/Kintsugi', '.ssh', '.pi'].map(p => canonical(resolve(home, p)))) {
+  const owner = OWNER_PATHS.map(p => resolve(home, p));
+  if (xdgData && xdgData.startsWith('/')) owner.push(resolve(xdgData, 'opencode'));
+  for (const forbidden of owner.map(canonical)) {
     if (contains(target, forbidden) || contains(forbidden, target)) {
       throw new Error('Refusing the owner’s vault/config or their ancestors; choose a scratch directory');
     }
@@ -67,7 +72,8 @@ export function run() {
   process.on('SIGINT', () => stop());
   process.on('SIGTERM', () => stop());
   process.on('exit', () => stop());
-  console.log(`Scratch run: ${runDir}\nAI: ${env.KINTSUGI_HEADLESS_PI_READONLY === '1' ? 'read-only Pi opt-in' : 'disabled (no credentials read)'}${env.KINTSUGI_HEADLESS_KIN === 'mock' ? '\nKin: scripted mock model (no provider, $0)' : ''}`);
+  const ai = env.KINTSUGI_HEADLESS_AI_READONLY === '1' || env.KINTSUGI_HEADLESS_PI_READONLY === '1';
+  console.log(`Scratch run: ${runDir}\nAI: ${ai ? 'read-only opt-in (OpenCode, Pi and env credentials; never refreshed or written)' : 'disabled (no credentials read)'}${env.KINTSUGI_HEADLESS_KIN === 'mock' ? '\nKin: scripted mock model (no provider, $0)' : ''}`);
   start('cargo', ['run', '-p', 'kintsugi', '--bin', 'kintsugi', '--no-default-features', '--features', 'headless', '-j', env.VOLLI_CONCURRENCY_HINT || '1']);
   start('pnpm', ['--filter', '@kintsugi/desktop', 'dev']);
 }

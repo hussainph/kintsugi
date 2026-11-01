@@ -107,8 +107,9 @@ KINTSUGI_VAULT="$VAULT" pnpm desktop:headless
 
 `desktop:seed` refuses any existing nonempty directory (there is no overwrite
 flag) and never writes into the owner's real vault or config. AI is off by
-default in headless mode; `KINTSUGI_HEADLESS_PI_READONLY=1` opts into read-only
-Pi credentials for an AI check. For the phone app, build with
+default in headless mode; `KINTSUGI_HEADLESS_AI_READONLY=1` (old name:
+`KINTSUGI_HEADLESS_PI_READONLY=1`) opts into read-only OpenCode, Pi and
+environment credentials for an AI check. For the phone app, build with
 `expo run:ios --device generic` and drive the Simulator with `xcrun simctl`;
 never run `pnpm ios` or `expo run:ios` against a device. See
 [Testing without windows](AGENTS.md#testing-without-windows) for the exact

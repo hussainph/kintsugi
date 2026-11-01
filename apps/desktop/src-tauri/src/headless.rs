@@ -66,8 +66,13 @@ pub(crate) fn kin_mock() -> bool {
     std::env::var("KINTSUGI_HEADLESS_KIN").as_deref() == Ok("mock")
 }
 
+/// Real AI, opted into with `KINTSUGI_HEADLESS_AI_READONLY=1` (or its old
+/// name, `KINTSUGI_HEADLESS_PI_READONLY=1`). OpenCode's and Pi's credentials
+/// are then read, never locked, refreshed or written.
 pub(crate) fn ai_enabled() -> bool {
-    std::env::var("KINTSUGI_HEADLESS_PI_READONLY").as_deref() == Ok("1")
+    ["KINTSUGI_HEADLESS_AI_READONLY", "KINTSUGI_HEADLESS_PI_READONLY"]
+        .iter()
+        .any(|key| std::env::var(key).as_deref() == Ok("1"))
 }
 
 /// Guard both startup overrides and the folder prompt. Never allow an ancestor,
@@ -84,6 +89,8 @@ fn checked_directory(path: &Path) -> Result<PathBuf> {
         home.join("Library/Application Support/Kintsugi"),
         home.join(".ssh"),
         home.join(".pi"),
+        home.join(".local/share/opencode"),
+        crate::ai::opencode_data_dir().unwrap_or_else(|_| home.join(".local/share/opencode")),
     ] {
         let forbidden = forbidden.canonicalize().unwrap_or(forbidden);
         if path.starts_with(&forbidden) || forbidden.starts_with(&path) {
@@ -725,6 +732,7 @@ mod tests {
             std::env::remove_var("KINTSUGI_VAULT");
             std::env::remove_var("KINTSUGI_CONFIG_DIR");
             std::env::remove_var("KINTSUGI_HEADLESS_PI_READONLY");
+            std::env::remove_var("KINTSUGI_HEADLESS_AI_READONLY");
         }
         let clients = Clients::default();
         let app = build_app_with_context(clients.clone(), context).unwrap();
