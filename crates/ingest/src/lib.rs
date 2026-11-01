@@ -31,6 +31,14 @@ mod test_server;
 mod text;
 pub mod web;
 pub mod x;
+mod fetch;
+pub mod podcast;
+#[cfg(test)]
+mod test_http;
+pub mod tools;
+pub mod transcribe;
+pub mod transcript;
+pub mod youtube;
 
 pub use reqwest::Url;
 
@@ -52,6 +60,10 @@ pub enum SourceType {
     X,
     /// A Reddit post with its comments.
     Reddit,
+    /// A YouTube video, with its captions as a timestamped transcript.
+    Youtube,
+    /// A podcast episode, with a publisher or on-device transcript.
+    Podcast,
 }
 
 impl SourceType {
@@ -61,6 +73,8 @@ impl SourceType {
             SourceType::Rss => "rss",
             SourceType::X => "x",
             SourceType::Reddit => "reddit",
+            SourceType::Youtube => "youtube",
+            SourceType::Podcast => "podcast",
         }
     }
 }
@@ -149,6 +163,9 @@ pub enum Error {
     NotAFeed,
     /// The source asked us to slow down; nothing is sent until it allows.
     RateLimited,
+    /// The source needs an optional tool the person has not agreed to
+    /// download yet (see [`tools`]).
+    ToolNeeded,
 }
 
 impl fmt::Display for Error {
@@ -163,6 +180,7 @@ impl fmt::Display for Error {
             Error::Status(code) => return write!(f, "source answered HTTP {code}"),
             Error::NotAFeed => "source is not a feed",
             Error::RateLimited => "source is rate limiting requests",
+            Error::ToolNeeded => "this source needs an optional tool that is not installed",
         })
     }
 }

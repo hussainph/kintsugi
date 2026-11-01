@@ -1,0 +1,24 @@
+{
+  "id": "kintsugi123",
+  "title": "Mending   broken pottery with gold",
+  "uploader": "Craft Channel",
+  "channel": "Craft Channel",
+  "channel_url": "https://www.youtube.com/channel/UCcraft000000000000000",
+  "upload_date": "20261015",
+  "description": "How kintsugi repairs work.\nChapters below.",
+  "duration": 95.4,
+  "thumbnail": "https://i.ytimg.com/vi/kintsugi123/maxresdefault.jpg",
+  "language": "en",
+  "webpage_url": "https://www.youtube.com/watch?v=kintsugi123",
+  "chapters": [
+    {"start_time": 0.0, "end_time": 40.0, "title": "Intro"},
+    {"start_time": 40.0, "end_time": 95.4, "title": "The lacquer"}
+  ],
+  "subtitles": {},
+  "automatic_captions": {
+    "en-orig": [{"ext": "vtt", "url": "https://www.youtube.com/api/timedtext?lang=en"}],
+    "en": [{"ext": "vtt", "url": "https://www.youtube.com/api/timedtext?lang=en"}],
+    "fr": [{"ext": "vtt", "url": "https://www.youtube.com/api/timedtext?lang=en&tlang=fr"}]
+  },
+  "_version": {"version": "2026.10.26", "release_git_head": "0000000", "repository": "yt-dlp/yt-dlp"}
+}

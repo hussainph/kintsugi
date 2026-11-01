@@ -1,0 +1,6 @@
+{"version":"1.0.0","segments":[
+  {"speaker":"Mara","startTime":0.0,"endTime":0.6,"body":"Welcome"},
+  {"speaker":"Mara","startTime":0.6,"endTime":1.2,"body":"to"},
+  {"speaker":"Mara","startTime":1.2,"endTime":2.0,"body":"Repair Hour."},
+  {"speaker":"Ken","startTime":65.5,"endTime":67.0,"body":"Gold makes the crack visible."}
+]}

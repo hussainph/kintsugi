@@ -9,6 +9,7 @@ mod navigation;
 mod phone;
 mod references;
 mod search;
+mod tools;
 mod vault;
 
 #[cfg(all(feature = "headless", not(debug_assertions)))]
@@ -119,6 +120,10 @@ fn builder() -> tauri::Builder<Runtime> {
             feed::feed_note,
             feed::feed_impressions,
             feed::feed_save,
+            tools::tools_list,
+            tools::tools_install,
+            tools::tools_update,
+            tools::tools_remove,
         ])
 }
 

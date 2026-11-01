@@ -2459,11 +2459,17 @@ dependencies = [
  "dom_query 0.29.0",
  "dom_smoothie",
  "feed-rs",
+ "flate2",
  "futures-util",
+ "hex",
  "reqwest",
+ "roxmltree",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "tokio",
+ "zip",
 ]
 
 [[package]]
@@ -3818,6 +3824,15 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9da7f59328b09405b181fee1018925fad50f157afb43c0c0f5c522c256dd5907"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -5196,6 +5211,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2 0.6.5",
  "tokio-macros",
  "windows-sys 0.61.2",
@@ -6479,6 +6495,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f5b58784007ff6e5f280ec82c8596686a3b9b5dd5836c63288d4479f84728b9"
 dependencies = [
  "crc32fast",
+ "flate2",
  "getrandom 0.4.3",
  "indexmap 2.14.2",
  "memchr",

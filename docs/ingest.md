@@ -16,20 +16,22 @@ in camelCase):
 
 | Field | Meaning |
 | --- | --- |
-| `source` | Which adapter made it: `web`, `rss`, `x` or `reddit` (more to come: `youtube`, `pdf`…) |
-| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`). Feeds deduplicate on it |
+| `source` | Which adapter made it: `web`, `rss`, `x`, `reddit`, `youtube` or `podcast` (more to come: `pdf`…) |
+| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`), for YouTube the video id (`youtube:dQw4w9WgXcQ`), for podcasts the feed URL and GUID. Feeds deduplicate on it |
 | `url` | Canonical URL, if any: no fragment, no tracking parameters (`utm_*`, `fbclid`, `gclid`, `mc_cid`, `mc_eid`, `igshid`, `ref_src`) |
 | `title`, `author`, `site`, `description` | As the source declared them, whitespace-collapsed and length-bounded |
 | `published` | When the source says it was published, as written there (usually ISO 8601) |
 | `captured` | When the engine captured it, RFC 3339 UTC |
 | `media` | Images, the primary one first: `{ kind: "image", url? }`. Downloaded bytes travel beside the item in Rust (never serialized), only when the capture asked for them, and only as checked raster formats (PNG, JPEG, GIF, WebP; never SVG or HTML) |
-| `body` | Readable content as Markdown, at most 20,000 characters, cut at a paragraph or line break near the end when possible. Inline `data:` images are dropped and blank-line runs collapsed. Empty for a video or a bare image |
-| `extras` | Adapter facts. Every item sets `extractor`. Web pages use `readability`, `html`, `oembed`, `defuddle`, `image` or `none`, and may set `lang` and `modified`. X and Reddit items list theirs below |
+| `body` | Readable content as Markdown, at most 20,000 characters, cut at a paragraph or line break near the end when possible. Inline `data:` images are dropped and blank-line runs collapsed. Empty for a video or a bare image. A transcript may run to 250,000 characters (see [Transcripts](#transcripts)) |
+| `extras` | Adapter facts. Every item sets `extractor`. Web pages use `readability`, `html`, `oembed`, `defuddle`, `image` or `none`, and may set `lang` and `modified`. X, Reddit and transcript items list theirs below |
 
 Everything in an item came from the outside and is untrusted data, never
 instructions. Errors are fixed strings (for example `page fetch timed out`,
 `could not fetch source page`, `source is rate limiting requests`) that
 never echo fetched content or URLs.
+`this source needs an optional tool that is not installed` (`ToolNeeded`)
+means the capture needs a download the person hasn't agreed to yet.
 
 ## Adapters and the engine
 
@@ -55,7 +57,8 @@ uses the adapter registered for that source. Through the `Arc<A>` impl, one
 web adapter instance is both registered and Reddit's fallback.
 
 The Mac app's clip enrichment registers `XAdapter`, then `RedditAdapter`
-(with the web adapter as its fallback), then `WebAdapter`
+(with the web adapter as its fallback), then `YouTubeAdapter`, then
+`PodcastAdapter` (links to audio files), then `WebAdapter`
 (`apps/desktop/src-tauri/src/enrich/mod.rs`). Clips of X and Reddit URLs
 therefore go through the platform adapters.
 
@@ -295,6 +298,237 @@ comment tree. Subreddits can't be followed (Reddit's RSS ends in November
   walls, not account walls. While Reddit is rate limiting, there is no
   fallback.
 
+## Optional tools
+
+Heavy helpers are never bundled. `kintsugi_ingest::tools` downloads them
+the first time they're needed, into `tools/` in the app's config folder
+(`~/Library/Application Support/dev.phalasiya.kintsugi/tools/`, or
+`$KINTSUGI_CONFIG_DIR/tools/` in headless and isolated runs), never the
+vault.
+
+- **Consent.** Nothing downloads until the person agrees. `Tools::grant`
+  records consent per tool in `tools/<id>/tool.json`. `Tools::ensure`
+  returns the installed file, installs a consented tool on first need, and
+  otherwise fails with `NeedsConsent`, which adapters report as
+  `ToolNeeded`. Settings › Optional tools is where he agrees: the button
+  says what will be downloaded and roughly how big it is. Remove withdraws
+  consent and deletes the files.
+- **Checksums.** Every download is hashed as it streams and must match a
+  SHA-256 published beside the release: a sums file (yt-dlp's
+  `SHA2-256SUMS`), a per-asset `.sha256sum` (Deno), the `digest` GitHub
+  records for each asset, or one pinned in the spec (for models). A mismatch
+  or an oversized download is discarded. Downloads are HTTPS only, at most
+  10 redirects, with a per-tool size cap. This protects against corruption
+  and a swapped CDN file, not against a compromised publisher. Signed
+  checksums (yt-dlp's `SHA2-256SUMS.sig`) are a possible next step.
+- **Updates.** Installing again fetches the latest release, installs it
+  next to the old one, records it, then deletes the old version. A failed
+  update keeps the working version. A spec's `update_every` makes `ensure`
+  check at most that often, and `update_if_stale(age)` lets an adapter check
+  after a failure. Settings has "Check for updates".
+- **Layout.** `tools/<id>/tool.json` (consent, installed version and
+  checksum, last check, latest version) and `tools/<id>/<version>/<entry>`.
+- **Generic.** A tool is a `ToolSpec` in `tools/catalog.rs`: id, name,
+  purpose, homepage, license, source (`GitHubRelease { repo, checksums }`,
+  `Pinned { version, url, sha256 }` or `System`), per-platform asset names,
+  archive (`None` or `Zip`), entry file, size cap and update interval.
+  Adding a tool (Docling or MarkItDown for PDFs, a model file) is a new spec
+  and doesn't change the manager. `System` tools are fetched by the
+  operating system, so the manager only records consent for them.
+
+| Tool | Source | Why | Updates |
+| --- | --- | --- | --- |
+| `yt-dlp` | `yt-dlp/yt-dlp` latest release, `yt-dlp_macos` (universal), `SHA2-256SUMS` | YouTube captions | Checked at most daily, and after a failure at most hourly |
+| `deno` | `denoland/deno` latest release, `deno-<arch>-apple-darwin.zip`, `.sha256sum` | yt-dlp has needed a JavaScript runtime for YouTube's player challenges since 2025.11 ([EJS wiki](https://github.com/yt-dlp/yt-dlp/wiki/EJS)); installed with yt-dlp | Weekly |
+| `apple-speech` | macOS (`System`) | The on-device speech model for podcast transcription | By macOS |
+
+Commands: `tools_list`, `tools_install({ id })` (consent plus download;
+yt-dlp brings Deno), `tools_update({ id })`, `tools_remove({ id })`
+(`apps/desktop/src-tauri/src/tools.rs`, types in
+`apps/desktop/src/lib/tools.ts`).
+
+## Transcripts
+
+`kintsugi_ingest::transcript` parses WebVTT (including YouTube's rolling
+auto-captions, where each line repeats in the next cue), SubRip, the
+Podcasting 2.0 JSON transcript, and untimed HTML or plain text. It renders
+timed segments as Markdown paragraphs, and each paragraph starts with a
+timestamp that links to that moment:
+
+```markdown
+## The lacquer
+
+[0:41](<https://www.youtube.com/watch?v=…&t=41s>) urushi lacquer takes weeks and gold & patience
+
+[1:05](<https://pod.example/12.mp3#t=65>) **Ken:** Gold makes the crack visible.
+```
+
+- A paragraph breaks when the speaker or chapter changes, at a pause or
+  sentence end once it is 30 seconds long, and always at 60 seconds.
+  Chapters become `##` headings. Speakers are shown in bold.
+- Transcript text is untrusted. `\ [ ] < > * ` |` are escaped, so it
+  can't form links, HTML or emphasis.
+- Bodies are capped at 250,000 characters (`TRANSCRIPT_CHARS`, about four
+  hours of speech) and cut at a paragraph boundary, with `truncated: true`.
+  Clips still store at most 20,000 characters of source
+  (`crates/vault/src/clips.rs`), so a saved clip keeps roughly the first
+  20 minutes until the clip format changes.
+- `extras.transcript` says where the body came from: `subtitles`,
+  `auto-captions`, `publisher`, `on-device` or `unavailable`. When it is
+  `unavailable`, `transcriptReason` says why: `tool-not-installed`,
+  `tool-unavailable`, `no-captions`, `no-transcript`, `no-transcriber`,
+  `model-not-installed`, `transcription-unsupported`,
+  `transcription-failed` or `no-speech`. Other keys: `lang`, `duration`
+  (seconds), `truncated`, `transcriptType` (the publisher file's MIME
+  type), `transcriber` (`apple-speech`) and `audioUrl`.
+
+## YouTube
+
+`YouTubeAdapter` matches video URLs: `watch?v=`, `youtu.be/`, `/shorts/`,
+`/live/` and `/embed/` on `youtube.com`, `m.`, `music.` and
+`youtube-nocookie.com`, with an 11-character id. Channels and playlists
+are left to the web adapter (or the Feed).
+
+1. `Tools::ensure(yt-dlp)`. Without consent, it hands the canonical watch
+   URL to its fallback adapter, which on the Mac is the web adapter's oEmbed
+   metadata. The result is marked `transcript: unavailable`,
+   `transcriptReason: tool-not-installed`. Without a fallback it fails with
+   `ToolNeeded`.
+2. Runs yt-dlp in a temporary folder:
+   `--ignore-config --no-playlist --skip-download --write-info-json
+   --write-subs --write-auto-subs --sub-format vtt/best --sub-langs
+   "en,en-[A-Z]{2},.*-orig"`, plus `--cache-dir <tools>/yt-dlp-cache` and, when
+   Deno is installed, `--js-runtimes deno:<path>`. stdout and stderr are
+   discarded. The run has a 180-second limit, with a 10-second socket
+   timeout and one retry. The language list asks for English and every
+   untranslated auto-caption track. `en.*` would also fetch machine
+   translations into English, and every language about a hundred.
+   yt-dlp prefers a language's manual subtitles when it has both.
+3. If the run fails, the manager checks for a newer yt-dlp (at most hourly).
+   If there is one, it installs it and retries once. This is how YouTube
+   changes get picked up, such as PO tokens and player updates, without a
+   Kintsugi release.
+4. If yt-dlp listed caption tracks but downloaded none, the adapter fetches
+   the best WebVTT track from `.info.json` itself. It only fetches
+   YouTube's own HTTPS hosts, at most two tracks, 8 MB each. On the
+   development Mac, yt-dlp's impersonating HTTP client (curl_cffi) timed
+   out on the caption endpoint while a plain request answered in under a
+   second. This fallback also covers manual subtitles in languages outside
+   the list.
+5. Picks a caption file: manual subtitles over auto-captions, the video's
+   language over English over the rest, and untranslated (`-orig`) over
+   translated. Chapters from `.info.json` become headings. Timestamps link
+   to `https://www.youtube.com/watch?v=<id>&t=<s>s`.
+
+The item has id `youtube:<id>`, the canonical watch URL, title, channel as
+`author`, `site: YouTube`, `published` from `upload_date` (`YYYY-MM-DD`)
+and the thumbnail (downloaded only when asked). Extras: `extractor:
+yt-dlp`, `toolVersion`, `duration`, `channelUrl` and `wasLive`. A video
+with no captions keeps its description as the body, with `transcriptReason:
+no-captions`.
+
+## Podcasts
+
+The Feed (KI-25) owns podcast subscriptions. `PodcastAdapter` turns one
+episode into a transcript item:
+
+- `podcast::episodes(xml, feed_url)` parses a podcast RSS feed into
+  `Episode`s: GUID, title, show, author, page link, enclosure, published,
+  notes (`content:encoded`, `description` or `itunes:summary`), image,
+  `itunes:duration`, language, and every `<podcast:transcript>` (URL,
+  type, language, rel). Relative URLs resolve against the feed. DTDs are
+  refused.
+- `capture_episode(&Episode, options)` captures one episode the Feed
+  already parsed. `capture_from_feed(feed_url, guid, options)` fetches the
+  feed and captures the episode with that GUID, which is all the Feed needs
+  to store. A Feed item from a podcast source has `extras.media: audio` and
+  id `rss:<guid>`, so the Feed passes its source URL and that GUID. As an `Adapter`, it also matches pasted links to audio files
+  (`.mp3`, `.m4a`, `.aac`, `.wav`, `.aiff`, `.flac`, `.ogg`, `.opus`,
+  `.caf`).
+
+Each capture takes the first of these that works:
+
+1. **Publisher transcript.** This is the `<podcast:transcript>` tag from the
+   [Podcasting 2.0 namespace](https://podcasting2.org/docs/podcast-namespace/tags/transcript),
+   which Podcast Index maintains. Transcripts in another language are tried
+   last. Among the rest, JSON is tried first, then WebVTT, SubRip, HTML and
+   plain text. At most three are fetched, each capped at 8 MB.
+2. **On-device transcription.** If a `Transcriber` is configured, the
+   enclosure is downloaded to a temporary file (at most 1 GB and 30
+   minutes, keeping its extension) and transcribed with the feed's
+   language.
+3. **Show notes**, as Markdown, marked `transcript: unavailable`.
+
+Timestamps link to the audio with a media fragment (`<enclosure>#t=754`),
+which browsers' audio players seek to. The id is `podcast:<feed
+URL>#<guid>`, or the episode page or audio URL when there's no feed. `url`
+is the episode page (canonical) or the audio. `site` is the show.
+
+The Podcast Index API (`/episodes/byfeedurl`, which has a `transcripts`
+field) needs an API key and secret. It isn't used: the same transcript
+links are in the RSS feed the Feed already fetches.
+
+### On-device transcription: Apple SpeechAnalyzer
+
+`transcribe::SpeechAnalyzerTranscriber` runs `kintsugi-transcribe`
+(`crates/ingest/swift/transcribe.swift`) as a child process. The helper
+uses `SpeechTranscriber` with `.audioTimeRange`, and
+`SpeechAnalyzer.analyzeSequence(from: AVAudioFile)` followed by
+`finalizeAndFinish(through:)`. It prints `{ locale, segments: [{ start,
+end, text }] }`. Exit codes: 3 unsupported (macOS older than 26, or the
+locale isn't supported), 4 the speech model isn't installed, 5 the audio
+can't be read. Neither stdout nor errors carry transcript text into logs.
+The helper runs as a separate process so a crash in the speech stack can't
+take the app down. Each run is limited to an hour.
+
+- The speech model is a macOS asset, downloaded per language through
+  `AssetInventory` and kept up to date by the system. The helper downloads
+  it only with `--install-assets`, which the app passes once he has allowed
+  `apple-speech` in Settings. Until then, a missing model gives
+  `transcriptReason: model-not-installed`.
+- `apps/desktop/src-tauri/build.rs` compiles the helper with `xcrun
+  swiftc` (deployment target macOS 13; it checks for 26 at runtime) into
+  `binaries/kintsugi-transcribe-<target>`. It ships as a Tauri sidecar
+  (`bundle.externalBin`), next to the app binary. If there's no Swift
+  toolchain, a stub that exits 3 takes its place.
+
+### Choosing a transcription engine
+
+The research was done on 2026-11-01. Each source is linked below.
+
+| | Apple SpeechAnalyzer | Parakeet TDT 0.6B via FluidAudio | whisper.cpp via whisper-rs (large-v3-turbo) |
+| --- | --- | --- | --- |
+| Accuracy, same harness on a Mac (LibriSpeech clean / other WER) | 2.12 / 4.56 | v2: 2.01 / 3.40 | not in that study. Open ASR leaderboard average is 7.83 (Parakeet v2: 6.05) |
+| Long-form conversational speech (earnings22 WER, Argmax) | 14.0 | 11.7 | (whisper-small: 12.8) |
+| Speed | A 34-minute file in 45 s, 2.2× faster than MacWhisper large-v3-turbo (1:41) | About 110–210× real time on an M4 Pro | The slowest of the three |
+| Download | None. macOS fetches a shared model | About 450–630 MB | 1.5 GB (547 MB at q5) |
+| Build | One Swift file, no dependencies | A Swift package whose API is still changing, plus a first-run model compile | CMake and a C++ toolchain, which this Mac doesn't have |
+| Languages | About 10 | v2: English. v3: 25 European languages | About 100 |
+| License | Part of macOS | Apache-2.0 code, CC-BY-4.0 weights | MIT |
+
+**Choice: SpeechAnalyzer.**
+
+- It adds nothing to the download and needs no build toolchain.
+- It's about as accurate as Parakeet on clean speech (podcasts are mostly
+  clean, close-miked speech) and faster than Whisper.
+- It returns timed results.
+- Parakeet is more accurate on noisy, conversational audio. It can be added
+  later as a second `Transcriber` behind a pinned model in the tools
+  catalog, without changing the adapter.
+- Whisper lost on every axis except language coverage.
+- On this Mac (macOS 27.0.1), the helper transcribed `say`-generated speech
+  in about a second, with the model already installed.
+
+Sources:
+[Open ASR leaderboard data](https://raw.githubusercontent.com/huggingface/open_asr_leaderboard/16743c6dabc69abcb8fd5bf529a95e3c6c16ac3c/scripts/data/en_shortform.csv),
+[Lyonesse: Apple Speech vs Parakeet benchmark](https://lyonesse.app/blog/parakeet-moss-apple-speech-benchmark.html),
+[Argmax: Apple and Argmax](https://www.argmaxinc.com/blog/apple-and-argmax),
+[MacStories: Apple's speech APIs vs Whisper](https://www.macstories.net/stories/hands-on-how-apples-new-speech-apis-outpace-whisper-for-lightning-fast-transcription/),
+[FluidAudio benchmarks](https://github.com/FluidInference/FluidAudio/blob/main/Documentation/Benchmarks.md),
+[whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp),
+[whisper-rs build requirements](https://codeberg.org/tazz4843/whisper-rs/raw/branch/master/BUILDING.md),
+[WWDC25 session 277](https://developer.apple.com/videos/play/wwdc2025/277/).
+
 ## Testing
 
 `cargo test -p kintsugi-ingest` runs on saved fixtures in
@@ -303,7 +537,27 @@ renderer is tested through a fake that returns a saved Defuddle result
 (`spa.rendered.json`). The X fixtures in `fixtures/x/` are real FxTwitter
 thread, status and profile responses (trimmed), plus a syndication and an
 oEmbed response. The Reddit fixtures in `fixtures/reddit/` follow the
-`.json` listing format. Only the `#[ignore]`d tests touch the network:
-`live_article_and_video_metadata`, `live_post_thread_and_profile` and
-`live_post_with_comments`. Run them with `cargo test -p kintsugi-ingest --
---ignored`. Reddit may answer 403 from some networks.
+`.json` listing format.
+
+- **Tools manager:** tested against a fake GitHub release on the loopback
+  server, covering consent, checksum mismatch, size caps, zip archives,
+  updates and failed updates.
+- **yt-dlp:** replaced by a shell script that copies saved `.info.json`
+  and `.vtt` files (`fixtures/youtube/`) and logs its arguments. The update
+  and retry path installs a "fixed" script from a fake release.
+- **Podcasts:** use a saved feed and transcripts (`fixtures/podcast/`)
+  and a fake `Transcriber`.
+- **Transcription helper:** its protocol is tested with fake scripts.
+
+No test downloads a real tool or model. The opt-in tests are `#[ignore]`d:
+
+- `live_article_and_video_metadata`, `live_post_thread_and_profile` and
+  `live_post_with_comments` touch the network. Reddit may answer 403 from
+  some networks.
+- `live_youtube_transcript` downloads yt-dlp and Deno into
+  `target/live-tools/` and fetches a real video's captions.
+- `live_speech_analyzer` compiles the Swift helper and transcribes speech
+  from `say`. It never asks macOS to download a model.
+
+Run them with `cargo test -p kintsugi-ingest -- --ignored`, or one at a
+time by name (`-- --ignored live_speech_analyzer`).

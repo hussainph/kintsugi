@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>Repair Hour</title>
+    <link>https://pod.example/</link>
+    <language>en-us</language>
+    <itunes:author>Mara Fix</itunes:author>
+    <itunes:image href="https://pod.example/cover.jpg"/>
+    <item>
+      <title>Episode 12: Mending &amp; gold</title>
+      <guid isPermaLink="false">repair-12</guid>
+      <link>https://pod.example/12?utm_source=rss</link>
+      <pubDate>Thu, 29 Oct 2026 06:00:00 GMT</pubDate>
+      <itunes:duration>1:02:03</itunes:duration>
+      <description>Plain description.</description>
+      <content:encoded><![CDATA[<p>Why <b>broken</b> things are interesting.</p><script>alert(1)</script>]]></content:encoded>
+      <enclosure url="/audio/12.mp3" length="1234" type="audio/mpeg"/>
+      <podcast:transcript url="/t/12.html" type="text/html"/>
+      <podcast:transcript url="/t/12.vtt" type="text/vtt" rel="captions"/>
+      <podcast:transcript url="/t/12.es.json" type="application/json" language="es"/>
+      <podcast:transcript url="/t/12.json" type="application/json" language="en"/>
+    </item>
+    <item>
+      <title>Episode 11: Only captions</title>
+      <guid>repair-11</guid>
+      <itunes:duration>754</itunes:duration>
+      <enclosure url="https://cdn.pod.example/11.m4a?token=x" type="audio/mp4"/>
+      <podcast:transcript url="/t/11.srt" type="application/x-subrip"/>
+    </item>
+    <item>
+      <title>Episode 10: No transcript</title>
+      <guid>repair-10</guid>
+      <itunes:image href="/art/10.png"/>
+      <description>Show notes for ten.</description>
+      <enclosure url="/audio/10.mp3" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>
