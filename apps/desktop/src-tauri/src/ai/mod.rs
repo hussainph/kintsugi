@@ -17,6 +17,7 @@
 pub mod about;
 mod agent;
 pub mod chat;
+pub mod comments;
 pub mod cost;
 mod history;
 pub mod ideas;

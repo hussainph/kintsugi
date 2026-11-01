@@ -130,6 +130,8 @@ pub fn entry_rename(app: AppHandle, vault: State<Vault>, path: String, name: Str
     writing_path(&std::path::Path::new(&path).with_file_name(&name).to_string_lossy())?;
     crate::blog::repo::refuse_mirror(&vault.root()?, &path)?;
     let renamed = vault::rename(&vault.root()?, &path, &name)?;
+    // Kin's comment threads (KI-38) follow their document; best effort.
+    let _ = crate::ai::comments::renamed(&vault.root()?, &path, &renamed);
     references_changed(&app);
     Ok(renamed)
 }

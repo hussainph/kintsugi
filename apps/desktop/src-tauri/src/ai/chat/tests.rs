@@ -460,3 +460,124 @@ fn a_finished_job_goes_through_its_owner_with_a_footprint() {
     let report = f.entries().into_iter().rev().find(|e| e.role == Role::Helper).unwrap();
     assert!(report.text.contains("Nothing passed the checks."), "{}", report.text);
 }
+
+// --- Comment threads (KI-38) -------------------------------------------------
+
+mod comment_threads {
+    use super::*;
+    use crate::ai::comments::{Anchor, Moved, Status};
+    use crate::ai::chat::comments::Paragraph;
+
+    fn pencil() -> Anchor {
+        Anchor { exact: "A pencil is a tool for thinking.".into(), prefix: "---\n\n".into(), suffix: "\n".into(), line: 6 }
+    }
+
+    fn paragraph_chip() -> Chip {
+        Chip { kind: "paragraph".into(), path: "drafts/tools.mdx".into(), label: Some("A pencil is a tool for thinking.".into()), lines: Some([6, 6]) }
+    }
+
+    fn vault(f: &Fixture) -> PathBuf {
+        f.engine.0.brain.vault().unwrap()
+    }
+
+    fn settled(f: &Fixture) {
+        wait("comment turns to end", || f.engine.comments("drafts/tools.mdx").unwrap().running.is_empty());
+    }
+
+    #[test]
+    fn a_thread_is_rows_in_the_one_log_with_its_own_turns() {
+        let f = fixture(vec![answer("Which kind of thinking? Compare [[posts/kintsugi]].")], Duration::ZERO);
+        let before = std::fs::read_to_string(vault(&f).join("drafts/tools.mdx")).unwrap();
+        let view = f.engine.comment_create("drafts/tools.mdx", pencil(), "mention", "Is this too obvious?", vec![paragraph_chip()]).unwrap();
+        assert_eq!(view.thread.status, Status::Open);
+        // Not the chat's to answer.
+        assert!(f.engine.page(None, None, 10).pending.is_empty());
+        wait("Kin's reply", || f.engine.comments("drafts/tools.mdx").unwrap().threads[0].entries.len() == 2);
+        settled(&f);
+
+        let page = f.engine.comments("drafts/tools.mdx").unwrap();
+        let entries = &page.threads[0].entries;
+        assert_eq!((entries[0].role, entries[1].role), (Role::Owner, Role::Kin));
+        assert_eq!(entries[1].text, "Which kind of thinking? Compare [[posts/kintsugi]].");
+        assert_eq!(entries[1].answers, [entries[0].seq]);
+        for e in entries {
+            assert_eq!(e.topic, "drafts/tools.mdx", "about the document");
+            assert_eq!(e.comment.as_deref(), Some(view.thread.id.as_str()));
+        }
+        // The same rows are in the document's thread of the one log.
+        assert_eq!(f.engine.page(Some("drafts/tools.mdx"), None, 10).entries.len(), 2);
+        let seen = f.script.seen();
+        let message = last_user(&seen[0]);
+        assert!(message.starts_with("Is this too obvious?\n\n(You're replying in a comment thread"), "{message}");
+        assert!(message.contains("- paragraph drafts/tools.mdx lines 6-6"), "{message}");
+        assert!(message.contains("- doc drafts/tools.mdx"), "{message}");
+        // Stored beside the document, never in it.
+        assert_eq!(std::fs::read_to_string(vault(&f).join("drafts/tools.mdx")).unwrap(), before);
+        assert!(vault(&f).join(".kintsugi/comments/drafts/tools.mdx.json").is_file());
+        let started = f.events().iter().filter(|e| matches!(e, ChatEvent::CommentStarted { comment: Some(_), .. })).count();
+        assert_eq!(started, 1);
+        assert!(!f.events().iter().any(|e| matches!(e, ChatEvent::TurnStarted { .. })), "the chat's turn machinery isn't involved");
+    }
+
+    #[test]
+    fn a_reply_resumes_the_thread_and_interrupts_a_running_answer() {
+        let slow = answer("one two three four five six seven eight nine ten eleven twelve");
+        let f = fixture(vec![answer("First thought."), slow, answer("Both, then.")], Duration::from_millis(40));
+        let view = f.engine.comment_create("drafts/tools.mdx", pencil(), "discuss", "Is this too obvious?", vec![paragraph_chip()]).unwrap();
+        let id = view.thread.id.clone();
+        wait("the first reply", || f.engine.comments("drafts/tools.mdx").unwrap().threads[0].entries.len() == 2);
+        settled(&f);
+        f.engine.comment_reply("drafts/tools.mdx", &id, "Say more.", vec![paragraph_chip()]).unwrap();
+        wait("Kin to start talking", || f.events().iter().any(|e| matches!(e, ChatEvent::Turn { event: KinEvent::Text { delta }, .. } if delta.starts_with("three"))));
+        f.engine.comment_reply("drafts/tools.mdx", &id, "Actually, briefly.", vec![paragraph_chip()]).unwrap();
+        wait("the final reply", || f.engine.comments("drafts/tools.mdx").unwrap().threads[0].entries.iter().any(|e| e.text == "Both, then."));
+        settled(&f);
+        let entries = f.engine.comments("drafts/tools.mdx").unwrap().threads[0].entries.clone();
+        let interrupted: Vec<_> = entries.iter().filter(|e| e.interrupted).collect();
+        assert_eq!(interrupted.len(), 1);
+        let last = entries.last().unwrap();
+        assert_eq!(last.answers.len(), 2, "answers both waiting messages");
+        // The thread's own exchanges are its history.
+        let seen = f.script.seen();
+        let last_request = seen.last().unwrap();
+        assert!(matches!(&last_request.items[1], Item::Assistant { text, .. } if text == "First thought."), "{:?}", last_request.items);
+        assert!(f.engine.comment_reply("drafts/tools.mdx", "c-nope", "x", vec![]).is_err());
+    }
+
+    #[test]
+    fn resolve_reopen_and_moved_anchors_persist() {
+        let f = fixture(vec![answer("Noted.")], Duration::ZERO);
+        let id = f.engine.comment_create("drafts/tools.mdx", pencil(), "mention", "Hm?", vec![]).unwrap().thread.id;
+        settled(&f);
+        f.engine.comment_status("drafts/tools.mdx", &id, Status::Resolved).unwrap();
+        assert_eq!(f.engine.comments("drafts/tools.mdx").unwrap().threads[0].thread.status, Status::Resolved);
+        f.engine.comment_status("drafts/tools.mdx", &id, Status::Open).unwrap();
+        f.engine.comment_moved("drafts/tools.mdx", vec![Moved { id: id.clone(), anchor: Anchor { exact: "A pencil is a tool.".into(), ..pencil() }, orphaned: false }]).unwrap();
+        f.engine.comment_moved("drafts/tools.mdx", vec![Moved { id: id.clone(), anchor: Anchor::default(), orphaned: true }]).unwrap();
+        let thread = f.engine.comments("drafts/tools.mdx").unwrap().threads[0].thread.clone();
+        assert!(thread.orphaned && thread.status == Status::Open);
+        assert_eq!(thread.anchor.exact, "A pencil is a tool.", "an orphan is kept with the last text it was on");
+    }
+
+    #[test]
+    fn a_review_leaves_threads_on_the_paragraphs_it_names() {
+        let review = "<comments>[{\"paragraph\": 2, \"comment\": \"What does it cost?\"}, {\"paragraph\": 7, \"comment\": \"nope\"}]</comments>";
+        let f = fixture(vec![answer(review)], Duration::ZERO);
+        let p = |exact: &str, line| Paragraph { anchor: Anchor { exact: exact.into(), line, ..Anchor::default() }, lines: [line, line] };
+        let request = f.engine.review("drafts/tools.mdx", vec![p("A pencil is a tool for thinking.", 6), p("A second paragraph.", 8)], vec![]).unwrap();
+        assert!(request.review && f.engine.page(None, None, 10).pending.is_empty());
+        assert!(f.engine.review("drafts/tools.mdx", vec![p("x", 1)], vec![]).is_err(), "one review at a time");
+        settled(&f);
+        let page = f.engine.comments("drafts/tools.mdx").unwrap();
+        assert_eq!(page.threads.len(), 1);
+        let thread = &page.threads[0];
+        assert_eq!((thread.thread.origin.as_str(), thread.thread.anchor.exact.as_str()), ("review", "A second paragraph."));
+        assert_eq!(thread.entries.len(), 1);
+        assert_eq!((thread.entries[0].role, thread.entries[0].text.as_str()), (Role::Kin, "What does it cost?"));
+        assert_eq!(thread.entries[0].answers, [request.seq]);
+        let note = f.engine.page(Some("drafts/tools.mdx"), None, 10).entries.into_iter().rev().find(|e| e.review && e.role == Role::Kin).unwrap();
+        assert!(note.text.starts_with("I left 1 comment on"), "{}", note.text);
+        assert!(last_user(&f.script.seen()[0]).starts_with(REVIEW_BRIEF));
+        assert!(f.engine.review("drafts/tools.mdx", vec![], vec![]).is_err());
+    }
+}

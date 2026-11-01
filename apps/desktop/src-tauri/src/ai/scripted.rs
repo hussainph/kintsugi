@@ -11,7 +11,7 @@
 
 use super::ModelRef;
 use super::agent::Model;
-use super::chat::SUMMARIZER;
+use super::chat::{COMMENT_NOTE, REVIEW_BRIEF, SUMMARIZER};
 use super::wire::{Exchange, Item, Reply, ToolCall, Usage};
 use serde_json::json;
 use std::time::Duration;
@@ -68,6 +68,9 @@ impl Model for Scripted {
             on_text(&text);
             return Ok(reply(text, calls));
         }
+        if question.contains(COMMENT_NOTE) || question.starts_with(REVIEW_BRIEF) {
+            return Ok(comments::step(question, ex.items, on_text).await);
+        }
         let text = if ex.system.starts_with(SUMMARIZER) {
             let lines = question.lines().filter(|l| l.starts_with("Hussain:")).count();
             let last = question.lines().rev().find(|l| l.starts_with("Hussain:")).unwrap_or_default();
@@ -118,6 +121,63 @@ impl Model for Scripted {
             }
         }
         Ok(reply(text, vec![]))
+    }
+}
+
+/// Comment threads and reviews (KI-38): a reviewer's note that names what
+/// it found as a [[link]], and a review that comments on the first and last
+/// paragraphs.
+mod comments {
+    use super::*;
+
+    fn found(items: &[Item]) -> Option<String> {
+        items.iter().rev().find_map(|i| match i {
+            Item::Results(results) => results.first().map(|r| r.content.clone()),
+            _ => None,
+        })
+    }
+
+    /// The paragraph chip's label, from the dynamic context.
+    fn paragraph(question: &str) -> String {
+        question.lines().find(|l| l.starts_with("- paragraph ")).and_then(|l| l.split_once(" (")).map(|(_, label)| label.trim_end_matches(')').to_string()).unwrap_or_default()
+    }
+
+    pub async fn step(question: &str, items: &[Item], on_text: &mut (dyn FnMut(&str) + Send)) -> Reply {
+        let review = question.starts_with(REVIEW_BRIEF);
+        let first = matches!(items.last(), Some(Item::User(_)));
+        if first {
+            let call = if review {
+                let doc = first_chip(question).unwrap_or_default();
+                ToolCall { id: "mock-1".into(), name: "read".into(), arguments: json!({ "path": doc, "limit": 40 }) }
+            } else {
+                let label = paragraph(question);
+                let word = label.split(|c: char| !c.is_alphanumeric()).max_by_key(|w| w.len()).filter(|w| w.len() > 2).unwrap_or("kintsugi").to_lowercase();
+                ToolCall { id: "mock-1".into(), name: "search".into(), arguments: json!({ "query": word }) }
+            };
+            return reply(String::new(), vec![call]);
+        }
+        let text = if review {
+            let n = question.lines().filter(|l| l.starts_with('¶')).count().max(1);
+            let mut notes = vec![json!({ "paragraph": 1, "comment": "Mock review: the opening makes a claim without a source. What's it resting on?" })];
+            if n > 1 {
+                notes.push(json!({ "paragraph": n, "comment": format!("Mock review: ¶{n} ends without saying what it costs. Is that the point?") }));
+            }
+            format!("<comments>{}</comments>", serde_json::Value::Array(notes))
+        } else {
+            let doc = first_chip(question).unwrap_or_default();
+            let said = said(question).split(COMMENT_NOTE).next().unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
+            // The first search hit that isn't this document, as a link to drag in.
+            let hit = found(items).and_then(|data| {
+                data.split("\"id\":").skip(1).filter_map(|rest| rest.trim_start().strip_prefix('"')?.split('"').next()).find(|id| *id != doc && !id.starts_with("feed:")).map(String::from)
+            });
+            let link = hit.map(|id| format!(" Compare [[{}]].", id.trim_end_matches(".mdx").trim_end_matches(".md"))).unwrap_or_else(|| " I found nothing to compare it with.".into());
+            format!("Mock note: you asked “{said}”. This paragraph leans on one example.{link} (Headless mock model; nothing was sent to a provider.)")
+        };
+        for word in text.split_inclusive(' ') {
+            on_text(word);
+            tokio::time::sleep(WORD_DELAY).await;
+        }
+        reply(text, vec![])
     }
 }
 

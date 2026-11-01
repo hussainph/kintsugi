@@ -293,8 +293,8 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
 - **`@`** opens the `[[` picker and writes the same `[[link]]`; title matches
   lead in both. **Kin** is first while the query could be "kin": choosing it
   takes `@Kin` back out and calls `References.onKin(anchor)` with the
-  paragraph's range, which the desktop turns into `discuss()` with a paragraph
-  chip. KI-38 replaces that handler with an anchored comment thread. `@` never
+  paragraph's range, which the desktop turns into a comment thread on that
+  paragraph (KI-38, below). `@` never
   opens mid-word (email addresses), and a space closes it unless a title still
   matches, so "@karpathy said" stays prose.
 - **⌘K** (the selection, else the paragraph) keeps its edits and lists the
@@ -302,8 +302,9 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   supporting clips* (one `clip_search` per paragraph term, ranked by terms
   matched; choosing one adds its link after the passage), *Who disagrees?*
   (sends that question to the chat with the paragraph, via
-  `discuss(chips, text, { send: true })`) and *Discuss this paragraph* (opens
-  the chat with it, unsent) and *Ideas for this draft* (`ideasForDraft(path)`).
+  `discuss(chips, text, { send: true })`), *Discuss this paragraph* (opens a
+  comment thread's composer on it, unsent), *Kin, review this draft* and
+  *Ideas for this draft* (`ideasForDraft(path)`).
   In a read-only mirror (KI-9) only the actions that write nothing are
   offered, and a supporting clip can only be opened.
 - **Phone width.** Both menus fit `100vw − 16px`, rows are at least 44 px
@@ -312,6 +313,65 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   first edit model as `mock` and `ai_stream` answers with `scripted::edit`
   (drops filler words), so ⌘K and skills can be reviewed without a provider.
   `test/runtime-editor.test.ts` drives all of it in headless Chromium.
+
+## Comment threads (KI-38)
+
+Code: `packages/editor/src/anchors.ts` (anchoring, pure) and `comments.ts`
+(the CodeMirror extension); `ai/comments.rs` (storage) and
+`ai/chat/comments.rs` (turns, review, commands); webview: `src/comments/`.
+
+- **Starting one.** `@Kin` in a paragraph and ⌘K's *Discuss this paragraph*
+  open a composer on the paragraph (`startComment`). Nothing is saved until
+  he sends; Escape leaves nothing behind. *Kin, review this draft* (⌘K, the
+  `/` menu's Kin actions, or the comments bar) is one turn that reads the
+  document and leaves up to five threads on the paragraphs that most need a
+  note. Kin's reply comes back as `<comments>[{"paragraph": n, "comment": …}]</comments>`
+  against a numbered list of the body's paragraphs; anything else is logged
+  as a failed review and leaves no threads.
+- **The familiar UX.** A marker in the right margin of each commented
+  paragraph (a count when there are several), a popover with the thread
+  (reply, Resolve/Reopen, Stop while Kin is replying, Ask again after a
+  failed or stopped reply), and a comments bar under the editor with counts,
+  *Show resolved*, the review action and the detached threads. Kin's
+  messages carry KI-23's Kin gold (`--kin`, `--kin-ink` in `@kintsugi/ui`) and
+  the placeholder avatar (the host's `kinMark`; KI-41 replaces it).
+- **References.** Any `[[link]]` or vault path in Kin's reply is a chip:
+  drag it into the draft (the same drop as the reference margin), tap `+` to
+  add it after the paragraph's last word, or click to open it. Nothing else
+  of Kin's ever lands in the document.
+- **Stored outside the document.** `.kintsugi/comments/<document path>.json`
+  in the vault, one file per document: each thread's id, anchor, status,
+  origin and whether it's detached. Renaming or moving a document (or its
+  folder) moves its file. The MDX is never touched.
+- **Anchors.** A text quote of the paragraph with up to 48 characters of
+  context either side and its first line. On open it's re-resolved: the exact
+  quote (the occurrence whose context and line fit best), else the most
+  similar paragraph (word overlap ≥ 0.5), else none. While the document is
+  open, CodeMirror's change mapping moves it and snaps it to the paragraph
+  its start is in, so typing inside or above it, merging or splitting keep it
+  on its paragraph. The editor sends the new quotes back after 0.7 s.
+- **Orphans.** Deleting a paragraph outright detaches its threads. They are
+  kept with the last text they were on (shown as "Was on: …") and their
+  messages, listed in the comments bar, and still answerable; an undo, or a
+  paragraph with that exact text later, re-attaches them.
+- **One log.** A thread's messages are rows in the conversation log with
+  the document as their `topic`, the thread's id in `comment` and the
+  paragraph as a chip (with its current lines). The chat shows them in the
+  document's thread, tagged "Comment on a paragraph", and `history` finds
+  them. Each thread has its own turns (not the chat's batching): the
+  thread's exchanges are the turn's history, a new message interrupts its
+  running reply and the next answers both, and comment replies don't light
+  the chat's unread dot. The review's request and Kin's note on it are
+  `review: true` rows.
+- **Phone.** All of the UI is plain DOM in `packages/editor`, sized for a
+  phone (the popover fits `100vw − 16px`, larger markers on a coarse
+  pointer), behind the `comments` prop on `Editor`, so the phone's shared
+  editor can adopt it with a host like `src/comments/useComments.ts`.
+- **Headless.** With `KINTSUGI_HEADLESS_KIN=mock` the scripted model answers
+  comment turns (searches the paragraph's longest word, replies naming the
+  first hit as a `[[link]]`) and reviews (comments on the first and last
+  paragraphs). `test/runtime-comments.test.ts` drives it all in headless
+  Chromium.
 
 ## Settings
 

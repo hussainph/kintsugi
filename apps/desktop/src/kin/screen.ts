@@ -16,7 +16,7 @@ export function passageChips(view: EditorView, path: string, from: number, to: n
   return chip ? [chip, docChip(view, path)] : [docChip(view, path)];
 }
 
-function docChip(view: EditorView | null, path: string): Chip {
+export function docChip(view: EditorView | null, path: string): Chip {
   const name = path.replace(/^.*\//, "").replace(/\.mdx?$/, "");
   const title = view && field(view.state.doc.toString(), "title");
   return { kind: "doc", path, label: typeof title === "string" && title.trim() ? title.trim() : name };

@@ -9,10 +9,10 @@ import { attributedQuote, linkFor, type ReferenceSource } from "@kintsugi/core/r
 import { Editor, type CommandSkill, type Commands, type KinAnchor } from "@kintsugi/editor/Editor";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi/ui/components/dialog";
-import { discuss } from "@/lib/chat";
+import { beginComment, reviewDraft } from "@/comments/api";
+import { useComments } from "@/comments/useComments";
 import { memory } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
-import { passageChips } from "@/kin/screen";
 import { type Action } from "@/refine/prompts";
 import { skillAction } from "@/refine/kin";
 import { UsedIn } from "./UsedIn";
@@ -122,13 +122,13 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   const hasMargin = referenced.length + related.length + backlinks.length + unresolved.length > 0;
   const readClipText = useCallback(async (source: ReferenceSource) => (await invoke<Clip>("clip_read", { path: source.path })).text, []);
   const onReferenceError = useCallback((error: unknown) => toast.error(String(error)), []);
-  // @Kin: the paragraph goes to Kin's chat as a chip. KI-38 turns this into
-  // a comment thread anchored at `anchor.from`–`anchor.to`.
+  // @Kin: a comment thread on the paragraph (KI-38). Kin replies in the
+  // margin; the thread's messages are in Kin's one conversation log.
   const onKin = useCallback((anchor: KinAnchor) => {
     const view = editor.viewRef.current;
-    if (!view) return;
-    discuss(passageChips(view, activePath.current, anchor.from, anchor.to));
+    if (view) beginComment(view, anchor.from, anchor.to, "mention");
   }, [editor.viewRef]);
+  const comments = useComments(editor.path, editor.viewRef, sources, open);
   const options = useMemo(() => ({ sources, search, readClipText, onError: onReferenceError, onOpen: open, onParagraph: setParagraph, onKin }), [sources, search, readClipText, onReferenceError, open, onKin]);
 
   // Skills flagged for the / menu. Re-read when he comes back to the window,
@@ -144,7 +144,11 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   const commands = useMemo<Commands>(() => ({
     skills,
     actions: ACTIONS,
-    onAction: (action) => { if (action.id === "ideas") ideasForDraft(activePath.current); },
+    onAction: (action) => {
+      if (action.id === "ideas") ideasForDraft(activePath.current);
+      const view = editor.viewRef.current;
+      if (action.id === "review" && view) reviewDraft(view, activePath.current);
+    },
     onSkill: (skill, range) => {
       if (!range) { toast("Write or select something for the skill to work on."); return; }
       const path = activePath.current;
@@ -152,11 +156,11 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
         if (activePath.current === path) onRefine?.(range.from, range.to, skillAction(full));
       }).catch((error) => toast.error(String(error)));
     },
-  }), [skills, onRefine]);
+  }), [skills, onRefine, editor.viewRef]);
 
   return (
     <div className="reference-writing">
-      <Editor {...editor} references={options} commands={commands} />
+      <Editor {...editor} references={options} commands={commands} comments={comments} />
       <button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} title="Reference margin" onClick={() => {
         const next = !margin; setMargin(next);
         try { localStorage.setItem("kintsugi:margin", next ? "visible" : "hidden"); } catch { /* A convenience only. */ }
@@ -173,7 +177,10 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   );
 }
 
-const ACTIONS = [{ id: "ideas", label: "Ideas for this draft", description: "Open Ideas filtered to this document" }];
+const ACTIONS = [
+  { id: "ideas", label: "Ideas for this draft", description: "Open Ideas filtered to this document" },
+  { id: "review", label: "Kin, review this draft", description: "Kin reads it and leaves comments on paragraphs" },
+];
 
 const stopWords = new Set("a about after again all also an and any are as at be because been before being between both but by can could did do does doing down during each few for from further had has have having he her here hers herself him himself his how i if in into is it its itself just me more most my myself no nor not now of off on once only or other our ours ourselves out over own same she should so some such than that the their theirs them themselves then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your yours yourself yourselves".split(" "));
 export function paragraphTerms(text: string): string[] {
