@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { Bookmark, ChevronDown, FileText, Loader2, Pilcrow, Rss, Square, X } from "lucide-react";
+import { Bookmark, ChevronDown, FileText, Lightbulb, Loader2, Pilcrow, Rss, Square, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -16,7 +16,7 @@ const ACTIVE: Job["status"][] = ["queued", "running", "waiting"];
 type Live = { turn: string; text: string; looking: string[] };
 
 const chipIcon = (kind: string) =>
-  kind === "clip" ? Bookmark : kind === "feed" ? Rss : kind === "paragraph" || kind === "selection" ? Pilcrow : FileText;
+  kind === "clip" ? Bookmark : kind === "feed" ? Rss : kind === "idea" ? Lightbulb : kind === "paragraph" || kind === "selection" ? Pilcrow : FileText;
 
 /** "Searched “kiln”", "Read drafts/x.md": what Kin is doing, briefly. */
 function describe(name: string, args: unknown): string {

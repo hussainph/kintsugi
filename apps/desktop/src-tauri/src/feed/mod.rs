@@ -189,6 +189,30 @@ pub(crate) fn search_changes(
     })
 }
 
+/// For Ideas (KI-39): Feed items Hussain liked, noted or saved, newest
+/// action first.
+pub(crate) fn acted_on(app: &AppHandle, limit: usize) -> Result<Vec<store::Acted>> {
+    with(app, |s| s.acted_on(limit))
+}
+
+/// A Feed item as a quote's source: title, source, link and searchable text.
+pub(crate) struct Quotable {
+    pub title: String,
+    pub source: String,
+    pub url: Option<String>,
+    pub text: String,
+}
+
+/// For Ideas (KI-39): a Feed item's text, so a quote from it can be checked.
+pub(crate) fn quotable(app: &AppHandle, id: i64) -> Result<Option<Quotable>> {
+    with(app, |s| {
+        let Some([title, source, author, summary, content]) = s.search_text(id)? else { return Ok(None) };
+        let url = s.item(id).ok().and_then(|i| i.url);
+        let text = [title.clone(), summary, content].into_iter().flatten().collect::<Vec<_>>().join("\n\n");
+        Ok(Some(Quotable { title: title.unwrap_or_default(), source: source.or(author).unwrap_or_default(), url, text }))
+    })
+}
+
 // ── Polling ────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Serialize)]

@@ -27,7 +27,7 @@ use super::Task;
 use super::agent::{self, Cancel, Harness, KinEvent, Limits, Model, Stop};
 use super::cost::Meter;
 use super::history::{self, Draft, Entry, Hit, Log, Role, Thread, Topic};
-use super::jobs::{Job, NewJob, Status, Table};
+use super::jobs::{Job, NewJob, Status, Table, Trace};
 use super::memory::Access;
 use super::prompt::{Chip, Memory};
 use super::tools::Tools;
@@ -64,6 +64,16 @@ pub trait Brain: Send + Sync + 'static {
     /// The app's search index for Kin's `search` tool (else a throwaway one).
     fn searcher(&self) -> Option<super::tools::Searcher> {
         None
+    }
+    /// Reads one of Kin's ideas for the `idea` tool (KI-39).
+    fn ideas(&self) -> Option<super::tools::IdeaReader> {
+        None
+    }
+    /// A helper job finished with a report. The owner of its kind can turn
+    /// the report into something else (Ideas stores and checks its ideas)
+    /// and returns what goes in the log; an error fails the job.
+    fn finish_job(&self, _job: &Job, report: String, _trace: &Trace) -> Result<String> {
+        Ok(report)
     }
     fn meter(&self) -> &Meter;
     fn emit(&self, event: ChatEvent);
@@ -315,7 +325,7 @@ impl<B: Brain> Engine<B> {
             history,
             recap,
         };
-        let (streamed, result) = self.execute(&info.turn, &request, &cancel, true).await;
+        let (streamed, result, _) = self.execute(&info.turn, &request, &cancel, true).await;
 
         let stopped = self.0.live.lock().unwrap().running.as_ref().is_some_and(|r| r.stopped);
         let through = info.answers.last().copied().unwrap_or_default();
@@ -359,8 +369,10 @@ impl<B: Brain> Engine<B> {
 
     /// Runs one agent turn, streaming to the webview. Returns what was
     /// streamed of the current step (the partial reply, if interrupted).
-    async fn execute(&self, turn: &str, request: &agent::Turn, cancel: &Cancel, chat: bool) -> (String, Result<agent::Summary>) {
+    async fn execute(&self, turn: &str, request: &agent::Turn, cancel: &Cancel, chat: bool) -> (String, Result<agent::Summary>, Trace) {
         let mut streamed = String::new();
+        let mut trace = Trace::default();
+        let started = std::time::Instant::now();
         let result = async {
             let vault = self.0.brain.vault()?;
             let model = self.0.brain.connect(request.task).await?;
@@ -371,6 +383,9 @@ impl<B: Brain> Engine<B> {
             if let Some(searcher) = self.0.brain.searcher() {
                 tools = tools.with_searcher(searcher);
             }
+            if let Some(ideas) = self.0.brain.ideas() {
+                tools = tools.with_ideas(ideas);
+            }
             if chat && let Some(access) = self.0.brain.memory_access(&vault, turn, &request.question) {
                 tools = tools.with_memory(access);
             }
@@ -380,7 +395,10 @@ impl<B: Brain> Engine<B> {
                 match &event {
                     KinEvent::Text { delta } => streamed.push_str(delta),
                     // Text before a tool call was thinking aloud.
-                    KinEvent::ToolCall { .. } => streamed.clear(),
+                    KinEvent::ToolCall { name, arguments, .. } => {
+                        streamed.clear();
+                        trace.call(name, arguments);
+                    }
                     _ => {}
                 }
                 self.emit(ChatEvent::Turn { turn: turn.into(), event });
@@ -392,7 +410,12 @@ impl<B: Brain> Engine<B> {
         if let Err(message) = &result {
             self.emit(ChatEvent::Turn { turn: turn.into(), event: KinEvent::Error { message: message.clone() } });
         }
-        (streamed, result)
+        trace.millis = started.elapsed().as_millis() as u64;
+        if let Ok(summary) = &result {
+            trace.usd = summary.usd;
+            trace.model = summary.model.clone();
+        }
+        (streamed, result, trace)
     }
 
     pub fn page(&self, topic: Option<&str>, before: Option<u64>, limit: usize) -> Page {
@@ -548,12 +571,15 @@ impl<B: Brain> Engine<B> {
             history: vec![],
             recap: None,
         };
-        let (_, result) = self.execute(&job.id, &request, &cancel, false).await;
+        let (_, result, trace) = self.execute(&job.id, &request, &cancel, false).await;
         let (status, text, error, usd) = match result {
             Ok(s) if s.stop == Stop::CapReached => (Status::Waiting, None, Some(super::cost::CapReached::MESSAGE.to_string()), s.usd),
             Ok(s) if s.stop == Stop::Cancelled => (Status::Cancelled, None, None, s.usd),
             Ok(s) if s.text.trim().is_empty() => (Status::Failed, None, Some("The helper ran out of steps without a report.".into()), s.usd),
-            Ok(s) => (Status::Done, Some(s.text), None, s.usd),
+            Ok(s) => match self.0.brain.finish_job(&job, s.text, &trace) {
+                Ok(report) => (Status::Done, Some(report), None, s.usd),
+                Err(e) => (Status::Failed, None, Some(e), s.usd),
+            },
             Err(e) if e == super::cost::CapReached::MESSAGE => (Status::Waiting, None, Some(e), 0.0),
             Err(e) => (Status::Failed, None, Some(e), 0.0),
         };
@@ -584,7 +610,8 @@ fn brief(job: &Job) -> String {
     format!(
         "You're working as one of Kin's helpers, in the background, with your own context. Hussain isn't watching; \
          your report goes quietly into his conversation with Kin for later.\n\nBrief ({}):\n{}\n\n\
-         Work it through with your tools, then report back briefly: what you found, with paths. Say plainly what you couldn't do.",
+         Work it through with your tools, then report back as the brief asks; if it doesn't say how, briefly: what you found, with paths. \
+         Say plainly what you couldn't do.",
         job.kind, job.brief
     )
 }
@@ -648,6 +675,14 @@ impl Brain for AppBrain {
         Some(crate::search::searcher(&self.0))
     }
 
+    fn ideas(&self) -> Option<super::tools::IdeaReader> {
+        Some(super::ideas::reader(&self.0))
+    }
+
+    fn finish_job(&self, job: &Job, report: String, trace: &Trace) -> Result<String> {
+        super::ideas::finish_job(&self.0, job, report, trace)
+    }
+
     fn meter(&self) -> &Meter {
         super::meter()
     }
@@ -662,7 +697,7 @@ impl Brain for AppBrain {
 pub struct Chat(OnceLock<Engine<AppBrain>>);
 
 impl Chat {
-    fn engine(&self) -> Result<&Engine<AppBrain>> {
+    pub(crate) fn engine(&self) -> Result<&Engine<AppBrain>> {
         self.0.get().ok_or_else(|| "Kin isn't ready yet.".into())
     }
 }

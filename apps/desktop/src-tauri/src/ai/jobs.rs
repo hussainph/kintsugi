@@ -73,6 +73,37 @@ pub struct Job {
     pub attempts: u32,
 }
 
+/// What a helper's run looked like: its footprint (searches, files read,
+/// time, cost), collected from the loop's events.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Trace {
+    /// Queries passed to `search`.
+    pub searches: Vec<String>,
+    /// Paths passed to `read`.
+    pub files: Vec<String>,
+    pub tool_calls: usize,
+    pub millis: u64,
+    pub usd: f64,
+    /// `provider/model`.
+    pub model: String,
+}
+
+impl Trace {
+    /// Notes one tool call.
+    pub fn call(&mut self, name: &str, arguments: &serde_json::Value) {
+        self.tool_calls += 1;
+        match name {
+            "search" => self.searches.push(arguments["query"].as_str().unwrap_or_default().into()),
+            "read" => {
+                if let Some(path) = arguments["path"].as_str().filter(|p| !p.starts_with("@out/")) {
+                    self.files.push(path.trim().into());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 /// What a caller (the Feed, Ideas, Kin itself) asks for.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -24,6 +24,9 @@ import { useScreenContext } from "@/lib/chat";
 import { Settings } from "@/kin/Settings";
 import { AboutYou } from "@/kin/AboutYou";
 import { Feed } from "@/feed/Feed";
+import { Ideas } from "@/ideas/Ideas";
+import { IdeasBeside } from "@/ideas/Beside";
+import { ideasForDraft, onOpenIdeas } from "@/ideas/api";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
@@ -70,6 +73,8 @@ export default function App() {
   const [external, setExternal] = useState<External | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
+  // Ideas, optionally filtered to one document ("Ideas for this draft").
+  const [ideasOpen, setIdeasOpen] = useState<{ path?: string } | null>(null);
   const [openClip, setOpenClip] = useState<{ path: string; seq: number }>();
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
@@ -86,7 +91,7 @@ export default function App() {
 
   const docs = useMemo(() => flatten(tree), [tree]);
   // The editor stays mounted (and keeps its state) behind the library and feed.
-  const away = libraryOpen || feedOpen;
+  const away = libraryOpen || feedOpen || !!ideasOpen;
 
   const fail = useCallback((e: unknown) => {
     toast.error(String(e));
@@ -214,6 +219,7 @@ export default function App() {
       if (!(await settle("opened that document"))) return;
       setLibraryOpen(false);
       setFeedOpen(false);
+      setIdeasOpen(null);
       try {
         const contents = await vault.read(path);
         known.current.set(path, meta(contents));
@@ -376,6 +382,7 @@ export default function App() {
     setRefine(null);
     setOpenClip(undefined);
     setFeedOpen(false);
+    setIdeasOpen(null);
     setLibraryOpen(true);
   }, [settleDocs]);
 
@@ -386,8 +393,21 @@ export default function App() {
     viewRef.current?.contentDOM.blur();
     setRefine(null);
     setLibraryOpen(false);
+    setIdeasOpen(null);
     setFeedOpen(true);
   }, [settleDocs]);
+
+  // Ideas keep their own data too; Adopt writes a draft and opens it.
+  const showIdeas = useCallback(async (path?: string) => {
+    if ((await libraryRef.current?.flush()) === false) return;
+    if (!(await settleDocs("opened Ideas"))) return;
+    viewRef.current?.contentDOM.blur();
+    setRefine(null);
+    setLibraryOpen(false);
+    setFeedOpen(false);
+    setIdeasOpen({ path });
+  }, [settleDocs]);
+  useEffect(() => onOpenIdeas((path) => void showIdeas(path)), [showIdeas]);
 
   // The editor can open a clip without coupling its state to the library.
   useEffect(() => {
@@ -399,6 +419,7 @@ export default function App() {
       setRefine(null);
       setOpenClip({ path, seq: Date.now() });
       setFeedOpen(false);
+      setIdeasOpen(null);
       setLibraryOpen(true);
     };
     window.addEventListener("kintsugi:open-clip", open);
@@ -460,6 +481,8 @@ export default function App() {
         onLibrary={showLibrary}
         feedOpen={feedOpen}
         onFeed={showFeed}
+        ideasOpen={!!ideasOpen}
+        onIdeas={() => void showIdeas()}
         selectedDir={selectedDir}
         onOpen={openDoc}
         onSelectDir={setSelectedDir}
@@ -474,6 +497,17 @@ export default function App() {
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
         {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} renderUsedIn={(clip) => <UsedIn root={root} path={clip.path} onOpen={openDoc} />} />}
         {feedOpen && <Feed />}
+        {ideasOpen && (
+          <Ideas
+            key={root}
+            filter={ideasOpen.path}
+            filterTitle={docs.find((d) => d.path === ideasOpen.path)?.title ?? undefined}
+            onFilter={(path) => setIdeasOpen({ path })}
+            onOpenDoc={openDoc}
+            drafts={docs.filter((d) => d.status !== "complete").map((d) => ({ path: d.path, title: d.title ?? d.name }))}
+          />
+        )}
+        {doc && !away && <IdeasBeside path={doc.path} text={text} onOpenDoc={openDoc} />}
         <div inert={away} className={away ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
         {doc ? (
           <Writing
@@ -506,6 +540,9 @@ export default function App() {
               </button>
             </Badge>
             <span>{wordCount(text).toLocaleString()} words</span>
+            <button onClick={() => ideasForDraft(doc.path)} className="hover:text-foreground" title="Ideas for this draft">
+              Ideas
+            </button>
             <span className={save === "error" ? "text-destructive" : ""}>
               {{ saved: "Saved", editing: "Editing", error: "Not saved" }[save]}
             </span>

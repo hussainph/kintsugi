@@ -191,6 +191,18 @@ pub struct Page {
     pub total: i64,
 }
 
+/// A Feed item Hussain acted on, for Ideas (KI-39).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Acted {
+    /// The search index's id, `feed:<id>`.
+    pub id: String,
+    pub title: String,
+    pub source: String,
+    pub liked: bool,
+    pub saved: bool,
+    pub note: Option<String>,
+}
+
 /// One row of the event log. `at` is milliseconds since the epoch.
 #[derive(Clone, Debug, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -669,6 +681,25 @@ impl Store {
             .map_err(err)?
             .collect::<rusqlite::Result<_>>()
             .map_err(err)
+    }
+
+    /// Items liked, noted or saved, newest action first (Ideas, KI-39).
+    pub fn acted_on(&self, limit: usize) -> Result<Vec<Acted>> {
+        let mut statement = self
+            .db
+            .prepare(
+                "SELECT i.id, COALESCE(i.title, ''), COALESCE(s.title, ''), i.liked_at IS NOT NULL, i.saved_path IS NOT NULL, i.note
+                 FROM items i JOIN sources s ON s.id = i.source_id
+                 WHERE i.liked_at IS NOT NULL OR i.note IS NOT NULL OR i.saved_path IS NOT NULL
+                 ORDER BY MAX(COALESCE(i.liked_at, 0), COALESCE(i.note_at, 0), i.fetched_at) DESC LIMIT ?1",
+            )
+            .map_err(err)?;
+        let rows = statement
+            .query_map([limit as i64], |r| {
+                Ok(Acted { id: format!("feed:{}", r.get::<_, i64>(0)?), title: r.get(1)?, source: r.get(2)?, liked: r.get(3)?, saved: r.get(4)?, note: r.get(5)? })
+            })
+            .map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)
     }
 
     #[cfg(test)]

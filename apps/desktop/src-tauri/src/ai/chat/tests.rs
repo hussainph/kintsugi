@@ -67,6 +67,8 @@ struct TestBrain {
     vault: PathBuf,
     meter: Meter,
     events: Arc<Mutex<Vec<ChatEvent>>>,
+    /// Jobs the finish hook saw, with their traces.
+    finished: Arc<Mutex<Vec<(String, Trace)>>>,
 }
 
 impl Brain for TestBrain {
@@ -86,6 +88,15 @@ impl Brain for TestBrain {
 
     fn meter(&self) -> &Meter {
         &self.meter
+    }
+
+    fn finish_job(&self, job: &Job, report: String, trace: &Trace) -> Result<String> {
+        self.finished.lock().unwrap().push((job.kind.clone(), trace.clone()));
+        match job.kind.as_str() {
+            "reject" => Err("Nothing passed the checks.".into()),
+            "rewrite" => Ok(format!("Checked: {report}")),
+            _ => Ok(report),
+        }
     }
 
     fn emit(&self, event: ChatEvent) {
@@ -122,6 +133,7 @@ fn fixture_in(dir: Option<PathBuf>, replies: Vec<Reply>, delay: Duration, timing
         vault: vault.path().into(),
         meter: Meter::with_clock(Some(ledger.path().into()), || "2026-11".into()),
         events: events.clone(),
+        finished: Arc::default(),
     };
     let engine = Engine::new(brain, dir, timing);
     Fixture { engine, script, events, _vault: vault, _ledger: ledger }
@@ -423,4 +435,28 @@ fn a_running_job_can_be_cancelled() {
     f.engine.cancel_job(&job.id);
     wait("the job to stop", || f.engine.jobs()[0].status == Status::Cancelled);
     assert!(f.entries().is_empty(), "a cancelled job doesn't report");
+}
+
+#[test]
+fn a_finished_job_goes_through_its_owner_with_a_footprint() {
+    let f = fixture(
+        vec![
+            calls(&[("c1", "search", json!({ "query": "kiln" })), ("c2", "read", json!({ "path": "posts/kintsugi.md" }))], ""),
+            answer("[raw json]"),
+            answer("[nothing good]"),
+        ],
+        Duration::ZERO,
+    );
+    f.engine.create_job(NewJob { kind: "rewrite".into(), task: Some("ideas".into()), brief: "Find ideas.".into(), topic: None }).unwrap();
+    wait("the job to finish", || f.engine.jobs().first().is_some_and(|j| j.status == Status::Done));
+    assert_eq!(f.engine.jobs()[0].result.as_deref(), Some("Checked: [raw json]"));
+    let (kind, trace) = f.engine.0.brain.finished.lock().unwrap()[0].clone();
+    assert_eq!((kind.as_str(), trace.searches.as_slice(), trace.files.as_slice(), trace.tool_calls), ("rewrite", &["kiln".to_string()][..], &["posts/kintsugi.md".to_string()][..], 2));
+    assert_eq!(trace.model, "anthropic/claude-sonnet-5-5");
+    // The owner can fail it; the log says so.
+    f.engine.create_job(NewJob { kind: "reject".into(), task: Some("ideas".into()), brief: "Find more.".into(), topic: None }).unwrap();
+    wait("the job to fail", || f.engine.jobs()[0].status == Status::Failed);
+    assert_eq!(f.engine.jobs()[0].error.as_deref(), Some("Nothing passed the checks."));
+    let report = f.entries().into_iter().rev().find(|e| e.role == Role::Helper).unwrap();
+    assert!(report.text.contains("Nothing passed the checks."), "{}", report.text);
 }

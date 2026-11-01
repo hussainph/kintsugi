@@ -12,12 +12,14 @@
 //! - `history`: the one conversation log, its inferred threads and summaries.
 //! - `jobs`: the helper job table.
 //! - `chat`: the live conversation: batching, interrupts, helpers.
+//! - `ideas`: Kin's daily ideas, checked against their sources (KI-39).
 
 pub mod about;
 mod agent;
 pub mod chat;
 pub mod cost;
 mod history;
+pub mod ideas;
 mod jobs;
 pub mod kin;
 pub mod memory;
@@ -104,7 +106,6 @@ pub enum Task {
     /// Kin's conversation: strong, the owner is reading.
     Chat,
     /// Kin's Ideas: strong, mostly in the background.
-    #[allow(dead_code)]
     Ideas,
     /// Ranking and sorting the Feed: cheap, always in the background.
     #[allow(dead_code)]
@@ -203,6 +204,7 @@ pub fn meter() -> &'static cost::Meter {
 pub fn init(app: &AppHandle) {
     let _ = METER.set(cost::Meter::open(kin::data_dir(app)));
     chat::init(app);
+    ideas::init(app);
 }
 
 /// One bounded, non-streamed completion for background work (no webview).

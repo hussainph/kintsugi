@@ -194,6 +194,76 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   then answers slowly, word by word. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
   the idle wait. `test/runtime-kin.test.ts` drives it in headless Chromium.
 
+## Ideas (KI-39)
+
+Code: `ai/ideas/` (store, grounding, briefs, Adopt); webview: `src/ideas/`.
+
+- **A helper makes them.** A batch is a helper job of kind `ideas` on the
+  `ideas` model task, so it is background work and waits at the monthly
+  cap. Once a day (checked shortly after start, then every half hour) Kin
+  asks for up to five, if a model for Ideas is set up and the cap allows;
+  "Ask for more" and "Find ideas for this draft" ask for up to three on
+  demand. The brief (`ideas/brief.rs`) carries the rules (never draft prose;
+  observed facts apart from the hunch; 2–4 verbatim quotes), the titles
+  offered in the last two weeks, what Hussain did with earlier ideas, and
+  the Feed items he liked, noted or saved. The helper searches and reads
+  with Kin's tools and replies with JSON between `<ideas>` tags.
+- **Checked before he sees them** (`ideas/ground.rs`). Every quote must
+  appear in the vault file or Feed item it names (typographic quotes,
+  spacing, emphasis and blockquote markers aside; `…` marks an omission).
+  One quote that isn't there drops the whole idea, as do fewer than two
+  quotes, hidden or outside paths, a hunch with paragraphs, headings or
+  lists, and over-long fields. A reason's About you line is kept only if it
+  is really in USER.md. What was dropped, and why, goes in the helper's
+  report in the conversation log. The footprint (searches, files read,
+  seconds, cost) comes from the run itself, not from the model.
+- **App data, not the vault.** `<config>/kin/ideas/<vault key>/ideas.json`
+  (rewritten atomically) and `signals.jsonl` (append-only): dismissed (with
+  optional reasons), undismissed, a reason removed or restored, adopted,
+  discussed, refined, refine undone, and faded (unused for a week, a faint
+  no). The next brief reads the newest 40 back.
+- **Fading** is computed: fresh for three days, thinner until day seven,
+  then "faded this week" until day fourteen. Unused ideas are deleted after
+  30 days. Adopted ideas never fade. Headless runs can move the clock with
+  `KINTSUGI_HEADLESS_IDEAS_DAYS_AHEAD=<days>`.
+- **Adopt** is the one vault write, and only on his click: a new draft in
+  `drafts/` (if the vault has one) with the working title, an empty body and
+  the idea in frontmatter, or the idea added to a draft's frontmatter
+  without touching its body or other fields:
+
+  ```yaml
+  ideas:
+    - id: idea-20261101-090000-1
+      from: kin
+      offered: 2026-11-01
+      title: "You've written about what repair is, never what it costs"
+      hunch: "The essay you haven't written is the cost side…"
+      clips:
+        - "[[posts/on-craft]]"
+        - "[[inspiration/golden-joinery]]"
+  ```
+
+  A draft never links to itself; Feed quotes aren't clips and stay out of
+  the list. An open draft sees the change through `vault:changed`, and the
+  idea and its clips sit beside it (`src/ideas/Beside.tsx`).
+- **Refine** is a helper job of kind `ideas-refine` with the idea and his
+  request. The result passes the same checks, replaces the idea and keeps
+  the earlier version; Undo restores it. **Discuss** opens the chat with an
+  `idea` chip; Kin reads it with the `idea` extra tool. **Why this?** lists
+  the reasons: "Not a reason" is a signal (with undo), and "Fix" opens About
+  you.
+- **Ideas for this draft.** `openIdeas(path)` / `ideasForDraft(path)` in
+  `src/ideas/api.ts` open Ideas filtered to ideas about, quoting or adopted
+  into that document. The editor footer has an "Ideas" link; KI-37's `/`
+  menu and ⌘K can call the same function.
+- **The layout** is KI-22's Ledger (`src/ideas/Ledger.tsx`), the only
+  layout-specific file: `useIdeas` and `parts.tsx` serve any layout, so Desk
+  or Letter is a sibling file swapped in `Ideas.tsx`.
+- Headless: `KINTSUGI_HEADLESS_KIN=mock` makes ideas too. The scripted
+  helper searches, reads the top documents and offers ideas quoting them,
+  plus one with an invented quote that the checks must drop.
+  `test/runtime-ideas.test.ts` drives it in headless Chromium.
+
 ## Settings
 
 Settings (⌘, or the sidebar) shows the privacy statement, this month's

@@ -1,4 +1,4 @@
-import { Bookmark, ChevronRight, FileText, Folder, Rss, Settings, Smartphone, UserRound } from "lucide-react";
+import { Bookmark, ChevronRight, FileText, Folder, Lightbulb, Rss, Settings, Smartphone, UserRound } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
 import {
@@ -35,6 +35,8 @@ type Props = {
   onLibrary: () => void;
   feedOpen: boolean;
   onFeed: () => void;
+  ideasOpen?: boolean;
+  onIdeas?: () => void;
   selectedDir: string;
   onOpen: (path: string) => void;
   onSelectDir: (path: string) => void;
@@ -165,6 +167,12 @@ export function Sidebar(props: Props) {
                 <Bookmark />
                 <span>Inspiration</span>
                 <span className="ml-auto text-[10px] text-muted-foreground">⇧⌘I</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} title="Ideas from Kin">
+                <Lightbulb />
+                <span>Ideas</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
