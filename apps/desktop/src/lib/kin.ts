@@ -25,7 +25,7 @@ export type KinEvent =
   | { type: "text"; delta: string }
   | { type: "toolCall"; id: string; name: string; arguments: unknown }
   | { type: "toolResult"; id: string; isError: boolean; preview: string }
-  | { type: "step"; step: number; usage: Usage; usd: number }
+  | { type: "step"; step: number; usage: Usage; usd: number; stopReason: string | null; textChars: number }
   | { type: "done"; summary: Summary }
   | { type: "error"; message: string };
 

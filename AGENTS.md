@@ -105,6 +105,9 @@ reports native window count, Dock policy and focus.
   name `KINTSUGI_HEADLESS_PI_READONLY=1` still works) only for a read-only AI
   check; OpenCode and Pi credentials are then read without lock, refresh or
   write, so an expired login cannot be refreshed in headless mode.
+  Headless runs don't start the daily Ideas batch on their own; set
+  `KINTSUGI_HEADLESS_IDEAS_DAILY=1` to test it. `KINTSUGI_HEADLESS_WIRE_TRACE=1`
+  prints each model request's shape (no content) to the backend's stderr.
 - To try Kin's chat without any provider, set `KINTSUGI_HEADLESS_KIN=mock`: a
   scripted local model answers (no credentials read, nothing leaves the
   machine, $0). See `docs/kin.md` › The chat.

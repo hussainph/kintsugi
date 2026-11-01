@@ -123,6 +123,11 @@ pub enum Item {
     User(String),
     Assistant { text: String, calls: Vec<ToolCall> },
     Results(Vec<ToolResult>),
+    /// A step's reasoning, opaque and provider-specific: the Codex backend's
+    /// `reasoning` output items (with `encrypted_content`), exactly as they
+    /// came back. Sent back, in place, only to the wire that produced them;
+    /// it precedes the step's [`Item::Assistant`].
+    Reasoning(Vec<Value>),
 }
 
 /// Everything one request sends. The system prompt and tools come first and
@@ -167,6 +172,9 @@ pub struct Reply {
     pub calls: Vec<ToolCall>,
     pub usage: Usage,
     pub stop_reason: Option<String>,
+    /// Codex `reasoning` output items, verbatim, to replay with the next
+    /// request of the same turn (`store: false` keeps no state server-side).
+    pub reasoning: Vec<Value>,
 }
 
 type Result<T> = std::result::Result<T, String>;
@@ -275,7 +283,13 @@ pub(crate) async fn send_with(endpoint: Endpoint<'_>, ex: &Exchange<'_>, mut on_
             on_text(text);
         };
         let failure = match send_once(&client, &endpoint, ex, &mut emit, patience.idle).await {
-            Ok(reply) => return Ok(reply),
+            Ok(reply) => {
+                #[cfg(feature = "headless")]
+                if crate::headless::wire_trace() {
+                    eprintln!("{}", shape(endpoint.provider.id, ex, &reply));
+                }
+                return Ok(reply);
+            }
             Err(failure) => failure,
         };
         let wait = match failure.retry {
@@ -377,6 +391,32 @@ async fn send_once(
     Ok(decoder.finish())
 }
 
+/// One request and its reply as shapes only, never content: what the
+/// headless wire trace (`KINTSUGI_HEADLESS_WIRE_TRACE=1`) prints.
+#[cfg_attr(not(feature = "headless"), allow(dead_code))]
+fn shape(provider: &str, ex: &Exchange, reply: &Reply) -> String {
+    let sent: Vec<String> = ex
+        .items
+        .iter()
+        .map(|item| match item {
+            Item::User(_) => "user".into(),
+            Item::Assistant { calls, .. } => format!("assistant+{}calls", calls.len()),
+            Item::Results(results) => format!("results{}", results.len()),
+            Item::Reasoning(items) => format!("reasoning{}", items.len()),
+        })
+        .collect();
+    format!(
+        "wire: {provider}/{} sent [{}] got calls={} reasoning={} text={} stop={} out={}",
+        ex.model,
+        sent.join(","),
+        reply.calls.len(),
+        reply.reasoning.len(),
+        reply.text.chars().count(),
+        reply.stop_reason.as_deref().unwrap_or("-"),
+        reply.usage.output,
+    )
+}
+
 /// A Retry-After header in seconds (the HTTP-date form is ignored).
 fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     let value = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
@@ -404,6 +444,7 @@ pub(crate) fn anthropic_body(ex: &Exchange) -> Value {
     let mut messages: Vec<Value> = ex
         .items
         .iter()
+        .filter(|item| !matches!(item, Item::Reasoning(_)))
         .map(|item| match item {
             Item::User(text) => json!({ "role": "user", "content": [{ "type": "text", "text": text }] }),
             Item::Assistant { text, calls } => {
@@ -425,6 +466,7 @@ pub(crate) fn anthropic_body(ex: &Exchange) -> Value {
                     "type": "tool_result", "tool_use_id": r.call_id, "content": r.content, "is_error": r.is_error,
                 })).collect::<Vec<_>>(),
             }),
+            Item::Reasoning(_) => unreachable!("filtered above"),
         })
         .collect();
     // A rolling breakpoint on the newest block: the next step reads the whole
@@ -487,6 +529,8 @@ pub(crate) fn openai_body(provider_id: &str, ex: &Exchange) -> Value {
                     .iter()
                     .map(|r| json!({ "role": "tool", "tool_call_id": r.call_id, "content": r.content })),
             ),
+            // Codex's encrypted reasoning means nothing to chat completions.
+            Item::Reasoning(_) => {}
         }
     }
     let mut body = json!({
@@ -524,7 +568,10 @@ pub(crate) fn openai_body(provider_id: &str, ex: &Exchange) -> Value {
     body
 }
 
-/// The request pi-ai's `openai-codex-responses` API sends.
+/// The request pi-ai's `openai-codex-responses` API sends. With `store:
+/// false` the backend keeps nothing between requests, so the model's
+/// reasoning comes back encrypted (`include`) and is replayed within a turn
+/// ([`Item::Reasoning`]).
 pub(crate) fn codex_body(ex: &Exchange) -> Value {
     let mut input = Vec::new();
     for item in ex.items {
@@ -547,6 +594,9 @@ pub(crate) fn codex_body(ex: &Exchange) -> Value {
             Item::Results(results) => input.extend(results.iter().map(|r| json!({
                 "type": "function_call_output", "call_id": r.call_id, "output": r.content,
             }))),
+            // Replayed verbatim (id, summary, encrypted_content), before the
+            // step's message and function calls, as pi-ai does.
+            Item::Reasoning(reasoning) => input.extend(reasoning.iter().cloned()),
         }
     }
     let instructions = if ex.system.is_empty() { "You are a helpful assistant." } else { ex.system };
@@ -557,7 +607,7 @@ pub(crate) fn codex_body(ex: &Exchange) -> Value {
         "instructions": instructions,
         "input": input,
         "text": { "verbosity": "low" },
-        "include": [],
+        "include": ["reasoning.encrypted_content"],
         "tool_choice": "auto",
         "parallel_tool_calls": false,
     });
@@ -575,7 +625,8 @@ pub(crate) fn codex_body(ex: &Exchange) -> Value {
         body["prompt_cache_key"] = json!(key);
     }
     if let Some(effort) = ex.reasoning {
-        body["reasoning"] = json!({ "effort": effort });
+        // pi-ai asks for summaries too ("auto"); Kintsugi doesn't show them.
+        body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
     }
     if let Some(t) = ex.temperature {
         body["temperature"] = json!(t);
@@ -619,12 +670,14 @@ struct Decoder {
     wire: Wire,
     reply: Reply,
     calls: Vec<PartialCall>,
+    /// Codex reasoning items by output index.
+    reasoning: Vec<(u64, Value)>,
     done: bool,
 }
 
 impl Decoder {
     fn new(wire: Wire) -> Self {
-        Decoder { wire, reply: Reply::default(), calls: Vec::new(), done: false }
+        Decoder { wire, reply: Reply::default(), calls: Vec::new(), reasoning: Vec::new(), done: false }
     }
 
     fn call(&mut self, index: u64) -> &mut PartialCall {
@@ -734,6 +787,9 @@ impl Decoder {
                         call.complete = Some(parse_arguments(item["arguments"].as_str().unwrap_or_default()));
                     }
                 }
+                "response.output_item.done" if json["item"]["type"] == "reasoning" => {
+                    self.reasoning.push((n(&json["output_index"]), json["item"].clone()));
+                }
                 "response.function_call_arguments.delta" => {
                     let delta = json["delta"].as_str().unwrap_or_default().to_string();
                     self.call(n(&json["output_index"])).arguments.push_str(&delta);
@@ -746,6 +802,20 @@ impl Decoder {
                     self.reply.usage.cache_read = cached;
                     self.reply.usage.output = n(&usage["output_tokens"]);
                     self.stop(response["incomplete_details"]["reason"].as_str());
+                    // The final output repeats every item: fill in reasoning
+                    // whose `done` event was missed or came without its
+                    // encrypted content.
+                    for (index, item) in response["output"].as_array().into_iter().flatten().enumerate() {
+                        if item["type"] != "reasoning" {
+                            continue;
+                        }
+                        let index = index as u64;
+                        match self.reasoning.iter_mut().find(|(i, _)| *i == index) {
+                            Some((_, kept)) if kept.get("encrypted_content").is_none_or(Value::is_null) => *kept = item.clone(),
+                            Some(_) => {}
+                            None => self.reasoning.push((index, item.clone())),
+                        }
+                    }
                     self.done = true;
                 }
                 "response.failed" => return error(&json["response"]["error"]),
@@ -763,6 +833,14 @@ impl Decoder {
     }
 
     fn finish(mut self) -> Reply {
+        self.reasoning.sort_by_key(|(i, _)| *i);
+        // Without its encrypted content an item can't be replayed.
+        self.reply.reasoning = self
+            .reasoning
+            .into_iter()
+            .map(|(_, item)| item)
+            .filter(|item| item["encrypted_content"].as_str().is_some_and(|c| !c.is_empty()))
+            .collect();
         self.calls.sort_by_key(|c| c.index);
         self.reply.calls = self
             .calls
@@ -934,6 +1012,53 @@ mod tests {
         assert_eq!(reply.usage, Usage { input: 100, output: 9, cache_read: 400, cache_write: 0 });
         let failed = r#"{"type":"response.failed","response":{"error":{"message":"nope"}}}"#;
         assert_eq!(Decoder::new(Wire::Codex).feed(None, failed), Err("nope".into()));
+    }
+
+    #[test]
+    fn decodes_codex_reasoning_items_for_replay() {
+        let reasoning = json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAA-secret" });
+        let (reply, _) = decode(Wire::Codex, &[
+            &json!({ "type": "response.output_item.added", "output_index": 0, "item": { "type": "reasoning", "id": "rs_1", "summary": [] } }).to_string(),
+            &json!({ "type": "response.output_item.done", "output_index": 0, "item": reasoning }).to_string(),
+            r#"{"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","call_id":"call_1","name":"search","arguments":"{}"}}"#,
+            r#"{"type":"response.completed","response":{"usage":{"input_tokens":5,"output_tokens":1}}}"#,
+        ]);
+        assert_eq!(reply.reasoning, vec![reasoning.clone()], "kept verbatim, id and summary included");
+
+        // A `done` without the encrypted content is filled in from the final
+        // output; an item that never gets it is dropped (it can't be replayed).
+        let bare = json!({ "type": "reasoning", "id": "rs_2", "summary": [] });
+        let full = json!({ "type": "reasoning", "id": "rs_2", "summary": [], "encrypted_content": "gBBB" });
+        let lost = json!({ "type": "reasoning", "id": "rs_3", "summary": [] });
+        let completed = json!({ "type": "response.completed", "response": { "output": [full, { "type": "message" }, lost], "usage": {} } });
+        let (reply, _) = decode(Wire::Codex, &[
+            &json!({ "type": "response.output_item.done", "output_index": 0, "item": bare }).to_string(),
+            &completed.to_string(),
+        ]);
+        assert_eq!(reply.reasoning, vec![full]);
+    }
+
+    #[test]
+    fn codex_body_asks_for_and_replays_encrypted_reasoning() {
+        let reasoning = json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "gAAA" });
+        let mut items = sample_items();
+        items.insert(1, Item::Reasoning(vec![reasoning.clone()]));
+        let tools = [tool()];
+        let body = codex_body(&Exchange { reasoning: Some("high"), ..exchange(&items, &tools) });
+        assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
+        assert_eq!(body["reasoning"], json!({ "effort": "high", "summary": "auto" }));
+        assert_eq!(body["store"], false);
+        let input = body["input"].as_array().unwrap();
+        let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap_or("user")).collect();
+        assert_eq!(kinds, ["user", "reasoning", "message", "function_call", "function_call_output"]);
+        assert_eq!(input[1], reasoning);
+        // The other wires never see it.
+        let openai = openai_body("openai", &exchange(&items, &tools));
+        assert_eq!(openai["messages"].as_array().unwrap().len(), 4);
+        assert!(!openai.to_string().contains("gAAA"));
+        let anthropic = anthropic_body(&exchange(&items, &tools));
+        assert_eq!(anthropic["messages"].as_array().unwrap().len(), 3);
+        assert!(!anthropic.to_string().contains("gAAA"));
     }
 
     #[test]

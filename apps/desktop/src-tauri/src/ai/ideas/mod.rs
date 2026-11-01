@@ -331,7 +331,12 @@ pub async fn daily(app: &AppHandle) -> Result<bool> {
 }
 
 /// Checks for the daily batch soon after start, then every half hour.
+/// Headless runs skip it unless `KINTSUGI_HEADLESS_IDEAS_DAILY=1`.
 pub fn init(app: &AppHandle) {
+    #[cfg(feature = "headless")]
+    if !crate::headless::ideas_daily() {
+        return;
+    }
     let app = app.clone();
     async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(8)).await;

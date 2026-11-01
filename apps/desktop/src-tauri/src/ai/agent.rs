@@ -121,6 +121,29 @@ impl Default for Limits {
     }
 }
 
+impl Limits {
+    /// Helpers that end in one long structured report (a batch of ideas with
+    /// quotes) need room for it on top of a reasoning model's thinking,
+    /// which counts against the same budget on most gateways.
+    pub fn report() -> Self {
+        Limits { max_tokens: 16_384, ..Limits::default() }
+    }
+}
+
+/// Steps left (this one included) when Kin is told to stop using tools and
+/// answer: without it a thorough model can spend the whole budget looking.
+pub const WRAP_UP_AT: usize = 3;
+
+pub fn wrap_up(left: usize) -> String {
+    format!(
+        "<harness>{left} model calls left in this turn. Stop searching and reading now and give your final answer \
+         (or the report your brief asks for) with what you have. A call that only uses tools may leave you with no answer.</harness>"
+    )
+}
+
+/// Sent once when a step ends with neither text nor tool calls.
+pub const EMPTY_REPLY: &str = "<harness>Your last reply was empty. Give your final answer now, as text, without calling more tools.</harness>";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stop {
@@ -157,9 +180,9 @@ pub enum KinEvent {
     ToolCall { id: String, name: String, arguments: Value },
     #[serde(rename_all = "camelCase")]
     ToolResult { id: String, is_error: bool, preview: String },
-    /// A step finished and was charged.
+    /// A step finished and was charged. Its tool calls follow.
     #[serde(rename_all = "camelCase")]
-    Step { step: usize, usage: Usage, usd: f64 },
+    Step { step: usize, usage: Usage, usd: f64, stop_reason: Option<String>, text_chars: usize },
     Done { summary: Summary },
     Error { message: String },
 }
@@ -210,7 +233,13 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
         model: format!("{}/{}", reference.provider, reference.model),
         cap_reached: false,
     };
+    let mut nudged_empty = false;
     for step in 1..=limits.max_steps {
+        let left = limits.max_steps - step + 1;
+        if step > 1 && left == WRAP_UP_AT {
+            // Appended, like everything else: the cached prefix is untouched.
+            items.push(Item::User(wrap_up(left)));
+        }
         if cancel.is_cancelled() {
             summary.stop = Stop::Cancelled;
             break;
@@ -248,9 +277,20 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
         summary.usage.add(&reply.usage);
         summary.usd += usd;
         summary.text = reply.text.clone();
-        emit(KinEvent::Step { step, usage: reply.usage, usd });
+        let text_chars = reply.text.chars().count();
+        emit(KinEvent::Step { step, usage: reply.usage, usd, stop_reason: reply.stop_reason.clone(), text_chars });
 
         if reply.calls.is_empty() {
+            // Some models end a turn with nothing to show (all thinking, no
+            // text): ask once more for the answer rather than report nothing.
+            if reply.text.trim().is_empty() && !nudged_empty && step < limits.max_steps {
+                nudged_empty = true;
+                // Its reasoning isn't replayed: Codex rejects reasoning
+                // that no output item follows.
+                items.push(Item::Assistant { text: String::new(), calls: vec![] });
+                items.push(Item::User(EMPTY_REPLY.into()));
+                continue;
+            }
             summary.stop = Stop::Answered;
             break;
         }
@@ -266,6 +306,11 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
             results.push(ToolResult { call_id: call.id.clone(), content: output.content, is_error: output.is_error });
         }
         summary.tool_calls += results.len();
+        // Codex's reasoning goes back with its step: the model keeps its
+        // train of thought across the tool loop.
+        if !reply.reasoning.is_empty() {
+            items.push(Item::Reasoning(reply.reasoning));
+        }
         items.push(Item::Assistant { text: reply.text, calls: reply.calls });
         items.push(Item::Results(results));
     }
@@ -350,6 +395,7 @@ pub(crate) mod tests {
                 .collect(),
             usage: Usage { input: 1_000, output: 100, cache_read: 0, cache_write: 2_000 },
             stop_reason: Some("tool_use".into()),
+            reasoning: vec![],
         }
     }
 
@@ -359,6 +405,7 @@ pub(crate) mod tests {
             calls: vec![],
             usage: Usage { input: 200, output: 300, cache_read: 3_000, cache_write: 0 },
             stop_reason: Some("end_turn".into()),
+            reasoning: vec![],
         }
     }
 
@@ -538,6 +585,42 @@ pub(crate) mod tests {
         let (result, events) = run_turn(&f, &empty, &turn(false), &Cancel::default());
         assert_eq!(result, Err("the mock ran out of replies".into()));
         assert_eq!(events, vec![KinEvent::Error { message: "the mock ran out of replies".into() }]);
+    }
+
+    #[test]
+    fn kin_is_told_to_wrap_up_three_steps_before_the_limit() {
+        let f = fixture();
+        let mut replies: Vec<Reply> = (0..4).map(|i| calls(&[(&format!("c{i}"), "list", json!({}))], "")).collect();
+        replies.push(answer("Here is what I found."));
+        let mock = Mock::new(replies);
+        let limits = Limits { max_steps: 6, max_tokens: 100 };
+        let summary = block_on(run(&mock, &f.harness(&Cancel::default(), limits), &turn(true), &mut |_| {})).unwrap();
+        assert_eq!((summary.stop, summary.steps), (Stop::Answered, 5));
+        let seen = mock.seen.lock().unwrap();
+        let nudges = |i: usize| seen[i].items.iter().filter(|item| matches!(item, Item::User(t) if t.contains("model calls left"))).count();
+        // Step 4 of 6 is the first with three calls left.
+        assert_eq!((nudges(2), nudges(3), nudges(4)), (0, 1, 1));
+        assert!(matches!(seen[3].items.last(), Some(Item::User(t)) if t == &wrap_up(3)));
+        assert!(matches!(&seen[3].items[seen[3].items.len() - 2], Item::Results(_)), "after the last results");
+    }
+
+    #[test]
+    fn an_empty_answer_is_asked_for_again_once() {
+        let f = fixture();
+        let mut empty = answer("");
+        empty.stop_reason = Some("length".into());
+        let mock = Mock::new(vec![calls(&[("c1", "list", json!({}))], ""), empty.clone(), answer("The report.")]);
+        let mut events = Vec::new();
+        let summary = block_on(run(&mock, &f.harness(&Cancel::default(), Limits::default()), &turn(true), &mut |e| events.push(e))).unwrap();
+        assert_eq!((summary.stop, summary.steps, summary.text.as_str()), (Stop::Answered, 3, "The report."));
+        let seen = mock.seen.lock().unwrap();
+        assert!(matches!(seen[2].items.last(), Some(Item::User(t)) if t == EMPTY_REPLY));
+        assert!(events.iter().any(|e| matches!(e, KinEvent::Step { step: 2, stop_reason: Some(r), text_chars: 0, .. } if r == "length")));
+
+        // Only once: a second empty answer ends the turn.
+        let twice = Mock::new(vec![empty.clone(), empty]);
+        let summary = block_on(run(&twice, &f.harness(&Cancel::default(), Limits::default()), &turn(true), &mut |_| {})).unwrap();
+        assert_eq!((summary.stop, summary.steps, summary.text.as_str()), (Stop::Answered, 2, ""));
     }
 
     #[test]
@@ -760,6 +843,49 @@ pub(crate) mod tests {
             assert!(session.starts_with("ses_"));
             assert_eq!(requests[0].0, requests[1].0);
             assert_eq!(requests[0].1["max_tokens"].is_number(), true);
+        }
+
+        /// Codex with `store: false`: each step's encrypted reasoning goes
+        /// back with the next request of the turn, before its function call.
+        #[test]
+        fn codex_turn_replays_encrypted_reasoning_through_the_tool_loop() {
+            let f = fixture();
+            let reasoning = |id: &str, secret: &str| json!({ "type": "reasoning", "id": id, "summary": [], "encrypted_content": secret });
+            let step = |n: u64, call: &str, query: &str, secret: &str| sse(&[
+                json!({ "type": "response.output_item.added", "output_index": 0, "item": { "type": "reasoning", "id": format!("rs_{n}"), "summary": [] } }),
+                json!({ "type": "response.output_item.done", "output_index": 0, "item": reasoning(&format!("rs_{n}"), secret) }),
+                json!({ "type": "response.output_item.done", "output_index": 1, "item": { "type": "function_call", "id": format!("fc_{n}"), "call_id": call, "name": "search", "arguments": json!({ "query": query }).to_string() } }),
+                json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 900, "output_tokens": 40 } } }),
+            ]);
+            let last = sse(&[
+                json!({ "type": "response.output_item.done", "output_index": 0, "item": reasoning("rs_3", "enc-3") }),
+                json!({ "type": "response.output_text.delta", "delta": "posts/kintsugi.md" }),
+                json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 1200, "output_tokens": 10 } } }),
+            ]);
+            let rt = runtime();
+            let (base, recorded) = rt.block_on(provider("/codex/responses", vec![step(1, "call_1", "kiln", "enc-1"), step(2, "call_2", "glaze", "enc-2"), last]));
+            let mut codex = remote("openai-codex", "gpt-6-luna", base);
+            codex.auth = Some(Auth::Bearer { token: "test-token".into(), account_id: Some("acct".into()) });
+            let summary = run_remote(&rt, &f, &codex);
+            assert_eq!((summary.stop, summary.steps, summary.text.as_str()), (Stop::Answered, 3, "posts/kintsugi.md"));
+
+            let requests = recorded.lock().unwrap();
+            assert_eq!(requests[0].0, "Bearer test-token");
+            assert!(requests.iter().all(|(_, body)| body["include"] == json!(["reasoning.encrypted_content"]) && body["store"] == false));
+            let kinds = |i: usize| -> Vec<String> {
+                requests[i].1["input"].as_array().unwrap().iter().map(|i| i["type"].as_str().unwrap_or("user").to_string()).collect()
+            };
+            assert_eq!(kinds(0), ["user"]);
+            assert_eq!(kinds(1), ["user", "reasoning", "function_call", "function_call_output"]);
+            assert_eq!(kinds(2), ["user", "reasoning", "function_call", "function_call_output", "reasoning", "function_call", "function_call_output"]);
+            let input = requests[2].1["input"].as_array().unwrap();
+            // Verbatim, in order, each before its own step's call.
+            assert_eq!(input[1], reasoning("rs_1", "enc-1"));
+            assert_eq!(input[2]["call_id"], "call_1");
+            assert_eq!(input[4], reasoning("rs_2", "enc-2"));
+            assert_eq!(input[5]["call_id"], "call_2");
+            // The prefix is append-only, so it stays cacheable.
+            assert_eq!(requests[1].1["input"].as_array().unwrap()[..], input[..4]);
         }
 
         #[test]

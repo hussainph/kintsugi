@@ -46,7 +46,7 @@ fn first_chip(message: &str) -> Option<String> {
 }
 
 fn reply(text: String, calls: Vec<ToolCall>) -> Reply {
-    Reply { text, calls, usage: Usage { input: 0, output: 0, cache_read: 0, cache_write: 0 }, stop_reason: None }
+    Reply { text, calls, usage: Usage { input: 0, output: 0, cache_read: 0, cache_write: 0 }, stop_reason: None, reasoning: vec![] }
 }
 
 impl Model for Scripted {

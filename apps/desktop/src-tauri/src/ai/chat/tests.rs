@@ -377,6 +377,9 @@ fn helper_jobs_run_in_the_background_and_report_quietly() {
     wait("the job to finish", || f.engine.jobs()[0].status == Status::Done);
     let done = &f.engine.jobs()[0];
     assert_eq!(done.result.as_deref(), Some("Three kiln clips; ranked posts/kintsugi.md first."));
+    // Its step trace is kept: tool names and stop reasons, no content.
+    let steps: Vec<_> = done.steps.iter().map(|s| (s.step, s.tools.clone())).collect();
+    assert_eq!(steps, [(1, vec!["search".to_string()]), (2, vec![])]);
     // Its own context: the brief and the memory snapshot, nothing of the chat.
     let seen = f.script.seen();
     assert!(seen[0].system.contains("Likes short essays.") && seen[0].system.contains("Drafts live in drafts/."));
@@ -390,6 +393,19 @@ fn helper_jobs_run_in_the_background_and_report_quietly() {
     assert!(f.events().iter().any(|e| matches!(e, ChatEvent::Job { job } if job.status == Status::Running)));
     // Its cost went on the ledger as the triage task.
     assert_eq!(f.engine.0.brain.meter.report().by_task[0].task, "triage");
+}
+
+#[test]
+fn a_helper_that_never_reports_says_why() {
+    let mut empty = answer("");
+    empty.stop_reason = Some("length".into());
+    let f = fixture(vec![empty.clone(), empty], Duration::ZERO);
+    f.engine.create_job(NewJob { kind: "ideas".into(), task: Some("ideas".into()), brief: "Find ideas.".into(), topic: None }).unwrap();
+    wait("the job to fail", || f.engine.jobs()[0].status == Status::Failed);
+    let failed = &f.engine.jobs()[0];
+    assert_eq!(failed.error.as_deref(), Some("The helper ended without a report: it used its whole reply on thinking."));
+    assert_eq!(failed.steps.len(), 2, "asked once more before giving up");
+    assert_eq!(failed.steps[1].stop.as_deref(), Some("length"));
 }
 
 #[test]

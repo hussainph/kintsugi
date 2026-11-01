@@ -405,10 +405,15 @@ impl<B: Brain> Engine<B> {
                 tools = tools.with_memory(access);
             }
             let memory = self.0.brain.memory(&vault);
-            let harness = Harness { tools: &tools, meter, memory: &memory, cancel, limits: Limits::default() };
+            // A helper's report (a batch of ideas) is long; give it room.
+            let limits = if chat { Limits::default() } else { Limits::report() };
+            let harness = Harness { tools: &tools, meter, memory: &memory, cancel, limits };
             let mut emit = |event: KinEvent| {
                 match &event {
                     KinEvent::Text { delta } => streamed.push_str(delta),
+                    KinEvent::Step { step, usage, stop_reason, text_chars, .. } => {
+                        trace.step(*step, stop_reason.as_deref(), *text_chars, usage.output)
+                    }
                     // Text before a tool call was thinking aloud.
                     KinEvent::ToolCall { name, arguments, .. } => {
                         streamed.clear();
@@ -590,7 +595,16 @@ impl<B: Brain> Engine<B> {
         let (status, text, error, usd) = match result {
             Ok(s) if s.stop == Stop::CapReached => (Status::Waiting, None, Some(super::cost::CapReached::MESSAGE.to_string()), s.usd),
             Ok(s) if s.stop == Stop::Cancelled => (Status::Cancelled, None, None, s.usd),
-            Ok(s) if s.text.trim().is_empty() => (Status::Failed, None, Some("The helper ran out of steps without a report.".into()), s.usd),
+            Ok(s) if s.text.trim().is_empty() && s.stop == Stop::StepLimit => {
+                (Status::Failed, None, Some("The helper ran out of steps without a report.".into()), s.usd)
+            }
+            Ok(s) if s.text.trim().is_empty() => {
+                let why = match trace.steps.last().and_then(|t| t.stop.as_deref()) {
+                    Some("length" | "max_tokens" | "max_output_tokens") => "it used its whole reply on thinking",
+                    _ => "its reply was empty",
+                };
+                (Status::Failed, None, Some(format!("The helper ended without a report: {why}.")), s.usd)
+            }
             Ok(s) => match self.0.brain.finish_job(&job, s.text, &trace) {
                 Ok(report) => (Status::Done, Some(report), None, s.usd),
                 Err(e) => (Status::Failed, None, Some(e), s.usd),
@@ -598,6 +612,10 @@ impl<B: Brain> Engine<B> {
             Err(e) if e == super::cost::CapReached::MESSAGE => (Status::Waiting, None, Some(e), 0.0),
             Err(e) => (Status::Failed, None, Some(e), 0.0),
         };
+        // The step trace, for working out why a helper failed: tool names,
+        // stop reasons and token counts only.
+        eprintln!("kin: helper {} ({}) {:?}: {}", job.id, job.kind, status, trace.line());
+        self.0.jobs.lock().unwrap().update(&job.id, |j| j.steps = trace.steps.clone());
         // Report back quietly, before the job reads as finished: a helper
         // entry in the log, no interruption.
         if matches!(status, Status::Done | Status::Failed) {

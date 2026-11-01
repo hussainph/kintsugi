@@ -71,6 +71,41 @@ pub struct Job {
     /// Times it has started (a quit or the cap can interrupt it).
     #[serde(default)]
     pub attempts: u32,
+    /// The last run, step by step: tool names, stop reasons and token
+    /// counts, never content. Why a helper ended without a report.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<StepTrace>,
+}
+
+/// One model call of a helper's run.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StepTrace {
+    pub step: usize,
+    /// The tools it called, in order.
+    #[serde(default)]
+    pub tools: Vec<String>,
+    /// The provider's stop reason (`stop`, `length`, `tool_calls`, …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop: Option<String>,
+    /// Characters of visible text.
+    pub text: usize,
+    pub output_tokens: u64,
+}
+
+impl StepTrace {
+    /// `3 search,read` or `9 stop=length text=0 out=4096`.
+    pub fn line(&self) -> String {
+        let mut out = format!("{}", self.step);
+        if !self.tools.is_empty() {
+            out.push_str(&format!(" {}", self.tools.join(",")));
+        }
+        if let Some(stop) = &self.stop {
+            out.push_str(&format!(" stop={stop}"));
+        }
+        out.push_str(&format!(" text={} out={}", self.text, self.output_tokens));
+        out
+    }
 }
 
 /// What a helper's run looked like: its footprint (searches, files read,
@@ -86,12 +121,27 @@ pub struct Trace {
     pub usd: f64,
     /// `provider/model`.
     pub model: String,
+    pub steps: Vec<StepTrace>,
 }
 
 impl Trace {
+    /// Notes one finished model call; its tool calls follow.
+    pub fn step(&mut self, step: usize, stop: Option<&str>, text: usize, output_tokens: u64) {
+        self.steps.push(StepTrace { step, tools: vec![], stop: stop.map(String::from), text, output_tokens });
+    }
+
+    /// One line for the log: `kimi-k3: 1 search | 2 read,read | …`.
+    pub fn line(&self) -> String {
+        let steps: Vec<String> = self.steps.iter().map(StepTrace::line).collect();
+        format!("{} in {} ms: {}", self.model, self.millis, steps.join(" | "))
+    }
+
     /// Notes one tool call.
     pub fn call(&mut self, name: &str, arguments: &serde_json::Value) {
         self.tool_calls += 1;
+        if let Some(step) = self.steps.last_mut() {
+            step.tools.push(name.into());
+        }
         match name {
             "search" => self.searches.push(arguments["query"].as_str().unwrap_or_default().into()),
             "read" => {
@@ -175,6 +225,7 @@ impl Table {
             error: None,
             usd: 0.0,
             attempts: 0,
+            steps: vec![],
         };
         self.jobs.push(job.clone());
         self.prune();

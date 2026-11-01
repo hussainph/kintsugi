@@ -55,6 +55,8 @@ async function start(env: Record<string, string> = {}) {
       KINTSUGI_FRONTEND_PORT: String(frontend),
       KINTSUGI_BACKEND_PORT: String(backend),
       KINTSUGI_HEADLESS_KIN: "mock",
+      // Headless skips the daily batch unless asked; this suite tests it.
+      KINTSUGI_HEADLESS_IDEAS_DAILY: "1",
       ...env,
     },
   });
