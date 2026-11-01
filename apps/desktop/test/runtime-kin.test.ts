@@ -216,8 +216,11 @@ test("helper jobs run in the background and report back quietly", { timeout: 60_
   await shot("07-helper-report");
 
   // Durable, in app data, never in the vault.
-  const table = JSON.parse(readFileSync(resolve(config, "kin/jobs.json"), "utf8")) as { id: string; status: string }[];
-  assert.equal(table.find((j) => j.id === job.id)?.status, "done");
+  // The report is logged before the job reads as finished (ai/chat.rs), so
+  // the table can lag the message on screen: wait for it, don't assume it.
+  const status = () => (JSON.parse(readFileSync(resolve(config, "kin/jobs.json"), "utf8")) as { id: string; status: string }[]).find((j) => j.id === job.id)?.status;
+  for (const end = Date.now() + 30_000; status() !== "done" && Date.now() < end; ) await page.waitForTimeout(100);
+  assert.equal(status(), "done");
   const log = readFileSync(resolve(config, "kin/conversation/log.jsonl"), "utf8");
   assert.ok(log.includes("Is the gold metaphor overworked here?") && log.includes(`"job":"${job.id}"`));
   assert.ok(existsSync(resolve(config, "kin/conversation/threads.json")));

@@ -109,6 +109,8 @@ export default function App() {
   docPath.current = doc?.path ?? null;
   const blockedRef = useRef<Blocked | null>(null);
   const known = useRef(new Map<string, string>());
+  /** Bumped by every openDoc; only the latest may land. */
+  const opening = useRef(0);
   const metaChanged = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const rootRef = useRef<string | null>(null);
@@ -252,6 +254,9 @@ export default function App() {
     /** `behind`: load it into the editor without leaving the view that's
      *  showing (the startup open must not undo ⇧⌘E pressed meanwhile). */
     async (path: string, behind?: boolean) => {
+      // The latest open wins: a slower read of an earlier one (the startup
+      // open, or a quick second click) must not replace it when it lands.
+      const ticket = ++opening.current;
       setPalette(null);
       if (!(await settle("opened that document"))) return;
       if (behind !== true) {
@@ -261,6 +266,7 @@ export default function App() {
       }
       try {
         const contents = await vault.read(path);
+        if (ticket !== opening.current) return;
         // Already open (clicked again, or the startup open raced a click):
         // the editor's text is newer than this read, so leave it be.
         if (docPath.current !== path) {
@@ -398,19 +404,23 @@ export default function App() {
       // StrictMode runs twice) nothing is open yet, unless he opened it while
       // the vault was loading: leave that be.
       const switching = rootRef.current !== null && rootRef.current !== path;
+      const opened = opening.current;
       rootRef.current = path;
       setRoot(path);
-      setDoc(null);
       setOpenClip(undefined);
       if (switching) {
+        setDoc(null);
+        setText("");
         setLibraryOpen(false);
         setFeedOpen(false);
         setIdeasOpen(null);
       }
-      setText("");
       setSelectedDir("");
       setTagFilter([]);
       const all = flatten(await refresh());
+      // He opened a document while the vault loaded (or StrictMode's other
+      // run already did): that one stays, not the startup pick (KI-47).
+      if (opening.current !== opened) return;
       const last = lastOpened.get(path);
       const pick = all.find((d) => d.path === last) ?? all[0];
       // A view opened while the vault loaded (Feed, Inspiration, Ideas) stays open.

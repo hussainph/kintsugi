@@ -231,12 +231,15 @@ test("at phone width with touch, the pickers fit the screen and rows are tap tar
   await phone.locator(".cm-line").last().tap();
   await phone.keyboard.press("Control+End");
   await phone.keyboard.type("\n\nA long line of prose that runs right to the edge [[");
-  await phone.locator(".cm-reference-picker").waitFor();
+  // The picker re-renders its rows and hint when the search answers (KI-47:
+  // measuring a row before then caught it detached), so wait for the results.
+  await phone.locator(".cm-reference-picker .cm-kintsugi-menu-touch", { hasText: /^Tap/, hasNotText: "Searching" }).waitFor();
   await fits(".cm-reference-picker");
   assert.ok(await phone.locator(".cm-reference-picker .cm-kintsugi-menu-touch").isVisible(), "touch hint, not key hints");
   assert.equal(await phone.locator(".cm-reference-picker .cm-kintsugi-menu-keys").isVisible(), false);
-  const row = (await phone.locator(".cm-reference-option").first().boundingBox())!;
-  assert.ok(row.height >= 44, `tap target ${row.height}px`);
+  // Measured in one step in the page, so a re-render can't detach it in between.
+  const height = await phone.locator(".cm-reference-option").first().evaluate((row) => row.getBoundingClientRect().height);
+  assert.ok(height >= 44, `tap target ${height}px`);
   await shot("11-phone-link-picker", phone);
   await phone.locator(".cm-reference-option").first().tap();
   await phone.locator(".cm-reference-chip").last().waitFor();
