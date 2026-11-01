@@ -119,12 +119,16 @@ test("⌘P filters by #tag and suggests tags", { timeout: TIMEOUT }, async () =>
   assert.equal(await palette().getByRole("combobox").inputValue(), "#craft ");
   const options = palette().getByRole("option");
   await palette().getByRole("option", { name: /Kiln notes/ }).waitFor();
+  await palette().getByRole("option", { name: /On craft and repair/ }).waitFor();
   const names = await options.allInnerTexts();
   assert.equal(names.length, 2, names.join(" | "));
   assert.ok(names.some((n) => n.includes("On craft and repair")));
 
   // Words after the tag still match titles.
   await palette().getByRole("combobox").fill("#craft kiln");
+  // Kiln notes was already listed: wait for the other one to go, or the
+  // count can read the list from before the filter (KI-47).
+  await palette().getByRole("option", { name: /On craft and repair/ }).waitFor({ state: "detached" });
   await palette().getByRole("option", { name: /Kiln notes/ }).waitFor();
   assert.equal(await options.count(), 1);
   await shot("05-jump-tag-filter");
