@@ -147,6 +147,10 @@ Patterns that made the suite fail now and then, mostly on a loaded machine:
   shows "2 posts, mirrored read-only" as soon as the folder is saved, from a
   count of the repository; the import that writes the mirror runs after it.
   Wait for the import's summary toast before reading the mirror.
+- **Waiting for something that was already there.** After narrowing a
+  list (⌘P `#craft` → `#craft kiln`), waiting for a row that both lists
+  share passes at once, and a count can read the list from before the
+  filter. Wait for a row that must go to be detached, then count.
 - **Counting before a batch is in.** Wait for the status that says the
   batch has arrived ("Two from Kin today"), then count rows.
 - **App races that look like flakiness.** As in KI-39, check the app before
