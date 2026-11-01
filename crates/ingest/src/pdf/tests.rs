@@ -38,11 +38,15 @@ impl PdfConverter for Failing {
     }
 }
 
-const EXPECTED: &str = "## The golden seam
+const EXPECTED: &str = "<!-- page 1 -->
+
+## The golden seam
 
 Kintsugi repairs broken pottery with lacquer dusted in gold, so the crack becomes the most visible part of the bowl. The repair is not hidden; it is part of the object’s history and its beauty.
 
 Menders work slowly, in thin layers.
+
+<!-- page 2 -->
 
 ## Patience
 
@@ -55,11 +59,12 @@ fn lines_become_headings_and_paragraphs_without_running_headers() {
 
 #[test]
 fn layout_joins_pages_mid_sentence_and_keeps_lists() {
-    let line = |text: &str, size: f64, y: f64| layout::Line { text: text.into(), size, bold: false, y };
+    let line = |text: &str, size: f64, y: f64| layout::Line { text: text.into(), size, y, ..Default::default() };
     let doc = PdfText {
         pages: vec![
             layout::PageText {
                 page: 1,
+                width: None,
                 lines: vec![
                     line("A sentence that carries", 10.0, 700.0),
                     line("over the page", 10.0, 688.0),
@@ -68,6 +73,7 @@ fn layout_joins_pages_mid_sentence_and_keeps_lists() {
             },
             layout::PageText {
                 page: 2,
+                width: None,
                 lines: vec![
                     line("break and ends here.", 10.0, 700.0),
                     line("• first point", 10.0, 688.0),
@@ -80,7 +86,7 @@ fn layout_joins_pages_mid_sentence_and_keeps_lists() {
     };
     assert_eq!(
         layout::markdown(&doc),
-        "A sentence that carries over the page break and ends here.\n\n- first point\n\n- \\# not a heading\n\n\\<script> stays text"
+        "<!-- page 1 -->\n\nA sentence that carries over the page break and ends here.\n\n<!-- page 2 -->\n\n- first point\n\n- \\# not a heading\n\n\\<script> stays text"
     );
 }
 
@@ -318,4 +324,105 @@ fn live_docling() {
     let markdown = run(Docling::new(tools).convert(Path::new(FIXTURE))).unwrap();
     println!("{markdown}");
     assert!(markdown.contains("golden seam"), "{markdown}");
+}
+
+fn placed(text: &str, x: f64, width: f64, y: f64) -> layout::Line {
+    layout::Line { text: text.into(), size: 10.0, y, x: Some(x), width: Some(width), height: Some(10.0), ..Default::default() }
+}
+
+#[test]
+fn two_column_pages_are_read_one_column_after_the_other() {
+    // PDFKit's order interleaves the columns, as it did on the Local-first
+    // paper's first page: an author block beside the abstract.
+    let page = |page: usize, lines: Vec<layout::Line>| layout::PageText { page, width: Some(612.0), lines };
+    let doc = PdfText {
+        pages: vec![
+            page(
+                1,
+                vec![
+                    placed("Running header for the paper", 150.0, 300.0, 760.0),
+                    placed("Left column opens the argument and", 54.0, 240.0, 700.0),
+                    placed("Right column picks the thought up", 318.0, 240.0, 700.0),
+                    placed("keeps going down the page until", 54.0, 240.0, 688.0),
+                    placed("and finishes it here.", 318.0, 240.0, 688.0),
+                    placed("it ends here.", 54.0, 100.0, 676.0),
+                    placed("A last right line.", 318.0, 100.0, 650.0),
+                    placed("Figure 1. A caption across the page, under both columns.", 54.0, 504.0, 600.0),
+                    placed("2.2 Your Work Is Not Trapped", 54.0, 200.0, 560.0),
+                    placed("Below the figure, left.", 54.0, 240.0, 545.0),
+                    placed("Below the figure, right.", 318.0, 240.0, 545.0),
+                ],
+            ),
+            page(2, vec![placed("Running header for the paper", 150.0, 300.0, 760.0), placed("Page two text.", 54.0, 240.0, 700.0)]),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(
+        layout::markdown(&doc),
+        "<!-- page 1 -->\n\n\
+         Left column opens the argument and keeps going down the page until it ends here.\n\n\
+         Right column picks the thought up and finishes it here. A last right line.\n\n\
+         Figure 1. A caption across the page, under both columns.\n\n\
+         #### 2.2 Your Work Is Not Trapped\n\n\
+         Below the figure, left.\n\n\
+         Below the figure, right.\n\n\
+         <!-- page 2 -->\n\n\
+         Page two text."
+    );
+}
+
+#[test]
+fn single_column_pages_keep_the_helper_order() {
+    let lines = vec![
+        placed("A full-width line that spans the page from margin to margin.", 72.0, 468.0, 700.0),
+        placed("short", 72.0, 40.0, 688.0),
+        placed("Another full-width line across the whole text block here.", 72.0, 468.0, 676.0),
+        placed("right", 400.0, 40.0, 664.0),
+    ];
+    let doc = PdfText { pages: vec![layout::PageText { page: 1, width: Some(612.0), lines }], ..Default::default() };
+    assert_eq!(
+        layout::markdown(&doc),
+        "A full-width line that spans the page from margin to margin. short Another full-width line across the whole text block here. right"
+    );
+}
+
+#[test]
+fn numbered_section_lines_become_headings_and_sentences_do_not() {
+    let line = |text: &str, bold: bool, y: f64| layout::Line { text: text.into(), size: 10.0, bold, y, ..Default::default() };
+    let doc = PdfText {
+        pages: vec![layout::PageText {
+            page: 1,
+            width: None,
+            lines: vec![
+                line("2 Motivation", true, 700.0),
+                line("Body text that runs on for a while and wraps.", false, 685.0),
+                line("2.1 No Spinners: Your Work at Your Fingertips", false, 660.0),
+                line("2.1 percent of users noticed.", false, 645.0),
+                line("3.1 the lowercase rest", false, 630.0),
+            ],
+        }],
+        ..Default::default()
+    };
+    assert_eq!(
+        layout::markdown(&doc),
+        "### 2 Motivation\n\nBody text that runs on for a while and wraps.\n\n#### 2.1 No Spinners: Your Work at Your Fingertips\n\n\\2.1 percent of users noticed. 3.1 the lowercase rest"
+    );
+}
+
+#[test]
+fn page_markers_name_their_page() {
+    assert_eq!(layout::page_marker(12), "<!-- page 12 -->");
+    assert_eq!(layout::marker_page(" <!-- page 12 --> "), Some(12));
+    assert_eq!(layout::marker_page("\\<!-- page 12 -->"), None);
+    assert_eq!(layout::marker_page("<!-- kintsugi:source -->"), None);
+}
+
+/// Prints the layout of a saved helper output: `KINTSUGI_PDF_JSON=out.json
+/// cargo test -p kintsugi-ingest -- --ignored dump_layout --nocapture`.
+#[test]
+#[ignore = "a manual check of a real PDF's helper output"]
+fn dump_layout() {
+    let path = std::env::var("KINTSUGI_PDF_JSON").expect("KINTSUGI_PDF_JSON");
+    let text: PdfText = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    println!("{}", layout::markdown(&text));
 }

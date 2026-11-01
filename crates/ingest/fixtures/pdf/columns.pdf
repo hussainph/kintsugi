@@ -1,0 +1,56 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 7 0 R /F2 8 0 R >> >> /Contents 6 0 R >>
+endobj
+5 0 obj
+<< /Length 557 >>
+stream
+BT /F2 20 Tf 72 720 Td (Two columns, read in order) Tj ET
+BT /F1 10 Tf 72 680 Td (Left column opens the argument and) Tj ET
+BT /F1 10 Tf 330 680 Td (Right column follows on and) Tj ET
+BT /F1 10 Tf 72 666 Td (keeps going down the page until) Tj ET
+BT /F1 10 Tf 330 666 Td (finishes the thought.) Tj ET
+BT /F1 10 Tf 72 652 Td (it ends here.) Tj ET
+BT /F1 10 Tf 330 652 Td (A second right paragraph) Tj ET
+BT /F2 10 Tf 72 624 Td (2.1 No spinners) Tj ET
+BT /F1 10 Tf 330 624 Td (closes the page.) Tj ET
+BT /F1 10 Tf 72 610 Td (Work is at your fingertips.) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Length 64 >>
+stream
+BT /F1 10 Tf 72 700 Td (The second page says where it is.) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000257 00000 n 
+0000000393 00000 n 
+0000001001 00000 n 
+0000001115 00000 n 
+0000001185 00000 n 
+trailer
+<< /Size 9 /Root 1 0 R >>
+startxref
+1260
+%%EOF

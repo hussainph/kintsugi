@@ -4,16 +4,18 @@ use std::process::Command;
 fn main() {
     swift_helper("transcribe", "podcast transcription");
     swift_helper("pdf", "reading PDFs");
+    swift_helper("vision", "reading text in images");
     tauri_build::build()
 }
 
 /// Builds a Swift helper from `crates/ingest/swift/<name>.swift` as a Tauri
 /// sidecar: `binaries/kintsugi-<name>-<target>`, shipped beside the app
 /// binary. `transcribe` is on-device transcription (Apple SpeechAnalyzer);
-/// `pdf` reads PDFs with Apple PDFKit. Off macOS, or without a Swift
+/// `pdf` reads PDFs with Apple PDFKit; `vision` reads text and labels in
+/// images with Apple Vision. Off macOS, or without a Swift
 /// toolchain, a stub that reports "unsupported" (exit 3) takes its place,
-/// so podcasts fall back to show notes (and PDFs to Docling, if installed)
-/// instead of breaking the build.
+/// so podcasts fall back to show notes (PDFs to Docling, if installed, and
+/// images to having no machine text) instead of breaking the build.
 fn swift_helper(name: &str, purpose: &str) {
     let source = Path::new("../../../crates/ingest/swift").join(format!("{name}.swift"));
     let source = source.as_path();

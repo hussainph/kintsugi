@@ -18,7 +18,7 @@ pub mod layout;
 use crate::fetch::Fetcher;
 use crate::tools::{ToolError, Tools, catalog};
 use crate::{
-    Adapter, BODY_CHARS, BoxFuture, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType,
+    Adapter, BoxFuture, FULL_CHARS, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType,
     Target, markdown, media,
 };
 pub use layout::PdfText;
@@ -34,7 +34,7 @@ use tokio::io::AsyncReadExt;
 /// Linked PDFs larger than this aren't downloaded (the clip file cap).
 pub const MAX_PDF_BYTES: u64 = 50 * 1024 * 1024;
 /// The helper stops reading pages after this much text; the body is capped
-/// at [`BODY_CHARS`] anyway, and headings need some look-ahead.
+/// at [`FULL_CHARS`] anyway, and headings need some look-ahead.
 const HELPER_CHARS: usize = 400_000;
 
 /// Reads a PDF's text, metadata and (optionally) a page-one thumbnail.
@@ -78,7 +78,7 @@ impl PdfReader for PdfKitReader {
 /// Runs a helper with no stdin, discarded stderr (it can carry document
 /// text) and a time limit; returns at most `limit` bytes of stdout. Exit 3
 /// is "unsupported here".
-async fn run_helper(mut command: tokio::process::Command, timeout: Duration, limit: u64) -> Result<Vec<u8>> {
+pub(crate) async fn run_helper(mut command: tokio::process::Command, timeout: Duration, limit: u64) -> Result<Vec<u8>> {
     command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
     let mut child = command.spawn().map_err(|_| Error::Unavailable)?;
     let mut stdout = child.stdout.take().ok_or(Error::Unavailable)?;
@@ -212,11 +212,11 @@ impl PdfAdapter {
         };
 
         let mut extras: BTreeMap<String, Value> = BTreeMap::new();
-        let mut body = markdown::body(&layout::markdown(&text), BODY_CHARS);
+        let mut body = markdown::body(&layout::markdown(&text), FULL_CHARS);
         let mut extractor = "pdfkit";
         match converted {
             Some((name, Ok(md))) if !md.trim().is_empty() => {
-                body = markdown::body(&md, BODY_CHARS);
+                body = markdown::body(&md, FULL_CHARS);
                 extractor = name;
             }
             Some((name, Err(Error::ToolNeeded))) => {

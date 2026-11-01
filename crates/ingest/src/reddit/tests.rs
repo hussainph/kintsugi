@@ -79,11 +79,11 @@ fn a_post_becomes_markdown_with_its_comment_tree() {
 
     let body = &item.body;
     assert!(body.starts_with("I've read the book twice.\n\nWhat was the **one** example"), "{body}");
-    assert!(body.contains("\n\n## Comments\n\n**u/crab_person** · 250 points\n\nThinking of `&mut` as *exclusive*"), "{body}");
-    assert!(body.contains("> **u/ferris_fan** · 80 points · OP\n>\n> This is exactly it, thanks!"), "{body}");
-    assert!(body.contains("> > **u/borrowck** · 30 points\n> >\n> > And `&` as shared access.\n> >\n> > Two lines."), "{body}");
+    assert!(body.contains("\n\n## Comments\n\n**u/crab_person** · 250 points · [link](<https://www.reddit.com/r/rust/comments/1oabc12/x/c2/>)\n\nThinking of `&mut` as *exclusive*"), "{body}");
+    assert!(body.contains("> **u/ferris_fan** · 80 points · OP · [link](<https://www.reddit.com/r/rust/comments/1oabc12/x/c3/>)\n>\n> This is exactly it, thanks!"), "{body}");
+    assert!(body.contains("> > **u/borrowck** · 30 points · [link](<https://www.reddit.com/r/rust/comments/1oabc12/x/c4/>)\n> >\n> > And `&` as shared access.\n> >\n> > Two lines."), "{body}");
     assert!(body.contains("> _4 more replies on Reddit_"), "{body}");
-    assert!(body.contains("**[deleted]** · 2 points\n\n_[deleted]_\n\n> **u/lurker**"), "{body}");
+    assert!(body.contains("**[deleted]** · 2 points · [link](<https://www.reddit.com/r/rust/comments/1oabc12/x/c6/>)\n\n_[deleted]_\n\n> **u/lurker**"), "{body}");
     assert!(body.ends_with("_61 more replies on Reddit_"), "{body}");
     assert!(!body.contains("AutoModerator") && !body.contains("Please read the rules"), "{body}");
     assert_eq!(body.matches("[deleted]").count(), 2, "{body}");

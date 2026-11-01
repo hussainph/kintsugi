@@ -76,7 +76,9 @@ fn load(root: &Path, rel: &str, path: &Path, stamp: String) -> Option<Doc> {
         && let Ok(clip) = vault::clip_read(root, rel)
     {
         let summary = clip.summary;
-        let body = [summary.summary.as_deref().unwrap_or_default(), clip.text.trim(), clip.source.as_deref().unwrap_or_default()]
+        // The whole source (a long transcript's sidecar), not just the excerpt.
+        let source = vault::clip_full_source(root, rel).ok().flatten().or(clip.source).unwrap_or_default();
+        let body = [summary.summary.as_deref().unwrap_or_default(), clip.text.trim(), source.as_str()]
             .iter()
             .filter(|s| !s.trim().is_empty())
             .copied()
@@ -161,6 +163,10 @@ fn walk(root: &Path) -> Vec<(String, PathBuf, String)> {
                 continue;
             }
             let path = entry.path();
+            // Clip sidecars (`inspiration/sources/`) are indexed with their clip.
+            if kind.is_dir() && vault::relative(root, &path).eq_ignore_ascii_case(&format!("{INSPIRATION}/sources")) {
+                continue;
+            }
             if kind.is_dir() && depth < MAX_DEPTH {
                 stack.push((path, depth + 1));
             } else if kind.is_file() && is_text(&path) && out.len() < MAX_FILES {

@@ -7,8 +7,8 @@
 //! through the same HTML-to-Markdown conversion as web pages. Front matter
 //! (the cover page, the table of contents, the copyright page) and
 //! non-linear items are skipped, so the body starts with the book itself.
-//! Bodies are capped like any other item, so a book keeps its opening
-//! chapters (`extras.truncated`).
+//! Bodies are capped at [`FULL_CHARS`] like other long-form items, so a
+//! long book keeps its opening chapters (`extras.truncated`).
 //!
 //! An EPUB is untrusted: no DTDs, no paths outside the archive, every entry
 //! size-checked before and while it inflates, internal links and images
@@ -17,7 +17,7 @@
 use crate::fetch::Fetcher;
 use crate::pdf::{file_sha256, has_extension};
 use crate::{
-    Adapter, BODY_CHARS, BoxFuture, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType,
+    Adapter, BODY_CHARS, BoxFuture, FULL_CHARS, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType,
     Target, markdown, media,
 };
 use dom_query::Document;
@@ -34,7 +34,7 @@ const MAX_XML_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_CHAPTER_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 8 * 1024 * 1024;
 /// Enough chapters are read to fill the body, with some to spare.
-const READ_CHARS: usize = BODY_CHARS * 2;
+const READ_CHARS: usize = FULL_CHARS + BODY_CHARS;
 
 /// Never worth reading in a chapter (images point inside the archive).
 const SKIP: &[&str] = &[
@@ -73,7 +73,7 @@ impl EpubAdapter {
         if let Some(isbn) = &book.isbn {
             extras.insert("isbn".into(), json!(isbn));
         }
-        let body = markdown::body(&book.body, BODY_CHARS);
+        let body = markdown::body(&book.body, FULL_CHARS);
         if book.body.chars().count() > body.chars().count() {
             extras.insert("truncated".into(), json!(true));
         }

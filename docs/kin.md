@@ -26,7 +26,7 @@ short schemas:
 | Tool | Does |
 | --- | --- |
 | `search` | Hybrid search ([search.md](search.md)) over writing, `inbox/`, `inspiration/` and Feed items: `{query, k?, in?, kind?}` → a JSON array of `{id, kind, title?, source?, snippet, score}`, best first, never full text |
-| `read` | A file with line numbers; `offset`/`limit` for long files. `feed:<id>` reads a Feed item (Discuss's chip, a `search` or `shortlist` hit) |
+| `read` | A file with line numbers; `offset`/`limit` for long files. `feed:<id>` reads a Feed item (Discuss's chip, a `search` or `shortlist` hit). A long clip's whole source is `inspiration/sources/<slug>.txt` (its `full_source`); the prompt says so |
 | `list` | A folder's subfolders and documents, with titles |
 | `memory` | Batched add / patch / remove on `USER.md` or `NOTES.md` |
 | `skill` | Loads a skill's body by name; `write` / `delete` change one |

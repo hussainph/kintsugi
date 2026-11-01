@@ -215,7 +215,7 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
     const selection = view.state.selection;
     const apply = (passage: string) => {
       if (view.dom?.isConnected === false || view.state.doc !== doc || !view.state.selection.eq(selection)) return;
-      const quote = attributedQuote(passage, link);
+      const quote = attributedQuote(passage, link, source);
       if (quote) insert(view, from, to, quote, true);
     };
     if (config?.readClipText) void config.readClipText(source).then(apply).catch((error) => config.onError?.(error));
@@ -363,7 +363,7 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
         open.type = "button";
         open.addEventListener("click", () => getConfig()?.onOpen(source));
         actions.append(open);
-        const quote = source.kind === "clip" ? attributedQuote(source.text ?? "", linkFor(source, config.sources)) : "";
+        const quote = source.kind === "clip" ? attributedQuote(source.text ?? "", linkFor(source, config.sources), source) : "";
         if (quote) {
           const button = element("button", "cm-reference-card-action", "Quote clip");
           button.type = "button";

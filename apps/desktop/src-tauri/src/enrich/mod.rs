@@ -12,11 +12,12 @@ mod worker;
 pub use worker::{Worker, start, wake};
 
 /// The engine clips are enriched with: X posts and threads, Reddit posts with
-/// their comments, YouTube videos (transcripts through yt-dlp once the person
+/// their comments, Hacker News threads (Algolia's items API), YouTube videos (transcripts through yt-dlp once the person
 /// installed it, oEmbed metadata until then), links to podcast audio
 /// (transcribed on this Mac), PDFs (PDFKit, or Docling once installed) and
 /// EPUBs, saved or linked, Open Library books, then any web page, with the hidden-webview
-/// JavaScript fallback on the Mac. Reddit falls back to the web adapter when
+/// JavaScript fallback on the Mac. A picture with no link is read on this Mac
+/// with Apple Vision (text and labels, labelled machine-made). Reddit falls back to the web adapter when
 /// its JSON is refused. Headless runs have no webview, so they use static
 /// extraction only.
 fn ingest_engine(app: &crate::AppHandle) -> kintsugi_ingest::Result<kintsugi_ingest::Engine> {
@@ -37,13 +38,19 @@ fn ingest_engine(app: &crate::AppHandle) -> kintsugi_ingest::Result<kintsugi_ing
         .map(|helper| Arc::new(kintsugi_ingest::pdf::PdfKitReader::new(helper)) as Arc<dyn kintsugi_ingest::pdf::PdfReader>);
     let pdf = kintsugi_ingest::pdf::PdfAdapter::new(reader)?
         .with_converter(Arc::new(kintsugi_ingest::pdf::Docling::new(tools.clone())));
-    Ok(kintsugi_ingest::Engine::new()
+    let mut engine = kintsugi_ingest::Engine::new()
         .with(kintsugi_ingest::x::XAdapter::new()?)
         .with(reddit)
+        .with(kintsugi_ingest::hn::HackerNewsAdapter::new()?)
         .with(youtube)
         .with(podcast)
         .with(pdf)
         .with(kintsugi_ingest::epub::EpubAdapter::new()?)
         .with(kintsugi_ingest::books::BookAdapter::new()?)
-        .with(web))
+        .with(web);
+    if let Some(helper) = crate::tools::vision_helper() {
+        use kintsugi_ingest::image::{ImageAdapter, VisionReader};
+        engine = engine.with(ImageAdapter::new(Arc::new(VisionReader::new(helper))));
+    }
+    Ok(engine)
 }

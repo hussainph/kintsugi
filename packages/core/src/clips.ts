@@ -1,7 +1,8 @@
 /** Vault clip types and the app's capture envelope, using camelCase fields. */
 /** `document` is a PDF (or another saved file); `book` is an EPUB or an
- *  Open Library book saved from its title or ISBN. */
-export type ClipKind = "link" | "post" | "video" | "image" | "quote" | "note" | "document" | "book";
+ *  Open Library book saved from its title or ISBN; `podcast` is an episode
+ *  (its page, or its audio file when it has none). */
+export type ClipKind = "link" | "post" | "video" | "image" | "quote" | "note" | "document" | "book" | "podcast";
 export type ClipVia = "mac" | "phone" | "share" | "feed";
 
 export type ClipSummary = {
@@ -16,10 +17,20 @@ export type ClipSummary = {
   image: string | null;
   /** A saved PDF or EPUB, relative to the clip file (`files/<slug>.pdf`). */
   file: string | null;
+  /** The whole extracted source, relative to the clip file
+   *  (`sources/<slug>.txt`), when it is longer than the clip's excerpt.
+   *  Absent from older Macs' replies. */
+  fullSource?: string | null;
   summary: string | null;
   enriched: string | null;
   enrichError: string | null;
   via: ClipVia | null;
+  /** Who said the clip's shared passage (a commenter, a speaker), when
+   *  enrichment found it in the source. Absent from older Macs' replies. */
+  quoteBy?: string | null;
+  /** Where the shared passage is: a comment permalink, a timestamp,
+   *  `#page=N`, a text fragment. Absent from older Macs' replies. */
+  quoteLink?: string | null;
 };
 
 export type Clip = ClipSummary & {

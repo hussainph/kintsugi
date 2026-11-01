@@ -8,6 +8,7 @@ import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
 import { Textarea } from "@kintsugi/ui/components/textarea";
+import { quoteLinkLabel } from "@kintsugi/core/references";
 import { discuss, useScreenContext } from "@/lib/chat";
 import { clipFileLabel, clipLabel, clips, clipSite, sourceUrl } from "./api";
 import { parseTags } from "./capture";
@@ -118,6 +119,8 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
 
   const source = sourceUrl(clip.url);
   const fileLabel = clipFileLabel(clip);
+  // Only web links open; a saved PDF's page link stays in the file.
+  const quoteAt = sourceUrl(clip.quoteLink ?? null);
   return (
     <div className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">
       <div className="mb-8 flex items-center justify-between gap-3">
@@ -144,6 +147,10 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
             <label htmlFor="clip-note" className="text-xs text-muted-foreground">Your words</label>
             <Textarea id="clip-note" value={draft.note} onChange={(e) => edit("note", e.target.value)} onBlur={() => void save()} placeholder="A passage to remember, or a thought of your own…" className="min-h-48 resize-y border-0 bg-muted/35 px-4 py-3 font-[family-name:var(--font-prose)] text-base! leading-relaxed shadow-none focus-visible:ring-1" />
             <p className="text-[11px] text-muted-foreground">Quote and note, in Markdown. The source text stays untouched.</p>
+            {(clip.quoteBy || quoteAt) && <p className="text-xs text-muted-foreground" data-quote-origin>
+              The passage: {clip.quoteBy && <>— {clip.quoteBy}</>}
+              {quoteAt && <>{clip.quoteBy && <span className="px-1.5 opacity-40">·</span>}<button className="underline decoration-border underline-offset-4 hover:text-foreground" onClick={() => openUrl(quoteAt).catch((e) => toast.error(String(e)))} title={quoteAt}>{quoteLinkLabel(quoteAt) === "source" ? "Open at the passage" : `Open at ${quoteLinkLabel(quoteAt)}`}</button></>}
+            </p>}
           </div>
           <div className="space-y-2">
             <label htmlFor="clip-tags" className="text-xs text-muted-foreground">Tags</label>

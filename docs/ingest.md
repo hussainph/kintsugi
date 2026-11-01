@@ -16,14 +16,14 @@ in camelCase):
 
 | Field | Meaning |
 | --- | --- |
-| `source` | Which adapter made it: `web`, `rss`, `x`, `reddit`, `youtube`, `podcast`, `pdf`, `epub`, `book` or `author` |
-| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`), for YouTube the video id (`youtube:dQw4w9WgXcQ`), for podcasts the feed URL and GUID. A PDF or EPUB file is `pdf:sha256:<hex>` / `epub:sha256:<hex>` (an EPUB with an ISBN is `epub:isbn:<isbn>`), a linked one its URL; a book its Open Library work (`book:OL45804W`); a followed author's new book the author and title (`author:susanna-clarke/the-lost-garden`); a watched page's change the page URL and both hashes (`web:<url>#<old>-<new>`). Feeds deduplicate on it |
+| `source` | Which adapter made it: `web`, `rss`, `x`, `reddit`, `hn`, `youtube`, `podcast`, `pdf`, `epub`, `book`, `author` or `image` |
+| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`), for Hacker News the story id (`hn:19804478`), for YouTube the video id (`youtube:dQw4w9WgXcQ`), for podcasts the feed URL and GUID. A PDF or EPUB file is `pdf:sha256:<hex>` / `epub:sha256:<hex>` (an EPUB with an ISBN is `epub:isbn:<isbn>`), a linked one its URL; a book its Open Library work (`book:OL45804W`); a followed author's new book the author and title (`author:susanna-clarke/the-lost-garden`); a watched page's change the page URL and both hashes (`web:<url>#<old>-<new>`); a picture `image:sha256:<hex>`. Feeds deduplicate on it |
 | `url` | Canonical URL, if any: no fragment, no tracking parameters (`utm_*`, `fbclid`, `gclid`, `mc_cid`, `mc_eid`, `igshid`, `ref_src`) |
 | `title`, `author`, `site`, `description` | As the source declared them, whitespace-collapsed and length-bounded |
 | `published` | When the source says it was published, as written there (usually ISO 8601) |
 | `captured` | When the engine captured it, RFC 3339 UTC |
 | `media` | Images, the primary one first: `{ kind: "image", url? }` (a PDF's page one, an EPUB's or book's cover). Downloaded bytes travel beside the item in Rust (never serialized), only when the capture asked for them, and only as checked raster formats (PNG, JPEG, GIF, WebP; never SVG or HTML) |
-| `body` | Readable content as Markdown, at most 20,000 characters, cut at a paragraph or line break near the end when possible. Inline `data:` images are dropped and blank-line runs collapsed. Empty for a video or a bare image. A transcript may run to 250,000 characters (see [Transcripts](#transcripts)) |
+| `body` | Readable content as Markdown, cut at a paragraph or line break near the end when possible. Inline `data:` images are dropped and blank-line runs collapsed. Empty for a video or a bare image. Short sources (feed entries, X posts, book records, show notes) keep at most 20,000 characters (`BODY_CHARS`); long-form ones (web articles, PDFs, EPUBs, Reddit and Hacker News threads, transcripts) up to 250,000 (`FULL_CHARS`, about four hours of speech). Clips show the first 20,000 and keep the whole text beside the clip (see [inspiration.md](inspiration.md#storage)) |
 | `extras` | Adapter facts. Every item sets `extractor`. Web pages use `readability`, `html`, `oembed`, `defuddle`, `image` or `none`, and may set `lang` and `modified`. X, Reddit and transcript items list theirs below |
 
 Everything in an item came from the outside and is untrusted data, never
@@ -58,10 +58,11 @@ uses the adapter registered for that source. Through the `Arc<A>` impl, one
 web adapter instance is both registered and Reddit's fallback.
 
 The Mac app's clip enrichment registers `XAdapter`, then `RedditAdapter`
-(with the web adapter as its fallback), then `YouTubeAdapter`, then
-`PodcastAdapter` (links to audio files), then `PdfAdapter`, `EpubAdapter`
-and `BookAdapter`, then `WebAdapter`
-(`apps/desktop/src-tauri/src/enrich/mod.rs`). Clips of X and Reddit URLs
+(with the web adapter as its fallback), then `HackerNewsAdapter`, then
+`YouTubeAdapter`, then `PodcastAdapter` (links to audio files), then
+`PdfAdapter`, `EpubAdapter` and `BookAdapter`, then `WebAdapter`, and,
+when the build has the Vision helper, `ImageAdapter` for pictures saved
+without a link (`apps/desktop/src-tauri/src/enrich/mod.rs`). Clips of X and Reddit URLs
 therefore go through the platform adapters, and a clip with a saved file
 (`file:` in its frontmatter) is captured from that file, not its link.
 
@@ -337,6 +338,37 @@ makes one and `authors::author_name` reads it back.
 - `AuthorEndpoints` points both APIs elsewhere (tests and the headless runtime
   use a loopback server).
 
+## Hacker News threads
+
+`hn::HackerNewsAdapter` (`source: hn`) captures a story with its whole
+comment tree from the [Algolia HN items API](https://hn.algolia.com/api)
+(`https://hn.algolia.com/api/v1/items/<id>`), which answers with the story
+and every comment nested under its parent in one request. HN's own pages
+are tables with spacer images, so the readable-article extractor lost who
+wrote each comment and what it answered (KI-21).
+
+- It accepts `news.ycombinator.com/item?id=<n>`. A comment's link captures
+  its whole story (a second request for `story_id`) and notes the comment
+  in `extras.comment`. Other HN pages stay with the web adapter.
+- `body`: the story's link (`[host](<url>)`) and its text (Ask HN), then
+  `## Comments`. Each comment is headed `**author** · YYYY-MM-DD ·
+  [link](<https://news.ycombinator.com/item?id=…>)`, plus ` · OP` for the
+  story's author, and replies nest as block quotes (up to 8 levels; deeper
+  replies stay at the eighth, still headed by their author). Comments come
+  in the API's order, which is by time, not HN's ranking. Deleted comments
+  with no replies are skipped; one with replies is `**[deleted]**`.
+- Comment HTML is a small subset (`<p>`, `<i>`, `<a href>`, `<pre><code>`,
+  entities) and is converted by hand: every text run is escaped (`\ * _ `
+  [ ] < > |`), so a comment can't open a heading, list, quote or raw HTML
+  its author never wrote (HN's `>` quoting stays literal text), links keep
+  only HTTP(S) targets, and code blocks are fenced verbatim.
+- `title`, `author`, `site: Hacker News`, `published` (RFC 3339) come from
+  the story. `extras`: `extractor: hn-algolia`, `points`,
+  `includedComments`, `link`, `comment`, `truncated` (past 3,000 comments
+  or the long-form cap).
+- JSON is capped at 16 MB, requests are spaced 500 ms apart, with the
+  shared API client's rate-limit handling. No HN account is used.
+
 ## Reddit posts
 
 `RedditAdapter` (`crates/ingest/src/reddit/`) captures a single post with its
@@ -353,7 +385,8 @@ comment tree. Subreddits can't be followed (Reddit's RSS ends in November
 - `body` is the self text (Reddit Markdown, kept as is). A link post's link,
   gallery images in order (or the preview or a directly linked image) and
   a video link follow. Then comes `## Comments`: each comment headed
-  `**u/name** · N points` (plus ` · OP` for the original poster), with
+  `**u/name** · N points` (plus ` · OP` for the original poster, and
+  ` · [link](<permalink>)` to the comment's own page), with
   replies as nested block quotes, at most 300 comments and 8 levels.
   AutoModerator's pinned notices are skipped, and so are deleted comments
   with no replies. Unloaded replies become `_N more replies on Reddit_`.
@@ -384,7 +417,10 @@ as `Unavailable`.
 **Out of the box: Apple PDFKit.** `pdf::PdfKitReader` runs `kintsugi-pdf`
 (`crates/ingest/swift/pdf.swift`) as a child process with a 60-second
 limit. It prints `{ pageCount, locked, title, author, subject, keywords,
-created, outline, pages: [{ page, lines: [{ text, size, bold, y }] }] }`,
+created, outline, pages: [{ page, width, lines: [{ text, size, bold, y, x,
+width, height }] }] }` (helpers before KI-46 printed no `width`, `x` or
+`height`, and the layout still reads that), splitting a line that opens
+with a short bold run followed by regular text (a run-in heading),
 stopping after 400,000 characters, and with `--thumbnail <png>` renders
 page one at most 800 pixels on its long side. Exit codes: 3 unsupported
 (the build stub), 5 not a readable PDF. stderr is discarded: PDFKit logs
@@ -403,12 +439,29 @@ rejoined when the next line starts lower-case. Running headers and footers
 (the first or last two lines of a page, recurring with digits ignored on
 at least half the pages) and page numbers (`12`, `xiv`, `Page 3 of 9`) are
 dropped. If the type gives no headings, lines matching the PDF's outline
-become headings. Text is made Markdown-safe like post text.
+become headings. A body-size line that is only a section number and a
+title (`2.1 No Spinners: Your Work at Your Fingertips`, bold or in title
+case) becomes `###` (top-level number) or `####`, since papers set those in
+the body size. Text is made Markdown-safe like post text.
+
+- **Two columns.** When a page has at least three lines wholly in each half
+  and column lines outnumber full-width ones, it is read top to bottom in
+  bands split by full-width lines (a title, a figure caption): within a
+  band, the left column, then the right. A sideways jump to the other
+  column starts a new paragraph. Other pages keep PDFKit's order. An
+  author block beside an abstract still reads after it; Docling does
+  layouts properly.
+- **Page anchors.** In a document of more than one page, the first block
+  that starts on each page is preceded by `<!-- page N -->`, so a quote can
+  link to `#page=N` (`pdf::layout::marker_page` reads one). Extracted text
+  can't forge it: its `<` is escaped. Markdown viewers hide it. Docling's
+  output has no page markers.
 
 The item: `title` is the declared title unless it's a word processor's
 leftover (`Microsoft Word - …`, `untitled`, a file name), else the first
 heading; `author`; `description` is the subject; `published` the creation
-date (ISO 8601); `media` page one (only when asked); `extras`: `extractor`
+date (ISO 8601); `media` page one (only when asked); `body` up to 250,000
+characters; `extras`: `extractor`
 (`pdfkit` or `docling`), `pages`, `keywords`, `locked`, and `textReason:
 no-text` for a scan with no text layer (Docling's OCR can read those).
 
@@ -472,9 +525,9 @@ is refused.
   document, and items whose id or file name is `cover`, `titlepage`,
   `toc`, `contents`, `copyright` or `nav`) are skipped. Images, scripts,
   styles, forms, SVG and MathML are left out; links into the book become
-  plain text, outside links stay. Chapters are read until about twice the
-  body cap, then the body is capped as usual: a book keeps its opening
-  chapters, with `extras.truncated`.
+  plain text, outside links stay. Chapters are read until the long-form cap
+  (250,000 characters) plus some, then the body is capped: a long book
+  keeps its opening chapters, with `extras.truncated`.
 - `extras`: `extractor: epub`, `chapters` (spine documents), `lang`,
   `isbn`, `truncated`.
 
@@ -505,6 +558,46 @@ the shared API client's rate-limit handling.
   the book's text.
 - ISBNs are validated by check digit (`books::normalize_isbn`, mirrored
   by `parseIsbn` in `packages/core/src/books.ts`).
+
+## Images
+
+`image::ImageAdapter` (`source: image`) reads a local picture
+(`Target::File` with a `jpg`, `jpeg`, `png`, `gif`, `webp`, `heic`, `heif`
+or `avif` extension) through an `ImageReader`. Clip enrichment uses it for
+a clip that is only a picture (no link, no file): before KI-46 nothing
+about such a clip reached Kin or search.
+
+**Apple Vision, on this Mac.** `image::VisionReader` runs `kintsugi-vision`
+(`crates/ingest/swift/vision.swift`) as a child process with a 60-second
+limit. It runs `VNRecognizeTextRequest` (accurate, language correction,
+lines top to bottom) and `VNClassifyImageRequest`, and prints `{ width,
+height, lines: [text], labels: [{ label, confidence }] }`. Exit codes: 3
+unsupported (macOS before 12, or the build stub), 5 not a readable image.
+stderr is discarded. Nothing leaves the Mac and no AI call is made, so it
+costs nothing against the AI budget. It is built and shipped like the PDF
+helper (`apps/desktop/src-tauri/build.rs`, `bundle.externalBin`).
+
+The item is plainly machine-made:
+
+```markdown
+_Text recognised in the image on this Mac (machine-made, may contain errors):_
+
+Golden seams  
+\# Repair is the story
+
+_What the image shows, as guessed on this Mac (machine-made):_ ceramic, bowl, gold leaf
+```
+
+- Recognised lines are Markdown-safe like post text, one per line (hard
+  breaks), at most 20,000 characters. Labels are kept at confidence 0.2 or
+  more, at most eight, deduplicated and lowercased.
+- No `title` (enrichment's model titles the clip from this body), no
+  `url`, no `media` (the clip already has its picture). `extras`:
+  `extractor: vision`, `machine: true`, `width`, `height`, `labels`,
+  `ocrLines`.
+- An AI description of the picture isn't made: it would need a vision
+  model call per image. If one is added, it goes through the AI cost cap
+  and is labelled machine-made the same way.
 
 ## Optional tools
 
@@ -597,9 +690,9 @@ timestamp that links to that moment:
   can't form links, HTML or emphasis.
 - Bodies are capped at 250,000 characters (`TRANSCRIPT_CHARS`, about four
   hours of speech) and cut at a paragraph boundary, with `truncated: true`.
-  Clips still store at most 20,000 characters of source
-  (`crates/vault/src/clips.rs`), so a saved clip keeps roughly the first
-  20 minutes until the clip format changes.
+  A clip shows the first 20,000 characters as its excerpt and keeps the
+  whole transcript beside the clip (`inspiration/sources/<slug>.txt`), so
+  minute 30 of an 82-minute talk is on disk for Kin and search.
 - `extras.transcript` says where the body came from: `subtitles`,
   `auto-captions`, `publisher`, `on-device` or `unavailable`. When it is
   `unavailable`, `transcriptReason` says why: `tool-not-installed`,
@@ -687,9 +780,20 @@ Each capture takes the first of these that works:
 3. **Show notes**, as Markdown, marked `transcript: unavailable`.
 
 Timestamps link to the audio with a media fragment (`<enclosure>#t=754`),
-which browsers' audio players seek to. The id is `podcast:<feed
-URL>#<guid>`, or the episode page or audio URL when there's no feed. `url`
-is the episode page (canonical) or the audio. `site` is the show.
+which browsers' audio players seek to.
+
+**Tracking redirects.** Feeds often put measurement redirects in front of
+the audio (OP3, Podtrac, Chartable, Podsights, Spotify's prefix,
+Podscribe, Magellan, Claritas…: `https://op3.dev/e/https://dts.podtrac.com/redirect.mp3/www.buzzsprout.com/…mp3`).
+`podcast::untrack` strips any chain of them (`TRACKERS` in
+`crates/ingest/src/podcast/mod.rs`) and `podcast::is_tracked` tells one
+apart. The audio is downloaded through the enclosure as published, but
+everything written into the item (its `url`, `id`, `audioUrl` and timestamp
+links) uses the untracked URL. The id is `podcast:<feed
+URL>#<guid>`, or the episode page or (untracked) audio URL when there's no
+feed. `url` is the episode page (canonical) or the untracked audio. Clip
+enrichment writes that URL into a podcast clip saved by its tracked link,
+and the clip's kind becomes `podcast`. `site` is the show.
 
 The Podcast Index API (`/episodes/byfeedurl`, which has a `transcripts`
 field) needs an API key and secret. It isn't used: the same transcript
@@ -792,6 +896,18 @@ oEmbed response. The Reddit fixtures in `fixtures/reddit/` follow the
   dates and counters, and a real edit.
 - **Authors:** trimmed Google Books and Open Library responses in
   `fixtures/authors/`.
+- **Hacker News:** `fixtures/hn/story.json` (a story with nested replies, an
+  OP reply, deleted comments with and without replies, entities, a link, a
+  code block and markup that must stay text) and `comment.json`.
+- **Two-column PDFs:** `fixtures/pdf/columns.py` writes `columns.pdf`; the
+  layout tests use placed lines like those PDFKit gives for the
+  Local-first paper. `dump_layout` (ignored) prints the layout of any saved
+  helper output: `KINTSUGI_PDF_JSON=out.json cargo test -p kintsugi-ingest
+  -- --ignored dump_layout --nocapture`.
+- **Images:** `fixtures/image/seams.png` (two lines of text). The item's
+  shape uses a fake reader, the protocol fake scripts, and on a Mac with a
+  Swift toolchain `vision_helper_reads_the_fixture` compiles the real
+  helper and reads the fixture with Vision (it skips elsewhere).
 
 No test downloads a real tool or model. The opt-in tests are `#[ignore]`d:
 
@@ -806,6 +922,8 @@ No test downloads a real tool or model. The opt-in tests are `#[ignore]`d:
   search.
 - `live_new_books_from_an_author` asks Google Books (or Open Library) for
   an author's newest books.
+- `live_hn_thread` captures the Local-first HN thread from Algolia (on
+  2026-11-01: 190 comments, 113,058 characters).
 - `live_docling` installs uv, Python and Docling with its models (about
   2 GB) into `target/live-tools/` and converts the PDF fixture. It passed
   on 2026-11-01 in about four minutes, including the install. Delete

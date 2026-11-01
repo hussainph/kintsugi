@@ -15,7 +15,7 @@
 //! and runs with `useAsync: false`. The result is as untrusted as the page.
 
 use super::allowed_url;
-use crate::{BODY_CHARS, BoxFuture, Result, markdown};
+use crate::{BoxFuture, FULL_CHARS, Result, markdown};
 use reqwest::Url;
 use serde::Deserialize;
 use std::time::Duration;
@@ -73,7 +73,7 @@ impl Rendered {
             published: field(self.published, 100),
             image: field(self.image, 2000),
             language: field(self.language, 40),
-            content: self.content.map(|c| markdown::body(&c, BODY_CHARS)).filter(|c| !c.is_empty()),
+            content: self.content.map(|c| markdown::body(&c, FULL_CHARS)).filter(|c| !c.is_empty()),
         }
     }
 }
@@ -134,7 +134,7 @@ pub fn defuddle_script() -> String {
   }} catch (e) {{ return null; }}
 }})()"#,
         // Markdown is longer than its text; leave room before the body cap.
-        content = BODY_CHARS * 4
+        content = FULL_CHARS * 2
     ));
     script
 }

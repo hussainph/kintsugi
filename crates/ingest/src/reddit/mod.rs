@@ -32,7 +32,7 @@ const USER_AGENT: &str = "macos:dev.phalasiya.kintsugi:v0.1 (personal reading ap
 const MAX_COMMENTS: usize = 300;
 const MAX_DEPTH: usize = 8;
 /// Stop building once the body is this long; it's cut to the body cap anyway.
-const BUILD_CHARS: usize = crate::BODY_CHARS + 4_000;
+const BUILD_CHARS: usize = crate::FULL_CHARS + 4_000;
 
 pub struct RedditAdapter {
     client: ApiClient,
@@ -298,7 +298,7 @@ fn item_from_listing(listing: &Value, id: &str) -> Option<Item> {
             .and_then(|t| crate::x::rfc3339(t as i64)),
         captured: crate::now(),
         media: images.into_iter().map(|url| Media { kind: MediaKind::Image, url: Some(url), data: None }).collect(),
-        body: markdown::body(&body, crate::BODY_CHARS),
+        body: markdown::body(&body, crate::FULL_CHARS),
         extras,
     })
 }
@@ -349,7 +349,8 @@ struct Rendered {
     count: usize,
 }
 
-/// Comments as nested block quotes, in Reddit's order. AutoModerator's
+/// Comments as nested block quotes, in Reddit's order, each headed
+/// `**u/name** · N points · OP · [link](<permalink>)`. AutoModerator's
 /// pinned notices and childless deleted comments are skipped; "more"
 /// placeholders become a note of how many replies weren't loaded.
 fn render_comments(children: &[Value], depth: usize, rendered: &mut Rendered) {
@@ -383,6 +384,13 @@ fn render_comments(children: &[Value], depth: usize, rendered: &mut Rendered) {
                 }
                 if data.get("is_submitter").and_then(Value::as_bool) == Some(true) {
                     head.push_str(" · OP");
+                }
+                // The comment's own page, so a quote from it can link there.
+                if let Some(link) = s(data, "permalink")
+                    .filter(|p| p.starts_with("/r/") || p.starts_with("/user/"))
+                    .and_then(|p| safe_url(&format!("https://www.reddit.com{p}")))
+                {
+                    head.push_str(&format!(" · [link](<{link}>)"));
                 }
                 let body = if removed { "_[deleted]_".to_string() } else { body.to_string() };
                 rendered.count += 1;

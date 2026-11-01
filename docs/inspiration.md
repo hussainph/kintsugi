@@ -41,10 +41,13 @@ inspiration/
     why-we-sleep.jpg
   files/
     golden-seam.pdf
+  sources/
+    craft-of-writing.txt
 ```
 
 - File name: `slugify(title)` (or of the URL host/path, or the first line of
-  text, when there's no title yet), made unique like documents are. The file
+  text, when there's no title yet; a picture alone is named for when it
+  arrived, `image-2026-10-31-10-15`), made unique like documents are. The file
   name never changes after capture, so links to it stay valid.
 - Media (a shared image, a screenshot, a page's hero image, a PDF's first
   page, a book's cover) lives in `inspiration/media/<slug>.<ext>`, one
@@ -52,6 +55,22 @@ inspiration/
 - A captured file (a PDF or an EPUB) lives in
   `inspiration/files/<slug>.pdf|epub`, one per clip, never overwritten. It
   is the clip's source: enrichment reads it instead of fetching anything.
+- **Full sources.** A source longer than the clip's 20,000-character
+  excerpt is kept whole in `inspiration/sources/<slug>.txt` (up to 250,000
+  characters: a long transcript, a paper, a book's opening, a big thread),
+  and the clip's `full_source` field points at it. Before KI-46 the rest was
+  dropped: an 82-minute talk kept 18:56. The sidecar is written before the
+  clip points at it, replaced when enrichment runs again, removed when the
+  source shrinks or is cleared, and trashed with the clip. A capture never
+  takes the name of an orphaned sidecar.
+  - *Why beside the clip, and why `.txt`:* Kin reads the vault with its own
+    tools, which refuse hidden folders like `.kintsugi/`, and the vault stays
+    plain files. As `.md` it would share the clip's basename, so Obsidian
+    would show a second note and `[[slug]]` could resolve to either; Obsidian
+    ignores `.txt`, while Kin reads it. The text inside is the same Markdown
+    as `## Source`.
+  - Search indexes the whole source with its clip (the sidecar is not a
+    document of its own), and `clip_full_source` returns it.
 - `vault::tree` (the writing sidebar, and the phone's tree) skips
   `inspiration/`. Clips have their own views.
 
@@ -70,6 +89,8 @@ via: share
 tags: [sleep, science, attention]
 summary: "One sentence on what this is and why it's interesting."
 enriched: "2026-10-29T14:06"
+quote_by: "Jane Doe"
+quote_link: "https://www.newyorker.com/…#:~:text=A%20passage"
 ---
 
 > A passage the writer highlighted or shared, if any.
@@ -80,7 +101,10 @@ The writer's own note, if any.
 ## Source
 
 Readable Markdown extracted from the page, for search and the AI. Up to
-20,000 characters. Everything above the invisible boundary comment is the clip's
+20,000 characters: a longer source is cut at a paragraph and ends with a
+line saying what was kept and where the rest is (`_Excerpt: up to 18:56 of
+1:21:51. The whole transcript is in inspiration/sources/x.txt._`, or "the
+first N of M characters"). Everything above the invisible boundary comment is the clip's
 own text. New captures keep the comment even before a source is available,
 so a captured note can itself contain `## Source` or an unfinished code
 fence without losing words. The exact `<!-- kintsugi:source -->` comment is
@@ -92,13 +116,16 @@ Frontmatter fields. All optional except `kind` and `captured`:
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `link` (article, blog, page), `post` (X, Instagram, Threads, Bluesky, TikTok…), `video`, `image`, `quote` (a passage with a source), `note` (just a thought), `document` (a PDF), `book` (an EPUB, or a book saved from Open Library) |
+| `kind` | `link` (article, blog, page), `post` (X, Instagram, Threads, Bluesky, TikTok…), `video`, `image`, `quote` (a passage with a source), `note` (just a thought), `document` (a PDF, saved or linked), `book` (an EPUB, or a book saved from Open Library), `podcast` (an episode: its page, or its audio file) |
 | `title` | Human title. Written by the capture if known, else by enrichment |
 | `url` | Canonical source URL |
 | `site` | Publisher or platform name |
 | `author` | Author or account handle |
 | `image` | Path relative to the clip file |
 | `file` | A saved PDF or EPUB, relative to the clip file: always `files/<clip slug>.pdf` or `.epub` |
+| `full_source` | The whole extracted source, relative to the clip file: always `sources/<clip slug>.txt`, and only when it is longer than the `## Source` excerpt. Any other value is ignored |
+| `quote_by` | Who said the clip's shared passage (its leading block quote): a commenter, a transcript's speaker. Written by enrichment |
+| `quote_link` | Where that passage is: a comment permalink, a timestamp link, `<pdf>#page=N` (relative `files/…` for a saved PDF without a link), or a text fragment (`#:~:text=`) for an article. HTTP(S) or `files/…`; anything else is ignored |
 | `captured` | The capturing device's local time, `YYYY-MM-DDTHH:MM`, as inbox captures use |
 | `via` | `mac`, `phone`, `share` (a share sheet or extension), `feed` (saved from the Feed; see `docs/feed.md`) |
 | `tags` | Lowercase tags. Enrichment adds them, preferring tags already in use. The writer may edit them |
@@ -124,7 +151,9 @@ in `YYYY-MM-DDTHH:MM` form. The receiver writes the clip at once:
 
 - the `kind` guessed from what arrived (a PDF → `document`, an EPUB →
   `book`, an `openlibrary.org` link → `book`, a known social host → `post`,
-  a video host → `video`, an image without a URL → `image`, text with a URL →
+  a video host → `video`, a podcast app's page, a podcast tracking redirect
+  or a link to an audio file → `podcast`, a link to a `.pdf` → `document`,
+  an image without a URL → `image`, text with a URL →
   `quote`, text alone → `note`, otherwise `link`),
 - shared text as a blockquote when there's a URL, as plain text otherwise,
 - the image saved to `media/`,
@@ -186,7 +215,11 @@ file captures).
   encoding overhead.
 - `GET /v1/clips` → `ClipSummary[]`, newest first (path breaks timestamp ties).
   A summary has `path`, `kind`, `captured`, `tags`, and nullable `title`,
-  `url`, `site`, `author`, `image`, `file`, `via`, `summary`, `enriched`, `enrichError`.
+  `url`, `site`, `author`, `image`, `file`, `fullSource`, `via`, `summary`,
+  `enriched`, `enrichError`, `quoteBy` and `quoteLink`. The last three were
+  added in KI-46 without an API bump: clients treat them as optional
+  (`undefined` from an older Mac), and a client that doesn't know the
+  `podcast` kind shows it like a link.
   `path` is vault-relative; `image` remains relative to the clip file.
 - `GET /v1/clip?path=…` → the summary fields plus `text` (own text, without
   frontmatter or source) and `hasSource`. Extracted source is kept on disk,
@@ -253,15 +286,22 @@ The vault crate exports `clip_list`, `clip_read`, `clip_create`, `clip_update`,
 `clips_needing_enrichment`. `clip_file_path` resolves only the clip's own
 `files/<slug>.<pdf|epub>`, with the same containment and symlink checks as
 media.
+`clip_full_source` returns the whole source (the sidecar, else the excerpt
+without its closing line) and `clip_source_path` resolves the sidecar with
+the same checks. `quote_attribution` and `leading_passage` (`crates/vault/src/quotes.rs`)
+find who said a passage and where, from the source's comment headings,
+timestamps and page markers (see Enrichment).
 `clip_validate_capture` checks payloads without writing;
 `clip_create_with_receipt` invokes an app-owned reservation callback under
 the naming/path locks, before saving media or Markdown, and skips the
 provided reserved paths during naming. The app's receipt service uses this hook; raw `clip_create` remains a non-idempotent storage
 primitive without delivery IDs.
 Metadata updates are patches against the latest file. `ClipUpdate` also accepts `kind`, `url`,
-`site`, `author`, `image`, `summary`, `enriched`, `enrich_error`, and `source`;
-an absent field is untouched, an empty optional scalar clears it. Source
-updates are limited to 20,000 characters and preserve the own-text prefix;
+`site`, `author`, `image`, `summary`, `enriched`, `enrich_error`,
+`quote_by`, `quote_link` and `source`; an absent field is untouched, an
+empty optional scalar clears it. A source update keeps the whole text (up to
+250,000 characters) in the `sources/` sidecar when it is longer than 20,000
+characters and writes the excerpt to `## Source`; it preserves the own-text prefix;
 metadata-only updates preserve the entire body byte-for-byte. Writer edits,
 enrichment, media saves and trash share one in-process mutex per clip path;
 unique capture names are selected serially. `clip_enrich` compares against
@@ -270,7 +310,7 @@ leaves concurrently edited tags alone,
 and cannot change own text. `clip_save_media` fills a missing primary image
 and sets its field; if an image already exists, it returns that path without
 replacing the screenshot. Media and file writes never overwrite an existing
-file. Capture naming also avoids orphan media and file names. `clip_trash` (the clip, its image and its saved file) takes the
+file. Capture naming also avoids orphan media and file names. `clip_trash` (the clip, its image, its saved file and its full source) takes the
 desktop's OS Trash callback under the same lock, so enrichment cannot
 resurrect a trashed clip. Pending enrichment
 excludes clips with either `enriched` or `enrich_error` set. Invalid external
@@ -291,8 +331,14 @@ launch, and when a vault opens), one at a time:
    oEmbed where the platform offers it (YouTube, X, Bluesky, TikTok, Vimeo),
    the readable article as Markdown (Readability via `dom_smoothie`, with a
    hidden-webview Defuddle fallback for pages that need JavaScript), and
-   the hero image if the clip has none, saved to `media/`. The item's
-   Markdown body becomes the `## Source` section. Socials behind a login wall
+   the hero image if the clip has none, saved to `media/`. A Hacker News
+   thread keeps every comment's author and permalink, a PDF its page
+   markers, a transcript its timestamps and speakers. A picture with no link
+   or file is read on this Mac with Apple Vision (recognised text and
+   labels, labelled machine-made; [ingest.md](ingest.md#images)), so Kin and
+   search can find it and the model can title it. The item's Markdown body
+   becomes the `## Source` section, with a long one kept whole beside the
+   clip. Socials behind a login wall
    give little; the clip keeps what the share sheet sent (text, screenshot).
 2. **Think**: one AI call (the `edit`-quality model via the existing
    harness) given the metadata, own text and source text, plus the vault's
@@ -300,9 +346,21 @@ launch, and when a vault opens), one at a time:
    vocabulary so the writer's own work and outside inspiration meet in search.
    It returns a title if missing, a one-sentence summary, 2 to 5 tags, and a
    corrected `kind` (never applied to a clip with a saved file: it stays a
-   `document` or `book`).
-3. **Write back**: the frontmatter fields and the `## Source` section, with
-   `enriched` set. The writer's own text is never touched. Failures retry
+   `document` or `book`). When the source settles the kind (a podcast
+   episode, a YouTube video, a PDF, an EPUB or book, an X post, a picture),
+   that kind wins over the model's, so it is right even without an AI call.
+3. **Attribute the passage**: if the clip's own text starts with a block
+   quote (a shared passage), it is looked up in the whole source:
+   `quote_by` and `quote_link` record the comment author and permalink it
+   sits under, the timestamp and speaker of its transcript paragraph, the
+   page it's on (`#page=N`), or, for a `link` or `quote` clip with no such
+   anchors in its source, a text fragment of its first and last five words.
+   So a reply never reads as the poster's words.
+4. **Write back**: the frontmatter fields and the `## Source` section, with
+   `enriched` set. A podcast clip saved by a tracking-redirect link gets the
+   episode page or the plain audio URL instead, unless the writer changed
+   the link meanwhile. `quote_by`/`quote_link` are written only if the own
+   text is still the one enrichment read. The writer's own text is never touched. Failures retry
    with backoff, then set `enrich_error`.
 
 The worker makes three attempts, waiting 2 then 10 seconds between them.
@@ -416,7 +474,13 @@ vault's hidden `.kintsugi/` folder. Release builds ignore the variable.
   clips (search as you type; documents show title and status, clips show
   cards with thumbnails). Choosing one inserts the link.
 - Quoting a clip inserts a blockquote attributed to it:
-  `> passage\n>\n> [[why-we-sleep]]`.
+  `> passage\n>\n> [[why-we-sleep]]`. When enrichment attributed the clip's
+  passage, only that passage is quoted, with its speaker and deep link:
+  `> passage\n> — pvh · [comment](<https://news.ycombinator.com/item?id=…>)\n>\n> [[local-first-hn]]`
+  (`14:48` for a timestamp, `p. 12` for a page, `passage` for a text
+  fragment). The writer's own note is never quoted under someone else's
+  name (`attributedQuote` in `@kintsugi/core/references`). The library's
+  detail view shows the same attribution under the passage.
 - In the editor, wikilinks render as small inline chips (title and site);
   hovering shows the card; ⌘-click opens the clip.
 - **The margin**: a quiet right-hand panel listing what this document

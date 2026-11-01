@@ -1,0 +1,79 @@
+{
+  "id": 19804478,
+  "created_at": "2019-05-01T14:01:12.000Z",
+  "created_at_i": 1556719272,
+  "type": "story",
+  "author": "pvh",
+  "title": "Local-first software: You own your data, in spite of the cloud",
+  "url": "https://www.inkandswitch.com/local-first.html",
+  "text": null,
+  "points": 1103,
+  "parent_id": null,
+  "story_id": 19804478,
+  "children": [
+    {
+      "id": 19805001,
+      "created_at": "2019-05-01T14:30:00.000Z",
+      "type": "comment",
+      "author": "josephg",
+      "text": "I&#x27;ve spent years on CRDTs. The hard part isn&#x27;t the algorithm, it&#x27;s the <i>product</i>.<p>&gt; real-time collaboration is table stakes<p>Agreed. See <a href=\"https:&#x2F;&#x2F;github.com&#x2F;josephg&#x2F;diamond-types\" rel=\"nofollow\">https:&#x2F;&#x2F;github.com&#x2F;josephg&#x2F;diamond-types</a><p><pre><code>  let doc = Doc::new();\n  doc.insert(0, &quot;hi&quot;);\n</code></pre>",
+      "parent_id": 19804478,
+      "story_id": 19804478,
+      "children": [
+        {
+          "id": 19805123,
+          "created_at": "2019-05-01T15:02:00.000Z",
+          "type": "comment",
+          "author": "pvh",
+          "text": "# not a heading. Thanks, Joseph! &lt;script&gt;alert(1)&lt;/script&gt;",
+          "parent_id": 19805001,
+          "story_id": 19804478,
+          "children": [
+            {
+              "id": 19805200,
+              "created_at": "2019-05-01T15:10:00.000Z",
+              "type": "comment",
+              "author": "josephg",
+              "text": "1. Happy to help.",
+              "parent_id": 19805123,
+              "story_id": 19804478,
+              "children": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 19805300,
+      "created_at": "2019-05-01T16:00:00.000Z",
+      "type": "comment",
+      "author": null,
+      "text": null,
+      "parent_id": 19804478,
+      "story_id": 19804478,
+      "children": []
+    },
+    {
+      "id": 19805400,
+      "created_at": "2019-05-01T16:30:00.000Z",
+      "type": "comment",
+      "author": null,
+      "text": null,
+      "parent_id": 19804478,
+      "story_id": 19804478,
+      "children": [
+        {
+          "id": 19805401,
+          "created_at": "2019-05-01T16:40:00.000Z",
+          "type": "comment",
+          "author": "skeptic",
+          "text": "Sync is never [free](javascript:alert(1)).",
+          "parent_id": 19805400,
+          "story_id": 19804478,
+          "children": []
+        }
+      ]
+    }
+  ],
+  "options": []
+}

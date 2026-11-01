@@ -6,7 +6,7 @@ use super::{
     storage::{Clip, Store, Update, VaultStore},
     think,
 };
-use kintsugi_ingest::{CaptureOptions, Engine as Ingest, Item, Target};
+use kintsugi_ingest::{CaptureOptions, Engine as Ingest, Item, SourceType, Target};
 use std::{future::Future, path::Path, time::Duration};
 use tauri::{Listener, Manager};
 use tokio::sync::Notify;
@@ -82,13 +82,26 @@ impl Enricher {
             want_media: clip.summary.image.is_none(),
         };
         // A saved PDF or EPUB is the source itself; its link (if any) is
-        // only where it came from.
-        let target = match (&clip.summary.file, &clip.summary.url) {
-            (Some(file), _) => kintsugi_vault::clip_file_path(root, &clip.summary.path, file)
+        // only where it came from. A picture with no link is read on this
+        // Mac, when this build can (machine-made text and labels).
+        let target = match (&clip.summary.file, &clip.summary.url, &clip.summary.image) {
+            (Some(file), _, _) => kintsugi_vault::clip_file_path(root, &clip.summary.path, file)
                 .map(Target::File)
                 .map_err(|_| kintsugi_ingest::Error::Unavailable),
-            (None, Some(url)) => Target::url(url),
-            (None, None) => return Ok(Page::default()),
+            (None, Some(url), _) => Target::url(url),
+            (None, None, Some(image)) => {
+                let Ok(image) = kintsugi_vault::clip_media_path(root, &clip.summary.path, image) else {
+                    return Ok(Page::default());
+                };
+                let target = Target::File(image);
+                if self.0.adapter_for(&target).is_none() {
+                    return Ok(Page::default());
+                }
+                // Reading a picture is a bonus: a failure leaves the clip
+                // to be organized from what it has.
+                return Ok(self.0.capture(&target, options).await.map(Page::from).unwrap_or_default());
+            }
+            (None, None, None) => return Ok(Page::default()),
         };
         let item = match target {
             Ok(target) => self.0.capture(&target, options).await,
@@ -112,13 +125,36 @@ struct Page {
     site: Option<String>,
     author: Option<String>,
     description: Option<String>,
+    /// The whole extracted text (the vault keeps an excerpt in the clip and
+    /// the rest beside it).
     source_text: String,
     image: Option<kintsugi_ingest::MediaData>,
+    /// The kind the source makes certain (a podcast episode, a PDF), which
+    /// wins over the model's guess.
+    kind: Option<&'static str>,
+    /// A better URL for the clip: an episode's page, or its audio file
+    /// without the tracking redirects in front of it.
+    url: Option<String>,
+}
+
+/// The clip kind an ingest source settles, if it does.
+fn source_kind(source: SourceType) -> Option<&'static str> {
+    match source {
+        SourceType::Podcast => Some("podcast"),
+        SourceType::Youtube => Some("video"),
+        SourceType::Pdf => Some("document"),
+        SourceType::Epub | SourceType::Book | SourceType::Author => Some("book"),
+        SourceType::X => Some("post"),
+        SourceType::Image => Some("image"),
+        SourceType::Web | SourceType::Rss | SourceType::Reddit | SourceType::Hn => None,
+    }
 }
 
 impl From<Item> for Page {
     fn from(mut item: Item) -> Self {
         Page {
+            kind: source_kind(item.source),
+            url: item.url.take().filter(|_| item.source == SourceType::Podcast),
             image: item.media.first_mut().and_then(|m| m.data.take()),
             title: item.title,
             site: item.site,
@@ -143,6 +179,7 @@ fn source_or_shared(clip: &Clip, fetched: Result<Page>) -> Result<Page> {
 async fn build_update(clip: &Clip, page: Page, existing_tags: Vec<String>) -> Result<Update> {
     // The think module owns prompt construction and structured-output checks.
     let baseline = &clip.summary;
+    let known_source = clip.source.clone().unwrap_or_default();
     let input = think::Input {
         title: baseline
             .title
@@ -151,11 +188,7 @@ async fn build_update(clip: &Clip, page: Page, existing_tags: Vec<String>) -> Re
             .or_else(|| page.title.clone()),
         kind: kind_name(baseline.kind).into(),
         own_text: clip.text.clone(),
-        source_text: if page.source_text.is_empty() {
-            clip.source.clone().unwrap_or_default()
-        } else {
-            page.source_text.clone()
-        },
+        source_text: if page.source_text.is_empty() { known_source.clone() } else { page.source_text.clone() },
         metadata: [
             ("page title", page.title.clone()),
             ("site", page.site.clone().or_else(|| baseline.site.clone())),
@@ -169,16 +202,37 @@ async fn build_update(clip: &Clip, page: Page, existing_tags: Vec<String>) -> Re
         existing_tags,
     };
     let thought = think::think(&input).await.map_err(|e| e.to_string())?;
+    let kind = page.kind.map(String::from).unwrap_or(thought.kind);
+    let url = page.url.filter(|u| baseline.url.as_deref() != Some(u.as_str()));
+    let source = if page.source_text.is_empty() { &known_source } else { &page.source_text };
+    let quote = quote(clip, source, url.as_deref().or(baseline.url.as_deref()), &kind);
     Ok(Update {
         title: page.title.or(thought.title),
         summary: thought.summary,
         tags: thought.tags,
-        kind: thought.kind,
+        kind,
         site: page.site,
         author: page.author,
         source_text: (!page.source_text.is_empty()).then_some(page.source_text),
         image: page.image,
+        url,
+        quote_by: quote.by,
+        quote_link: quote.link,
     })
+}
+
+/// Who said the clip's shared passage and where it is, from the source's
+/// comment headings, timestamps, page markers or (for articles) a text
+/// fragment.
+fn quote(clip: &Clip, source: &str, url: Option<&str>, kind: &str) -> kintsugi_vault::QuoteAttribution {
+    let Some(passage) = kintsugi_vault::leading_passage(&clip.text) else { return Default::default() };
+    let source = kintsugi_vault::QuoteSource {
+        text: source,
+        url,
+        file: clip.summary.file.as_deref(),
+        fragments: matches!(kind, "link" | "quote"),
+    };
+    kintsugi_vault::quote_attribution(source, &passage)
 }
 
 fn kind_name(kind: kintsugi_vault::ClipKind) -> &'static str {
@@ -192,6 +246,7 @@ fn kind_name(kind: kintsugi_vault::ClipKind) -> &'static str {
         ClipKind::Note => "note",
         ClipKind::Document => "document",
         ClipKind::Book => "book",
+        ClipKind::Podcast => "podcast",
     }
 }
 
@@ -290,6 +345,7 @@ mod tests {
                 author: None,
                 source_text: None,
                 image: None,
+                ..Update::default()
             })
         }
     }
@@ -305,12 +361,15 @@ mod tests {
                 author: None,
                 image: None,
                 file: None,
+                full_source: None,
                 captured: "2026-10-29T14:05".into(),
                 via: None,
                 tags: vec![],
                 summary: None,
                 enriched: None,
                 enrich_error: None,
+                quote_by: None,
+                quote_link: None,
             },
             text: "My own words.".into(),
             source: None,
@@ -397,6 +456,97 @@ mod tests {
         let mut moved = clip.clone();
         moved.summary.file = Some("files/elsewhere.epub".into());
         assert_eq!(futures_block(enricher.page(root, &moved)).unwrap_err(), "could not fetch source page");
+    }
+
+    #[test]
+    fn a_hacker_news_reply_is_attributed_to_its_commenter() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}/", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _ = stream.read(&mut [0; 4096]);
+            let body = include_bytes!("../../../../../crates/ingest/fixtures/hn/story.json");
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len())
+                .unwrap();
+            stream.write_all(body).unwrap();
+        });
+        let limits = kintsugi_ingest::api::ApiLimits { min_interval: Duration::ZERO, ..Default::default() };
+        let hn = kintsugi_ingest::hn::HackerNewsAdapter::with_endpoint(kintsugi_ingest::Url::parse(&base).unwrap(), limits).unwrap();
+        let enricher = Enricher(Ingest::new().with(hn));
+        let mut shared = clip();
+        shared.summary.url = Some("https://news.ycombinator.com/item?id=19804478".into());
+        shared.text = "> Thanks, Joseph!\n\nHe built the thing.".into();
+        let page = futures_block(enricher.page(Path::new("/nonexistent"), &shared)).unwrap();
+        server.join().unwrap();
+        assert_eq!(page.title.as_deref(), Some("Local-first software: You own your data, in spite of the cloud"));
+        assert_eq!(page.kind, None);
+        let quote = quote(&shared, &page.source_text, shared.summary.url.as_deref(), "link");
+        assert_eq!(quote.by.as_deref(), Some("pvh"));
+        assert_eq!(quote.link.as_deref(), Some("https://news.ycombinator.com/item?id=19805123"));
+    }
+
+    struct Ocr;
+
+    impl kintsugi_ingest::image::ImageReader for Ocr {
+        fn read<'a>(&'a self, _: &'a Path) -> kintsugi_ingest::BoxFuture<'a, kintsugi_ingest::Result<kintsugi_ingest::image::ImageText>> {
+            Box::pin(async {
+                Ok(kintsugi_ingest::image::ImageText { lines: vec!["Golden seams".into()], ..Default::default() })
+            })
+        }
+    }
+
+    #[test]
+    fn a_picture_alone_is_read_on_this_mac_when_it_can_be() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let path = kintsugi_vault::clip_create(
+            root,
+            &kintsugi_vault::ClipCapture {
+                url: None,
+                text: None,
+                note: None,
+                title: None,
+                image: Some(b"\x89PNG\r\n\x1a\nfake".to_vec()),
+                image_type: Some("image/png".into()),
+                file: None,
+                captured_at: "2026-10-31T10:15".into(),
+                via: kintsugi_vault::ClipVia::Share,
+            },
+        )
+        .unwrap();
+        assert_eq!(path, "inspiration/image-2026-10-31-10-15.md");
+        let clip = kintsugi_vault::clip_read(root, &path).unwrap();
+        let reading = Enricher(Ingest::new().with(kintsugi_ingest::image::ImageAdapter::new(std::sync::Arc::new(Ocr))));
+        let page = futures_block(reading.page(root, &clip)).unwrap();
+        assert!(page.source_text.contains("machine-made") && page.source_text.contains("Golden seams"), "{}", page.source_text);
+        assert_eq!(page.kind, Some("image"));
+        // Without the helper (headless, or an old build), nothing is read and nothing fails.
+        let page = futures_block(Enricher(Ingest::new()).page(root, &clip)).unwrap();
+        assert!(page.source_text.is_empty());
+    }
+
+    #[test]
+    fn sources_settle_the_kinds_they_are_sure_of() {
+        assert_eq!(source_kind(SourceType::Podcast), Some("podcast"));
+        assert_eq!(source_kind(SourceType::Pdf), Some("document"));
+        assert_eq!(source_kind(SourceType::Web), None);
+        let podcast = Item {
+            source: SourceType::Podcast,
+            id: "podcast:x".into(),
+            url: Some("https://media.example.com/idea.mp3".into()),
+            title: None,
+            author: None,
+            site: None,
+            description: None,
+            published: None,
+            captured: String::new(),
+            media: vec![],
+            body: String::new(),
+            extras: Default::default(),
+        };
+        assert_eq!(Page::from(podcast.clone()).url.as_deref(), Some("https://media.example.com/idea.mp3"));
+        assert_eq!(Page::from(Item { source: SourceType::Web, ..podcast }).url, None);
     }
 
     fn futures_block<T>(f: impl Future<Output = T>) -> T {
