@@ -43,6 +43,7 @@ A pnpm + Cargo monorepo:
 | `packages/ui` | shadcn/ui components and the theme (`pnpm exec shadcn add …` from here) |
 | `crates/vault` | The vault on disk: reading, versioned writes, captures |
 | `crates/ingest` | The ingestion engine: source adapters to normalized Markdown items ([docs/ingest.md](docs/ingest.md)) |
+| `crates/search` | Local hybrid search: FTS5 plus on-device model2vec embeddings, fused by rank ([docs/search.md](docs/search.md)) |
 
 ```sh
 pnpm install

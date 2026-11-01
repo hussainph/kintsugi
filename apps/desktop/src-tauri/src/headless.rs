@@ -216,6 +216,7 @@ pub fn run() -> Result<()> {
     let clients = Clients::default();
     let app = build_app(clients.clone())?;
     crate::ai::init(app.handle());
+    crate::search::init(app.handle());
     // Never restore phone/Tailscale settings. Enrichment is opt-in with AI.
     if ai_enabled() {
         crate::enrich::start(app.handle());
@@ -905,6 +906,42 @@ mod tests {
                 call(&client, &bridge, "clip_search", json!({})).await["value"]["total"],
                 2
             );
+            // KI-4: the shared hybrid index serves the webview and the library,
+            // and lives in the scratch config, never the vault.
+            let found = call(&client, &bridge, "search", json!({"query":"saved ipc"})).await;
+            assert_eq!(found["value"][0]["id"], "test.md", "{found}");
+            assert_eq!(found["value"][0]["kind"], "writing");
+            let clips = call(&client, &bridge, "search", json!({"query":"scratch","kinds":["clip"]})).await;
+            assert_eq!(clips["value"].as_array().unwrap().len(), 1, "{clips}");
+            let library = call(&client, &bridge, "clip_search", json!({"query":"scratch"})).await;
+            assert_eq!(library["value"]["total"], 1, "{library}");
+            assert!(crate::config::directory(&bridge.app).unwrap().join("search/index.sqlite").is_file());
+            assert!(!vault.join(".kintsugi/search").exists());
+            // Feed items join the index when the Feed ingests them.
+            let rss = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/feed/blog.rss.xml")).unwrap();
+            let feeds = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let feed_url = format!("http://{}/feed.xml", feeds.local_addr().unwrap());
+            let routes = axum::Router::new().route(
+                "/feed.xml",
+                axum::routing::get(move || {
+                    let rss = rss.clone();
+                    async move { ([(axum::http::header::CONTENT_TYPE, "application/rss+xml")], rss) }
+                }),
+            );
+            tokio::spawn(async move { axum::serve(feeds, routes).await.unwrap() });
+            let followed = call(&client, &bridge, "feed_subscribe", json!({"input":{"kind":"url","url":feed_url}})).await;
+            assert_eq!(followed["ok"], true, "{followed}");
+            let mut found = Value::Null;
+            for _ in 0..50 {
+                found = call(&client, &bridge, "search", json!({"query":"mending","kinds":["feed"]})).await;
+                if found["value"].as_array().is_some_and(|hits| !hits.is_empty()) {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert_eq!(found["value"][0]["title"], "On mending", "{found}");
+            assert_eq!(found["value"][0]["source"], "The Quiet Blog", "{found}");
+            assert!(found["value"][0]["id"].as_str().unwrap().starts_with("feed:"));
             assert_eq!(
                 call(&client, &bridge, "reference_index", json!({})).await["ok"],
                 true

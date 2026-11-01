@@ -279,7 +279,8 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
 - A masonry grid of cards, newest first: image-forward when there's an
   image, the quote or note otherwise, with the site and title small beneath.
 - One search field over title, summary, tags, own text, source text and
-  site, with tag filters. Lexical first; semantic search comes later.
+  site, with tag filters. Results are ranked by the shared hybrid index
+  (words and meaning, [search.md](search.md)).
 - A card opens a detail view with the large image, the quote and note
   (editable), source link, editable tags, and **Used in**: the documents that
   reference this clip.
@@ -288,14 +289,19 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
 ### Library implementation and shared seams
 
 `clip_search({ query?, tags?, offset?, limit? })` is the reusable desktop
-lexical search command, including for the editor's `[[` picker. It returns
+clip search command, including for the editor's `[[` picker. It returns
 `{ clips: (ClipSummary & { text: string })[], total, tags: string[] }`.
 `text` is an own-text preview of at most 600 Unicode characters, never the
 extracted source. Search itself uses the full own text and source, plus title,
 summary, tags, site and URL. Terms are whitespace-separated, case-insensitive
 substrings, ANDed across those fields. Tags are trimmed/lowercased exact AND
-filters. Results keep `clip_list` ordering (newest captured first, then path
-ascending); returned tags cover the whole vault, not just matching clips.
+filters. Without a query, results keep `clip_list` ordering (newest captured
+first, then path ascending). With one, the hybrid index ([search.md](search.md))
+ranks them: clips with every word (by stem or prefix) or close in meaning
+come first, best first, and then any other substring match, newest first. So
+a clip found before is never lost, and clips that match only by meaning are
+added. If the index fails, the plain lexical order is used. Returned tags
+cover the whole vault, not just matching clips.
 Pagination defaults to offset 0 and limit 60 (clamped to 1–120).
 
 The Rust index is cached per canonical vault root and invalidated per path by

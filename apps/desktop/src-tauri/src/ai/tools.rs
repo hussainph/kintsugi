@@ -18,6 +18,7 @@
 
 use super::memory::Access;
 use super::wire::{ToolCall, ToolSpec};
+use kintsugi_search::{Hit, Kind, Query};
 use kintsugi_vault::{self as vault, INBOX, INSPIRATION};
 use serde_json::{Value, json};
 use std::fs;
@@ -33,8 +34,6 @@ const READ_MAX_LINES: usize = 1_000;
 const MAX_LINE_CHARS: usize = 400;
 const SEARCH_DEFAULT: usize = 10;
 const SEARCH_MAX: usize = 30;
-const SNIPPETS_PER_FILE: usize = 3;
-const SNIPPET_CHARS: usize = 200;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_FILES: usize = 20_000;
 const MAX_DEPTH: usize = 16;
@@ -49,13 +48,14 @@ pub fn specs() -> &'static [ToolSpec] {
         vec![
             ToolSpec {
                 name: "search",
-                description: "Find words in the vault: writing, inbox/ notes and inspiration/ clips. Returns files with matching lines.",
+                description: "Search writing, inbox/ notes, inspiration/ clips and Feed items by words and meaning. Returns JSON, best first: id (a path to read; feed ids aren't), kind, title, source, snippet, score.",
                 parameters: json!({
                     "type": "object",
                     "properties": {
-                        "query": { "type": "string", "description": "Words to find (any order)." },
+                        "query": { "type": "string", "description": "Words or a description of what you're looking for." },
+                        "k": { "type": "integer", "description": "Max results (default 10)." },
                         "in": { "type": "string", "description": "Limit to a folder, e.g. inspiration or posts/2026." },
-                        "limit": { "type": "integer", "description": "Max files (default 10)." }
+                        "kind": { "type": "string", "enum": ["writing", "note", "clip", "feed"] }
                     },
                     "required": ["query"]
                 }),
@@ -166,6 +166,10 @@ pub const EXTRAS: &[Extra] = &[
 /// the vault, so the vault tools reach it through this hook.
 pub type History = std::sync::Arc<dyn Fn(&Value) -> String + Send + Sync>;
 
+/// The app's shared search index (`crate::search`), which sets the scopes.
+/// Without one, `search` indexes the vault in memory, words only.
+pub type Searcher = std::sync::Arc<dyn Fn(&Query) -> Result<Vec<Hit>> + Send + Sync>;
+
 /// What a tool call produced. `content` goes to the model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Output {
@@ -190,6 +194,7 @@ pub struct Tools {
     /// Kin's memory and skills; without it, `memory` and `skill` refuse.
     memory: Option<Access>,
     history: Option<History>,
+    searcher: Option<Searcher>,
 }
 
 impl Tools {
@@ -200,12 +205,18 @@ impl Tools {
         if outputs.starts_with(given) || outputs.starts_with(&root) || resolved.starts_with(&root) {
             return Err("Kin's outputs must live outside the vault".into());
         }
-        Ok(Tools { root, outputs, turn: safe_name(turn), memory: None, history: None })
+        Ok(Tools { root, outputs, turn: safe_name(turn), memory: None, history: None, searcher: None })
     }
 
     /// Gives the turn Kin's memory and skills.
     pub fn with_memory(mut self, access: Access) -> Self {
         self.memory = Some(access);
+        self
+    }
+
+    /// Searches through the app's index rather than a throwaway one.
+    pub fn with_searcher(mut self, searcher: Searcher) -> Self {
+        self.searcher = Some(searcher);
         self
     }
 
@@ -278,59 +289,28 @@ impl Tools {
         Ok(full)
     }
 
+    /// Hybrid search (`kintsugi-search`): compact JSON hits, never full text.
     fn search(&self, args: &Value) -> Result<String> {
-        let query = args["query"].as_str().unwrap_or_default().trim().to_lowercase();
-        let mut terms: Vec<&str> = query.split_whitespace().collect();
-        terms.dedup();
-        terms.truncate(8);
-        if terms.is_empty() {
+        let text = args["query"].as_str().unwrap_or_default().trim();
+        if text.is_empty() {
             return Err("search needs a query".into());
         }
-        let limit = limit(&args["limit"], SEARCH_DEFAULT, SEARCH_MAX);
-        let scope = self.scope(&args["in"])?;
-        let mut hits = Vec::new();
-        for (rel, path) in self.files(&scope) {
-            let Some(text) = read_text(&path) else { continue };
-            let lower = text.to_lowercase();
-            let found = terms.iter().filter(|t| lower.contains(*t)).count();
-            if found == 0 {
-                continue;
-            }
-            let title = vault::front_matter(&text).0;
-            let named = format!("{} {}", rel.to_lowercase(), title.as_deref().unwrap_or_default().to_lowercase());
-            let occurrences: usize = terms.iter().map(|t| lower.matches(t).count().min(10)).sum();
-            let score = found * 100
-                + if terms.len() > 1 && lower.contains(&query) { 50 } else { 0 }
-                + terms.iter().filter(|t| named.contains(*t)).count() * 30
-                + occurrences;
-            hits.push((score, rel, title, text));
+        let mut query = Query::new(text, &["vault"]);
+        query.limit = limit(if args["k"].is_null() { &args["limit"] } else { &args["k"] }, SEARCH_DEFAULT, SEARCH_MAX);
+        query.within = Some(self.scope(&args["in"])?).filter(|s| !s.is_empty());
+        if let Some(kind) = args["kind"].as_str().filter(|k| !k.is_empty()) {
+            query.kinds = vec![Kind::parse(kind).ok_or("kind is one of writing, note, clip, feed")?];
         }
-        if hits.is_empty() {
-            return Ok(format!("No matches for {query:?}."));
-        }
-        hits.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
-        let total = hits.len();
-        let mut out = format!("{total} file(s) match; showing {}.\n", total.min(limit));
-        for (_, rel, title, text) in hits.into_iter().take(limit) {
-            out.push_str(&format!("\n{rel} [{}]", kind(&rel)));
-            if let Some(title) = title {
-                out.push_str(&format!(" {title}"));
+        let hits = match &self.searcher {
+            Some(searcher) => searcher(&query)?,
+            None => {
+                let mut index = kintsugi_search::Index::open_in_memory()?;
+                kintsugi_search::vault::sync(&mut index, "vault", &self.root)?;
+                index.search(&query)?
             }
-            out.push('\n');
-            let snippets = text
-                .lines()
-                .enumerate()
-                .filter_map(|(i, line)| {
-                    let lower = line.to_lowercase();
-                    let at = terms.iter().filter_map(|t| lower.find(t)).min()?;
-                    Some((i + 1, snippet(line, lower[..at].chars().count())))
-                })
-                .take(SNIPPETS_PER_FILE);
-            for (number, line) in snippets {
-                out.push_str(&format!("  {number}: {line}\n"));
-            }
-        }
-        Ok(out)
+        };
+        let lines: Vec<String> = hits.iter().filter_map(|hit| serde_json::to_string(hit).ok()).collect();
+        Ok(if lines.is_empty() { "[]".into() } else { format!("[\n{}\n]", lines.join(",\n")) })
     }
 
     fn read(&self, args: &Value) -> Result<String> {
@@ -539,19 +519,6 @@ fn clip_chars(line: &str, max: usize) -> String {
     line.chars().take(max).collect::<String>() + "…"
 }
 
-/// About `SNIPPET_CHARS` of `line` around the character index `center`.
-fn snippet(line: &str, center: usize) -> String {
-    let count = line.chars().count();
-    if count <= SNIPPET_CHARS {
-        return line.trim().into();
-    }
-    let start = center.saturating_sub(SNIPPET_CHARS / 3).min(count - SNIPPET_CHARS);
-    let body: String = line.chars().skip(start).take(SNIPPET_CHARS).collect();
-    let before = if start > 0 { "…" } else { "" };
-    let after = if start + SNIPPET_CHARS < count { "…" } else { "" };
-    format!("{before}{}{after}", body.trim())
-}
-
 fn safe_name(name: &str) -> String {
     let name: String = name
         .chars()
@@ -595,28 +562,91 @@ pub(crate) mod tests {
         ToolCall { id: "c1".into(), name: name.into(), arguments }
     }
 
+    /// The JSON hits of a search call, checked to be wrapped as data.
+    fn hits(tools: &Tools, args: Value) -> Vec<Value> {
+        let out = tools.run(&call("search", args));
+        assert!(!out.is_error, "{}", out.content);
+        let body = out.content.strip_prefix("<data tool=\"search\">\n").and_then(|b| b.strip_suffix("\n</data>")).unwrap();
+        serde_json::from_str::<Vec<Value>>(&body.replace("<\\/data", "</data")).unwrap()
+    }
+
     #[test]
     fn search_finds_writing_notes_and_clips_ranked() {
         let vault = scratch_vault();
         let (tools, _out) = tools(vault.path());
-        let out = tools.run(&call("search", json!({ "query": "kiln" })));
-        assert!(!out.is_error);
-        let text = out.content;
-        assert!(text.starts_with("<data tool=\"search\">"), "{text}");
-        assert!(text.contains("posts/kintsugi.md [writing] On Kintsugi"), "{text}");
-        assert!(text.contains("inbox/2026-11-01.md [note]"));
-        assert!(text.contains("inspiration/clip-kiln.md [clip] Anagama kilns"));
-        assert!(text.contains("12: My grandmother's kiln taught me patience."), "{text}");
-        // Hidden folders and non-text files are never searched.
-        assert!(!text.contains("NOTES") && !text.contains("image.png"));
+        let before = vault_listing(vault.path());
+        let found = hits(&tools, json!({ "query": "kiln" }));
+        let ids: Vec<_> = found.iter().map(|h| h["id"].as_str().unwrap()).collect();
         // The clip's title names the term, so it ranks first.
-        let first = text.lines().find(|l| l.contains(".md [")).unwrap();
-        assert!(first.starts_with("inspiration/clip-kiln.md"), "{text}");
+        assert_eq!(ids, ["inspiration/clip-kiln.md", "posts/kintsugi.md", "inbox/2026-11-01.md"]);
+        assert_eq!(found[1]["kind"], "writing");
+        assert_eq!(found[1]["title"], "On Kintsugi");
+        // A malformed clip is still searched, as text with its title.
+        assert_eq!((&found[0]["kind"], &found[0]["title"]), (&json!("clip"), &json!("Anagama kilns")));
+        assert!(found[1]["snippet"].as_str().unwrap().contains("kiln"), "{found:?}");
+        assert!(found[0]["score"].as_f64().unwrap() > found[2]["score"].as_f64().unwrap());
+        // Compact: only these fields, and snippets, never whole files.
+        for hit in &found {
+            let keys: Vec<_> = hit.as_object().unwrap().keys().map(String::as_str).collect();
+            assert!(keys.iter().all(|k| ["id", "kind", "title", "source", "snippet", "score"].contains(k)), "{keys:?}");
+            assert!(hit["snippet"].as_str().unwrap().chars().count() <= kintsugi_search::SNIPPET_CHARS + 1);
+        }
+        // Hidden folders and non-text files are never searched.
+        assert!(!ids.iter().any(|id| id.contains("NOTES") || id.contains("image.png")));
 
-        let scoped = tools.run(&call("search", json!({ "query": "kiln", "in": "posts" }))).content;
-        assert!(scoped.contains("1 file(s) match"), "{scoped}");
+        let scoped = hits(&tools, json!({ "query": "kiln", "in": "posts" }));
+        assert_eq!(scoped.len(), 1);
+        let clips = hits(&tools, json!({ "query": "kiln", "kind": "clip", "k": 5 }));
+        assert_eq!(clips.len(), 1);
+        assert!(tools.run(&call("search", json!({ "query": "kiln", "kind": "tweet" }))).is_error);
+        assert!(tools.run(&call("search", json!({ "query": "kiln", "in": "../" }))).is_error);
         assert!(tools.run(&call("search", json!({ "query": "  " }))).is_error);
-        assert!(tools.run(&call("search", json!({ "query": "zebra" }))).content.contains("No matches"));
+        assert_eq!(tools.run(&call("search", json!({ "query": "zebra" }))).content, "<data tool=\"search\">\n[]\n</data>");
+        // Snippets from the vault can't close the data block.
+        let injected = tools.run(&call("search", json!({ "query": "obey" }))).content;
+        assert_eq!(injected.matches("</data>").count(), 1, "{injected}");
+
+        // Searching never writes to the vault.
+        assert_eq!(vault_listing(vault.path()), before);
+    }
+
+    /// Every path and its bytes under `root`, hidden ones included.
+    fn vault_listing(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut out = Vec::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path.clone());
+                    out.push((path, vec![]));
+                } else {
+                    out.push((path.clone(), fs::read(path).unwrap()));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    #[test]
+    fn search_uses_the_app_index_when_given_one() {
+        let vault = scratch_vault();
+        let (tools, _out) = tools(vault.path());
+        let tools = tools.with_searcher(std::sync::Arc::new(|query: &Query| {
+            assert_eq!((query.text.as_str(), query.limit, query.within.as_deref()), ("naps", 3, Some("posts")));
+            Ok(vec![Hit {
+                id: "feed:1".into(),
+                kind: Kind::Feed,
+                title: None,
+                source: Some("HN".into()),
+                snippet: "short".into(),
+                score: 0.5,
+                matched: Default::default(),
+            }])
+        }));
+        let found = hits(&tools, json!({ "query": "naps", "limit": 3, "in": "posts/" }));
+        assert_eq!(found, [json!({ "id": "feed:1", "kind": "feed", "source": "HN", "snippet": "short", "score": 0.5 })]);
     }
 
     #[test]
@@ -721,13 +751,5 @@ pub(crate) mod tests {
         assert_eq!(code.matches("write_atomic").count(), 1, "only spill writes");
         let names: Vec<_> = specs().iter().map(|s| s.name).collect();
         assert_eq!(names, ["search", "read", "list", "memory", "skill", "tool"]);
-    }
-
-    #[test]
-    fn snippets_center_on_the_match() {
-        let line = format!("{}needle{}", "a".repeat(300), "b".repeat(300));
-        let lower = line.to_lowercase();
-        let s = snippet(&line, lower[..lower.find("needle").unwrap()].chars().count());
-        assert!(s.contains("needle") && s.starts_with('…') && s.ends_with('…'), "{s}");
     }
 }

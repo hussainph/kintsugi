@@ -66,6 +66,7 @@ fn host(app: &AppHandle) -> Result<Host> {
         changed: Arc::new({
             let app = app.clone();
             move |change: Changed| {
+                crate::search::changed(&app);
                 let _ = app.emit("vault:changed", change);
             }
         }),

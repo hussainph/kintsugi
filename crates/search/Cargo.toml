@@ -1,0 +1,21 @@
+[package]
+name = "kintsugi-search"
+description = "Kintsugi's local hybrid search: on-device embeddings plus full text"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+kintsugi-vault.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# Same version as the Feed's store (KI-25): one bundled SQLite in the app.
+rusqlite = { version = "0.41", features = ["bundled"] }
+model2vec-rs = { version = "0.4", default-features = false, features = ["onig"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
+sha1 = "0.10"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { version = "1.54.1", features = ["rt", "macros"] }

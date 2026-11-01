@@ -512,6 +512,33 @@ impl Store {
             .ok_or_else(|| "no such feed item".into())
     }
 
+    /// Every item in the feed, with a stamp that changes with its text, for
+    /// the search index (`crate::search`).
+    pub fn search_stamps(&self) -> Result<Vec<(i64, String)>> {
+        let mut statement = self
+            .db
+            .prepare(&format!(
+                "SELECT i.id, i.fetched_at || ':' || COALESCE(i.full_text_at, 0) || ':' || COALESCE(s.title, '') || ':'
+                   || length(COALESCE(i.title, '') || COALESCE(i.author, '') || COALESCE(i.summary, '') || COALESCE(i.content, ''))
+                 FROM items i JOIN sources s ON s.id = i.source_id WHERE {VISIBLE} ORDER BY i.id"
+            ))
+            .map_err(err)?;
+        let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err)?;
+        rows.collect::<rusqlite::Result<_>>().map_err(err)
+    }
+
+    /// An item's searchable text: title, source title, author, summary, content.
+    pub fn search_text(&self, id: i64) -> Result<Option<[Option<String>; 5]>> {
+        self.db
+            .query_row(
+                "SELECT i.title, s.title, i.author, i.summary, i.content FROM items i JOIN sources s ON s.id = i.source_id WHERE i.id = ?1",
+                [id],
+                |r| Ok([r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?]),
+            )
+            .optional()
+            .map_err(err)
+    }
+
     /// Readable text from the feed itself, for reading in the app and for a
     /// saved clip's source section.
     pub fn content(&self, id: i64) -> Result<Option<String>> {
@@ -668,6 +695,27 @@ mod tests {
             published_at: days_ago.map(|d| NOW - d * DAY),
             ..Default::default()
         }
+    }
+
+    /// The search index's view: visible items, stamps that move with text.
+    #[test]
+    fn search_stamps_follow_text_and_visibility() {
+        let store = Store::memory();
+        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, Some("Example"), NOW).unwrap();
+        store.insert_items(source.id, &[entry("a", Some(1)), entry("b", Some(1))], NOW, true).unwrap();
+        let before = store.search_stamps().unwrap();
+        assert_eq!(before.len(), 2);
+        let a = before.iter().map(|i| i.0).find(|id| store.item(*id).unwrap().title.as_deref() == Some("a")).unwrap();
+        let [title, from, _, _, content] = store.search_text(a).unwrap().unwrap();
+        assert_eq!((title.as_deref(), from.as_deref()), (Some("a"), Some("Example")));
+        assert_eq!(content.as_deref(), Some("Body of a"));
+        store.set_full_text(a, Some("A much longer body of a"), NOW + 1).unwrap();
+        let after = store.search_stamps().unwrap();
+        assert_ne!(after.iter().find(|i| i.0 == a), before.iter().find(|i| i.0 == a));
+        store.set_dismissed(a, true, NOW).unwrap();
+        assert_eq!(store.search_stamps().unwrap().len(), 1);
+        store.set_muted(source.id, true).unwrap();
+        assert!(store.search_stamps().unwrap().is_empty());
     }
 
     #[test]

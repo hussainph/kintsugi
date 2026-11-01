@@ -25,7 +25,7 @@ short schemas:
 
 | Tool | Does |
 | --- | --- |
-| `search` | Finds words in writing, `inbox/` and `inspiration/`; files ranked, with matching lines |
+| `search` | Hybrid search ([search.md](search.md)) over writing, `inbox/`, `inspiration/` and Feed items: `{query, k?, in?, kind?}` → a JSON array of `{id, kind, title?, source?, snippet, score}`, best first, never full text |
 | `read` | A file with line numbers; `offset`/`limit` for long files |
 | `list` | A folder's subfolders and documents, with titles |
 | `memory` | Batched add / patch / remove on `USER.md` or `NOTES.md` |
@@ -37,6 +37,8 @@ headings), `recent` (recently changed documents) and `history` (searches
 the whole conversation log, or reads around one entry with `{"around": seq}`). New tools join this
 list, so the tool array (part of the cached prefix) never changes mid-turn.
 
+- `search` uses the app's shared index (`Tools::with_searcher`). Without
+  one, as in tests, it indexes the vault in memory, by words only.
 - Paths stay inside the vault: no `..`, absolute paths, hidden entries or
   symlinks.
 - Nothing writes to the vault except Kin's own memory and skills in

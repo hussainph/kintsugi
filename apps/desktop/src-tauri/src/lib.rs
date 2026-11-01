@@ -8,6 +8,7 @@ mod library;
 mod navigation;
 mod phone;
 mod references;
+mod search;
 mod vault;
 
 #[cfg(all(feature = "headless", not(debug_assertions)))]
@@ -52,6 +53,7 @@ fn builder() -> tauri::Builder<Runtime> {
     builder
         .manage(vault::Vault::default())
         .manage(library::Library::default())
+        .manage(search::Search::default())
         .manage(ai::Ai::default())
         .manage(ai::Kin::default())
         .manage(ai::Chat::default())
@@ -76,6 +78,7 @@ fn builder() -> tauri::Builder<Runtime> {
             vault::clip_trash,
             library::clip_search,
             library::clip_image,
+            search::search,
             ai::ai_providers,
             ai::ai_stream,
             ai::ai_cancel,
@@ -127,6 +130,7 @@ pub fn run() {
             ai::init(app.handle());
             // App data, not the vault, so it runs in scratch vault runs too.
             feed::start(app.handle());
+            search::init(app.handle());
             if !config::isolated_dev() {
                 enrich::start(app.handle());
                 phone::restore(app.handle());

@@ -124,6 +124,7 @@ fn now_ms() -> i64 {
 }
 
 fn changed(app: &AppHandle) {
+    crate::search::feed_changed(app);
     let _ = app.emit(CHANGED, ());
 }
 
@@ -145,7 +146,47 @@ async fn full_text(app: &AppHandle, item: &Item) -> Result<()> {
     let longer = fetched
         .map(|page| page.body)
         .filter(|body| body.chars().count() > content.as_deref().map_or(0, |c| c.chars().count()));
-    with(app, |s| s.set_full_text(item.id, longer.as_deref(), now()))
+    with(app, |s| s.set_full_text(item.id, longer.as_deref(), now()))?;
+    crate::search::feed_changed(app);
+    Ok(())
+}
+
+/// The search index's id for a feed item. Not a vault path.
+pub(crate) fn search_id(id: i64) -> String {
+    format!("feed:{id}")
+}
+
+/// What the search index's `feed` scope should change, given what it holds
+/// (ids to stamps): items new or changed since, as documents, and ids no
+/// longer in the feed (expired, dismissed, muted or unfollowed).
+pub(crate) fn search_changes(
+    app: &AppHandle,
+    indexed: &std::collections::HashMap<String, String>,
+) -> Result<(Vec<kintsugi_search::Doc>, Vec<String>)> {
+    with(app, |s| {
+        let live = s.search_stamps()?;
+        let ids: std::collections::HashSet<String> = live.iter().map(|(id, _)| search_id(*id)).collect();
+        let gone = indexed.keys().filter(|id| !ids.contains(*id)).cloned().collect();
+        let mut docs = Vec::new();
+        for (id, stamp) in live {
+            let key = search_id(id);
+            if indexed.get(&key) == Some(&stamp) {
+                continue;
+            }
+            let Some([title, source, author, summary, content]) = s.search_text(id)? else { continue };
+            let body = [summary, content].into_iter().flatten().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n");
+            docs.push(kintsugi_search::Doc {
+                id: key,
+                kind: Some(kintsugi_search::Kind::Feed),
+                title,
+                source: source.or(author),
+                tags: vec![],
+                body,
+                stamp,
+            });
+        }
+        Ok((docs, gone))
+    })
 }
 
 // ── Polling ────────────────────────────────────────────────────────────────

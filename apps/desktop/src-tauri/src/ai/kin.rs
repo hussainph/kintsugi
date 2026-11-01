@@ -151,7 +151,7 @@ async fn start(app: &AppHandle, turn: TurnRequest, task: Task, cancel: &Cancel, 
     let memory = store.snapshot();
     store.loaded(&memory);
     let access = Access { store, source: Source::chat(&turn.id, &turn.question), remember: turn.remember };
-    let tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?.with_memory(access);
+    let tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?.with_memory(access).with_searcher(crate::search::searcher(app));
     let request = agent::Turn {
         task,
         background: turn.background,

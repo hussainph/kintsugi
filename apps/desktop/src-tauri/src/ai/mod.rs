@@ -25,7 +25,7 @@ mod pi_auth;
 pub mod prompt;
 #[cfg(feature = "headless")]
 mod scripted;
-mod tools;
+pub(crate) mod tools;
 mod wire;
 
 pub use chat::Chat;

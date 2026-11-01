@@ -1,6 +1,9 @@
-//! Reusable lexical clip search and a narrow, byte-only image boundary.
+//! Reusable clip search and a narrow, byte-only image boundary.
 //! Each search checks cheap file metadata; only changed clip contents are read.
 //! Source text is searchable, but never returned in a card preview.
+//! With a query, the app's hybrid index (`crate::search`) ranks the matches,
+//! adding clips close in meaning; this lexical index stays as the filter of
+//! record and the fallback.
 
 use crate::vault::Vault;
 use kintsugi_vault::{self as vault, Clip, ClipSummary};
@@ -190,12 +193,15 @@ impl Index {
             .collect();
     }
 
+    /// `ranked` (clip paths, best first) orders the results: ranked clips
+    /// first, then any other lexical match, newest first.
     fn search(
         &self,
         query: Option<&str>,
         tags: &[String],
         offset: usize,
         limit: usize,
+        ranked: Option<&[String]>,
     ) -> ClipSearch {
         let terms = query
             .unwrap_or_default()
@@ -206,14 +212,39 @@ impl Index {
             .iter()
             .map(|tag| tag.trim().to_lowercase())
             .collect::<Vec<_>>();
+        let tagged = |clip: &IndexedClip| {
+            tags.iter()
+                .all(|tag| clip.preview.summary.tags.contains(tag))
+        };
+        let lexical = |clip: &IndexedClip| terms.iter().all(|term| clip.searchable.contains(term));
+        let mut order: Vec<&IndexedClip> = Vec::new();
+        match ranked.filter(|_| !terms.is_empty()) {
+            Some(ranked) => {
+                let by_path: HashMap<&str, &IndexedClip> = self
+                    .clips
+                    .iter()
+                    .map(|clip| (clip.preview.summary.path.as_str(), clip))
+                    .collect();
+                let mut seen = BTreeSet::new();
+                for path in ranked {
+                    if let Some(clip) = by_path.get(path.as_str())
+                        && seen.insert(path.as_str())
+                    {
+                        order.push(clip);
+                    }
+                }
+                order.extend(
+                    self.clips
+                        .iter()
+                        .filter(|clip| !seen.contains(clip.preview.summary.path.as_str()) && lexical(clip)),
+                );
+            }
+            None => order.extend(self.clips.iter().filter(|clip| lexical(clip))),
+        }
         let mut total = 0;
         let mut clips = Vec::new();
-        for clip in &self.clips {
-            if !terms.iter().all(|term| clip.searchable.contains(term))
-                || !tags
-                    .iter()
-                    .all(|tag| clip.preview.summary.tags.contains(tag))
-            {
+        for clip in order {
+            if !tagged(clip) {
                 continue;
             }
             if total >= offset && clips.len() < limit {
@@ -247,6 +278,7 @@ impl Library {
         }
     }
 
+    #[cfg(test)]
     fn search(
         &self,
         root: &Path,
@@ -254,6 +286,18 @@ impl Library {
         tags: &[String],
         offset: Option<usize>,
         limit: Option<usize>,
+    ) -> Result<ClipSearch> {
+        self.search_ranked(root, query, tags, offset, limit, None)
+    }
+
+    fn search_ranked(
+        &self,
+        root: &Path,
+        query: Option<&str>,
+        tags: &[String],
+        offset: Option<usize>,
+        limit: Option<usize>,
+        ranked: Option<Vec<String>>,
     ) -> Result<ClipSearch> {
         let root = root
             .canonicalize()
@@ -270,12 +314,14 @@ impl Library {
             tags,
             offset.unwrap_or(0),
             limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT),
+            ranked.as_deref(),
         ))
     }
 }
 
 #[tauri::command]
 pub async fn clip_search(
+    app: crate::AppHandle,
     vault: State<'_, Vault>,
     library: State<'_, Library>,
     query: Option<String>,
@@ -285,13 +331,19 @@ pub async fn clip_search(
 ) -> Result<ClipSearch> {
     let root = vault.root()?;
     let library = library.inner().clone();
+    let search = tauri::Manager::state::<crate::search::Search>(&app).inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        library.search(
+        let ranked = query
+            .as_deref()
+            .filter(|q| !q.trim().is_empty())
+            .and_then(|q| search.rank_clips(&app, &root, q));
+        library.search_ranked(
             &root,
             query.as_deref(),
             &tags.unwrap_or_default(),
             offset,
             limit,
+            ranked,
         )
     })
     .await
@@ -599,6 +651,41 @@ mod tests {
                 .clips
                 .is_empty()
         );
+    }
+
+    /// The hybrid index ranks; the lexical index filters by tag and keeps
+    /// every plain match it would have shown, after the ranked ones.
+    #[test]
+    fn hybrid_ranking_orders_results_and_adds_meaning_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let older = vault::clip_create(root, &capture("Sleep science, older")).unwrap();
+        let mut newer = capture("Sleep and the brain, newer");
+        newer.captured_at = "2026-10-30T09:00".into();
+        let newer = vault::clip_create(root, &newer).unwrap();
+        let insomnia = vault::clip_create(root, &capture("Insomnia at bedtime")).unwrap();
+        let unrelated = vault::clip_create(root, &capture("Kilns")).unwrap();
+        vault::clip_update(root, &insomnia, &vault::ClipUpdate { tags: Some(vec!["night".into()]), ..Default::default() }).unwrap();
+        let library = Library::default();
+        let paths = |result: ClipSearch| result.clips.into_iter().map(|c| c.summary.path).collect::<Vec<_>>();
+
+        // Lexical alone: newest first, word matches only.
+        assert_eq!(paths(search(&library, root, "sleep", &[])), [newer.clone(), older.clone()]);
+        // Ranked: the order given, the meaning-only match included, and any
+        // lexical match the ranking missed appended; unknown paths ignored.
+        let ranked = vec![older.clone(), insomnia.clone(), "inspiration/gone.md".into()];
+        let result = library.search_ranked(root, Some("sleep"), &[], None, None, Some(ranked.clone())).unwrap();
+        assert_eq!(result.total, 3);
+        assert_eq!(paths(result), [older.clone(), insomnia.clone(), newer.clone()]);
+        // Tags still filter, and pages slice the ranked order.
+        let tagged = library.search_ranked(root, Some("sleep"), &["night".into()], None, None, Some(ranked.clone())).unwrap();
+        assert_eq!(paths(tagged), vec![insomnia.clone()]);
+        let page = library.search_ranked(root, Some("sleep"), &[], Some(1), Some(1), Some(ranked.clone())).unwrap();
+        assert_eq!((page.total, paths(page)), (3, vec![insomnia.clone()]));
+        // No query: newest first, the ranking unused.
+        let all = library.search_ranked(root, None, &[], None, None, Some(ranked)).unwrap();
+        assert_eq!(all.total, 4);
+        assert!(paths(all).contains(&unrelated));
     }
 
     #[test]

@@ -428,7 +428,7 @@ pub(crate) mod tests {
         // The model saw real search and read results from the scratch vault.
         let seen = mock.seen.lock().unwrap();
         let Item::Results(found) = &seen[1].items[2] else { panic!("expected results") };
-        assert!(found[0].content.contains("posts/kintsugi.md [writing] On Kintsugi"), "{}", found[0].content);
+        assert!(found[0].content.contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#), "{}", found[0].content);
         let Item::Results(read) = &seen[2].items[4] else { panic!("expected results") };
         assert!(read[0].content.contains("12: My grandmother's kiln taught me patience."));
         assert!(read[1].content.contains("inbox/2026-11-01.md"));
@@ -728,7 +728,7 @@ pub(crate) mod tests {
             let messages = requests[1].1["messages"].as_array().unwrap();
             assert_eq!(messages[2]["tool_calls"][0]["function"]["arguments"], "{\"query\":\"kiln\"}");
             assert_eq!(messages[3]["role"], "tool");
-            assert!(messages[3]["content"].as_str().unwrap().contains("posts/kintsugi.md [writing] On Kintsugi"));
+            assert!(messages[3]["content"].as_str().unwrap().contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#));
             // Same prefix on both requests.
             assert_eq!(requests[0].1["messages"][0], requests[1].1["messages"][0]);
             assert_eq!(requests[0].1["tools"], requests[1].1["tools"]);
@@ -764,7 +764,7 @@ pub(crate) mod tests {
             let result = &requests[1].1["messages"][2]["content"][0];
             assert_eq!(result["type"], "tool_result");
             assert_eq!(result["tool_use_id"], "toolu_1");
-            assert!(result["content"].as_str().unwrap().contains("inspiration/clip-kiln.md [clip]"));
+            assert!(result["content"].as_str().unwrap().contains(r#""id":"inspiration/clip-kiln.md","kind":"clip""#));
         }
     }
 

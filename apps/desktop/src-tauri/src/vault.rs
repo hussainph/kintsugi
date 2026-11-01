@@ -71,6 +71,7 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     config::update(app, |c| c.vault = Some(path.to_path_buf()))?;
     *app.state::<Vault>().0.lock().unwrap() = Some(path.to_path_buf());
     crate::enrich::wake(app);
+    crate::search::changed(app);
     Ok(())
 }
 
@@ -153,7 +154,9 @@ fn move_to_trash(targets: &[PathBuf]) -> Result<()> {
 }
 
 /// A single invalidation for the margin, document backlinks and Used in.
+/// Search refreshes from the same writes.
 fn references_changed(app: &AppHandle) {
+    crate::search::changed(app);
     let _ = app.emit("references:changed", ());
 }
 
@@ -173,6 +176,7 @@ struct ClipChanged<'a> {
 /// Only paths cross this boundary, never the image bytes or source text.
 pub fn clips_changed(app: &AppHandle, path: &str) {
     app.state::<crate::library::Library>().invalidate(path);
+    crate::search::changed(app);
     let _ = app.emit("clips:changed", ClipChanged { path });
 }
 

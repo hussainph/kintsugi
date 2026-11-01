@@ -61,6 +61,10 @@ pub trait Brain: Send + Sync + 'static {
     fn memory_access(&self, _vault: &Path, _turn: &str, _question: &str) -> Option<Access> {
         None
     }
+    /// The app's search index for Kin's `search` tool (else a throwaway one).
+    fn searcher(&self) -> Option<super::tools::Searcher> {
+        None
+    }
     fn meter(&self) -> &Meter;
     fn emit(&self, event: ChatEvent);
     fn today(&self) -> String {
@@ -364,6 +368,9 @@ impl<B: Brain> Engine<B> {
             let log = self.0.log.clone();
             let history: super::tools::History = Arc::new(move |args: &Value| history_tool(&log.lock().unwrap(), args));
             let mut tools = Tools::new(&vault, meter.outputs_dir(), turn)?.with_history(history);
+            if let Some(searcher) = self.0.brain.searcher() {
+                tools = tools.with_searcher(searcher);
+            }
             if chat && let Some(access) = self.0.brain.memory_access(&vault, turn, &request.question) {
                 tools = tools.with_memory(access);
             }
@@ -635,6 +642,10 @@ impl Brain for AppBrain {
     fn memory_access(&self, vault: &Path, turn: &str, question: &str) -> Option<Access> {
         let store = super::about::store(&self.0, vault).ok()?;
         Some(Access { store, source: super::memory::Source::chat(turn, question), remember: true })
+    }
+
+    fn searcher(&self) -> Option<super::tools::Searcher> {
+        Some(crate::search::searcher(&self.0))
     }
 
     fn meter(&self) -> &Meter {

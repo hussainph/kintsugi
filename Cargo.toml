@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/desktop/src-tauri", "crates/vault", "crates/ingest"]
+members = ["apps/desktop/src-tauri", "crates/vault", "crates/ingest", "crates/search"]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,6 +10,7 @@ authors = ["Hussain Phalasiya"]
 [workspace.dependencies]
 kintsugi-vault = { path = "crates/vault" }
 kintsugi-ingest = { path = "crates/ingest" }
+kintsugi-search = { path = "crates/search" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3.27.0"

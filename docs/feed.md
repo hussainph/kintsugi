@@ -110,6 +110,13 @@ static only in headless) and keeps the longer text. A failure keeps the
 feed's text and isn't retried. Saving never waits on the network: the clip
 gets the best text already stored, and clip enrichment fetches the rest.
 
+## Search
+
+Visible items are also in the shared search index ([search.md](search.md)),
+in its `feed` scope as `feed:<id>`. Every Feed change refreshes the index in
+the background, and items that are hidden or expired leave it. Kin finds
+them with `search` (`kind: "feed"`).
+
 ## OPML
 
 `feed_opml_export({ path })` writes OPML 2.0 to the path the save dialog
