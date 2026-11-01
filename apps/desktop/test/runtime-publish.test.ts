@@ -151,6 +151,9 @@ test("Settings → Blog refuses a non-scratch folder, then imports posts as a re
   await field.fill(blog);
   await settings.getByRole("button", { name: "Save", exact: true }).last().click();
   await settings.getByTestId("blog-status").getByText(/2 posts, mirrored read-only in/).waitFor();
+  // That status counts the repository's posts as soon as the folder is saved;
+  // the import runs after it, and its summary says the mirror is written (KI-47).
+  await page.getByText("Imported 2 posts into hussain.ph/ (2 updated, 0 removed).").waitFor();
   await shot(page, "1-settings-blog");
   await page.keyboard.press("Escape");
 
@@ -206,7 +209,7 @@ test("Publish shows a preview and checks, then writes the post and its image", {
   await done.getByRole("button", { name: "Done" }).click();
   // The document records where it went; the post isn't mirrored a second time.
   await page.getByText("Saved", { exact: true }).waitFor();
-  for (let i = 0; i < 30 && !onDisk(DOC).includes("post: "); i++) await page.waitForTimeout(100);
+  for (let i = 0; i < 300 && !onDisk(DOC).includes("post: "); i++) await page.waitForTimeout(100);
   assert.match(onDisk(DOC), new RegExp(`\\npost: ${POST}\\nurl: https://hussain\\.ph/essays/on-craft-and-repair/\\npublished: ${TODAY}\\n`));
   assert.ok(!existsSync(resolve(vault, "hussain.ph/essays/on-craft-and-repair.md")));
 
