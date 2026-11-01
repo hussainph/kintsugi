@@ -97,6 +97,15 @@ fn words_alone_find_and_rank_writing_notes_and_clips() {
     let mut posts = q("kiln nap");
     posts.within = Some("posts/".into());
     assert_eq!(ids(&mut index, &posts), ["posts/why-i-nap.md"]);
+    // A folder is vault-relative however it's written; `.` and `/` are the whole vault (KI-52).
+    for within in ["posts", "./posts", "/posts/", " posts// "] {
+        posts.within = Some(within.into());
+        assert_eq!(ids(&mut index, &posts), ["posts/why-i-nap.md"], "{within:?}");
+    }
+    for within in [".", "./", "/", "", " "] {
+        posts.within = Some(within.into());
+        assert_eq!(ids(&mut index, &posts).len(), 3, "{within:?}");
+    }
     // Headings title untitled documents; hidden folders and non-text files are never indexed.
     assert_eq!(index.search(&q("budget")).unwrap()[0].title.as_deref(), Some("Monthly budget"));
     assert!(ids(&mut index, &q("secret")).is_empty());
@@ -150,6 +159,42 @@ fn hybrid_search_finds_by_meaning_and_keeps_exact_matches_first() {
     let mut clips = q("tired");
     clips.kinds = vec![Kind::Clip];
     assert_eq!(ids(&mut hybrid, &clips), ["inspiration/why-we-sleep.md"]);
+}
+
+/// KI-52: the app's first search after a cold start (a fresh index file, no
+/// model yet, nothing synced in the background) syncs and finds by words at
+/// once, and still does when the model arrives before its vectors.
+#[test]
+fn a_cold_index_finds_by_words_on_the_first_search() {
+    let dir = vault();
+    let config = tempfile::tempdir().unwrap();
+    let path = config.path().join("search/index.sqlite");
+    let first = |index: &mut Index, query: &Query| {
+        vault::sync(index, "v", dir.path()).unwrap();
+        ids(index, query)
+    };
+    let mut kiln = q("kiln");
+    kiln.within = Some(".".into());
+    let mut library = Query { kinds: vec![Kind::Clip], all_terms: true, min_similarity: 0.35, ..q("kiln") };
+    library.limit = 500;
+
+    // Words only (`KINTSUGI_EMBEDDINGS=off`, or the model still downloading).
+    let mut index = Index::open(&path).unwrap();
+    assert_eq!(first(&mut index, &kiln), ["drafts/kiln.mdx", "inspiration/anagama.md"]);
+    assert_eq!(ids(&mut index, &library), ["inspiration/anagama.md"]);
+    drop(index);
+
+    // The model loads after the first sync, before anything is embedded:
+    // words still match. And with a model from the start, the first sync
+    // embeds as it goes and the library's every-word search still finds.
+    std::fs::remove_dir_all(config.path().join("search")).unwrap();
+    let mut index = Index::open(&path).unwrap();
+    vault::sync(&mut index, "v", dir.path()).unwrap();
+    index.set_embedder(model()).unwrap();
+    assert_eq!(ids(&mut index, &kiln)[..2], ["drafts/kiln.mdx", "inspiration/anagama.md"]);
+    let mut with_model = Index::open_in_memory().unwrap();
+    with_model.set_embedder(model()).unwrap();
+    assert_eq!(first(&mut with_model, &library), ["inspiration/anagama.md"]);
 }
 
 #[test]

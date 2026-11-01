@@ -110,6 +110,7 @@ switching documents, switching vaults and closing the window wait until a
 retry succeeds or the writer discards the change (KI-14). It also edits, deletes
 and renames files on disk while they are open, to check that the vault watcher
 reloads, merges or asks, and never writes over another app's edit (KI-49).
+Right after startup, the Library's and Kin's first searches find by words (KI-52).
 The first run builds the headless backend; set `KINTSUGI_RUNTIME_TIMEOUT` (ms) if that is slow.
 It needs Playwright's headless shell once:
 `pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`

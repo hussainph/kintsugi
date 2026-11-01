@@ -55,7 +55,7 @@ pub fn specs() -> &'static [ToolSpec] {
                         "query": { "type": "string", "description": "Words or a description of what you're looking for." },
                         "k": { "type": "integer", "description": "Max results (default 10)." },
                         "in": { "type": "string", "description": "Limit to a folder, e.g. inspiration or posts/2026." },
-                        "kind": { "type": "string", "enum": ["writing", "note", "clip", "feed"] }
+                        "kind": { "type": "string", "enum": ["writing", "note", "clip", "feed"], "description": "note is inbox/ only; other folders are writing." }
                     },
                     "required": ["query"]
                 }),
@@ -367,16 +367,40 @@ impl Tools {
         if let Some(kind) = args["kind"].as_str().filter(|k| !k.is_empty()) {
             query.kinds = vec![Kind::parse(kind).ok_or("kind is one of writing, note, clip, feed")?];
         }
-        let hits = match &self.searcher {
-            Some(searcher) => searcher(&query)?,
+        let hits = self.find(&query)?;
+        let lines: Vec<String> = hits.iter().filter_map(|hit| serde_json::to_string(hit).ok()).collect();
+        if !lines.is_empty() {
+            return Ok(format!("[\n{}\n]", lines.join(",\n")));
+        }
+        // A filter that hides every match (`kind: note` for a `notes/` folder,
+        // a mistyped folder) shouldn't read as "nothing in the vault" (KI-52).
+        if query.within.is_none() && query.kinds.is_empty() {
+            return Ok("[]".into());
+        }
+        let filter = match (&query.within, query.kinds.first()) {
+            (Some(within), Some(kind)) => format!("in {within}/ of kind {}", kind.as_str()),
+            (Some(within), None) => format!("in {within}/"),
+            (None, kind) => format!("of kind {}", kind.map_or("", |k| k.as_str())),
+        };
+        let wider = Query { within: None, kinds: vec![], limit: 5, ..query };
+        let others: Vec<String> = self.find(&wider)?.iter().map(|h| format!("{} ({})", h.id, h.kind.as_str())).collect();
+        Ok(if others.is_empty() {
+            "[]".into()
+        } else {
+            format!("[]\nNothing {filter}. Without that filter: {}.", others.join(", "))
+        })
+    }
+
+    /// The app's shared index, or a throwaway one over the vault.
+    fn find(&self, query: &Query) -> Result<Vec<Hit>> {
+        match &self.searcher {
+            Some(searcher) => searcher(query),
             None => {
                 let mut index = kintsugi_search::Index::open_in_memory()?;
                 kintsugi_search::vault::sync(&mut index, "vault", &self.root)?;
-                index.search(&query)?
+                index.search(query)
             }
-        };
-        let lines: Vec<String> = hits.iter().filter_map(|hit| serde_json::to_string(hit).ok()).collect();
-        Ok(if lines.is_empty() { "[]".into() } else { format!("[\n{}\n]", lines.join(",\n")) })
+        }
     }
 
     fn read(&self, args: &Value) -> Result<String> {
@@ -488,8 +512,15 @@ impl Tools {
         Ok(if lines.is_empty() { "No documents.".into() } else { lines.join("\n") + "\n" })
     }
 
+    /// A folder, vault-relative however it's written: `./posts`, `/posts/`
+    /// and `posts` are the same, and `.`, `./` or `/` mean the whole vault.
     fn scope(&self, value: &Value) -> Result<String> {
-        let scope = value.as_str().unwrap_or_default().trim().trim_end_matches('/');
+        let mut scope = value.as_str().unwrap_or_default().trim();
+        while let Some(rest) = scope.strip_prefix("./") {
+            scope = rest.trim_start_matches('/');
+        }
+        let scope = scope.trim_matches('/');
+        let scope = if scope == "." { "" } else { scope };
         if !scope.is_empty() {
             self.path(scope)?;
         }
@@ -672,6 +703,18 @@ pub(crate) mod tests {
         assert!(tools.run(&call("search", json!({ "query": "kiln", "in": "../" }))).is_error);
         assert!(tools.run(&call("search", json!({ "query": "  " }))).is_error);
         assert_eq!(tools.run(&call("search", json!({ "query": "zebra" }))).content, "<data tool=\"search\">\n[]\n</data>");
+        // KI-52: a folder is vault-relative however it's written, and `.` is everywhere.
+        for within in [".", "./", "/", ""] {
+            assert_eq!(hits(&tools, json!({ "query": "kiln", "in": within })).len(), 3, "{within:?}");
+        }
+        for within in ["./posts", "/posts/", "posts/"] {
+            assert_eq!(hits(&tools, json!({ "query": "kiln", "in": within }))[0]["id"], "posts/kintsugi.md", "{within:?}");
+        }
+        // A filter that hides every match says what it hid.
+        let hidden = tools.run(&call("search", json!({ "query": "patience", "kind": "note" }))).content;
+        assert!(hidden.contains("[]\nNothing of kind note. Without that filter: posts/kintsugi.md (writing)."), "{hidden}");
+        let hidden = tools.run(&call("search", json!({ "query": "patience", "in": "drafts" }))).content;
+        assert!(hidden.contains("Nothing in drafts/. Without that filter: posts/kintsugi.md (writing)."), "{hidden}");
         // Snippets from the vault can't close the data block.
         let injected = tools.run(&call("search", json!({ "query": "obey" }))).content;
         assert_eq!(injected.matches("</data>").count(), 1, "{injected}");

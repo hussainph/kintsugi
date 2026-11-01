@@ -383,7 +383,7 @@ impl Index {
             self.vectors = Some(self.load_vectors()?);
         }
         let (vectors, docs) = self.vectors.as_ref().unwrap();
-        let within = query.within.as_ref().map(|w| format!("{}/", w.trim_end_matches('/')));
+        let within = folder(query);
         let mut best: HashMap<i64, (f32, i64)> = HashMap::new();
         for cached in vectors {
             let Some(meta) = docs.get(&cached.doc) else { continue };
@@ -497,12 +497,24 @@ fn filters(query: &Query, values: &mut Vec<String>) -> String {
     if !query.kinds.is_empty() {
         list("docs.kind", query.kinds.iter().map(|k| k.as_str().to_string()).collect(), values);
     }
-    if let Some(within) = &query.within {
-        values.push(format!("{}/", within.trim_end_matches('/')));
+    if let Some(within) = folder(query) {
+        values.push(within);
         let n = values.len();
         out.push_str(&format!(" AND substr(docs.id, 1, length(?{n})) = ?{n}"));
     }
     out
+}
+
+/// The query's folder as an id prefix (`posts/`), or `None` for the whole
+/// vault. A folder is vault-relative: `./posts`, `/posts/` and `posts` are the
+/// same, and `.`, `./` or `/` mean everywhere, as they do to Kin's `list`.
+fn folder(query: &Query) -> Option<String> {
+    let mut folder = query.within.as_deref()?.trim();
+    while let Some(rest) = folder.strip_prefix("./") {
+        folder = rest.trim_start_matches('/');
+    }
+    let folder = folder.trim_matches('/');
+    (!folder.is_empty() && folder != ".").then(|| format!("{folder}/"))
 }
 
 fn normalized(mut vector: Vec<f32>) -> Vec<f32> {
