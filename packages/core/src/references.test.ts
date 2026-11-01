@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attributedQuote, isReferenceContext, linkFor, parseWikilinks, resolveReference, searchReferences, type ReferenceSource } from "./references.ts";
+import { attributedQuote, quoteLinkLabel, isReferenceContext, linkFor, parseWikilinks, resolveReference, searchReferences, type ReferenceSource } from "./references.ts";
 
 const document: ReferenceSource = { kind: "document", path: "posts/on-craft.mdx", title: "On craft", status: "complete", text: "Learning to repair a bowl" };
 const clip: ReferenceSource = { kind: "clip", path: "inspiration/on-craft.md", title: "The art of craft", site: "A journal", text: "> A beautiful repair", summary: "Gold and clay" };
@@ -76,6 +76,29 @@ test("quotes strip existing nested quote markers and attribute only the clip's o
   assert.equal(attributedQuote("  \n> \n", "[[x]]"), "");
   assert.equal(attributedQuote("Passage", "x"), "> Passage\n>\n> [[x]]");
   assert.equal(attributedQuote("> Passage\n\n<!-- kintsugi:source -->\n## Source\nEXTRACTED", "[[x]]"), "> Passage\n>\n> [[x]]");
+});
+
+test("an attributed passage names its speaker and deep link, never the writer's note", () => {
+  const own = "> Thanks, Joseph!\n> It *is* hard.\n\nMy note about it.";
+  assert.equal(
+    attributedQuote(own, "[[hn]]", { quoteBy: "pvh", quoteLink: "https://news.ycombinator.com/item?id=2" }),
+    "> Thanks, Joseph!\n> It *is* hard.\n> — pvh · [comment](<https://news.ycombinator.com/item?id=2>)\n>\n> [[hn]]",
+  );
+  assert.equal(
+    attributedQuote("> If it's clear and useless, it's useless.", "[[talk]]", { quoteLink: "https://www.youtube.com/watch?v=v&t=888s" }),
+    "> If it's clear and useless, it's useless.\n> — [14:48](<https://www.youtube.com/watch?v=v&t=888s>)\n>\n> [[talk]]",
+  );
+  assert.equal(
+    attributedQuote("> Ideals.", "[[paper]]", { quoteBy: "Ken *]", quoteLink: "https://e.org/p.pdf#page=3" }),
+    "> Ideals.\n> — Ken · [p. 3](<https://e.org/p.pdf#page=3>)\n>\n> [[paper]]",
+  );
+  // A relative or script link isn't written; a note-only clip quotes as before.
+  assert.equal(attributedQuote("> Ideals.", "[[paper]]", { quoteLink: "files/p.pdf#page=3" }), "> Ideals.\n>\n> [[paper]]");
+  assert.equal(attributedQuote("> Ideals.", "[[paper]]", { quoteLink: "javascript:alert(1)" }), "> Ideals.\n>\n> [[paper]]");
+  assert.equal(attributedQuote("Just my note.", "[[x]]", { quoteBy: "pvh" }), "> Just my note.\n>\n> [[x]]");
+  assert.equal(quoteLinkLabel("https://pod.example/12.mp3#t=3900"), "1:05:00");
+  assert.equal(quoteLinkLabel("https://paulgraham.com/words.html#:~:text=a,b"), "passage");
+  assert.equal(quoteLinkLabel("https://x.com/a/status/1"), "source");
 });
 
 test("quoting own text preserves apparent frontmatter and legitimate Source headings", () => {

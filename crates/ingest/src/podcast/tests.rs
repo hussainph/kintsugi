@@ -184,3 +184,46 @@ fn pasted_audio_links_are_episodes() {
     assert_eq!(item.title.as_deref(), Some("10"));
     assert_eq!(item.extras["transcript"], "on-device");
 }
+
+#[test]
+fn tracking_redirects_are_unwrapped() {
+    let clean = |raw: &str| untrack(&Url::parse(raw).unwrap()).to_string();
+    let target = "https://www.buzzsprout.com/231452/episodes/20042854-idea.mp3";
+    // The Buzzcast clip from KI-21: OP3 in front of Podtrac in front of the file.
+    assert_eq!(
+        clean("https://op3.dev/e/https://dts.podtrac.com/redirect.mp3/www.buzzsprout.com/231452/episodes/20042854-idea.mp3"),
+        target
+    );
+    assert_eq!(clean("https://op3.dev/e,pg=abc/www.buzzsprout.com/231452/episodes/20042854-idea.mp3"), target);
+    assert_eq!(clean("https://www.podtrac.com/pts/redirect.mp3/www.buzzsprout.com/231452/episodes/20042854-idea.mp3"), target);
+    assert_eq!(
+        clean("https://chrt.fm/track/ABC123/pdst.fm/e/prfx.byspotify.com/e/traffic.megaphone.fm/XYZ.mp3?updated=1"),
+        "https://traffic.megaphone.fm/XYZ.mp3?updated=1"
+    );
+    assert_eq!(clean("https://mgln.ai/e/123/claritaspod.com/measure/media.example.com/a.m4a"), "https://media.example.com/a.m4a");
+    // Not a tracker, or nothing usable behind one: left alone.
+    for raw in ["https://media.example.com/a.mp3", "https://op3.dev/e/", "https://op3.dev/about", "https://chrt.fm/track/ABC/localhost/a.mp3"] {
+        assert_eq!(clean(raw), raw, "{raw}");
+    }
+    assert!(is_tracked(&Url::parse("https://dts.podtrac.com/redirect.mp3/a.example/b.mp3").unwrap()));
+    assert!(!is_tracked(&Url::parse(target).unwrap()));
+}
+
+#[test]
+fn a_tracked_enclosure_is_written_without_its_redirects() {
+    // Show notes only, so nothing is downloaded through the tracker.
+    let episode = Episode {
+        title: Some("Idea".into()),
+        audio_url: Some(Url::parse("https://op3.dev/e/dts.podtrac.com/redirect.mp3/media.example.com/idea.mp3").unwrap()),
+        notes: Some("Notes.".into()),
+        ..Episode::default()
+    };
+    let item = run(PodcastAdapter::new().unwrap().capture_episode(&episode, CaptureOptions::default())).unwrap();
+    assert_eq!(item.url.as_deref(), Some("https://media.example.com/idea.mp3"));
+    assert_eq!(item.id, "podcast:https://media.example.com/idea.mp3");
+    assert_eq!(item.extras["audioUrl"], "https://media.example.com/idea.mp3");
+    // An episode page wins over the audio file.
+    let with_page = Episode { link: Some(Url::parse("https://show.example/episodes/idea?utm_source=rss").unwrap()), ..episode };
+    let item = run(PodcastAdapter::new().unwrap().capture_episode(&with_page, CaptureOptions::default())).unwrap();
+    assert_eq!(item.url.as_deref(), Some("https://show.example/episodes/idea"));
+}

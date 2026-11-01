@@ -9,7 +9,14 @@ export type ReferenceSource = {
   summary?: string | null;
   image?: string | null;
   text?: string;
+  /** A clip's passage attribution (see `QuoteOrigin`). */
+  quoteBy?: string | null;
+  quoteLink?: string | null;
 };
+
+/** Who said a clip's shared passage and where it is, as enrichment found
+ *  them in the source: a commenter and their comment, a timestamp, a page. */
+export type QuoteOrigin = { quoteBy?: string | null; quoteLink?: string | null };
 
 export type Wikilink = { from: number; to: number; target: string; alias?: string };
 
@@ -183,12 +190,57 @@ export function parseWikilinks(text: string): Wikilink[] {
 
 /** Accepts clip_read.text (own text only), not a raw clip file. Apparent
  *  frontmatter and Source headings are prose; only the reserved source boundary
- *  is guarded defensively. Empty own text lets callers disable quoting. */
-export function attributedQuote(ownText: string, link: string): string {
+ *  is guarded defensively. Empty own text lets callers disable quoting.
+ *
+ *  With an `origin` (the clip's `quoteBy`/`quoteLink`), only the clip's
+ *  leading block quote is quoted, since that is the passage the origin
+ *  describes, followed by `— speaker · [14:48](<link>)`. The writer's own
+ *  note is never attributed to someone else. */
+export function attributedQuote(ownText: string, link: string, origin?: QuoteOrigin | null): string {
   const boundary = ownText.indexOf("<!-- kintsugi:source -->");
-  const content = boundary === -1 ? ownText : ownText.slice(0, boundary);
+  let content = boundary === -1 ? ownText : ownText.slice(0, boundary);
+  const by = origin?.quoteBy?.replace(/\s+/g, " ").replace(/[\\`*_[\]<>|]/g, "").trim() || "";
+  const deep = webLink(origin?.quoteLink);
+  const leading = leadingQuote(content);
+  const attributed = !!(by || deep) && !!leading;
+  if (attributed) content = leading;
   const passage = content.split(/\r?\n/).map((line) => line.replace(/^\s*(?:>\s*)+/, "")).join("\n").trim();
   if (!passage) return "";
   const attribution = link.startsWith("[[") ? link : `[[${link}]]`;
-  return passage.split("\n").map((line) => line ? `> ${line}` : ">").join("\n") + `\n>\n> ${attribution}`;
+  const quoted = passage.split("\n").map((line) => line ? `> ${line}` : ">").join("\n");
+  const origins = attributed ? [by, deep ? `[${quoteLinkLabel(deep)}](<${deep}>)` : ""].filter(Boolean).join(" · ") : "";
+  return quoted + (origins ? `\n> — ${origins}` : "") + `\n>\n> ${attribution}`;
+}
+
+/** The leading block quote of a clip's own text, if it starts with one. */
+function leadingQuote(text: string): string {
+  const lines = text.replace(/^[\r\n]+/, "").split(/\r?\n/);
+  const quoted = [];
+  for (const line of lines) {
+    if (!/^\s*>/.test(line)) break;
+    quoted.push(line);
+  }
+  return quoted.join("\n").replace(/^\s*(?:>\s*)+/gm, "").trim() ? quoted.join("\n") : "";
+}
+
+function webLink(value: string | null | undefined): string | null {
+  try {
+    const url = new URL(value ?? "");
+    return ["https:", "http:"].includes(url.protocol) ? url.href.replace(/[<>\s]/g, encodeURIComponent) : null;
+  } catch { return null; }
+}
+
+/** How to show a passage's deep link: `14:48`, `p. 12`, `comment`, `passage`. */
+export function quoteLinkLabel(link: string): string {
+  const page = /#page=(\d+)/.exec(link);
+  if (page) return `p. ${page[1]}`;
+  const time = /[#?&]t=(\d+)s?(?:$|&)/.exec(link);
+  if (time) {
+    const total = Number(time[1]);
+    const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60;
+    return h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  }
+  if (link.includes("#:~:text=")) return "passage";
+  if (/news\.ycombinator\.com\/item|reddit\.com\/.*\/comments\//.test(link)) return "comment";
+  return "source";
 }

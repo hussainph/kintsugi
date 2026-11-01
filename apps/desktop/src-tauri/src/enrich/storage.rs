@@ -20,6 +20,11 @@ pub struct Update {
     pub author: Option<String>,
     pub source_text: Option<String>,
     pub image: Option<Image>,
+    /// A better URL than the captured one (an episode page, an audio file
+    /// without tracking redirects).
+    pub url: Option<String>,
+    pub quote_by: Option<String>,
+    pub quote_link: Option<String>,
 }
 
 /// The seam keeps worker tests independent of network, credentials and disk.
@@ -72,9 +77,14 @@ impl Store for VaultStore {
             tags: Some(tags),
             summary: Some(update.summary.clone()),
             source: update.source_text.clone(),
+            // Only while the writer hasn't changed the link since capture.
+            url: update.url.clone().filter(|_| current.summary.url == baseline.url),
+            // The passage these describe is the one enrichment read.
+            quote_by: update.quote_by.clone().filter(|_| current.text == clip.text),
+            quote_link: update.quote_link.clone().filter(|_| current.text == clip.text),
             enriched: Some(chrono::Local::now().format("%Y-%m-%dT%H:%M").to_string()),
             enrich_error: Some(String::new()),
-            // No note, URL or image patch: own text is inaccessible here, and
+            // No note or image patch: own text is inaccessible here, and
             // clip_save_media alone owns fill-only image installation.
             ..ClipUpdate::default()
         };
@@ -257,6 +267,61 @@ mod tests {
             assert!(after.summary.image.is_some());
             assert!(after.summary.summary.is_some());
         }
+    }
+
+    #[test]
+    fn a_better_url_and_the_passage_attribution_are_written_unless_the_writer_moved_on() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let path = vault::clip_create(
+            root,
+            &ClipCapture {
+                url: Some("https://op3.dev/e/media.example.com/idea.mp3".into()),
+                text: Some("Gold makes the crack visible.".into()),
+                note: None,
+                title: None,
+                image: None,
+                image_type: None,
+                file: None,
+                captured_at: "2026-10-29T14:05".into(),
+                via: ClipVia::Feed,
+            },
+        )
+        .unwrap();
+        let before = vault::clip_read(root, &path).unwrap();
+        assert_eq!(before.summary.kind, ClipKind::Podcast);
+        let long = format!("{}\n\n[1:05](<https://media.example.com/idea.mp3#t=65>) **Ken:** Gold makes the crack visible.", "Talk.\n\n".repeat(5_000));
+        let enriched = Update {
+            kind: "podcast".into(),
+            url: Some("https://media.example.com/idea.mp3".into()),
+            quote_by: Some("Ken".into()),
+            quote_link: Some("https://media.example.com/idea.mp3#t=65".into()),
+            source_text: Some(long.clone()),
+            ..update()
+        };
+        VaultStore.apply(root, &before, &enriched).unwrap();
+        let after = vault::clip_read(root, &path).unwrap();
+        assert_eq!(after.summary.url.as_deref(), Some("https://media.example.com/idea.mp3"));
+        assert_eq!(after.summary.quote_by.as_deref(), Some("Ken"));
+        assert_eq!(after.summary.quote_link.as_deref(), Some("https://media.example.com/idea.mp3#t=65"));
+        assert_eq!(after.summary.kind, ClipKind::Podcast);
+        // The whole transcript is kept beside the clip; the clip shows an excerpt.
+        assert!(after.source.unwrap().chars().count() <= 20_000);
+        assert_eq!(vault::clip_full_source(root, &path).unwrap().unwrap().trim_end(), long);
+
+        // A writer who changed the link or the passage keeps their version.
+        let path = capture(root, "Before.");
+        let before = vault::clip_read(root, &path).unwrap();
+        vault::clip_update(
+            root,
+            &path,
+            &ClipUpdate { note: Some("> Another passage".into()), url: Some("https://mine.example/".into()), ..ClipUpdate::default() },
+        )
+        .unwrap();
+        VaultStore.apply(root, &before, &enriched).unwrap();
+        let after = vault::clip_read(root, &path).unwrap();
+        assert_eq!(after.summary.url.as_deref(), Some("https://mine.example/"));
+        assert_eq!((after.summary.quote_by, after.summary.quote_link), (None, None));
     }
 
     #[test]

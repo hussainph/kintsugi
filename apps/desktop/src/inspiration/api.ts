@@ -32,7 +32,7 @@ export const clips = {
 };
 
 export function clipLabel(clip: Pick<ClipSummary, "title" | "url" | "kind">) {
-  return clip.title || clip.url || ({ image: "An image", note: "A thought", quote: "A passage", document: "A PDF", book: "A book" }[clip.kind as "image" | "note" | "quote" | "document" | "book"] ?? "Untitled clip");
+  return clip.title || clip.url || ({ image: "An image", note: "A thought", quote: "A passage", document: "A PDF", book: "A book", podcast: "A podcast episode" }[clip.kind as "image" | "note" | "quote" | "document" | "book" | "podcast"] ?? "Untitled clip");
 }
 
 export function clipSite(clip: Pick<ClipSummary, "site" | "url" | "kind">) {
@@ -40,7 +40,7 @@ export function clipSite(clip: Pick<ClipSummary, "site" | "url" | "kind">) {
   try {
     if (clip.url) return new URL(clip.url).hostname.replace(/^www\./, "");
   } catch { /* A hand-edited clip may have an invalid URL. */ }
-  return ({ note: "Your thought", image: "Saved image", document: "PDF", book: "Book" } as Record<string, string>)[clip.kind] ?? "Saved passage";
+  return ({ note: "Your thought", image: "Saved image", document: "PDF", book: "Book", podcast: "Podcast" } as Record<string, string>)[clip.kind] ?? "Saved passage";
 }
 
 /** The kind of saved file, for actions like "Open PDF". */

@@ -81,10 +81,10 @@ fn canonical_ids_drop_fragments_and_tracking_parameters() {
 
 #[test]
 fn bodies_are_bounded_on_unicode_boundaries() {
-    let html = format!("<article><p>{}</p></article>", "界".repeat(30_000));
+    let html = format!("<article><p>{}</p></article>", "界".repeat(crate::FULL_CHARS + 10_000));
     let page = extract::page(&html, &url("https://example.org/"));
     let n = page.body.chars().count();
-    assert!(n <= crate::BODY_CHARS && n > 19_900, "{n}");
+    assert!(n <= crate::FULL_CHARS && n > crate::FULL_CHARS - 100, "{n}");
 }
 
 #[test]

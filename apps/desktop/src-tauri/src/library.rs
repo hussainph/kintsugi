@@ -933,6 +933,12 @@ mod tests {
         .unwrap()
     }
 
+    /// An image clip's primary image file (named for when it arrived).
+    fn media_of(root: &Path, path: &str) -> std::path::PathBuf {
+        let image = vault::clip_read(root, path).unwrap().summary.image.unwrap();
+        root.join("inspiration").join(image)
+    }
+
     #[test]
     fn image_command_accepts_only_a_clips_primary_supported_media() {
         let dir = tempfile::tempdir().unwrap();
@@ -951,7 +957,7 @@ mod tests {
         }
         let note = vault::clip_create(root, &capture("No image")).unwrap();
         assert!(primary_image(root, &note).is_err());
-        let media = root.join("inspiration/media/image.png");
+        let media = media_of(root, &path);
         fs::write(&media, b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>").unwrap();
         assert!(
             primary_image(root, &path).is_err(),
@@ -978,7 +984,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
         let path = image_clip(&root);
-        let media = root.join("inspiration/media/image.png");
+        let media = media_of(&root, &path);
         fs::write(&media, b"<svg/>").unwrap();
         assert!(primary_image(&root, &path).is_err());
         fs::write(&media, []).unwrap();
@@ -1005,7 +1011,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
         let path = image_clip(&root);
-        let media = root.join("inspiration/media/image.png");
+        let media = media_of(&root, &path);
         let outside = root.join("outside.png");
         fs::write(&outside, PNG).unwrap();
         fs::remove_file(&media).unwrap();

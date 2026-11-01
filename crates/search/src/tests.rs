@@ -295,3 +295,29 @@ fn doc_vectors_are_one_normalized_vector_per_document_in_a_scope() {
     let far: f32 = feed["feed:1"].iter().zip(&vault_vectors["posts/budget.md"]).map(|(a, b)| a * b).sum();
     assert!(close > far, "{close} vs {far}");
 }
+
+#[test]
+fn a_long_clip_is_found_by_words_past_its_excerpt_and_its_sidecar_is_not_a_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let path = kintsugi_vault::clip_create(
+        root,
+        &kintsugi_vault::ClipCapture {
+            url: Some("https://www.youtube.com/watch?v=abc".into()),
+            text: None,
+            note: Some("A long talk".into()),
+            title: Some("The long talk".into()),
+            image: None,
+            image_type: None,
+            file: None,
+            captured_at: "2026-10-29T14:05".into(),
+            via: kintsugi_vault::ClipVia::Mac,
+        },
+    )
+    .unwrap();
+    let source = format!("{}\n\nAt minute thirty: urushi.", "Filler paragraph.\n\n".repeat(3_000));
+    kintsugi_vault::clip_update(root, &path, &kintsugi_vault::ClipUpdate { source: Some(source), ..Default::default() }).unwrap();
+    assert!(root.join("inspiration/sources/the-long-talk.txt").exists());
+    let mut index = indexed(root, None);
+    assert_eq!(ids(&mut index, &q("urushi")), [path]);
+}

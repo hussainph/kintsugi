@@ -8,8 +8,10 @@ use std::path::{Component, Path, PathBuf};
 
 mod clip_frontmatter;
 mod clips;
+mod quotes;
 mod references;
 pub use clips::*;
+pub use quotes::{QuoteAttribution, QuoteSource, leading_passage, quote_attribution};
 pub use references::{
     ReferenceDocument, ReferenceIndex, ReferenceLink, Wikilink, reference_index, wikilinks,
 };

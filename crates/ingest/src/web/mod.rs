@@ -346,7 +346,7 @@ impl Draft {
         if self.image_url.is_none() {
             self.image_url = rendered.image.and_then(|s| base.join(&s).ok()).filter(allowed_url);
         }
-        let body = rendered.content.map(|md| markdown::body(&md, crate::BODY_CHARS)).unwrap_or_default();
+        let body = rendered.content.map(|md| markdown::body(&md, crate::FULL_CHARS)).unwrap_or_default();
         if body.chars().count() > self.body.chars().count() {
             self.body = body;
             self.extractor = "defuddle";

@@ -131,7 +131,12 @@ impl PodcastAdapter {
     pub async fn capture_episode(&self, episode: &Episode, options: CaptureOptions) -> Result<Item> {
         let mut extras = BTreeMap::new();
         extras.insert("extractor".to_string(), Value::from("podcast"));
-        let audio = episode.audio_url.as_ref().filter(|u| allowed_url(u));
+        // Downloads go through the enclosure as published; everything written
+        // into the item (its URL, timestamp links) skips the tracking
+        // redirects in front of the audio file.
+        let enclosure = episode.audio_url.as_ref().filter(|u| allowed_url(u));
+        let untracked = enclosure.map(untrack);
+        let audio = untracked.as_ref();
         let link = |t: u64| audio.map(|a| format!("{}#t={t}", without_fragment(a)));
 
         let mut body = None;
@@ -151,9 +156,9 @@ impl PodcastAdapter {
         }
         let mut reason = "no-transcript";
         if body.is_none()
-            && let (Some(transcriber), Some(audio)) = (&self.transcriber, audio)
+            && let (Some(transcriber), Some(enclosure)) = (&self.transcriber, enclosure)
         {
-            match self.transcribe(transcriber.as_ref(), audio, episode.language.as_deref()).await {
+            match self.transcribe(transcriber.as_ref(), enclosure, episode.language.as_deref()).await {
                 Ok(segments) if !segments.is_empty() => {
                     let (md, cut) = transcript::to_markdown(&segments, &[], &link);
                     extras.insert("transcript".into(), Value::from("on-device"));
@@ -298,6 +303,80 @@ impl Adapter for PodcastAdapter {
             self.capture_episode(&episode, options).await
         })
     }
+}
+
+/// Measurement redirects podcast hosts put in front of the audio file, by
+/// host, and the path segments before the real URL. `*` is any segment,
+/// and a trailing `*` matches a segment's start (`e,pg=…`, `redirect.mp3`).
+const TRACKERS: &[(&str, &[&str])] = &[
+    ("op3.dev", &["e*"]),
+    ("dts.podtrac.com", &["redirect.*"]),
+    ("podtrac.com", &["pts", "redirect.*"]),
+    ("www.podtrac.com", &["pts", "redirect.*"]),
+    ("chtbl.com", &["track", "*"]),
+    ("chrt.fm", &["track", "*"]),
+    ("pdst.fm", &["e"]),
+    ("pdcn.co", &["e"]),
+    ("pfx.vpixl.com", &["*"]),
+    ("mgln.ai", &["e", "*"]),
+    ("arttrk.com", &["p", "*"]),
+    ("verifi.podscribe.com", &["rss", "p"]),
+    ("pscrb.fm", &["rss", "p"]),
+    ("prfx.byspotify.com", &["e"]),
+    ("claritaspod.com", &["measure"]),
+    ("tracking.swap.fm", &["track", "*"]),
+];
+
+/// The URL behind any chain of known podcast tracking redirects (OP3,
+/// Podtrac, Chartable, Podsights, Spotify's prefix…), or the URL itself.
+/// The result must still be an allowed web URL.
+pub fn untrack(url: &Url) -> Url {
+    let mut current = url.clone();
+    for _ in 0..8 {
+        match strip_tracker(&current) {
+            Some(next) => current = next,
+            None => break,
+        }
+    }
+    current
+}
+
+/// Whether a URL starts with a known tracking redirect.
+pub fn is_tracked(url: &Url) -> bool {
+    strip_tracker(url).is_some()
+}
+
+fn strip_tracker(url: &Url) -> Option<Url> {
+    let host = url.host_str()?.to_ascii_lowercase();
+    let (_, pattern) = TRACKERS.iter().find(|(h, _)| *h == host)?;
+    // The wrapped URL is the rest of the path, with its own `//` and query.
+    let full = match url.query() {
+        Some(query) => format!("{}?{query}", url.path()),
+        None => url.path().to_string(),
+    };
+    let mut rest = full.strip_prefix('/')?;
+    for want in pattern.iter() {
+        let (segment, tail) = rest.split_once('/')?;
+        let ok = match want.strip_suffix('*') {
+            Some("") => !segment.is_empty(),
+            Some(prefix) => segment.starts_with(prefix),
+            None => segment == *want,
+        };
+        if !ok {
+            return None;
+        }
+        rest = tail;
+    }
+    let rest = rest.trim_start_matches('/');
+    let target = if rest.starts_with("http://") || rest.starts_with("https://") {
+        rest.to_string()
+    } else if let Some(stripped) = rest.strip_prefix("https:/").or_else(|| rest.strip_prefix("http:/")) {
+        // A proxy that collapsed the scheme's `//`.
+        format!("https://{stripped}")
+    } else {
+        format!("https://{rest}")
+    };
+    Url::parse(&target).ok().filter(allowed_url).filter(|u| u.host_str().is_some_and(|h| h.contains('.')))
 }
 
 const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "aac", "wav", "aiff", "aif", "flac", "ogg", "opus", "caf"];

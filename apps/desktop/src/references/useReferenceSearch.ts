@@ -85,7 +85,7 @@ export function useReferenceSearch(root: string | null, sources: ReferenceSource
     const found = await Promise.all(result.clips.map(async (clip, index) => ({
       kind: "clip" as const,
       path: clip.path, title: clip.title || clip.path.replace(/^.*\//, "").replace(/\.mdx?$/, ""),
-      site: clip.site, summary: clip.summary, text: clip.text,
+      site: clip.site, summary: clip.summary, text: clip.text, quoteBy: clip.quoteBy, quoteLink: clip.quoteLink,
       image: index < 8 ? await images.load(clip) : images.get(clip.path),
     })));
     return [...documents, ...found];

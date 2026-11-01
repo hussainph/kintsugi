@@ -41,6 +41,15 @@ pub fn pdf_helper() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
+/// The image reader (Apple Vision: text recognition and labels), built from
+/// `crates/ingest/swift/vision.swift` and shipped beside the app binary like
+/// the transcriber.
+pub fn vision_helper() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let path = exe.parent()?.join("kintsugi-vision");
+    path.is_file().then_some(path)
+}
+
 /// Tools that come along with another: yt-dlp needs Deno for YouTube, and
 /// Docling is installed by uv (first, so it is there to install Docling).
 fn with_companions(spec: &'static ToolSpec) -> Vec<&'static ToolSpec> {

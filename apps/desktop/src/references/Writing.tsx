@@ -52,7 +52,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
       kind: "document" as const, path: document.path, title: document.title || name(document.path), status: document.status,
       text: document.text, summary: document.text.trim().replace(/^#+\s+[^\n]+\n*/, "").slice(0, 200),
     })),
-    ...index.clips.map((clip) => ({ kind: "clip" as const, path: clip.path, title: clip.title || name(clip.path), site: clip.site, summary: clip.summary })),
+    ...index.clips.map((clip) => ({ kind: "clip" as const, path: clip.path, title: clip.title || name(clip.path), site: clip.site, summary: clip.summary, quoteBy: clip.quoteBy, quoteLink: clip.quoteLink })),
   ], [index.documents, index.clips]);
   const { sources, search, warmImages } = useReferenceSearch(root, rawSources, index.clips);
   const byPath = useMemo(() => new Map(sources.map((source) => [source.path, source])), [sources]);
@@ -110,9 +110,10 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   const quote = useCallback(async (source: ReferenceSource) => {
     const path = activePath.current;
     try {
-      const passage = source.kind === "clip" ? (await invoke<Clip>("clip_read", { path: source.path })).text : source.text || "";
+      const clip = source.kind === "clip" ? await invoke<Clip>("clip_read", { path: source.path }) : null;
+      const passage = clip ? clip.text : source.text || "";
       if (!mounted.current || activePath.current !== path) return;
-      const text = attributedQuote(passage, linkFor(source, sources));
+      const text = attributedQuote(passage, linkFor(source, sources), clip);
       if (!text) { toast("This clip has no passage to quote. Insert its reference instead."); return; }
       setClip(null);
       insert(text);
@@ -194,7 +195,7 @@ function MarginCard({ source, all, onOpen, onInsert, onQuote }: Omit<SectionProp
     return () => { cancelled = true; };
   }, [source]);
   const link = linkFor(source, all);
-  const dragText = source.kind === "clip" ? attributedQuote(passage ?? "", link) || link : link;
+  const dragText = source.kind === "clip" ? attributedQuote(passage ?? "", link, source) || link : link;
   return <article className="reference-card" draggable={passage !== null} onDragStart={(event) => {
     event.dataTransfer.effectAllowed = "copy";
     event.dataTransfer.setData("application/x-kintsugi-reference", JSON.stringify({ text: dragText }));

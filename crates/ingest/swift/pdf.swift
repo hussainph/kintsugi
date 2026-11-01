@@ -7,7 +7,7 @@
 //
 // stdout: {"pageCount":3,"locked":false,"title":…,"author":…,"subject":…,
 //          "keywords":[…],"created":"2024-05-01T10:00:00Z","outline":[{"title":…,"page":1,"level":1}],
-//          "pages":[{"page":1,"lines":[{"text":"…","size":24.0,"bold":true,"y":700.0}]}]}
+//          "pages":[{"page":1,"width":612.0,"lines":[{"text":"…","size":24.0,"bold":true,"y":700.0,"x":72.0,"width":220.0,"height":24.0}]}]}
 // Exit codes: 0 done, 2 usage, 3 unsupported (no PDFKit), 5 the file is not
 // a readable PDF. Nothing is printed on stdout unless the exit code is 0, and
 // stderr carries no document text.
@@ -28,10 +28,19 @@ struct Line: Encodable {
     /// The line's bottom edge in page points, from the page's bottom; the
     /// gap between lines tells paragraphs apart.
     let y: Double
+    /// The line's left edge and width in page points: on a two-column page
+    /// they tell the columns apart, so the Rust side can read one column
+    /// after the other.
+    let x: Double
+    let width: Double
+    /// The height of the line's bounds: taller than one line when PDFKit
+    /// joined several, so `y + height` is its top.
+    let height: Double
 }
 
 struct Page: Encodable {
     let page: Int
+    let width: Double
     let lines: [Line]
 }
 
@@ -64,26 +73,65 @@ func attribute(_ document: PDFDocument, _ key: PDFDocumentAttribute) -> String? 
     return trimmed.isEmpty ? nil : String(trimmed.prefix(500))
 }
 
-/// Each line of a page with the font size that covers most of its characters.
+func isBold(_ font: NSFont) -> Bool {
+    font.fontDescriptor.symbolicTraits.contains(.bold) || font.fontName.lowercased().contains("bold")
+}
+
+/// One line (or part of one) with the font size that covers most of its
+/// characters, its position and its extent.
+func makeLine(_ text: NSAttributedString, _ range: NSRange, on page: PDFPage) -> Line? {
+    let string = (text.string as NSString).substring(with: range).trimmingCharacters(in: .whitespaces)
+    guard !string.isEmpty else { return nil }
+    var sizes: [Double: Int] = [:]
+    var boldChars = 0
+    text.enumerateAttribute(.font, in: range) { value, run, _ in
+        guard let font = value as? NSFont else { return }
+        sizes[Double(font.pointSize), default: 0] += run.length
+        if isBold(font) { boldChars += run.length }
+    }
+    let size = sizes.max { $0.value < $1.value }?.key ?? 0
+    let bounds = page.selection(for: range)?.bounds(for: page) ?? .zero
+    let round = { (value: CGFloat) in (Double(value) * 10).rounded() / 10 }
+    return Line(
+        text: string, size: (size * 10).rounded() / 10, bold: boldChars * 2 > range.length, y: round(bounds.minY),
+        x: round(bounds.minX), width: round(bounds.width), height: round(bounds.height))
+}
+
+/// How many characters at the start of `range` are set in bold.
+func boldPrefix(_ text: NSAttributedString, _ range: NSRange) -> Int {
+    var length = 0
+    var done = false
+    text.enumerateAttribute(.font, in: range) { value, run, stop in
+        guard !done else { return }
+        if let font = value as? NSFont, isBold(font) {
+            length += run.length
+        } else {
+            done = true
+            stop.pointee = true
+        }
+    }
+    return length
+}
+
+/// Each line of a page. A line that opens with a short bold run followed by
+/// regular text (a run-in section heading, or a heading PDFKit joined to its
+/// paragraph) is split in two, so the heading can be told apart.
 func lines(of page: PDFPage) -> [Line] {
     guard let text = page.attributedString, text.length > 0 else { return [] }
     let string = text.string as NSString
     var result: [Line] = []
-    string.enumerateSubstrings(in: NSRange(location: 0, length: string.length), options: [.byLines]) { line, range, _, _ in
-        guard let line = line?.trimmingCharacters(in: .whitespaces), !line.isEmpty else { return }
-        var sizes: [Double: Int] = [:]
-        var boldChars = 0
-        text.enumerateAttribute(.font, in: range) { value, run, _ in
-            guard let font = value as? NSFont else { return }
-            sizes[Double(font.pointSize), default: 0] += run.length
-            if font.fontDescriptor.symbolicTraits.contains(.bold) || font.fontName.lowercased().contains("bold") {
-                boldChars += run.length
-            }
+    string.enumerateSubstrings(in: NSRange(location: 0, length: string.length), options: [.byLines]) { _, range, _, _ in
+        let bold = boldPrefix(text, range)
+        let head = NSRange(location: range.location, length: bold)
+        let tail = NSRange(location: range.location + bold, length: range.length - bold)
+        let headText = string.substring(with: head).trimmingCharacters(in: .whitespaces)
+        let tailText = string.substring(with: tail).trimmingCharacters(in: .whitespaces)
+        if bold > 0, headText.count >= 2, headText.count <= 100, !tailText.isEmpty {
+            if let line = makeLine(text, head, on: page) { result.append(line) }
+            if let line = makeLine(text, tail, on: page) { result.append(line) }
+        } else if let line = makeLine(text, range, on: page) {
+            result.append(line)
         }
-        let size = sizes.max { $0.value < $1.value }?.key ?? 0
-        let y = page.selection(for: range).map { Double($0.bounds(for: page).minY) } ?? 0
-        result.append(
-            Line(text: line, size: (size * 10).rounded() / 10, bold: boldChars * 2 > range.length, y: (y * 10).rounded() / 10))
     }
     return result
 }
@@ -145,7 +193,8 @@ struct Main {
                 guard chars < maxChars, let page = document.page(at: index) else { break }
                 let found = lines(of: page)
                 chars += found.reduce(0) { $0 + $1.text.count }
-                pages.append(Page(page: index + 1, lines: found))
+                let width = (Double(page.bounds(for: .mediaBox).width) * 10).rounded() / 10
+                pages.append(Page(page: index + 1, width: width, lines: found))
             }
             if let thumbnail, let first = document.page(at: 0) { writeThumbnail(first, to: thumbnail) }
         }

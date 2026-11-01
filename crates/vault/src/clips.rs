@@ -15,7 +15,11 @@ pub const INSPIRATION: &str = "inspiration";
 pub const MAX_CLIP_IMAGE_BYTES: usize = 15 * 1024 * 1024;
 /// Saved PDFs and EPUBs (`inspiration/files/`).
 pub const MAX_CLIP_FILE_BYTES: usize = 50 * 1024 * 1024;
+/// The `## Source` excerpt. Longer sources are kept whole beside the clip.
 const MAX_SOURCE_CHARS: usize = 20_000;
+/// The whole extracted text kept in `sources/<slug>.txt` (the ingest
+/// engine's long-form cap).
+pub const MAX_FULL_SOURCE_CHARS: usize = 250_000;
 const SOURCE_MARKER: &str = "<!-- kintsugi:source -->";
 const IMAGE_FORMATS: &[(&str, &str)] = &[
     ("image/jpeg", "jpg"),
@@ -70,6 +74,8 @@ pub enum ClipKind {
     Document,
     /// A book: an EPUB, or an Open Library record saved by title or ISBN.
     Book,
+    /// A podcast episode: its page, or its audio file when it has none.
+    Podcast,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -96,12 +102,22 @@ pub struct ClipSummary {
     pub image: Option<String>,
     /// A saved PDF or EPUB, relative to the clip file (`files/<slug>.pdf`).
     pub file: Option<String>,
+    /// The whole extracted source, relative to the clip file
+    /// (`sources/<slug>.txt`), when it is longer than the `## Source`
+    /// excerpt.
+    pub full_source: Option<String>,
     pub captured: String,
     pub via: Option<ClipVia>,
     pub tags: Vec<String>,
     pub summary: Option<String>,
     pub enriched: Option<String>,
     pub enrich_error: Option<String>,
+    /// Who said the clip's shared passage, when it isn't simply the clip's
+    /// author: a commenter, a speaker. Found by enrichment in the source.
+    pub quote_by: Option<String>,
+    /// Where the shared passage is: a comment permalink, a timestamp,
+    /// `#page=N`, a text fragment.
+    pub quote_link: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -160,7 +176,11 @@ pub struct ClipUpdate {
     pub summary: Option<String>,
     pub enriched: Option<String>,
     pub enrich_error: Option<String>,
+    pub quote_by: Option<String>,
+    pub quote_link: Option<String>,
     pub note: Option<String>,
+    /// The whole extracted text. Up to 20,000 characters go into `## Source`;
+    /// a longer text is also kept whole in `sources/<slug>.txt`.
     pub source: Option<String>,
 }
 
@@ -234,6 +254,25 @@ fn host_is(host: &str, domain: &str) -> bool {
             .is_some_and(|prefix| prefix.ends_with('.'))
 }
 
+/// Podcast apps' episode pages and the measurement redirects podcast feeds
+/// put in front of audio files.
+const PODCAST_HOSTS: &[&str] = &[
+    "podcasts.apple.com",
+    "overcast.fm",
+    "pca.st",
+    "pocketcasts.com",
+    "castro.fm",
+    "castbox.fm",
+    "podcastaddict.com",
+    "op3.dev",
+    "podtrac.com",
+    "chtbl.com",
+    "chrt.fm",
+    "pdst.fm",
+    "pscrb.fm",
+];
+const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "aac", "wav", "aiff", "flac", "ogg", "opus"];
+
 /// Host guesses are deliberately conservative; enrichment can correct them.
 pub fn clip_guess_kind(url: Option<&str>, text: Option<&str>, has_image: bool) -> ClipKind {
     let url = nonempty(url);
@@ -271,6 +310,17 @@ pub fn clip_guess_kind(url: Option<&str>, text: Option<&str>, has_image: bool) -
         .any(|domain| host_is(&host, domain))
         {
             return ClipKind::Video;
+        }
+        if PODCAST_HOSTS.iter().any(|domain| host_is(&host, domain)) {
+            return ClipKind::Podcast;
+        }
+    }
+    if let Some(path) = url.and_then(|s| source_url(s).ok()).map(|u| u.path().to_ascii_lowercase()) {
+        if AUDIO_EXTENSIONS.iter().any(|ext| path.ends_with(&format!(".{ext}"))) {
+            return ClipKind::Podcast;
+        }
+        if path.ends_with(".pdf") {
+            return ClipKind::Document;
         }
     }
     if url.is_none() && has_image {
@@ -359,6 +409,8 @@ fn summary(fm: &Frontmatter<'_>, path: &str) -> Result<ClipSummary> {
     if let Some(file) = &file {
         file_relative(path, file)?;
     }
+    // A hand-edited sidecar path is ignored rather than followed.
+    let full_source = fm.scalar("full_source").filter(|f| source_relative(path, f).is_ok());
     Ok(ClipSummary {
         path: path.into(),
         kind: enum_field(fm, "kind")?.ok_or("clip is missing kind")?,
@@ -368,13 +420,21 @@ fn summary(fm: &Frontmatter<'_>, path: &str) -> Result<ClipSummary> {
         author: fm.scalar("author"),
         image,
         file,
+        full_source,
         captured,
         via: enum_field(fm, "via")?,
         tags: tags(fm.list("tags")),
         summary: fm.scalar("summary"),
         enriched: fm.scalar("enriched"),
         enrich_error: fm.scalar("enrich_error"),
+        quote_by: fm.scalar("quote_by"),
+        quote_link: fm.scalar("quote_link").filter(|l| quote_link_ok(l)),
     })
+}
+
+/// A quote link is a web URL or a page of the clip's saved file.
+fn quote_link_ok(link: &str) -> bool {
+    source_url(link).is_ok() || (link.starts_with("files/") && !link.contains(".."))
 }
 
 /// An explicit boundary keeps arbitrary captured Markdown safe, even a note
@@ -562,6 +622,39 @@ fn file_relative(path: &str, file: &str) -> Result<PathBuf> {
     Ok(Path::new(INSPIRATION).join(file))
 }
 
+fn source_relative(path: &str, source: &str) -> Result<PathBuf> {
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("not a clip path")?;
+    if source != format!("sources/{stem}.txt") {
+        return Err("invalid clip source path".into());
+    }
+    Ok(Path::new(INSPIRATION).join(source))
+}
+
+/// Resolves a clip's full-source sidecar, with the same containment checks
+/// as media. `source` is relative to the clip file.
+pub fn clip_source_path(root: &Path, path: &str, source: &str) -> Result<PathBuf> {
+    clip_path(root, path)?;
+    contained(root, &source_relative(path, source)?)
+}
+
+/// The clip's whole extracted text: the sidecar when there is one (and it
+/// can be read), else the `## Source` excerpt. This is what search and Kin
+/// should read; the excerpt is for display.
+pub fn clip_full_source(root: &Path, path: &str) -> Result<Option<String>> {
+    let clip = clip_read(root, path)?;
+    if let Some(source) = &clip.summary.full_source
+        && let Ok(file) = clip_source_path(root, path, source)
+        && fs::symlink_metadata(&file).is_ok_and(|m| m.is_file())
+        && let Ok(text) = fs::read_to_string(&file)
+    {
+        return Ok(Some(text));
+    }
+    Ok(clip.source.map(|source| strip_excerpt_note(&source).to_string()))
+}
+
 /// Resolves a clip's saved PDF or EPUB, with the same containment checks as
 /// writes. `file` is relative to the clip file.
 pub fn clip_file_path(root: &Path, path: &str, file: &str) -> Result<PathBuf> {
@@ -624,7 +717,8 @@ fn unique_clip(dir: &Path, stem: &str, reserved: &[String]) -> Result<PathBuf> {
             .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("media/{name}.{ext}"))).is_ok())
             || FILE_FORMATS
                 .iter()
-                .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("files/{name}.{ext}"))).is_ok());
+                .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("files/{name}.{ext}"))).is_ok())
+            || fs::symlink_metadata(dir.join(format!("sources/{name}.txt"))).is_ok();
         match fs::symlink_metadata(&path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && !media_taken => return Ok(path),
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -634,6 +728,69 @@ fn unique_clip(dir: &Path, stem: &str, reserved: &[String]) -> Result<PathBuf> {
         }
     }
     unreachable!("an unused name")
+}
+
+const EXCERPT_NOTE: &str = "_Excerpt: ";
+
+/// The first [`MAX_SOURCE_CHARS`] of a source, cut at a paragraph (or line)
+/// break near the end, with a closing line that says what was kept and where
+/// the rest is: `_Excerpt: up to 18:56 of 1:21:51. The whole transcript is
+/// in inspiration/sources/x.txt._`. A short source is returned unchanged.
+fn excerpt(source: &str, path: &str) -> String {
+    let total = source.chars().count();
+    if total <= MAX_SOURCE_CHARS {
+        return source.to_string();
+    }
+    // Leave room for the closing line.
+    let limit = MAX_SOURCE_CHARS - 200;
+    let cut = source.char_indices().nth(limit).map_or(source.len(), |(i, _)| i);
+    let head = &source[..cut];
+    let floor = head.char_indices().nth(limit - limit / 10).map_or(0, |(i, _)| i);
+    let end = head
+        .rfind("\n\n")
+        .filter(|&i| i >= floor)
+        .or_else(|| head.rfind('\n').filter(|&i| i >= floor))
+        .unwrap_or(cut);
+    let kept = head[..end].trim_end();
+    let stem = Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+    let whole = format!("{INSPIRATION}/sources/{stem}.txt");
+    let note = match (last_timestamp(kept), last_timestamp(source)) {
+        (Some(at), Some(of)) => format!("{EXCERPT_NOTE}up to {at} of {of}. The whole transcript is in {whole}._"),
+        _ => format!(
+            "{EXCERPT_NOTE}the first {} of {} characters. The whole text is in {whole}._",
+            thousands(kept.chars().count()),
+            thousands(total)
+        ),
+    };
+    format!("{kept}\n\n{note}")
+}
+
+/// Removes the excerpt's closing line, if it has one.
+fn strip_excerpt_note(source: &str) -> &str {
+    match source.trim_end().rsplit_once("\n\n") {
+        Some((head, last)) if last.starts_with(EXCERPT_NOTE) && last.ends_with("._") => head,
+        _ => source,
+    }
+}
+
+/// The last `[m:ss](<…>)` paragraph label of a transcript.
+fn last_timestamp(text: &str) -> Option<&str> {
+    text.lines().rev().find_map(|line| {
+        let label = line.strip_prefix('[')?.split_once("](<")?.0;
+        (!label.is_empty() && label.contains(':') && label.chars().all(|c| c.is_ascii_digit() || c == ':')).then_some(label)
+    })
+}
+
+fn thousands(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, c) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
 }
 
 fn protect_boundary(text: &str) -> String {
@@ -712,7 +869,16 @@ pub fn clip_create_with_receipt(
         .unwrap_or_else(|| {
             text.or(note)
                 .map(capture_title)
-                .unwrap_or_else(|| if capture.file.is_some() { "document" } else { "image" }.into())
+                .unwrap_or_else(|| {
+                    if capture.file.is_some() {
+                        "document".into()
+                    } else {
+                        // An image alone: name it for when it arrived, which
+                        // is something to find it by (`image-2026-10-31-1015`).
+                        // Enrichment titles it from what the picture shows.
+                        format!("image {}", capture.captured_at.replace(['T', ':'], " "))
+                    }
+                })
         });
     let dir = contained(root, Path::new(INSPIRATION))?;
     fs::create_dir_all(&dir).map_err(|_| "could not create inspiration folder")?;
@@ -849,6 +1015,8 @@ fn update(root: &Path, path: &str, patch: &ClipUpdate) -> Result<Clip> {
         ("summary", &patch.summary),
         ("enriched", &patch.enriched),
         ("enrich_error", &patch.enrich_error),
+        ("quote_by", &patch.quote_by),
+        ("quote_link", &patch.quote_link),
     ] {
         if let Some(value) = value {
             let value = nonempty(Some(value));
@@ -862,11 +1030,40 @@ fn update(root: &Path, path: &str, patch: &ClipUpdate) -> Result<Clip> {
                     contained(root, &media_relative(path, value)?)?;
                 }
             }
+            if key == "quote_link" && value.is_some_and(|v| !quote_link_ok(v)) {
+                return Err("invalid clip quote link".into());
+            }
             fm.set(key, value.map(|s| Value::Scalar(s.into())));
         }
     }
     if let Some(value) = &patch.tags {
         fm.set("tags", Some(Value::List(tags(value.clone()))));
+    }
+    // A long source is kept whole beside the clip before the clip points at
+    // it; a short one makes an old sidecar stale, so it goes.
+    let mut stale_sidecar = None;
+    if let Some(source) = &patch.source {
+        let source = source.trim_matches(['\r', '\n']);
+        let relative = format!(
+            "sources/{}.txt",
+            Path::new(path).file_stem().and_then(|s| s.to_str()).ok_or("not a clip path")?
+        );
+        let sidecar = clip_source_path(root, path, &relative)?;
+        if source.chars().count() > MAX_SOURCE_CHARS {
+            if fs::symlink_metadata(&sidecar).is_ok_and(|m| !m.is_file()) {
+                return Err("could not save clip source".into());
+            }
+            fs::create_dir_all(sidecar.parent().ok_or("not a source path")?)
+                .map_err(|_| "could not create clip sources folder")?;
+            let whole: String = source.chars().take(MAX_FULL_SOURCE_CHARS).collect();
+            write_atomic(&sidecar, &format!("{whole}\n")).map_err(|_| "could not save clip source")?;
+            fm.set("full_source", Some(Value::Scalar(relative)));
+        } else {
+            if fm.scalar("full_source").is_some() {
+                stale_sidecar = Some(sidecar);
+            }
+            fm.set("full_source", None);
+        }
     }
     let mut body = fm.body.to_string();
     if patch.note.is_some() || patch.source.is_some() {
@@ -886,19 +1083,28 @@ fn update(root: &Path, path: &str, patch: &ClipUpdate) -> Result<Clip> {
         }
         body.push_str(SOURCE_MARKER);
         body.push('\n');
-        let next_source = patch.source.as_deref().or(source);
-        if let Some(next_source) = next_source.filter(|s| !s.trim().is_empty()) {
-            body.push_str("## Source\n\n");
-            body.extend(
-                next_source
-                    .trim_matches(['\r', '\n'])
-                    .chars()
-                    .take(MAX_SOURCE_CHARS),
-            );
-            body.push('\n');
+        match (&patch.source, source) {
+            (Some(next), _) if !next.trim().is_empty() => {
+                body.push_str("## Source\n\n");
+                body.push_str(&excerpt(next.trim_matches(['\r', '\n']), path));
+                body.push('\n');
+            }
+            (Some(_), _) => {}
+            // A note edit keeps the source section exactly as it was.
+            (None, Some(existing)) if !existing.trim().is_empty() => {
+                body.push_str("## Source\n\n");
+                body.push_str(existing.trim_matches(['\r', '\n']));
+                body.push('\n');
+            }
+            (None, _) => {}
         }
     }
     write_atomic(&target, &fm.render(&body)).map_err(|_| "could not save clip")?;
+    if let Some(stale) = stale_sidecar
+        && fs::symlink_metadata(&stale).is_ok_and(|m| m.is_file())
+    {
+        let _ = fs::remove_file(stale);
+    }
     clip_read(root, path)
 }
 
@@ -950,6 +1156,12 @@ pub fn clip_trash(
         let file = clip_file_path(root, path, &file)?;
         if file.exists() {
             targets.push(file);
+        }
+    }
+    if let Some(source) = clip.summary.full_source {
+        let source = clip_source_path(root, path, &source)?;
+        if fs::symlink_metadata(&source).is_ok_and(|m| m.is_file()) {
+            targets.push(source);
         }
     }
     trash(&targets)

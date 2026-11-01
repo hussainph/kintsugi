@@ -24,6 +24,8 @@ use std::pin::Pin;
 pub mod api;
 pub mod authors;
 pub mod feed;
+pub mod hn;
+pub mod image;
 mod markdown;
 pub mod media;
 pub mod reddit;
@@ -46,8 +48,13 @@ pub mod youtube;
 
 pub use reqwest::Url;
 
-/// Markdown bodies are capped at this many characters (the clip source cap).
+/// Short bodies (feed entries, posts, catalog records) are capped at this
+/// many characters. It is also the excerpt a clip shows in its `## Source`.
 pub const BODY_CHARS: usize = 20_000;
+/// Long-form bodies (transcripts, PDFs, books, threads, articles) keep up to
+/// this many characters, about four hours of speech. Clips keep the whole
+/// text beside the clip for Kin and show the first [`BODY_CHARS`].
+pub const FULL_CHARS: usize = 250_000;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -76,6 +83,10 @@ pub enum SourceType {
     Book,
     /// A new book from a followed author (Google Books or Open Library).
     Author,
+    /// A Hacker News story with its comment tree.
+    Hn,
+    /// A picture: on-device text recognition and labels, machine-made.
+    Image,
 }
 
 impl SourceType {
@@ -91,6 +102,8 @@ impl SourceType {
             SourceType::Epub => "epub",
             SourceType::Book => "book",
             SourceType::Author => "author",
+            SourceType::Hn => "hn",
+            SourceType::Image => "image",
         }
     }
 }
@@ -118,7 +131,8 @@ pub struct Item {
     pub captured: String,
     /// The primary image first.
     pub media: Vec<Media>,
-    /// Readable content as Markdown, at most [`BODY_CHARS`] characters. Empty
+    /// Readable content as Markdown: at most [`BODY_CHARS`] characters for
+    /// short sources, [`FULL_CHARS`] for long-form ones. Empty
     /// when the source had no readable text (a video, a bare image).
     pub body: String,
     /// Adapter-specific facts: `extractor` (which method produced the body),
@@ -207,7 +221,7 @@ impl std::error::Error for Error {}
 #[derive(Debug, Clone, PartialEq)]
 pub enum Target {
     Url(Url),
-    /// A local file: a PDF or an EPUB.
+    /// A local file: a PDF, an EPUB or an image.
     File(PathBuf),
 }
 

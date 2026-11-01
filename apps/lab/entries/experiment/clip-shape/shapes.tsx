@@ -391,6 +391,7 @@ const kindLabel: Record<string, string> = {
   note: "Note",
   document: "Document",
   book: "Book",
+  podcast: "Podcast",
 };
 
 /** C: the long page, wiki-ish, everything at once. */

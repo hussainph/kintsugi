@@ -285,7 +285,8 @@ rather use it. Outside agents never add to Inspiration.
 ```
 ~/Documents/Kintsugi/
   inbox/            quick notes from the phone
-  inspiration/      clips and their media (human-curated)
+  inspiration/      clips and their media (human-curated); sources/ keeps
+                    long clips' whole text for Kin
   .kintsugi/
     agent/          Kin's memory: USER.md, NOTES.md, skills/
     comments/       Kin's comment threads on documents (direction)

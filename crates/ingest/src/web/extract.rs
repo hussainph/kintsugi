@@ -2,7 +2,7 @@
 //! Markdown. Pure, so it is tested on saved pages without any network.
 
 use super::allowed_url;
-use crate::{BODY_CHARS, markdown};
+use crate::{FULL_CHARS, markdown};
 use dom_query::Document;
 use dom_smoothie::{Config, Readability, TextMode};
 use reqwest::Url;
@@ -74,7 +74,7 @@ pub(crate) fn page(html: &str, url: &Url) -> Extracted {
             .iter()
             .map(|root| {
                 let text = root.md(Some(CHROME));
-                markdown::body(&text, BODY_CHARS)
+                markdown::body(&text, FULL_CHARS)
             })
             .max_by_key(|s| s.chars().count())
             .unwrap_or_default()
@@ -95,7 +95,7 @@ pub(crate) fn page(html: &str, url: &Url) -> Extracted {
         .and_then(|mut r| r.parse().ok());
     match article {
         Some(article) => {
-            let body = markdown::body(&article.text_content, BODY_CHARS);
+            let body = markdown::body(&article.text_content, FULL_CHARS);
             // Below its own length threshold, Readability settles for the
             // whole page; an explicit article/main region is the better read.
             if body.chars().count() >= SHORT_ARTICLE_CHARS || fallback_body.is_empty() {
@@ -171,5 +171,5 @@ fn canonical(doc: &Document, url: &Url) -> Option<Url> {
 pub(crate) fn fragment(html: &str) -> String {
     let doc = Document::from(html);
     let body = doc.select("body");
-    body.nodes().first().map_or_else(String::new, |root| markdown::body(&root.md(Some(CHROME)), BODY_CHARS))
+    body.nodes().first().map_or_else(String::new, |root| markdown::body(&root.md(Some(CHROME)), FULL_CHARS))
 }

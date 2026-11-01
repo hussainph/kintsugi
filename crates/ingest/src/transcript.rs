@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// Transcript bodies may be longer than an article's: an hour of speech is
 /// about 55,000 characters with timestamps.
-pub const TRANSCRIPT_CHARS: usize = 250_000;
+pub const TRANSCRIPT_CHARS: usize = crate::FULL_CHARS;
 
 /// One timed piece of speech. Times are seconds from the start.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
