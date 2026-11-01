@@ -31,6 +31,11 @@ ghostwrites: prose is his, apart from edits he explicitly asks for.
   `gh pr create` (title with the ticket id; body: what changed, checks run,
   anything unverified). Don't push to `main` and don't move `main` in any
   checkout. The board session reviews, verifies and merges the PR.
+- **Clean up once your PR is merged.** In your ticket's worktree, run
+  `cargo clean` and delete `.headless/` (scratch vaults, screenshots,
+  downloaded browsers and tools), plus any scratch folders you made outside
+  it (e.g. under `/tmp`). Each worktree has its own `target/`, and a dozen
+  parallel worktrees once filled the disk. Commit nothing while cleaning.
 
 ## Toolchain
 

@@ -10,7 +10,10 @@ authors.workspace = true
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "kintsugi_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+# Only the Mac app links this library (the phone is the Expo app, not Tauri
+# mobile), so the staticlib/cdylib from Tauri's mobile template were a ~0.5 GB
+# per-build waste.
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
