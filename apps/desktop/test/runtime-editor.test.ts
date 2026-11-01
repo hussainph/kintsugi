@@ -16,6 +16,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { startApp, type App } from "./headless-app.ts";
 
 const DOC = "drafts/gold-seams.md";
+const MIRROR = "posts/mirrored.md";
 const TIMEOUT = Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000);
 
 let app: App;
@@ -25,6 +26,7 @@ let page: Page;
 before(async () => {
   app = await startApp("ki37", { KINTSUGI_HEADLESS_KIN: "mock" }, (vault) => {
     writeFileSync(resolve(vault, DOC), `---\ntitle: "Gold seams"\nstatus: draft\n---\n\n# Gold seams\n\nThe repair is really very visible, and that is the point.\n`);
+    writeFileSync(resolve(vault, MIRROR), `---\ntitle: "Mirrored post"\nmirror: hussain.ph/blog/mirrored\n---\n\nA published paragraph about repair.\n`);
     const skill = (name: string, description: string, command: boolean, body: string) => {
       mkdirSync(resolve(vault, `.kintsugi/agent/skills/${name}`), { recursive: true });
       writeFileSync(resolve(vault, `.kintsugi/agent/skills/${name}/SKILL.md`), `---\nname: ${name}\ndescription: ${description}\ncommand: ${command}\n---\n\n${body}\n`);
@@ -194,6 +196,20 @@ test("/ › Ideas for this draft opens the same view", { timeout: 60_000 }, asyn
   await page.getByRole("region", { name: "Ideas" }).waitFor();
   await onDisk((t) => t.includes("> Keep the seam. \n") || t.includes("> Keep the seam.\n") || t.endsWith("> Keep the seam. "), "the command itself is gone");
   assert.ok(!disk().includes("/ideas"));
+});
+
+test("in a read-only mirror, ⌘K offers only the actions that write nothing", { timeout: 60_000 }, async () => {
+  await page.locator(`[title="${MIRROR}"]`).click();
+  await page.locator(`[title="${MIRROR}"][data-active="true"]`).waitFor();
+  const before = readFileSync(resolve(app.vault, MIRROR), "utf8");
+  await line("A published paragraph").click();
+  await page.keyboard.press("Meta+k");
+  await refine().getByRole("option", { name: /Discuss this paragraph/ }).waitFor();
+  assert.equal(await refine().getByRole("option", { name: /Tighten|plain-words/ }).count(), 0);
+  await refine().getByRole("option", { name: /Find supporting clips/ }).click();
+  await refine().getByRole("option", { name: /Golden joinery/ }).waitFor({ timeout: 15_000 });
+  await page.keyboard.press("Escape");
+  assert.equal(readFileSync(resolve(app.vault, MIRROR), "utf8"), before);
 });
 
 test("at phone width with touch, the pickers fit the screen and rows are tap targets", { timeout: 120_000 }, async () => {

@@ -92,6 +92,8 @@ type Item = { kind: "block"; block: Block } | { kind: "skill"; skill: CommandSki
 type Menu = { from: number; to: number; query: string; items: Item[]; index: number };
 
 const setMenu = StateEffect.define<Menu | null>();
+/** The host's skills or actions changed: an open menu lists them again. */
+export const refreshCommands = StateEffect.define<null>();
 const dismissMenu = StateEffect.define<number>();
 
 /** How well `query` names an item: lower is better, null is no match. */
@@ -119,7 +121,7 @@ export function menuItems(query: string, skills: readonly CommandSkill[], action
   const score = (i: Item) => (i.kind === "block" ? blockRank(i.block) : i.kind === "skill" ? skillRank(i.skill) : actionRank(i.action))!;
   const best = (items: Item[]) => items.length ? Math.min(...items.map(score)) : Infinity;
   // Blocks lead, unless a skill or action is named better ("/plain" for plain-words).
-  return [blocks, matched, acted].map((items, order) => ({ items, order })).sort((a, b) => best(a.items) - best(b.items) || a.order - b.order).flatMap((g) => g.items);
+  return ([blocks, matched, acted] as Item[][]).map((items, order) => ({ items, order })).sort((a, b) => best(a.items) - best(b.items) || a.order - b.order).flatMap((g) => g.items);
 }
 
 /** `/` at a line start or after a space, outside YAML and code. The query is
@@ -181,7 +183,7 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
   const menuField = StateField.define<Menu | null>({
     create: () => null,
     update(value, tr) {
-      if (tr.docChanged || tr.selection) {
+      if (tr.docChanged || tr.selection || tr.effects.some((effect) => effect.is(refreshCommands))) {
         const previous = value;
         value = menuAt(tr.state, getCommands(), tr.state.field(dismissedField));
         if (value && previous && value.from === previous.from && value.query === previous.query) value = { ...value, index: Math.min(previous.index, value.items.length - 1) };
