@@ -9,7 +9,7 @@
     "typecheck": "tsc",
     "test:headless": "node --test src/headless/*.test.ts",
     "test": "node --test src/inspiration/*.test.ts src/lib/*.test.ts src/feed/*.test.ts src/ideas/*.test.ts",
-    "test:runtime": "node --test --test-concurrency=1 test/runtime-*.test.ts",
+    "test:runtime": "node --test --test-concurrency=1 --test-reporter=./test/reporter.ts test/runtime-*.test.ts",
     "test:references": "node --test test/reference-*.test.ts",
     "preview": "vite preview",
     "tauri": "tauri"

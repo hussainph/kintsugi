@@ -119,3 +119,37 @@ in the worktree).
 Headless integration tests exercise authenticated HTTP/SSE, command errors,
 real document writes and clip events, the real `ai_stream` Channel's disabled
 error, and config/receipt isolation without credentials or native windows.
+
+## Flaky runtime tests (KI-47)
+
+The runtime suite's reporter (`test/reporter.ts`) prints one line per test
+and, for a failure, its file and line and the error's first lines (a
+Playwright call log is cut to the locator it was waiting for). Every failure
+is listed again at the end, so the tail of one log says what broke.
+
+Patterns that made the suite fail now and then, mostly on a loaded machine:
+
+- **Measuring a node the editor is about to replace.** The `[[` picker and
+  `/` menu rebuild their rows and hint on every update, including when the
+  search answers ~120 ms later. `boundingBox()` on a row taken before then
+  can come back `null` (the row was detached). Wait for the settled state
+  (the hint no longer says "Searching…") and measure inside the page in one
+  `evaluate`.
+- **Sleeping for background writes.** Feed impressions are batched and sent
+  1.5 s after the first one; a 2 s sleep before reading `feed.sqlite` is a
+  500 ms margin, gone under load. Undo, unlike and open events are also
+  separate invokes. Poll the database (or file) until the state is there,
+  with a deadline, rather than sleeping.
+- **Reading a file the app writes after the event the test waited for.**
+  A Kin helper's report is logged (and shown) before `jobs.json` marks the
+  job done, on purpose. Wait for the table, not only the message.
+- **Counting before a batch is in.** Wait for the status that says the
+  batch has arrived ("Two from Kin today"), then count rows.
+- **App races that look like flakiness.** As in KI-39, check the app before
+  the test: `openDoc` let an earlier, slower read win, so the startup open
+  of the last document could replace one he clicked while the vault loaded.
+  Opens are now sequenced (only the latest lands), and the startup open is
+  skipped once anything else has been opened.
+
+Sleeps that remain are for screenshots or before checking that something
+did *not* happen; those can only pass wrongly, never fail spuriously.

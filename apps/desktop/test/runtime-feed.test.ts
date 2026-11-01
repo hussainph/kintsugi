@@ -120,6 +120,18 @@ const item = (title: string) => newest().locator("article[data-feed-item]", { ha
 const pick = (title: string) => picked().locator("article[data-feed-item]", { has: page.getByRole("button", { name: title, exact: true }) });
 const db = () => new DatabaseSync(resolve(config, "feed.sqlite"), { readOnly: true });
 const events = (kind: string) => db().prepare("SELECT * FROM events WHERE kind = ? ORDER BY id").all(kind) as Record<string, unknown>[];
+/** Waits for state the app writes in the background (the event log), never a fixed time. */
+async function until(check: () => boolean, what: () => string, ms = 30_000) {
+  for (const end = Date.now() + ms; Date.now() < end; ) {
+    try {
+      if (check()) return;
+    } catch {
+      // Not there yet.
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  assert.fail(what());
+}
 const titles = async () => (await feedItems().locator("h2").allInnerTexts()).map((t) => t.trim());
 
 async function follow(tab: string, value: string, expect: RegExp) {
@@ -162,11 +174,12 @@ test("follow sources and read them newest first", { timeout: TIMEOUT }, async ()
   assert.doesNotMatch(await reading.innerText(), /alert/);
   await shot("03-feed-reading");
 
-  // Impressions were logged with their positions.
-  await page.waitForTimeout(2000);
-  const seen = events("impression").filter((e) => e.surface === "newest");
-  assert.ok(seen.length >= 3, `impressions: ${JSON.stringify(seen)}`);
+  // Impressions were logged with their positions (sent in batches, 1.5 s after the first).
+  const newestSeen = () => events("impression").filter((e) => e.surface === "newest");
+  await until(() => newestSeen().length >= 3, () => `impressions: ${JSON.stringify(newestSeen())}`);
+  const seen = newestSeen();
   assert.deepEqual(seen.slice(0, 3).map((e) => [e.position, e.surface]), [[0, "newest"], [1, "newest"], [2, "newest"]]);
+  await until(() => events("open").length >= 1, () => "the open is logged");
   assert.equal(events("open").length, 1);
 });
 
@@ -309,7 +322,7 @@ test("Picked for you: ranked locally, with Why this? and corrections", { timeout
   assert.match(reason, /^(anchor:|source:|author:|topic:)/);
   // Undo puts it back, as its own event in the append-only log.
   await page.getByRole("button", { name: "Undo" }).first().click();
-  await page.waitForTimeout(500);
+  await until(() => events("undo_correction").length >= 1, () => "the undo is logged");
   assert.equal(events("undo_correction").length, 1);
   corrections = events("undo_correction");
   assert.equal(JSON.parse(String(corrections[0].data)).reason, reason);
@@ -328,13 +341,13 @@ test("Picked for you: ranked locally, with Why this? and corrections", { timeout
   await page.waitForTimeout(800); // the toast's entrance animation
   await shot("11-like-effect");
   await toastText.getByRole("button", { name: "Undo" }).click();
-  await page.waitForTimeout(500);
+  await until(() => events("unlike").length >= 2, () => `unlikes: ${events("unlike").length}`);
   assert.equal(events("unlike").length, 2, "the KI-25 undo and this one");
 
   // Picked impressions are logged with their own surface and positions.
-  await page.waitForTimeout(2000);
-  const seen = events("impression").filter((e) => e.surface === "picked");
-  assert.ok(seen.length >= 4, `picked impressions: ${seen.length}`);
+  const pickedSeen = () => events("impression").filter((e) => e.surface === "picked");
+  await until(() => pickedSeen().length >= 4, () => `picked impressions: ${pickedSeen().length}`);
+  const seen = pickedSeen();
   assert.ok(seen.some((e) => e.position === 0));
   await picked().scrollIntoViewIfNeeded();
   await shot("12-picked-for-you");

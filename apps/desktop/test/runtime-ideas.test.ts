@@ -131,7 +131,8 @@ test("the daily batch arrives, grounded in quotes that are really there", { time
   await openIdeas();
   // The daily check runs a few seconds after start; the mock helper is quick.
   await rows().first().waitFor({ timeout: 60_000 });
-  await page.waitForTimeout(500);
+  // The batch is in once its status says so; count the rows only then.
+  await section().getByText(/Two from Kin today/).waitFor();
   const titles = await rows().locator("button[aria-expanded] span.block").first().allTextContents();
   assert.ok(titles.length > 0);
   assert.equal(await rows().count(), 2, "two grounded ideas");
