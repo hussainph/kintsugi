@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Kintsugi is built</title>
+<style>
+  :root{
+    --paper:#f7f4ee; --card:#fffdf9; --ink:#1c1b19; --mute:#6b665d; --line:#e4ddd0;
+    --gold:#b8862b; --gold-soft:#f3e7cc; --solid:#2f6b4a; --solid-soft:#e2efe6;
+    --watch:#9a6a12; --watch-soft:#f6ebd2; --fix:#a3372b; --fix-soft:#f6e0dc;
+    --call:#5b4bb0; --call-soft:#e8e4f7; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{overflow-x:hidden} body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 -apple-system, "SF Pro Text", Inter, system-ui, sans-serif}
+  header.top{padding:48px 56px 24px;max-width:1240px;margin:0 auto}
+  h1{font:600 34px/1.15 "New York", Georgia, serif;margin:0 0 8px;letter-spacing:-.01em}
+  h2{font:600 24px/1.2 "New York", Georgia, serif;margin:0 0 6px}
+  h3{font-size:15px;margin:0 0 6px}
+  .lede{color:var(--mute);max-width:760px;margin:0}
+  nav{position:sticky;top:0;z-index:5;background:rgba(247,244,238,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  nav .in{max-width:1240px;margin:0 auto;padding:10px 56px;display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
+  nav a{color:var(--mute);text-decoration:none} nav a:hover{color:var(--ink)}
+  main{max-width:1240px;margin:0 auto;padding:8px 56px 80px}
+  section{margin-top:44px}
+  .sub{color:var(--mute);margin:0 0 18px;max-width:820px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  @media (max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr} main,header.top,nav .in{padding-left:20px;padding-right:20px}}
+  code,.mono{font-family:var(--mono);font-size:12.5px}
+  .tag{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px;vertical-align:1px}
+  .solid{background:var(--solid-soft);color:var(--solid)} .watch{background:var(--watch-soft);color:var(--watch)}
+  .fix{background:var(--fix-soft);color:var(--fix)} .call{background:var(--call-soft);color:var(--call)}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;font-size:13px;color:var(--mute)}
+  .legend span.tag{margin-right:6px}
+  .stat{font:600 28px/1 "New York", Georgia, serif} .statl{color:var(--mute);font-size:12.5px;margin-top:4px}
+  svg text{font-family:-apple-system, Inter, system-ui, sans-serif}
+  .map{width:100%;height:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+  .steps{counter-reset:s;display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  @media (max-width:900px){.steps{grid-template-columns:1fr}}
+  .step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px;font-size:13.5px}
+  .step::before{counter-increment:s;content:counter(s);position:absolute;top:-10px;left:12px;background:var(--ink);color:#fff;font:600 11px/20px var(--mono);width:20px;text-align:center;border-radius:99px}
+  .step b{display:block;margin-bottom:4px;font-size:14px}
+  .step .n{color:var(--gold);font-family:var(--mono);font-size:12px}
+  .stack{display:flex;flex-direction:column;gap:4px}
+  .layer{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:8px;font-size:13.5px}
+  .layer small{color:var(--mute);font-size:12px}
+  .cached{background:var(--gold-soft);border:1px solid #e6d3a8} .fresh{background:#fff;border:1px dashed #cfc6b5}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+  .flow .node{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;min-width:120px;flex:1}
+  .flow .arr{align-self:center;color:var(--gold);padding:0 6px;font-size:18px}
+  .flow .node b{display:block;font-size:13.5px}
+  .formula{font-family:var(--mono);font-size:13px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;overflow-x:auto}
+  .tree{font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre;overflow-x:auto;margin:0}
+  .tree .c{color:var(--mute)}
+  .dec{display:grid;grid-template-columns:1fr;gap:10px}
+  details.d{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:0}
+  details.d summary{list-style:none;cursor:pointer;padding:12px 16px;display:flex;gap:10px;align-items:baseline}
+  details.d summary::-webkit-details-marker{display:none}
+  details.d summary .t{flex:1;font-weight:600}
+  details.d summary .rev{color:var(--mute);font-size:12px;white-space:nowrap}
+  details.d .body{padding:0 16px 14px 16px;display:grid;grid-template-columns:120px 1fr;gap:4px 14px;font-size:13.5px}
+  details.d .body .k{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding-top:2px}
+  details.d[open]{box-shadow:0 1px 0 var(--line)}
+  .filters{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
+  .filters button{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--ink)}
+  .filters button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .group{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 6px}
+  .q{border-left:3px solid var(--call);padding:12px 16px;background:var(--card);border-radius:0 10px 10px 0;margin-bottom:10px}
+  .q b{display:block;margin-bottom:4px}
+  .q .opts{color:var(--mute);font-size:13.5px}
+  .seam{height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:36px 0 0;opacity:.5}
+  .foot{color:var(--mute);font-size:12.5px;margin-top:40px}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>How Kintsugi is built</h1>
+  <p class="lede">The whole system on one page: what the parts are, how a turn, a capture, a search and a sync actually run, and every architectural decision made without asking you. Each decision carries my verdict and how hard it would be to undo. The decisions marked <span class="tag call">Your call</span> are the ones you should weigh in on.</p>
+  <div class="legend">
+    <div><span class="tag solid">Solid</span>a good choice; keep it</div>
+    <div><span class="tag watch">Watch</span>fine for now, with a known cost</div>
+    <div><span class="tag fix">Fix</span>a real bug or risk; should be ticketed</div>
+    <div><span class="tag call">Your call</span>a product tradeoff for you to decide</div>
+  </div>
+</header>
+<nav><div class="in">
+  <a href="#map">System map</a><a href="#kin">Kin's harness</a><a href="#data">Capture, Feed, search</a>
+  <a href="#disk">What's on disk</a><a href="#shell">Saving, phone, tests</a><a href="#decisions">Decisions</a><a href="#ask">Your calls</a>
+</div></nav>
+<main>
+
+<section id="map">
+  <h2>System map</h2>
+  <p class="sub">A single Mac app does all the work. The phone is a client of the Mac. Your writing is plain files; everything else is derived and can be rebuilt. No cloud service of ours sits anywhere in this picture.</p>
+  <svg class="map" viewBox="0 0 1180 630" role="img" aria-label="System map">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b8862b"/></marker>
+    </defs>
+    <!-- Phone -->
+    <rect x="20" y="40" width="210" height="200" rx="14" fill="#fff" stroke="#d9d1c2"/>
+    <text x="36" y="66" font-size="14" font-weight="600">iPhone · Expo SDK 58</text>
+    <text x="36" y="92" font-size="12.5" fill="#6b665d">Plain text editor (shared editor</text>
+    <text x="36" y="108" font-size="12.5" fill="#6b665d">is a flagged spike, KI-36)</text>
+    <text x="36" y="134" font-size="12.5" fill="#6b665d">Full offline copy in SQLite</text>
+    <text x="36" y="160" font-size="12.5" fill="#6b665d">Three-way merge on sync</text>
+    <text x="36" y="186" font-size="12.5" fill="#6b665d">Share extension (Swift)</text>
+    <text x="36" y="212" font-size="12.5" fill="#6b665d">Token in Keychain</text>
+    <!-- Blog -->
+    <rect x="20" y="430" width="210" height="110" rx="14" fill="#fff" stroke="#d9d1c2"/>
+    <text x="36" y="456" font-size="14" font-weight="600">Blog repo · hussain.ph</text>
+    <text x="36" y="482" font-size="12.5" fill="#6b665d">Astro site on disk</text>
+    <text x="36" y="502" font-size="12.5" fill="#6b665d">Publish writes files,</text>
+    <text x="36" y="520" font-size="12.5" fill="#6b665d">never runs git</text>
+    <!-- Mac container -->
+    <rect x="280" y="20" width="580" height="600" rx="16" fill="#fbf8f2" stroke="#b8862b" stroke-width="1.5"/>
+    <text x="300" y="46" font-size="15" font-weight="700">Mac app · Tauri 2</text>
+    <!-- Webview -->
+    <rect x="300" y="60" width="540" height="92" rx="10" fill="#fff" stroke="#d9d1c2"/>
+    <text x="316" y="84" font-size="13.5" font-weight="600">Window · React 19 in WKWebView</text>
+    <g font-size="12" fill="#1c1b19">
+      <rect x="316" y="98" width="140" height="40" rx="7" fill="#f3e7cc"/><text x="326" y="122">Editor · CodeMirror 6</text>
+      <rect x="464" y="98" width="56" height="40" rx="7" fill="#f2eee6"/><text x="476" y="122">Feed</text>
+      <rect x="528" y="98" width="86" height="40" rx="7" fill="#f2eee6"/><text x="538" y="122">Inspiration</text>
+      <rect x="622" y="98" width="62" height="40" rx="7" fill="#f2eee6"/><text x="630" y="122">Ideas</text>
+      <rect x="692" y="98" width="132" height="40" rx="7" fill="#f2eee6"/><text x="702" y="122">Kin chat · comments</text>
+    </g>
+    <line x1="570" y1="152" x2="570" y2="186" stroke="#b8862b" stroke-width="1.5" marker-end="url(#ar)" marker-start="url(#ar)"/>
+    <text x="582" y="174" font-size="11.5" fill="#6b665d">IPC · 96 commands + events</text>
+    <!-- Rust -->
+    <rect x="300" y="190" width="540" height="410" rx="10" fill="#fff" stroke="#d9d1c2"/>
+    <text x="316" y="214" font-size="13.5" font-weight="600">Rust backend · ~23k lines in the app + 4 crates</text>
+    <g font-size="12">
+      <rect x="316" y="230" width="164" height="104" rx="8" fill="#f3e7cc"/>
+      <text x="328" y="252" font-weight="600">Vault</text>
+      <text x="328" y="272" fill="#6b665d">atomic writes</text><text x="328" y="290" fill="#6b665d">content-hash versions</text><text x="328" y="308" fill="#6b665d">path guards</text>
+      <rect x="488" y="230" width="164" height="104" rx="8" fill="#f3e7cc"/>
+      <text x="500" y="252" font-weight="600">Kin harness</text>
+      <text x="500" y="272" fill="#6b665d">own agent loop</text><text x="500" y="290" fill="#6b665d">6 tools, read-only vault</text><text x="500" y="308" fill="#6b665d">capped memory</text>
+      <rect x="660" y="230" width="164" height="104" rx="8" fill="#f2eee6"/>
+      <text x="672" y="252" font-weight="600">Phone server</text>
+      <text x="672" y="272" fill="#6b665d">axum on 127.0.0.1</text><text x="672" y="290" fill="#6b665d">API v4, one bearer token</text><text x="672" y="308" fill="#6b665d">409 on stale base</text>
+      <rect x="316" y="344" width="164" height="104" rx="8" fill="#f2eee6"/>
+      <text x="328" y="366" font-weight="600">Ingest + enrich</text>
+      <text x="328" y="386" fill="#6b665d">10 adapters by priority</text><text x="328" y="404" fill="#6b665d">1 AI call: title, tags</text><text x="328" y="422" fill="#6b665d">hidden-webview fallback</text>
+      <rect x="488" y="344" width="164" height="104" rx="8" fill="#f2eee6"/>
+      <text x="500" y="366" font-weight="600">Feed</text>
+      <text x="500" y="386" fill="#6b665d">poller, every 60 s</text><text x="500" y="404" fill="#6b665d">append-only events</text><text x="500" y="422" fill="#6b665d">feed.sqlite</text>
+      <rect x="660" y="344" width="164" height="104" rx="8" fill="#f2eee6"/>
+      <text x="672" y="366" font-weight="600">Search</text>
+      <text x="672" y="386" fill="#6b665d">FTS5 words +</text><text x="672" y="404" fill="#6b665d">model2vec meaning,</text><text x="672" y="422" fill="#6b665d">fused by rank (RRF)</text>
+      <rect x="316" y="458" width="164" height="104" rx="8" fill="#f2eee6"/>
+      <text x="328" y="480" font-weight="600">Rank</text>
+      <text x="328" y="500" fill="#6b665d">taste + online model</text><text x="328" y="518" fill="#6b665d">diversity, exploration</text><text x="328" y="536" fill="#6b665d">zero LLM calls</text>
+      <rect x="488" y="458" width="164" height="104" rx="8" fill="#f2eee6"/>
+      <text x="500" y="480" font-weight="600">Publish · Export</text>
+      <text x="500" y="500" fill="#6b665d">blog files + mirror</text><text x="500" y="518" fill="#6b665d">Typst PDF in-process</text><text x="500" y="536" fill="#6b665d">HTML, LinkedIn text</text>
+      <rect x="660" y="458" width="164" height="104" rx="8" fill="#f2eee6"/>
+      <text x="672" y="480" font-weight="600">Swift sidecars</text>
+      <text x="672" y="500" fill="#6b665d">speech-to-text</text><text x="672" y="518" fill="#6b665d">PDF text, OCR</text><text x="672" y="536" fill="#6b665d">child processes</text>
+    </g>
+    <text x="316" y="586" font-size="11.5" fill="#6b665d">Gold boxes = where your words and Kin live. Grey = supporting machinery.</text>
+    <!-- Right side -->
+    <rect x="920" y="40" width="240" height="150" rx="14" fill="#fff" stroke="#b8862b"/>
+    <text x="936" y="66" font-size="14" font-weight="600">Your vault · the truth</text>
+    <text x="936" y="92" font-size="12.5" fill="#6b665d">Your writing as .md / .mdx files</text>
+    <text x="936" y="112" font-size="12.5" fill="#6b665d">inspiration/  clips + sources</text>
+    <text x="936" y="132" font-size="12.5" fill="#6b665d">.kintsugi/  Kin memory, comments</text>
+    <text x="936" y="152" font-size="12.5" fill="#6b665d">Readable in Obsidian or any editor</text>
+    <text x="936" y="172" font-size="12.5" fill="#a3372b">⚠ outside edits aren't detected</text>
+    <rect x="920" y="210" width="240" height="120" rx="14" fill="#fff" stroke="#d9d1c2"/>
+    <text x="936" y="236" font-size="14" font-weight="600">App data · rebuildable</text>
+    <text x="936" y="262" font-size="12.5" fill="#6b665d">feed.sqlite, search index</text>
+    <text x="936" y="282" font-size="12.5" fill="#6b665d">Kin's conversation log, usage</text>
+    <text x="936" y="302" font-size="12.5" fill="#6b665d">downloaded tools, 30 MB model</text>
+    <rect x="920" y="350" width="240" height="110" rx="14" fill="#fff" stroke="#d9d1c2"/>
+    <text x="936" y="376" font-size="14" font-weight="600">AI providers · your key</text>
+    <text x="936" y="402" font-size="12.5" fill="#6b665d">OpenCode Go (KI-48), ChatGPT,</text>
+    <text x="936" y="420" font-size="12.5" fill="#6b665d">Anthropic API, OpenRouter, Z.AI</text>
+    <text x="936" y="440" font-size="12.5" fill="#6b665d">Login borrowed from Pi / OpenCode</text>
+    <rect x="920" y="480" width="240" height="110" rx="14" fill="#fff" stroke="#d9d1c2"/>
+    <text x="936" y="506" font-size="14" font-weight="600">The web</text>
+    <text x="936" y="532" font-size="12.5" fill="#6b665d">pages, RSS, X, Reddit, HN,</text>
+    <text x="936" y="550" font-size="12.5" fill="#6b665d">YouTube, podcasts, book lookups</text>
+    <text x="936" y="570" font-size="12.5" fill="#6b665d">mostly unofficial endpoints</text>
+    <!-- arrows -->
+    <g stroke="#b8862b" stroke-width="1.5" fill="none">
+      <line x1="230" y1="140" x2="296" y2="140" marker-end="url(#ar)" marker-start="url(#ar)" stroke-dasharray="5 4"/>
+      <line x1="864" y1="115" x2="916" y2="115" marker-end="url(#ar)" marker-start="url(#ar)"/>
+      <line x1="864" y1="270" x2="916" y2="270" marker-end="url(#ar)" marker-start="url(#ar)"/>
+      <line x1="864" y1="405" x2="916" y2="405" marker-end="url(#ar)"/>
+      <line x1="864" y1="535" x2="916" y2="535" marker-end="url(#ar)"/>
+      <line x1="280" y1="485" x2="234" y2="485" marker-end="url(#ar)"/>
+    </g>
+    <text x="36" y="268" font-size="11.5" fill="#6b665d">↔ Mac: HTTPS over Tailscale,</text>
+    <text x="36" y="284" font-size="11.5" fill="#6b665d">bearer token; syncs on open</text>
+    <text x="36" y="300" font-size="11.5" fill="#6b665d">and every 30 s</text>
+  </svg>
+  <div class="grid g4" style="margin-top:14px">
+    <div class="card"><div class="stat">~23k</div><div class="statl">lines of Rust in the app, plus the vault, ingest, search and rank crates</div></div>
+    <div class="card"><div class="stat">96</div><div class="statl">backend commands, one list shared by the real app and the test bridge</div></div>
+    <div class="card"><div class="stat">795</div><div class="statl">tests: 483 Rust, 265 TypeScript unit, 47 end-to-end in a headless browser</div></div>
+    <div class="card"><div class="stat">0</div><div class="statl">CI pipelines. Every check runs on this Mac, by sessions and by the board before merging</div></div>
+  </div>
+</section>
+
+<div class="seam"></div>
+
+<section id="kin">
+  <h2>Kin's harness</h2>
+  <p class="sub">Kin runs on a hand-written agent loop of about 270 lines of Rust, with no agent framework underneath. It asks the model, runs the tools it calls one at a time, and repeats until there's an answer. A chat engine around the loop gives you one running conversation instead of separate sessions.</p>
+
+  <h3 style="margin-top:8px">One chat turn, start to finish</h3>
+  <div class="steps" style="margin-top:16px">
+    <div class="step"><b>You send</b>Saved to the log at once. The topic is inferred: first chip, else a named thread, else the last topic if under 30 min old. <span class="n">≤ 20 KB, ≤ 12 chips</span></div>
+    <div class="step"><b>Kin waits a beat</b>Bursts of messages merge into one turn. Typing interrupts Kin and pushes the turn back. <span class="n">1.2 s · 3.5 s after typing</span></div>
+    <div class="step"><b>Context is built</b>All waiting messages become one question, plus chips as paths (never pasted text), the thread summary and recent exchanges. <span class="n">summary + 6 exchanges</span></div>
+    <div class="step"><b>The loop runs</b>Model → tool calls run one at a time → results go back. A fresh memory snapshot is taken every turn. <span class="n">≤ 24 steps · 4,096 tokens per step</span></div>
+    <div class="step"><b>Saved and priced</b>Text streams to the window. The reply, its cost in $ and any interruption go in the log. Idle threads get summarized. <span class="n">summary after 120 s idle</span></div>
+  </div>
+
+  <div class="grid g2" style="margin-top:22px">
+    <div class="card">
+      <h3>What the model sees, in order</h3>
+      <p class="sub" style="margin-bottom:10px;font-size:13.5px">The top layers stay byte-identical between turns, so providers can cache them and bill them at a discount. A test enforces this.</p>
+      <div class="stack">
+        <div class="layer cached"><span><b>Instructions</b> · who Kin is, "search before guessing"</span><small>cached</small></div>
+        <div class="layer cached"><span><b>Extra tools list</b> · names only, details on demand</span><small>cached</small></div>
+        <div class="layer cached"><span><b>About Hussain</b> · USER.md, capped at 1,500 chars</span><small>cached*</small></div>
+        <div class="layer cached"><span><b>Kin's notes</b> · NOTES.md, pointers not copies, 2,000 chars</span><small>cached*</small></div>
+        <div class="layer cached"><span><b>Skills index</b> · up to 40 skills, names + one line each</span><small>cached*</small></div>
+        <div class="layer cached"><span><b>6 tool definitions</b></span><small>cached</small></div>
+        <div class="layer fresh"><span><b>Conversation</b> · thread summary + up to 6 exchanges</span><small>per turn</small></div>
+        <div class="layer fresh"><span><b>Your message</b> + &lt;context&gt;: date, chips as paths, recap</span><small>per turn</small></div>
+      </div>
+      <p style="font-size:12px;color:var(--mute);margin:8px 0 0">* until Kin edits its memory; the edit shows up from the next turn.</p>
+    </div>
+    <div class="card">
+      <h3>Kin's tools and the fences around them</h3>
+      <table>
+        <tr><th>Tool</th><th>Does</th><th>Fence</th></tr>
+        <tr><td><code>search</code></td><td>hybrid search over vault + Feed</td><td>snippets only, ≤ 30 results</td></tr>
+        <tr><td><code>read</code></td><td>a note, a Feed item, or a spilled output</td><td>no hidden folders, no symlinks, no <code>..</code>; text files ≤ 2 MB; ≤ 1,000 lines</td></tr>
+        <tr><td><code>list</code></td><td>a folder, with titles</td><td>skips hidden entries</td></tr>
+        <tr><td><code>memory</code></td><td><b>writes</b> USER.md / NOTES.md</td><td>hard caps, unique matches, injection scan; only in chat, never in background jobs</td></tr>
+        <tr><td><code>skill</code></td><td><b>writes</b> its own skills</td><td>≤ 40 skills, ≤ 6,000 chars, scanned</td></tr>
+        <tr><td><code>tool</code></td><td>9 extras on demand: outline, recent, Feed ranking ×5, history, idea</td><td>read-only</td></tr>
+      </table>
+      <p style="font-size:13px;margin:10px 0 0"><b>Never:</b> write your drafts (no such tool exists, and a test scans the source for file writes), fetch the web, or touch hidden folders. Every result is wrapped as <code>&lt;data&gt;</code> so the model treats it as material, not instructions. Outputs over 8,000 chars spill to a file and the model gets a 3,000-char preview.</p>
+    </div>
+  </div>
+
+  <div class="grid g3" style="margin-top:14px">
+    <div class="card">
+      <h3>Memory, Hermes-style</h3>
+      <p style="font-size:13.5px;margin:0">Two small files Kin edits itself, plus skills, all in <code>.kintsugi/agent/</code> in your vault, visible and editable under <i>About you</i>. Every change is journaled with undo. Your own edits made outside the app are picked up. No vector "memory store": Kin finds things with tools instead of remembering them.</p>
+    </div>
+    <div class="card">
+      <h3>Where a login comes from</h3>
+      <p style="font-size:13.5px;margin:0">Kintsugi stores no keys of its own. It borrows a login, in this order: <b>OpenCode</b> (KI-48, in progress) → <b>Pi</b> → an environment variable. Three wire formats cover every provider: Anthropic, OpenAI chat, and ChatGPT's Codex backend (reverse-engineered). A Claude <i>subscription</i> login is refused; Anthropic needs an API key.</p>
+    </div>
+    <div class="card">
+      <h3>Built on the same engine</h3>
+      <p style="font-size:13.5px;margin:0"><b>Comment threads</b> are rows in the same log, each with its own turns; a review writes at most 6 threads. <b>Ideas</b> are background jobs whose quotes are checked against the real clips. <b>Background work</b> (summaries, ideas, enrichment) stops at your monthly cost cap; a chat never does.</p>
+    </div>
+  </div>
+</section>
+
+<div class="seam"></div>
+
+<section id="data">
+  <h2>Capture, Feed, search</h2>
+  <p class="sub">Deterministic code does the extraction; AI is used once per clip, for a title, a summary and tags. Search and ranking are local math.</p>
+
+  <h3>Saving a link</h3>
+  <div class="flow" style="margin:10px 0 18px">
+    <div class="node"><b>Written at once</b><code>inspiration/&lt;slug&gt;.md</code>, so nothing is lost even offline</div><div class="arr">→</div>
+    <div class="node"><b>Pick an adapter</b>X → Reddit → HN → YouTube → podcast → PDF → EPUB → books → web → image</div><div class="arr">→</div>
+    <div class="node"><b>Extract</b>Readability in Rust; under 200 chars, render the page in a hidden webview</div><div class="arr">→</div>
+    <div class="node"><b>One AI call</b>title, summary, 2–5 tags; 8,000 chars of source in</div><div class="arr">→</div>
+    <div class="node"><b>Write back</b>a source excerpt ≤ 20k in the clip, the full text ≤ 250k beside it; 3 tries</div><div class="arr">→</div>
+    <div class="node"><b>Index</b>~900-char chunks, ≤ 128 per document, 400 ms later</div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <h3>"Picked for you": how ranking works</h3>
+      <p style="font-size:13.5px;margin:0 0 6px">What you do teaches it. Kin's own picks never do.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px;font-size:12.5px"><span class="tag solid">save +4</span><span class="tag solid">note +3</span><span class="tag solid">like +2</span><span class="tag solid">discuss +1.5</span><span class="tag solid">open +1</span><span class="tag fix">not interested −6</span><span class="tag watch">ignored −0.3</span></div>
+      <div class="formula">cold   = 0.45·freshness + 0.2·source prior + 0.35·closeness to your taste
+score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
+      <p style="font-size:13.5px;margin:0">It blends three taste memories (90-day, 7-day and an "unwanted" one) with a small online model. It then picks 8 for diversity, with the same author ×0.7 and the same source ×0.85, and keeps 1 in 8 slots for exploration. The list is stable within a day, and a replay test must beat newest-first.</p>
+    </div>
+    <div class="card">
+      <h3>A search query</h3>
+      <div class="flow" style="margin:8px 0">
+        <div class="node"><b>Words</b>SQLite FTS5, stemmed; title ×4, tags ×2, body ×1</div><div class="arr">+</div>
+        <div class="node"><b>Meaning</b>model2vec, 256-dim, 30 MB model, cosine ≥ 0.3</div><div class="arr">→</div>
+        <div class="node"><b>Fuse</b>Σ 1/(60+rank) over both lists</div>
+      </div>
+      <p style="font-size:13.5px;margin:6px 0 0">The index re-syncs with the vault before every search. While the model is still loading, only word search runs. There's no vector database: comparing every chunk is fast enough at one person's scale.</p>
+    </div>
+  </div>
+</section>
+
+<div class="seam"></div>
+
+<section id="disk">
+  <h2>What Kintsugi writes</h2>
+  <div class="grid g2">
+    <div class="card"><h3>Inside your vault</h3><pre class="tree">&lt;vault&gt;/
+  any/*.md, *.mdx            <span class="c">your writing; frontmatter: title, status, tags, ideas:, post/url</span>
+  inbox/*.mdx                <span class="c">quick notes from the phone</span>
+  inspiration/&lt;slug&gt;.md      <span class="c">clip: your text above a boundary, ## Source below</span>
+  inspiration/media/         <span class="c">one image per clip</span>
+  inspiration/files/         <span class="c">saved PDFs / EPUBs</span>
+  inspiration/sources/*.txt  <span class="c">full long text (.txt so Obsidian won't see a duplicate)</span>
+  hussain.ph/                <span class="c">read-only mirror of the blog, regenerated on publish</span>
+  .kintsugi/agent/           <span class="c">USER.md, NOTES.md, skills/ (Kin's memory)</span>
+  .kintsugi/comments/        <span class="c">Kin's comment threads, one JSON per document</span></pre></div>
+    <div class="card"><h3>Outside it, in app data (all rebuildable)</h3><pre class="tree">~/Library/Application Support/dev.phalasiya.kintsugi/
+  config.json                <span class="c">vault choice, phone token (plain text)</span>
+  feed.sqlite                <span class="c">sources, items, append-only events</span>
+  search/index.sqlite        <span class="c">chunks, word index, vectors</span>
+  search/models/             <span class="c">30 MB embedding model</span>
+  tools/                     <span class="c">yt-dlp, Docling… only if you agree</span>
+  kin/conversation/          <span class="c">the one log, shared by every vault</span>
+  kin/usage.jsonl            <span class="c">cost of every AI call</span>
+  kin/outputs/               <span class="c">long tool outputs</span>
+  blog-published.json        <span class="c">what was published, by hash</span></pre></div>
+  </div>
+</section>
+
+<div class="seam"></div>
+
+<section id="shell">
+  <h2>Saving, the phone, and how tests work</h2>
+  <div class="grid g3">
+    <div class="card">
+      <h3>Typing → file</h3>
+      <p style="font-size:13.5px;margin:0">Saves run 400 ms after you stop typing, one at a time: temp file → fsync → rename, so a crash never leaves half a file. A failed save stays pending, shows "Not saved", and blocks switching documents, closing and updates until you retry or discard (KI-14).</p>
+      <p style="font-size:13.5px;margin:8px 0 0"><span class="tag fix">Fix</span> The desktop save never checks whether the file changed on disk. There's no file watcher, so an edit made in Obsidian, git or iCloud to an open note is silently overwritten.</p>
+    </div>
+    <div class="card">
+      <h3>Phone sync</h3>
+      <p style="font-size:13.5px;margin:0">The phone keeps a full copy and edits offline. It syncs on opening and every 30 s while open, downloading every document. A change is sent with the version it started from. If the Mac's copy moved on, the Mac answers 409 and the phone runs a line-based three-way merge. It asks you only on a true collision ("Use the Mac's" or "Keep this phone's"). When a phone edit lands, the desktop drops its own unsaved change to that note.</p>
+    </div>
+    <div class="card">
+      <h3>Testing without your screen</h3>
+      <p style="font-size:13.5px;margin:0">A headless build runs the <i>real</i> Rust backend and the same 96 commands with no window. A small HTTP bridge stands in for Tauri's IPC, so Playwright drives the real React app in headless Chromium against a scratch vault. Layered guards refuse your real vault, config and keys. Kin can be a scripted stand-in at $0.</p>
+      <p style="font-size:13.5px;margin:8px 0 0"><span class="tag watch">Watch</span> Tests run in Chromium, but the app runs in Safari's engine (WebKit). Playwright can run WebKit too; switching would be cheap.</p>
+    </div>
+  </div>
+</section>
+
+<div class="seam"></div>
+
+<section id="decisions">
+  <h2>Decision register</h2>
+  <p class="sub">Every architectural choice, and what it rejected. Click one to expand it. "Undo" is how hard it would be to change course.</p>
+  <div class="filters">
+    <button class="on" data-f="all">All</button><button data-f="fix">Fix</button><button data-f="call">Your call</button><button data-f="watch">Watch</button><button data-f="solid">Solid</button>
+  </div>
+  <div class="dec" id="dec"></div>
+</section>
+
+<div class="seam"></div>
+
+<section id="ask">
+  <h2>Decisions you should weigh in on</h2>
+  <p class="sub">I made these without asking. My default is listed first; reply with a number and a letter, e.g. "1a, 2b", to answer.</p>
+  <div class="q"><b>1 · When a note changes outside Kintsugi while it's open</b><div class="opts">(a) detect it, three-way merge like the phone does, and ask only on a collision · (b) detect it and ask every time · (c) leave as is (last save wins)</div></div>
+  <div class="q"><b>2 · The 30 MB search model downloads on first launch without asking</b><div class="opts">(a) keep it automatic, but say so in Settings and the privacy statement · (b) ask first, like the other optional tools · (c) ship it inside the app (+30 MB)</div></div>
+  <div class="q"><b>3 · Kin's conversation is one log across every vault</b><div class="opts">(a) one log per vault · (b) keep one global log (you only use one vault)</div></div>
+  <div class="q"><b>4 · Local models (Ollama) can't be chosen for Kin, though they can be configured</b><div class="opts">(a) allow them, labelled "may not handle tools well" · (b) keep them excluded</div></div>
+  <div class="q"><b>5 · No CI: every check runs on this Mac</b><div class="opts">(a) add a GitHub Actions macOS job for typecheck, unit tests and cargo test on each PR (free for public repos) · (b) keep everything local</div></div>
+  <div class="q"><b>6 · The phone editor</b><div class="opts">Your Expo Go test of KI-36 decides it: (a) the shared CodeMirror editor in a webview (one editor everywhere, slower on huge documents) · (b) keep a native text box and share only the logic</div></div>
+</section>
+
+<p class="foot">Written from three independent code reads of <code>main</code> at a947a79, Nov 1. Line references and counts come from the source; a few points marked "inferred" in the research weren't run. Source: <code>docs/architecture.html</code>.</p>
+</main>
+
+<script>
+const D = [
+ // [verdict, area, title, rejected, why, cost, undo]
+ ["fix","Saving","Desktop saves overwrite without checking the file on disk",
+  "A file watcher and a version check (the phone already has one)",
+  "The vault crate supports version-checked writes, but the desktop's save passes no version, and nothing watches the folder.",
+  "An edit to an open note from Obsidian, git, iCloud or another editor is silently lost on Kintsugi's next save. It's the biggest data-safety gap found.",
+  "Easy: the version-checked write and the merge already exist"],
+ ["fix","Phone","A phone keystroke that collides with an incoming change is dropped",
+  "Keeping it as a pending conflict",
+  "A simplification in the phone library's edit path (library.ts:147-150).",
+  "A rare but silent loss of something you typed on the phone.",
+  "Easy"],
+ ["fix","Kin","No request timeout or retry on AI calls",
+  "Per-step timeouts and backoff on 429/5xx",
+  "The loop was kept minimal; only a 10 s connect timeout is set.",
+  "A stalled stream can hang a Kin turn indefinitely (you can still stop it). One rate-limit error fails the turn outright.",
+  "Easy"],
+ ["fix","Search","Long sources are only partly searchable",
+  "Indexing every chunk of a long source",
+  "A 128-chunk cap per document (about 115k characters) to bound index size.",
+  "The tail of a long PDF or transcript (full text is kept up to 250k) never shows up in search, while the docs say the whole source is indexed.",
+  "Easy"],
+ ["fix","Build","A failed Swift sidecar build can stick",
+  "Rebuilding on toolchain changes",
+  "build.rs judges freshness by file time; on failure it writes a stub.",
+  "After one failed Swift build the stub stays until the .swift file changes, so transcription, PDF or OCR silently stays off.",
+  "Easy"],
+ ["call","Search","The embedding model downloads at first launch without asking",
+  "Asking first, like the optional-tools manager does",
+  "Search should just work.",
+  "A 30 MB download from Hugging Face that the privacy statement doesn't mention. It's pinned and checksum-verified.",
+  "Easy"],
+ ["call","Kin","One conversation log for all vaults",
+  "A log per vault (memory and Ideas are already per-vault)",
+  "\"One conversation, everywhere\" was the product decision.",
+  "If you ever open a second vault, Kin's history mixes the two.",
+  "Easy"],
+ ["call","Kin","Local models are excluded from Kin",
+  "Allowing Ollama for chat",
+  "Small local models handle tool calls poorly.",
+  "There's no fully offline Kin, even though Ollama appears in the provider list.",
+  "Easy"],
+ ["call","Process","No CI; all checks run locally",
+  "A GitHub Actions macOS runner on PRs",
+  "Single owner, and the board verifies each PR merged with main before merging.",
+  "Verification competes with build sessions for this Mac's CPU, as the load spikes today showed. Nothing checks main independently.",
+  "Easy"],
+ ["watch","Kin","Hand-written agent loop instead of a framework",
+  "Vercel AI SDK, provider SDKs, LangChain",
+  "About 270 lines, fully testable with a fake model, keys never leave Rust.",
+  "Tools run one at a time; there's no context-size budget. Every provider quirk is ours to maintain.",
+  "Medium"],
+ ["watch","Kin","Three wire formats written by hand, including ChatGPT's private Codex backend",
+  "Routing everything through OpenRouter",
+  "Subscription logins (ChatGPT, Z.AI, now OpenCode Go) cost $0 extra.",
+  "The Codex backend is undocumented and can change without notice. About 880 lines to keep current.",
+  "Medium"],
+ ["watch","Kin","Borrowing logins from Pi and OpenCode instead of storing keys",
+  "Our own key field in Keychain",
+  "\"Kintsugi stores no credentials of its own.\"",
+  "Depends on two other tools' file formats; Kintsugi refreshes ChatGPT tokens inside Pi's file.",
+  "Easy: adding a source is cheap (KI-48)"],
+ ["watch","Kin","Prompt-only defense against injected instructions",
+  "A second model as a judge, or stripping content",
+  "Tools are read-only, so the worst an injection can do is mislead an answer or memory.",
+  "Memory's scan is a phrase blocklist: easy to paraphrase around, and it also rejects innocent lines mentioning a \"password\".",
+  "Medium"],
+ ["watch","Phone","The phone downloads the whole library every 30 s",
+  "Sending only what changed since the last sync",
+  "Simplest correct offline copy.",
+  "Fine now; gets heavier as the vault grows, especially over cellular.",
+  "Easy"],
+ ["watch","Phone","Tailscale plus one shared bearer token",
+  "LAN discovery, a relay server, iCloud",
+  "A real TLS certificate, no public port, nothing to host.",
+  "Needs Tailscale with HTTPS. One token for every phone, stored in plain text, with no per-device revoke. The Mac must be awake.",
+  "Medium"],
+ ["watch","Data","Several hand-rolled frontmatter readers, no YAML library",
+  "One shared parser",
+  "Clips use flat frontmatter, which is easy to read by hand.",
+  "At least five readers in Rust plus one in TypeScript. The nested ideas: block can make them drift apart.",
+  "Medium"],
+ ["watch","Data","Unofficial endpoints for X, Reddit and HN",
+  "Official APIs with paid keys",
+  "No keys, no cost.",
+  "Can break any day; Reddit's public endpoints are scheduled to close in 2026–27. Each sits behind an adapter you can swap.",
+  "Easy"],
+ ["watch","Tests","End-to-end tests run in Chromium, the app in WebKit",
+  "Running Playwright's WebKit",
+  "Chromium headless was the first thing to work.",
+  "Bugs specific to Safari's engine aren't caught.",
+  "Easy"],
+ ["watch","Phone","Expo / React Native for the phone",
+  "Native Swift, Tauri mobile",
+  "Shares TypeScript (merge, API client, frontmatter) with the desktop.",
+  "About 3,000 lines of Swift were still needed for the share extension. Expo breaks between SDK versions.",
+  "Medium"],
+ ["solid","Core","Plain files are the truth; databases hold only derived data",
+  "A database-first store",
+  "Obsidian compatibility, the blog's MDX, phone sync, and you can delete any index and rebuild it.",
+  "Needs the file watcher above to be fully safe.",
+  "Hard: it's the product's promise"],
+ ["solid","Core","Tauri 2 instead of Electron",
+  "Electron",
+  "A substantial Rust backend (vault, ingest, search, rank, Kin, Typst) plus Apple-native helpers; a small app.",
+  "Heavy Rust builds, about 4.6 GB per worktree after today's trim.",
+  "Hard"],
+ ["solid","Kin","Kin can read but never write your drafts, enforced by a test",
+  "Trusting the prompt",
+  "Matches \"Kin never ghostwrites\".",
+  "The harness itself still writes comment threads and adopted Ideas, but only into their own files or on your click.",
+  "Easy"],
+ ["solid","Kin","A cache-stable prompt prefix and lazy extra tools",
+  "A dynamic system prompt, all 15 tools always loaded",
+  "Cheaper and faster turns; a test guards the prefix.",
+  "An extra round trip the first time Kin needs an extra tool.",
+  "Easy"],
+ ["solid","Kin","Small capped memory Kin edits in the open",
+  "A vector memory store (RAG)",
+  "You can see, edit and undo everything Kin remembers; tools do the finding.",
+  "Caps aren't enforced on files you hand-edit (small fix).",
+  "Medium"],
+ ["solid","Data","Deterministic extraction, one AI call per clip",
+  "LLM extraction, a hosted reader service",
+  "Works offline against fixtures, cheap, and the clip is never AI-rewritten.",
+  "About 218 crates in the ingest tree.",
+  "Easy"],
+ ["solid","Data","Apple-native helpers as separate processes",
+  "whisper.cpp (1.5 GB), pdfium, marker (GPL)",
+  "Nothing to download; a helper crash can't take the app down.",
+  "macOS only; transcription needs macOS 26.",
+  "Medium"],
+ ["solid","Search","Word + meaning search fused by rank, no vector database",
+  "tantivy, sqlite-vec, bigger ONNX models",
+  "A 30 MB model, brute-force comparison is fast at one person's scale.",
+  "Revisit past tens of thousands of documents.",
+  "Easy"],
+ ["solid","Feed","Ranking is local math with zero AI calls",
+  "LLM triage, newest-first",
+  "Free, instant, explainable (\"Why this?\"), and a replay test must beat newest-first.",
+  "More machinery than one person strictly needs, but it's built and cheap to run.",
+  "Easy"],
+ ["solid","Export","Typst for PDF, in-process",
+  "Printing from a webview, JS PDF libraries",
+  "Real typesetting with no window.",
+  "About 170 crates and 10 MB of fonts.",
+  "Easy"],
+ ["solid","Phone","Line-based three-way merge, asking only on a true collision",
+  "Last write wins, CRDTs (Yjs, Automerge)",
+  "Right-sized for one person; identical version hash in Rust and TypeScript.",
+  "Desktop-side unsaved keystrokes lose to an incoming phone edit, by design.",
+  "Easy"],
+ ["solid","Tests","A headless mode running the real backend",
+  "A hidden native window, mocked backend",
+  "Tests never touch your screen or data, and they exercise the real 96 commands.",
+  "About 1,550 lines of bridge code; native plugins are stubbed.",
+  "Medium"],
+];
+const label={fix:"Fix",call:"Your call",watch:"Watch",solid:"Solid"};
+const host=document.getElementById("dec");
+function render(f){
+  host.innerHTML="";
+  for(const [v,area,t,rej,why,cost,undo] of D){
+    if(f!=="all"&&f!==v) continue;
+    const d=document.createElement("details"); d.className="d";
+    d.innerHTML=`<summary><span class="tag ${v}">${label[v]}</span><span class="t">${t}</span><span class="rev">${area} · undo: ${undo.split(":")[0]}</span></summary>
+    <div class="body"><div class="k">Rejected</div><div>${rej}</div><div class="k">Why</div><div>${why}</div><div class="k">Cost / risk</div><div>${cost}</div><div class="k">Undo</div><div>${undo}</div></div>`;
+    host.appendChild(d);
+  }
+}
+render("all");
+document.querySelectorAll(".filters button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".filters button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on"); render(b.dataset.f);
+});
+</script>
+</body>
+</html>
