@@ -1,7 +1,8 @@
 //! Ways to subscribe: any feed or page URL, and presets for Hacker News
-//! (hnrss.org), YouTube channels and podcasts. All of them end up as one
-//! source polled by the ingest engine's feed adapter, which also does the
-//! fetching parts (feed discovery, channel pages, iTunes Search).
+//! (hnrss.org), YouTube channels, podcasts and X accounts. Feeds are polled
+//! by the ingest engine's feed adapter, which also does the fetching parts
+//! (feed discovery, channel pages, iTunes Search); X accounts by its X
+//! adapter.
 
 use super::store::SourceKind;
 use kintsugi_ingest::Url;
@@ -18,6 +19,8 @@ pub enum Subscribe {
     Youtube { channel: String },
     /// A podcast feed, usually picked from `feed_podcast_search`.
     Podcast { feed_url: String, title: Option<String> },
+    /// An X account: `@handle`, a bare handle or an x.com profile URL.
+    X { account: String },
 }
 
 pub const HN_LISTS: [&str; 5] = ["frontpage", "best", "newest", "show", "ask"];
@@ -82,12 +85,32 @@ pub fn youtube(input: &str) -> Result<Youtube, String> {
     }
 }
 
+/// The canonical profile URL for an X account input.
+pub fn x_account(input: &str) -> Result<String, String> {
+    let input = input.trim();
+    let handle = kintsugi_ingest::x::profile_handle(input)
+        .or_else(|| (!input.contains("://")).then(|| kintsugi_ingest::x::profile_handle(&format!("https://{input}"))).flatten());
+    handle.map(|h| kintsugi_ingest::x::profile_url(&h)).ok_or_else(|| "enter an X @handle or x.com profile URL".into())
+}
+
+/// An X account given where a URL was expected: `@handle` or a profile link
+/// on an X host. A bare word is not taken for a handle here.
+pub fn x_link(input: &str) -> Option<String> {
+    let input = input.trim();
+    if input.starts_with('@') {
+        return x_account(input).ok();
+    }
+    let with_scheme = if input.contains("://") { input.to_string() } else { format!("https://{input}") };
+    kintsugi_ingest::x::profile_handle(&with_scheme).map(|h| kintsugi_ingest::x::profile_url(&h))
+}
+
 /// What kind of source a bare feed URL is, for OPML imports and URL subscribes.
 pub fn kind_for_url(url: &str) -> SourceKind {
     let Ok(parsed) = Url::parse(url) else { return SourceKind::Feed };
     match parsed.host_str().unwrap_or_default().trim_start_matches("www.") {
         "hnrss.org" => SourceKind::Hn,
         "youtube.com" if parsed.path() == "/feeds/videos.xml" => SourceKind::Youtube,
+        _ if kintsugi_ingest::x::profile_handle(url).is_some() => SourceKind::X,
         _ => SourceKind::Feed,
     }
 }
@@ -130,6 +153,20 @@ mod tests {
             Youtube::Feed("https://www.youtube.com/feeds/videos.xml?playlist_id=PL123".into())
         );
         assert!(youtube("https://vimeo.com/123").is_err());
+    }
+
+    #[test]
+    fn x_accounts() {
+        for input in ["@SimonW", "simonw", "https://x.com/simonw", "x.com/simonw", "twitter.com/simonw/"] {
+            assert_eq!(x_account(input).unwrap(), "https://x.com/simonw", "{input}");
+        }
+        assert!(x_account("https://example.com/simonw").is_err());
+        assert!(x_account("x.com/home").is_err());
+        assert_eq!(x_link("x.com/simonw").as_deref(), Some("https://x.com/simonw"));
+        assert_eq!(x_link("@simonw").as_deref(), Some("https://x.com/simonw"));
+        assert_eq!(x_link("simonw"), None);
+        assert_eq!(x_link("quiet.example/feed"), None);
+        assert_eq!(kind_for_url("https://x.com/simonw"), SourceKind::X);
     }
 
     #[test]

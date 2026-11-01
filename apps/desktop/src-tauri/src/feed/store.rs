@@ -90,6 +90,8 @@ pub enum SourceKind {
     Hn,
     Youtube,
     Podcast,
+    /// An X account, polled through the ingest engine's X adapter.
+    X,
 }
 
 impl SourceKind {
@@ -99,6 +101,7 @@ impl SourceKind {
             Self::Hn => "hn",
             Self::Youtube => "youtube",
             Self::Podcast => "podcast",
+            Self::X => "x",
         }
     }
     pub fn parse(value: &str) -> Option<Self> {
@@ -107,6 +110,7 @@ impl SourceKind {
             "hn" => Self::Hn,
             "youtube" => Self::Youtube,
             "podcast" => Self::Podcast,
+            "x" => Self::X,
             _ => return None,
         })
     }

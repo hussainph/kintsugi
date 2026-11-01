@@ -11,10 +11,11 @@ Headless runs keep it in `$KINTSUGI_CONFIG_DIR`; a debug run with
 `KINTSUGI_CONFIG_DIR` uses that folder, and a scratch-vault run without one
 uses a temporary folder. Schema version is `PRAGMA user_version` (1).
 
-- `sources`: URL (unique), kind (`feed`, `hn`, `youtube`, `podcast`), title,
+- `sources`: URL (unique), kind (`feed`, `hn`, `youtube`, `podcast`, `x`), title,
   site URL, muted, and health: last fetch, last success, last HTTP status,
-  last error, consecutive failures, next fetch, and the ingest feed
-  adapter's poll cursor (its `ETag` and `Last-Modified`).
+  last error, consecutive failures, next fetch, and the ingest adapter's
+  poll cursor (the feed adapter's `ETag` and `Last-Modified`, or the newest
+  X status id).
   Unfollowing sets `removed_at`; following the same URL again revives it.
 - `items`: one row per `(source, guid)`, with plain-text summary (≤600
   characters) and content (≤19,000), image URL, media (`article`, `video`,
@@ -38,8 +39,8 @@ HTML.
 ## Sources and polling
 
 All fetching goes through the ingest engine (`docs/ingest.md`): its feed
-adapter polls and discovers feeds, and its web adapter fetches full
-articles. This module decides what to poll when, and keeps the store.
+adapter polls and discovers feeds, its X adapter polls X accounts, and its
+web adapter fetches full articles. This module decides what to poll when, and keeps the store.
 
 - **Link**: any feed URL, or a page that advertises one with
   `<link rel="alternate">` (`FeedAdapter::discover`). A URL that doesn't
@@ -53,6 +54,14 @@ articles. This module decides what to poll when, and keeps the store.
 - **Podcasts**: `feed_podcast_search` asks iTunes Search
   (`FeedAdapter::search_podcasts`); results without a public `feedUrl` are
   dropped.
+- **X accounts**: an `@handle`, bare handle or profile URL on an X host
+  (`{ kind: "x", account }`, the Following sheet's X tab) is stored as
+  `https://x.com/<handle>`. An `@handle` or X profile link typed into the
+  Link tab, and an OPML outline pointing at one, become X sources too. They
+  poll through the X adapter (FxTwitter, best-effort, no X account): the
+  account's own posts and self-threads, newest-status-id cursor, title and
+  image from the profile. FxTwitter returns only the latest ~20 posts, so
+  failures back off to at most **1 hour** for X, as for YouTube.
 
 One background task polls due, unmuted sources every minute (four at a
 time), and wakes on subscribe, import and unmute. Requests are conditional
@@ -60,7 +69,8 @@ through the adapter's cursor; a 304 is a healthy fetch. Healthy sources poll
 every 30 minutes. A failure never removes a source: it records the HTTP
 status (if any) and a readable reason, and retries after 5 minutes, doubling
 to a cap of 24 hours, or **1 hour for YouTube** (its feeds fail
-transiently; a non-200 means retry, not gone). The adapter's limits apply
+transiently; a non-200 means retry, not gone) and X. A rate limit reads
+"rate limited; Kintsugi will try again later". The adapter's limits apply
 (8 MB, 25-second timeout, 5 redirects, credential-free HTTP(S) only).
 
 A poll stores at most 100 entries. Entries published more than 30 days

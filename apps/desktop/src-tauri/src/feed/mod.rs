@@ -13,7 +13,7 @@ mod presets;
 mod store;
 
 use crate::AppHandle;
-use kintsugi_ingest::{self as ingest, CaptureOptions, Engine, Subscription, Target, feed::{FeedAdapter, Podcast}, web::WebAdapter};
+use kintsugi_ingest::{self as ingest, CaptureOptions, Engine, Subscription, Target, feed::{FeedAdapter, Podcast}, web::WebAdapter, x::XAdapter};
 use kintsugi_vault as vault;
 use presets::{Subscribe, Youtube};
 use serde::{Deserialize, Serialize};
@@ -48,7 +48,7 @@ pub struct Feed {
     polling: tokio::sync::Mutex<()>,
 }
 
-/// The engine (feed adapter for polling, web adapter for full text) plus a
+/// The engine (feed and X adapters for polling, web adapter for full text) plus a
 /// handle on the feed adapter for its discovery extras.
 struct Ingest {
     engine: Engine,
@@ -64,7 +64,8 @@ impl Ingest {
         let web = web.with_renderer(Arc::new(crate::enrich::render::WebviewRenderer::new(app.clone())));
         #[cfg(feature = "headless")]
         let _ = app;
-        Ok(Self { engine: Engine::new().with(feeds.clone()).with(web), feeds })
+        let x = XAdapter::new().map_err(|e| e.to_string())?;
+        Ok(Self { engine: Engine::new().with(x).with(feeds.clone()).with(web), feeds })
     }
 }
 
@@ -159,9 +160,10 @@ pub struct Polled {
 
 /// Seconds until the next try after `failures` consecutive failures. YouTube's
 /// channel feeds fail transiently (a non-200 means "retry", not "gone"), so
-/// they never back off further than an hour.
+/// they never back off further than an hour; nor do X accounts, whose
+/// FxTwitter page holds only the latest ~20 posts.
 fn retry_after(kind: SourceKind, failures: i64) -> i64 {
-    let cap = if kind == SourceKind::Youtube { 60 * 60 } else { 24 * 60 * 60 };
+    let cap = if matches!(kind, SourceKind::Youtube | SourceKind::X) { 60 * 60 } else { 24 * 60 * 60 };
     (FIRST_RETRY << (failures.clamp(1, 16) - 1)).min(cap)
 }
 
@@ -172,10 +174,12 @@ fn describe(kind: SourceKind, error: ingest::Error) -> String {
         (_, ingest::Error::Status(404)) => "not found (HTTP 404)".into(),
         (_, ingest::Error::Status(410)) => "the site says this feed is gone (HTTP 410)".into(),
         (_, ingest::Error::Status(status)) => format!("HTTP {status}"),
+        (SourceKind::X, ingest::Error::Unavailable) => "FxTwitter didn't answer; the account may be private or gone".into(),
         (_, ingest::Error::Unavailable) => "couldn't reach it".into(),
         (_, ingest::Error::TimedOut) => "timed out".into(),
         (_, ingest::Error::TooLarge) => "too large to be a feed".into(),
         (_, ingest::Error::NotAFeed) => "not a feed".into(),
+        (_, ingest::Error::RateLimited) => "rate limited; Kintsugi will try again later".into(),
         (_, error) => error.to_string(),
     }
 }
@@ -202,7 +206,8 @@ fn new_item(item: ingest::Item) -> NewItem {
 /// Poll one source through the engine, record its health, store new entries.
 async fn poll(store: &Mutex<Store>, engine: &Engine, due: &Due) -> Polled {
     let subscription = Subscription { url: due.url.clone(), cursor: due.cursor.clone() };
-    let outcome = engine.poll(ingest::SourceType::Rss, &subscription).await;
+    let source = if due.kind == SourceKind::X { ingest::SourceType::X } else { ingest::SourceType::Rss };
+    let outcome = engine.poll(source, &subscription).await;
     let result: Result<usize> = (|| {
         let store = store.lock().map_err(|_| "the feed database is unavailable".to_string())?;
         let now = now();
@@ -302,6 +307,7 @@ async fn find_feed(feeds: &FeedAdapter, input: &str) -> Result<String> {
 
 async fn resolve(feeds: &FeedAdapter, input: Subscribe) -> Result<(String, SourceKind, Option<String>)> {
     Ok(match input {
+        Subscribe::Url { url } if presets::x_link(&url).is_some() => (presets::x_link(&url).unwrap_or_default(), SourceKind::X, None),
         Subscribe::Url { url } => {
             let url = find_feed(feeds, &url).await?;
             let kind = presets::kind_for_url(&url);
@@ -333,6 +339,7 @@ async fn resolve(feeds: &FeedAdapter, input: Subscribe) -> Result<(String, Sourc
             }
         },
         Subscribe::Podcast { feed_url, title } => (presets::checked_url(&feed_url)?.to_string(), SourceKind::Podcast, title),
+        Subscribe::X { account } => (presets::x_account(&account)?, SourceKind::X, None),
     })
 }
 

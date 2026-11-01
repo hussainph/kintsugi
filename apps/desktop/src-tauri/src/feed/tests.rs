@@ -115,3 +115,53 @@ fn backoff_grows_and_youtube_stays_close() {
     assert!(describe(SourceKind::Youtube, ingest::Error::Status(404)).contains("keeps trying"));
     assert_eq!(describe(SourceKind::Feed, ingest::Error::Status(503)), "HTTP 503");
 }
+
+#[test]
+fn x_accounts_poll_through_the_x_adapter() {
+    runtime().block_on(async {
+        let profile = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/x/fx-profile.json")).unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let counted = hits.clone();
+        let app = Router::new().route(
+            "/2/profile/simonw/statuses",
+            get(move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                let profile = profile.clone();
+                async move { ([(header::CONTENT_TYPE, "application/json")], profile) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = kintsugi_ingest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let endpoints = kintsugi_ingest::x::XEndpoints { fxtwitter: base.clone(), syndication: base.clone(), oembed: base };
+        let x = XAdapter::with_endpoints(endpoints, kintsugi_ingest::api::ApiLimits::default()).unwrap();
+        let engine = Engine::new().with(x).with(FeedAdapter::new().unwrap());
+
+        let store = Mutex::new(Store::memory());
+        let (url, kind, _) = resolve(&FeedAdapter::new().unwrap(), Subscribe::Url { url: "x.com/SimonW".into() }).await.unwrap();
+        assert_eq!((url.as_str(), kind), ("https://x.com/simonw", SourceKind::X));
+        let (source, _) = store.lock().unwrap().add_source(&url, kind, None, now()).unwrap();
+        let due = store.lock().unwrap().due_one(source.id).unwrap();
+        let first = poll(&store, &engine, &due).await;
+        assert_eq!(first.error, None);
+        assert!(first.added > 0);
+        let followed = store.lock().unwrap().source(source.id).unwrap();
+        assert_eq!(followed.title.as_deref(), Some("Simon Willison (@simonw)"));
+        assert!(followed.next_fetch_at - now() <= 60 * 60);
+
+        // The cursor is the newest post: polling again adds nothing.
+        let due = store.lock().unwrap().due_one(source.id).unwrap();
+        assert_eq!(due.cursor.as_deref(), Some("2115858560823538152"));
+        let again = poll(&store, &engine, &due).await;
+        assert_eq!((again.added, again.error), (0, None));
+        assert_eq!(hits.load(Ordering::SeqCst), 2);
+        let page = store.lock().unwrap().items(0, 40, None).unwrap();
+        assert_eq!(page.total as usize, first.added);
+    });
+}
+
+#[test]
+fn x_failures_retry_within_the_hour() {
+    assert_eq!(retry_after(SourceKind::X, 30), 60 * 60);
+    assert!(describe(SourceKind::X, ingest::Error::RateLimited).contains("try again"));
+}
