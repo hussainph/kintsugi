@@ -26,6 +26,11 @@ ghostwrites: prose is his, apart from edits he explicitly asks for.
   (private for now). `origin` points there; `main` is the default branch.
 - Use `gh` for forge work (repo, PRs, issues). Kintsugi is not hosted on
   Entire or any other forge; don't add other remotes.
+- **Tickets land as pull requests.** Work on the ticket's own branch and
+  worktree, rebase onto `origin/main`, push the branch and open a PR with
+  `gh pr create` (title with the ticket id; body: what changed, checks run,
+  anything unverified). Don't push to `main` and don't move `main` in any
+  checkout. The board session reviews, verifies and merges the PR.
 
 ## Toolchain
 
