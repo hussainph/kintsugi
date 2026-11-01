@@ -10,5 +10,23 @@
     { "provider": "anthropic", "model": "claude-haiku-5-5" },
     { "provider": "openrouter", "model": "~google/gemini-flash-latest" },
     { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "none" }
+  ],
+  "chat": [
+    { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "medium" },
+    { "provider": "anthropic", "model": "claude-sonnet-5-5" },
+    { "provider": "zai", "model": "glm-5.3" },
+    { "provider": "openrouter", "model": "~anthropic/claude-sonnet-latest" }
+  ],
+  "ideas": [
+    { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "high" },
+    { "provider": "anthropic", "model": "claude-sonnet-5-5" },
+    { "provider": "zai", "model": "glm-5.3" },
+    { "provider": "openrouter", "model": "~anthropic/claude-sonnet-latest" }
+  ],
+  "triage": [
+    { "provider": "zai", "model": "glm-5.3-flash" },
+    { "provider": "anthropic", "model": "claude-haiku-5-5" },
+    { "provider": "openrouter", "model": "~google/gemini-flash-latest" },
+    { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "none" }
   ]
 }

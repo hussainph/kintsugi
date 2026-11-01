@@ -1,8 +1,22 @@
 //! Kintsugi's model harness: Pi's credentials, Kintsugi's own transport.
 //! The webview sends prompts and receives text; keys never leave Rust.
+//!
+//! - `wire`: three wire formats, streaming text and tool calls.
+//! - `agent`: Kin's loop, many tool calls per turn, cancellable.
+//! - `tools`: Kin's read-only vault tools.
+//! - `prompt`: the fixed, cacheable prefix and the dynamic tail.
+//! - `cost`: prices, the usage ledger and the monthly cap.
+//! - `kin`: the Tauri commands for Kin and its settings.
 
+mod agent;
+pub mod cost;
+pub mod kin;
 mod pi_auth;
+mod prompt;
+mod tools;
 mod wire;
+
+pub use kin::Kin;
 
 use crate::AppHandle;
 use pi_auth::{Auth, Kind, Store};
@@ -74,20 +88,51 @@ pub enum Task {
     /// Speed first: inline completions (currently requested by the webview).
     #[allow(dead_code)]
     Complete,
+    /// Kin's conversation: strong, the owner is reading.
+    Chat,
+    /// Kin's Ideas: strong, mostly in the background.
+    #[allow(dead_code)]
+    Ideas,
+    /// Ranking and sorting the Feed: cheap, always in the background.
+    #[allow(dead_code)]
+    Triage,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-struct ModelRef {
-    provider: String,
-    model: String,
-    #[serde(default)]
-    reasoning: Option<String>,
+impl Task {
+    pub const ALL: [Task; 5] = [Task::Edit, Task::Complete, Task::Chat, Task::Ideas, Task::Triage];
+    /// Tasks whose model the owner picks in Settings.
+    pub const KIN: [Task; 3] = [Task::Chat, Task::Ideas, Task::Triage];
+
+    pub fn id(self) -> &'static str {
+        match self {
+            Task::Edit => "edit",
+            Task::Complete => "complete",
+            Task::Chat => "chat",
+            Task::Ideas => "ideas",
+            Task::Triage => "triage",
+        }
+    }
+
+    pub fn from_id(id: &str) -> Option<Task> {
+        Task::ALL.into_iter().find(|t| t.id() == id)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ModelRef {
+    pub provider: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct Preferences {
     edit: Vec<ModelRef>,
     complete: Vec<ModelRef>,
+    chat: Vec<ModelRef>,
+    ideas: Vec<ModelRef>,
+    triage: Vec<ModelRef>,
 }
 
 /// The webview's `src/lib/models.ts` reads the same file, so both sides
@@ -100,6 +145,9 @@ fn preferences(task: Task) -> &'static [ModelRef] {
     match task {
         Task::Edit => &parsed.edit,
         Task::Complete => &parsed.complete,
+        Task::Chat => &parsed.chat,
+        Task::Ideas => &parsed.ideas,
+        Task::Triage => &parsed.triage,
     }
 }
 
@@ -109,11 +157,38 @@ fn usable(auth: &str) -> bool {
     !matches!(auth, "none" | "unsupported_login" | "local")
 }
 
+fn ready(m: &ModelRef, statuses: &[ProviderStatus]) -> bool {
+    statuses.iter().any(|s| s.id == m.provider && usable(s.auth))
+}
+
 /// The first preferred model whose provider is usable, as `modelFor` does.
 fn model_for(task: Task, statuses: &[ProviderStatus]) -> Option<&'static ModelRef> {
-    preferences(task)
-        .iter()
-        .find(|m| statuses.iter().any(|s| s.id == m.provider && usable(s.auth)))
+    preferences(task).iter().find(|m| ready(m, statuses))
+}
+
+/// The owner's choice for a task when its provider is usable, else the
+/// first usable preference.
+fn chosen_model(task: Task, statuses: &[ProviderStatus], settings: &cost::Settings) -> Option<ModelRef> {
+    settings
+        .models
+        .get(task.id())
+        .filter(|m| wire::provider(&m.provider).is_some() && ready(m, statuses))
+        .cloned()
+        .or_else(|| model_for(task, statuses).cloned())
+}
+
+/// The process-wide cost meter. `complete` (enrichment) has no app handle,
+/// so the meter lives here; `init` points it at the app's data folder.
+static METER: OnceLock<cost::Meter> = OnceLock::new();
+
+pub fn meter() -> &'static cost::Meter {
+    METER.get_or_init(|| cost::Meter::open(None))
+}
+
+/// Opens the usage ledger and Kin's settings. Call once at startup, before
+/// any AI work, in native and headless runs alike.
+pub fn init(app: &AppHandle) {
+    let _ = METER.set(cost::Meter::open(kin::data_dir(app)));
 }
 
 /// One bounded, non-streamed completion for background work (no webview).
@@ -146,6 +221,8 @@ pub enum AiError {
     PromptTooLong,
     /// The response hit `max_tokens` or `max_response_bytes`.
     ResponseTooLong,
+    /// The month's spending cap is reached; background work waits.
+    CapReached,
 }
 
 impl AiError {
@@ -156,6 +233,7 @@ impl AiError {
             AiError::TimedOut => "The AI provider took too long to answer.",
             AiError::PromptTooLong => "The AI prompt was too long.",
             AiError::ResponseTooLong => "The AI answer was too long.",
+            AiError::CapReached => cost::CapReached::MESSAGE,
         }
     }
 }
@@ -170,54 +248,49 @@ impl std::error::Error for AiError {}
 
 /// One completion with the task's preferred model, collected into a
 /// string. Exactly one request: no fallback to another model on failure.
+/// This is background work: it refuses to start once the monthly cap is
+/// reached, and its cost is recorded.
 pub async fn complete(task: Task, ask: &Ask) -> std::result::Result<String, AiError> {
     if ask.system.len() + ask.prompt.len() > MAX_PROMPT_BYTES {
         return Err(AiError::PromptTooLong);
     }
+    let meter = meter();
+    meter.allows(true).map_err(|_| AiError::CapReached)?;
     let statuses = statuses().map_err(|_| AiError::NotConfigured)?;
-    let model = model_for(task, &statuses).ok_or(AiError::NotConfigured)?;
+    let model = chosen_model(task, &statuses, &meter.settings()).ok_or(AiError::NotConfigured)?;
     let provider = wire::provider(&model.provider).ok_or(AiError::NotConfigured)?;
-    let request = Request {
-        id: "complete".into(),
-        provider: provider.id.into(),
-        model: model.model.clone(),
-        system: ask.system.clone(),
-        messages: vec![wire::Message {
-            role: wire::Role::User,
-            content: ask.prompt.clone(),
-        }],
+    let items = [wire::Item::User(ask.prompt.clone())];
+    let exchange = wire::Exchange {
+        model: &model.model,
+        system: &ask.system,
+        tools: &[],
+        items: &items,
         max_tokens: Some(ask.max_tokens),
         temperature: None,
         stop: None,
-        reasoning: model.reasoning.clone(),
+        reasoning: model.reasoning.as_deref(),
+        cache_key: None,
     };
     let run = async {
         let auth = resolve(provider).await.map_err(|_| AiError::NotConfigured)?;
-        // Sync cells, so the whole future stays `Send` for `spawn`.
-        let text = Mutex::new(String::new());
-        let stop_reason = Mutex::new(None);
         let overflow = AtomicBool::new(false);
-        let streaming = wire::stream(provider, auth, &request, |event| match event {
-            Event::Delta { text: delta } => {
-                let mut text = text.lock().unwrap();
-                // Checked before appending, so one huge delta is never held.
-                if text.len() + delta.len() > ask.max_response_bytes {
-                    overflow.store(true, Ordering::Relaxed);
-                } else {
-                    text.push_str(&delta);
-                }
+        let mut length = 0;
+        let streaming = wire::send(wire::Endpoint::new(provider, auth), &exchange, |delta| {
+            // Checked as it streams, so a runaway answer is never held.
+            length += delta.len();
+            if length > ask.max_response_bytes {
+                overflow.store(true, Ordering::Relaxed);
             }
-            Event::Done { stop_reason: reason } => *stop_reason.lock().unwrap() = reason,
-            Event::Error { .. } => {}
         });
         let Some(result) = until_overflow(streaming, &overflow).await else {
             return Err(AiError::ResponseTooLong);
         };
-        result.map_err(|_| AiError::Request)?;
-        if stop_reason.into_inner().unwrap().is_some_and(|r| truncated(&r)) {
+        let reply = result.map_err(|_| AiError::Request)?;
+        meter.record(task, &model, &reply.usage);
+        if reply.stop_reason.as_deref().is_some_and(truncated) {
             return Err(AiError::ResponseTooLong);
         }
-        Ok(text.into_inner().unwrap())
+        Ok(reply.text)
     };
     tokio::time::timeout(ask.timeout, run).await.map_err(|_| AiError::TimedOut)?
 }
@@ -256,10 +329,15 @@ pub fn ai_stream(app: AppHandle, ai: State<Ai>, request: Request, on_event: Chan
         async move {
             let result = async {
                 let auth = resolve(provider).await?;
-                wire::stream(provider, auth, &request, |event| {
+                let reply = wire::stream(wire::Endpoint::new(provider, auth), &request, |event| {
                     let _ = on_event.send(event);
                 })
-                .await
+                .await?;
+                // The owner asked for this one, so the cap never blocks it.
+                let task = request.task.as_deref().and_then(Task::from_id).unwrap_or(Task::Edit);
+                let model = ModelRef { provider: provider.id.into(), model: request.model.clone(), reasoning: None };
+                meter().record(task, &model, &reply.usage);
+                Ok::<_, String>(())
             }
             .await;
             if let Err(message) = result {
@@ -281,7 +359,7 @@ pub fn ai_cancel(ai: State<Ai>, id: String) {
     }
 }
 
-async fn resolve(provider: &Provider) -> Result<Option<Auth>> {
+pub(crate) async fn resolve(provider: &Provider) -> Result<Option<Auth>> {
     #[cfg(feature = "headless")]
     if !crate::headless::ai_enabled() {
         return Err("AI is disabled in headless mode".into());
@@ -387,6 +465,7 @@ mod live {
             temperature: None,
             stop: None,
             reasoning: reasoning.map(String::from),
+            task: None,
         };
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         let mut text = String::new();
@@ -394,7 +473,7 @@ mod live {
         runtime
             .block_on(async {
                 let auth = resolve(provider).await?;
-                wire::stream(provider, auth, &request, |event| match event {
+                wire::stream(wire::Endpoint::new(provider, auth), &request, |event| match event {
                     Event::Delta { text: t } => text.push_str(&t),
                     other => done = Some(other),
                 })
@@ -447,7 +526,7 @@ mod live {
         runtime
             .block_on(async {
                 let auth = resolve(provider).await?;
-                wire::stream(provider, auth, &request, |event| {
+                wire::stream(wire::Endpoint::new(provider, auth), &request, |event| {
                     if let Event::Delta { text: t } = event {
                         text.push_str(&t)
                     }

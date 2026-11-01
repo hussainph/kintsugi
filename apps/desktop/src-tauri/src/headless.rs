@@ -193,6 +193,7 @@ pub fn run() -> Result<()> {
     let base = format!("http://127.0.0.1:{backend}");
     let clients = Clients::default();
     let app = build_app(clients.clone())?;
+    crate::ai::init(app.handle());
     // Never restore phone/Tailscale settings. Enrichment is opt-in with AI.
     if ai_enabled() {
         crate::enrich::start(app.handle());
@@ -919,6 +920,19 @@ mod tests {
                 channel["payload"]["message"]["message"],
                 "AI is disabled in headless mode"
             );
+            // Kin's real commands: settings and usage work without AI, and a
+            // turn reports that no provider is usable rather than reading Pi.
+            let settings = call(&client, &bridge, "kin_settings", json!({})).await;
+            assert_eq!(settings["value"]["tasks"][0]["task"], "chat", "{settings}");
+            assert_eq!(settings["value"]["tasks"][0]["resolved"], Value::Null);
+            let usage = call(&client, &bridge, "kin_usage", json!({})).await;
+            assert_eq!(usage["value"]["spentUsd"], 0.0, "{usage}");
+            let turn = call(&client, &bridge, "kin_turn", json!({"turn":{"id":"kin-test","question":"Where are my kiln notes?"}, "onEvent":"__CHANNEL__:98"})).await;
+            assert_eq!(turn["ok"], true, "{turn}");
+            let channel = packet(&mut events).await;
+            assert_eq!(channel["callback"], 98);
+            assert_eq!(channel["payload"]["message"]["type"], "error");
+            assert!(channel["payload"]["message"]["message"].as_str().unwrap().starts_with("No AI provider"));
             assert_eq!(
                 call(&client, &bridge, "not_a_command", json!({})).await["ok"],
                 false

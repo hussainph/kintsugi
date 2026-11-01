@@ -1,4 +1,4 @@
-import { Bookmark, ChevronRight, FileText, Folder, Smartphone } from "lucide-react";
+import { Bookmark, ChevronRight, FileText, Folder, Settings, Smartphone } from "lucide-react";
 import { useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
 import {
@@ -24,6 +24,7 @@ import {
   SidebarMenuSub,
 } from "@kintsugi/ui/components/sidebar";
 import { cn } from "@kintsugi/ui/lib/utils";
+import { openSettings } from "@/lib/kin";
 import { displayName, Entry, parentDir } from "@/lib/vault";
 
 type Props = {
@@ -178,6 +179,12 @@ export function Sidebar(props: Props) {
             <SidebarMenuButton size="sm" className="text-muted-foreground" onClick={props.onPhone}>
               <Smartphone />
               <span>{props.phoneOn ? "Phone access on" : "Connect your phone"}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="sm" className="text-muted-foreground" onClick={openSettings} title="Settings (⌘,)">
+              <Settings />
+              <span>Settings</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

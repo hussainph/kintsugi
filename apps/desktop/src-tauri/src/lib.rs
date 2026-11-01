@@ -48,6 +48,7 @@ fn builder() -> tauri::Builder<Runtime> {
         .manage(vault::Vault::default())
         .manage(library::Library::default())
         .manage(ai::Ai::default())
+        .manage(ai::Kin::default())
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .invoke_handler(tauri::generate_handler![
@@ -71,6 +72,12 @@ fn builder() -> tauri::Builder<Runtime> {
             ai::ai_providers,
             ai::ai_stream,
             ai::ai_cancel,
+            ai::kin::kin_turn,
+            ai::kin::kin_cancel,
+            ai::kin::kin_usage,
+            ai::kin::kin_settings,
+            ai::kin::kin_set_cap,
+            ai::kin::kin_set_model,
             phone::phone_status,
             phone::phone_enable,
             phone::phone_reset,
@@ -82,6 +89,7 @@ fn builder() -> tauri::Builder<Runtime> {
 pub fn run() {
     builder()
         .setup(|app| {
+            ai::init(app.handle());
             if !config::isolated_dev() {
                 enrich::start(app.handle());
                 phone::restore(app.handle());

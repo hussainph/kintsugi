@@ -17,6 +17,8 @@ import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
 import { Refine } from "@/refine/Refine";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
+import { KinDev } from "@/kin/KinDev";
+import { Settings } from "@/kin/Settings";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
@@ -501,6 +503,8 @@ export default function App() {
         onStatus={setPhoneStatus}
         onClose={() => setPhoneOpen(false)}
       />
+      <Settings />
+      <KinDev />
       <Toaster position="bottom-center" />
     </SidebarProvider>
   );
