@@ -175,6 +175,27 @@ test("⌘K › Discuss this paragraph opens the chat with it, unsent", { timeout
   await closeKin();
 });
 
+test("⌘K › Ideas for this draft opens Ideas filtered to it", { timeout: 60_000 }, async () => {
+  await line("Keep the seam.").click();
+  await page.keyboard.press("Meta+k");
+  await refine().getByRole("option", { name: /Ideas for this draft/ }).click();
+  await page.getByRole("region", { name: "Ideas" }).waitFor();
+  await page.getByText("Gold seams", { exact: false }).first().waitFor();
+  await shot("10-ideas-for-draft");
+});
+
+test("/ › Ideas for this draft opens the same view", { timeout: 60_000 }, async () => {
+  await page.locator(`[title="${DOC}"]`).click();
+  await page.locator(`[title="${DOC}"][data-active="true"]`).waitFor();
+  await endOf("Keep the seam.");
+  await page.keyboard.type(" /ideas");
+  await slash().locator('[data-command="action:ideas"][aria-selected="true"]').waitFor();
+  await page.keyboard.press("Enter");
+  await page.getByRole("region", { name: "Ideas" }).waitFor();
+  await onDisk((t) => t.includes("> Keep the seam. \n") || t.includes("> Keep the seam.\n") || t.endsWith("> Keep the seam. "), "the command itself is gone");
+  assert.ok(!disk().includes("/ideas"));
+});
+
 test("at phone width with touch, the pickers fit the screen and rows are tap targets", { timeout: 120_000 }, async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
   const phone = await context.newPage();
@@ -195,14 +216,14 @@ test("at phone width with touch, the pickers fit the screen and rows are tap tar
   assert.equal(await phone.locator(".cm-reference-picker .cm-kintsugi-menu-keys").isVisible(), false);
   const row = (await phone.locator(".cm-reference-option").first().boundingBox())!;
   assert.ok(row.height >= 44, `tap target ${row.height}px`);
-  await shot("10-phone-link-picker", phone);
+  await shot("11-phone-link-picker", phone);
   await phone.locator(".cm-reference-option").first().tap();
   await phone.locator(".cm-reference-chip").last().waitFor();
 
   await phone.keyboard.type(" and /");
   await phone.locator(".cm-command-menu").waitFor();
   await fits(".cm-command-menu");
-  await shot("11-phone-slash-menu", phone);
+  await shot("12-phone-slash-menu", phone);
   await phone.locator('.cm-command-menu [data-command="todo"]').tap();
   await phone.locator(".cm-line", { hasText: "- [ ] A long line of prose" }).waitFor();
   await context.close();

@@ -1,6 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { diffWords } from "diff";
-import { Bookmark, MessageCircle, Search, Sparkles, Swords, Wand2 } from "lucide-react";
+import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "lucide-react";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@kintsugi/ui/components/command";
@@ -9,6 +9,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "@kintsugi/ui/components/
 import { Cancelled, Message, stream } from "@/lib/ai";
 import { discuss } from "@/lib/chat";
 import { memory, type Skill } from "@/lib/kin";
+import { ideasForDraft } from "@/ideas/api";
 import { modelFor } from "@/lib/models";
 import { passageChips } from "@/kin/screen";
 import { cn } from "@kintsugi/ui/lib/utils";
@@ -108,6 +109,10 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
 
   const kinAction = (a: KinAction) => {
     const chips = passageChips(view, path, from, to);
+    if (a.id === "ideas") {
+      onClose();
+      return ideasForDraft(path);
+    }
     if (a.id === "discuss") {
       onClose();
       return discuss(chips);
@@ -226,7 +231,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
               )}
               <CommandGroup heading="Kin">
                 {KIN_ACTIONS.map((a) => {
-                  const Icon = a.id === "supporting" ? Search : a.id === "disagrees" ? Swords : MessageCircle;
+                  const Icon = a.id === "supporting" ? Search : a.id === "disagrees" ? Swords : a.id === "ideas" ? Lightbulb : MessageCircle;
                   return (
                     <CommandItem key={a.id} value={a.label} onSelect={() => kinAction(a)}>
                       <Icon />

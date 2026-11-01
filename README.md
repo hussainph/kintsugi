@@ -11,7 +11,7 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 | ⌘N / ⇧⌘N | New document / folder |
 | ⌘P | Jump to a document |
 | ⌘\ | Toggle the sidebar |
-| ⌘K | Edit the selection (or paragraph) with AI: tighten, rephrase, synonyms, your `/` skills; or find supporting clips, ask who disagrees, discuss it with Kin |
+| ⌘K | Edit the selection (or paragraph) with AI: tighten, rephrase, synonyms, your `/` skills; or find supporting clips, ask who disagrees, discuss it with Kin, see ideas for this draft |
 | `/` | Insert a block (headings, lists, quote, callout, code, table…) or run a skill on the paragraph |
 | `@` or `[[` | Link a document or clip; `@Kin` asks Kin about the paragraph |
 | ⇧⌘D | Toggle draft / complete |
