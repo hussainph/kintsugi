@@ -1,8 +1,9 @@
 //! Ways to subscribe: any feed or page URL, and presets for Hacker News
-//! (hnrss.org), YouTube channels, podcasts and X accounts. Feeds are polled
-//! by the ingest engine's feed adapter, which also does the fetching parts
-//! (feed discovery, channel pages, iTunes Search); X accounts by its X
-//! adapter.
+//! (hnrss.org), YouTube channels, podcasts, X accounts, pages without a feed
+//! and authors. Feeds are polled by the ingest engine's feed adapter, which
+//! also does the fetching parts (feed discovery, channel pages, iTunes
+//! Search); X accounts by its X adapter; watched pages by its web adapter;
+//! authors by its author adapter.
 
 use super::store::SourceKind;
 use kintsugi_ingest::Url;
@@ -21,6 +22,10 @@ pub enum Subscribe {
     Podcast { feed_url: String, title: Option<String> },
     /// An X account: `@handle`, a bare handle or an x.com profile URL.
     X { account: String },
+    /// A page without a feed, watched for changes.
+    Page { url: String },
+    /// An author whose new books arrive in the feed.
+    Author { name: String },
 }
 
 pub const HN_LISTS: [&str; 5] = ["frontpage", "best", "newest", "show", "ask"];
@@ -104,9 +109,22 @@ pub fn x_link(input: &str) -> Option<String> {
     kintsugi_ingest::x::profile_handle(&with_scheme).map(|h| kintsugi_ingest::x::profile_url(&h))
 }
 
+/// The subscription URL for an author's name.
+pub fn author(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.chars().count() > 200 {
+        return Err("that name is too long".into());
+    }
+    kintsugi_ingest::authors::author_url(name).ok_or_else(|| "enter an author's name".into())
+}
+
 /// What kind of source a bare feed URL is, for OPML imports and URL subscribes.
+/// A watched page can't be told from a feed by its URL; OPML says which.
 pub fn kind_for_url(url: &str) -> SourceKind {
     let Ok(parsed) = Url::parse(url) else { return SourceKind::Feed };
+    if kintsugi_ingest::authors::author_name(url).is_some() {
+        return SourceKind::Author;
+    }
     match parsed.host_str().unwrap_or_default().trim_start_matches("www.") {
         "hnrss.org" => SourceKind::Hn,
         "youtube.com" if parsed.path() == "/feeds/videos.xml" => SourceKind::Youtube,
@@ -167,6 +185,16 @@ mod tests {
         assert_eq!(x_link("simonw"), None);
         assert_eq!(x_link("quiet.example/feed"), None);
         assert_eq!(kind_for_url("https://x.com/simonw"), SourceKind::X);
+    }
+
+    #[test]
+    fn authors() {
+        let url = author("  Ursula K. Le Guin ").unwrap();
+        assert_eq!(url, "https://openlibrary.org/search?author=Ursula+K.+Le+Guin&sort=new");
+        assert_eq!(kind_for_url(&url), SourceKind::Author);
+        assert!(author("  ").is_err());
+        assert!(author(&"a".repeat(201)).is_err());
+        assert_eq!(kind_for_url("https://openlibrary.org/search?q=piranesi"), SourceKind::Feed);
     }
 
     #[test]

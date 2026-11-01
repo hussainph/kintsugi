@@ -16,8 +16,8 @@ in camelCase):
 
 | Field | Meaning |
 | --- | --- |
-| `source` | Which adapter made it: `web`, `rss`, `x`, `reddit`, `youtube`, `podcast`, `pdf`, `epub` or `book` |
-| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`), for YouTube the video id (`youtube:dQw4w9WgXcQ`), for podcasts the feed URL and GUID. A PDF or EPUB file is `pdf:sha256:<hex>` / `epub:sha256:<hex>` (an EPUB with an ISBN is `epub:isbn:<isbn>`), a linked one its URL; a book its Open Library work (`book:OL45804W`). Feeds deduplicate on it |
+| `source` | Which adapter made it: `web`, `rss`, `x`, `reddit`, `youtube`, `podcast`, `pdf`, `epub`, `book` or `author` |
+| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`), for YouTube the video id (`youtube:dQw4w9WgXcQ`), for podcasts the feed URL and GUID. A PDF or EPUB file is `pdf:sha256:<hex>` / `epub:sha256:<hex>` (an EPUB with an ISBN is `epub:isbn:<isbn>`), a linked one its URL; a book its Open Library work (`book:OL45804W`); a followed author's new book the author and title (`author:susanna-clarke/the-lost-garden`); a watched page's change the page URL and both hashes (`web:<url>#<old>-<new>`). Feeds deduplicate on it |
 | `url` | Canonical URL, if any: no fragment, no tracking parameters (`utm_*`, `fbclid`, `gclid`, `mc_cid`, `mc_eid`, `igshid`, `ref_src`) |
 | `title`, `author`, `site`, `description` | As the source declared them, whitespace-collapsed and length-bounded |
 | `published` | When the source says it was published, as written there (usually ISO 8601) |
@@ -45,8 +45,8 @@ An `Adapter` has three jobs:
   `cursor`, plus the next cursor and, when the source sent a fresh document,
   what it says about itself (`source`: title, home page URL, image).
   Sources that can't be followed keep the default, which reports
-  "unsupported". The web adapter can't be polled yet. "Follow this page"
-  change detection will add it.
+  "unsupported". The web adapter polls a page for changes (see Watching a
+  page).
 
 An `Arc<A>` of an adapter is an adapter too, so one instance can sit in an
 engine and still be called directly for its own extras.
@@ -142,6 +142,44 @@ The Feed (`docs/feed.md`) is the consumer.
 
 A capture fails only when nothing usable arrived: no HTML, embed, image or
 render.
+
+### Watching a page
+
+`WebAdapter::poll` (`crates/ingest/src/web/watch.rs`) is "follow this page"
+change detection, with changedetection.io as a design reference only. No AI:
+
+- **Request**: conditional (`If-None-Match` / `If-Modified-Since` from the
+  cursor), with the web adapter's caps and deadline. A 304 returns no items
+  and the same cursor; another non-success status is `Status(code)`; a
+  non-text response is `Unsupported`; a page with no text and no title is
+  `Unavailable`. Static only: the renderer never runs for polls.
+- **Snapshot**: the largest `article`/`main`/`[role=main]` region (else the
+  body), hidden elements and page chrome removed, as Markdown, then lines:
+  images dropped, links reduced to their text, block markers and emphasis
+  removed, whitespace collapsed, rules and blanks skipped (≤1,500 lines,
+  ≤600 characters each). The whole region is watched, not Readability's
+  pick, so the choice can't flip between versions. Title from `og:title` or
+  `<title>`; image from `og:image`.
+- **Normalization** (`watch::normalize`): each line's comparison key is
+  lowercased with noise masked: ISO and numeric dates, written dates
+  ("Nov 3, 2026", "3rd of November"), weekdays, clock times, relative times
+  ("5 minutes ago", "3h ago", "yesterday"), counters ("1,204 views",
+  "3.2k likes", "Stars: 812") and copyright years. Adjacent masks merge, so
+  "Updated Nov 3 at 9:14 · 3 hours ago" equals "Updated Dec 1 · yesterday".
+  Other numbers (versions, prices) still count.
+- **Hash**: FNV-1a (64-bit, hex) of the keys. The cursor is JSON with the
+  validators, the hash and the last version's lines.
+- **Change**: the first poll is a baseline with no items. When the hash
+  differs, a longest-common-subsequence line diff over the keys (order-blind
+  for very long pages) gives the added and removed lines, shown as they
+  read on the page. One item per change: `id`
+  `web:<canonical url>#<old hash>-<new hash>`, `url` the page, `title` the
+  first added line (or `Removed: …`), `site` the page title, `description`
+  "2 lines added and 1 removed on <page>", `published` the detection time,
+  and a `body` of `**Added**` / `**Removed**` lists (12 lines each, then
+  "…and N more"), every line as escaped plain text. `extras`: `extractor`
+  (`watch`), `media` (`article`), `added`, `removed`, `hash`. The poll's
+  `source` is the page's title, URL and image.
 
 ### The hidden webview (Mac app)
 
@@ -265,6 +303,39 @@ The backend is the `XApi` trait (`name`, `thread`, `timeline`), with
 `FxTwitter` as the default. `XAdapter::with_api` swaps it, for example for an
 official-API client holding a user-supplied key, without changing
 normalization, fallbacks or cursors.
+
+## New books from followed authors
+
+`authors::AuthorAdapter` (`source: book`, `crates/ingest/src/authors/`) follows an
+author. It never captures (`matches` is false). `Subscription.url` is the
+author's Open Library search page,
+`https://openlibrary.org/search?author=<name>&sort=new`: `authors::author_url`
+makes one and `authors::author_name` reads it back.
+
+- **Sources**: Google Books
+  `volumes?q=inauthor:"<name>"&orderBy=newest&printType=books&maxResults=40`,
+  then Open Library `search.json?author=<name>&sort=new` when Google fails
+  (Google's keyless quota is small). Both go through the shared API client
+  (1-second spacing, rate limits honoured). If both fail, the error is
+  `RateLimited` when Google was rate limiting, else Open Library's. No keys.
+- **Filtering**: a book counts only if every word of the followed name
+  (longer than an initial) is in one of its authors' names, which drops
+  books about the author and other authors who share a surname. Editions
+  fold by title (lowercase words before any `:`, `(` or `[`), and the
+  earliest edition stands for the book, so a reissue isn't a new release.
+- **Cursor**: JSON of the title keys already reported (the newest 400). The
+  first poll returns only the latest three and remembers the rest; later
+  polls return unseen titles, newest first.
+- **Items**: `id` `author:<author slug>/<title slug>`; `title` "Title:
+  Subtitle"; `author` the book's authors; `site` `Google Books` or
+  `Open Library`; `url` the book's page there; `description` (≤600, plain);
+  `published` RFC 3339 when the API gives a day or month (a bare year is
+  left empty); `media` the cover (Google covers upgraded to HTTPS); `body`
+  a bold title line with authors, then publisher · date · pages · ISBN, the
+  description and a link, as escaped plain text. `extras`: `extractor`
+  (`google-books`, `openlibrary`), `media` (`book`), `isbn`, `releaseDate`.
+- `AuthorEndpoints` points both APIs elsewhere (tests and the headless runtime
+  use a loopback server).
 
 ## Reddit posts
 
@@ -717,6 +788,10 @@ oEmbed response. The Reddit fixtures in `fixtures/reddit/` follow the
   with an ISBN, a cover, nav, copyright page and two chapters) plus
   archives built in the tests (a DTD, an oversized chapter, not a zip).
 - **Books:** trimmed Open Library responses in `fixtures/books/`.
+- **Watched pages:** `fixtures/watch/` holds a page, the same page with new
+  dates and counters, and a real edit.
+- **Authors:** trimmed Google Books and Open Library responses in
+  `fixtures/authors/`.
 
 No test downloads a real tool or model. The opt-in tests are `#[ignore]`d:
 
@@ -729,6 +804,8 @@ No test downloads a real tool or model. The opt-in tests are `#[ignore]`d:
   from `say`. It never asks macOS to download a model.
 - `live_book_by_isbn_and_search` asks Open Library for an ISBN and a
   search.
+- `live_new_books_from_an_author` asks Google Books (or Open Library) for
+  an author's newest books.
 - `live_docling` installs uv, Python and Docling with its models (about
   2 GB) into `target/live-tools/` and converts the PDF fixture. It passed
   on 2026-11-01 in about four minutes, including the install. Delete

@@ -4,8 +4,9 @@
 //! goes through the same clip capture path as every other capture.
 //!
 //! Fetching belongs to the ingest engine (`kintsugi-ingest`, docs/ingest.md):
-//! its feed adapter polls sources, and its web adapter fetches an item's full
-//! article when the feed only carries an excerpt. This module decides what to
+//! its feed adapter polls feeds, its X adapter X accounts, its web adapter
+//! watches pages without a feed (and fetches an item's full article when the
+//! feed only carries an excerpt), and its author adapter followed authors. This module decides what to
 //! poll when, and keeps the store.
 
 mod opml;
@@ -16,7 +17,7 @@ mod store;
 pub use picked::kin_hook;
 
 use crate::AppHandle;
-use kintsugi_ingest::{self as ingest, CaptureOptions, Engine, Subscription, Target, feed::{FeedAdapter, Podcast}, web::WebAdapter, x::XAdapter};
+use kintsugi_ingest::{self as ingest, CaptureOptions, Engine, Subscription, Target, authors::AuthorAdapter, feed::{FeedAdapter, Podcast}, web::WebAdapter, x::XAdapter};
 use kintsugi_vault as vault;
 use presets::{Subscribe, Youtube};
 use serde::{Deserialize, Serialize};
@@ -36,6 +37,11 @@ const TICK: Duration = Duration::from_secs(60);
 const CONCURRENT_POLLS: usize = 4;
 /// How often a healthy source is polled.
 const INTERVAL: i64 = 30 * 60;
+/// A watched page: often enough to notice an edit the same day, rarely
+/// enough to stay a polite visitor.
+const PAGE_INTERVAL: i64 = 6 * 60 * 60;
+/// Authors publish a book or two a year; weekly is plenty.
+const AUTHOR_INTERVAL: i64 = 7 * 24 * 60 * 60;
 const FIRST_RETRY: i64 = 5 * 60;
 /// A feed text shorter than this is an excerpt: reading or saving the item
 /// fetches the full article through the ingest engine.
@@ -53,8 +59,9 @@ pub struct Feed {
     ranking: picked::Ranking,
 }
 
-/// The engine (feed and X adapters for polling, web adapter for full text) plus a
-/// handle on the feed adapter for its discovery extras.
+/// The engine (feed, X and author adapters for polling, the web adapter for
+/// watched pages and full text) plus a handle on the feed adapter for its
+/// discovery extras.
 struct Ingest {
     engine: Engine,
     feeds: Arc<FeedAdapter>,
@@ -70,8 +77,24 @@ impl Ingest {
         #[cfg(feature = "headless")]
         let _ = app;
         let x = XAdapter::new().map_err(|e| e.to_string())?;
-        Ok(Self { engine: Engine::new().with(x).with(feeds.clone()).with(web), feeds })
+        let books = author_adapter().map_err(|e| e.to_string())?;
+        Ok(Self { engine: Engine::new().with(x).with(feeds.clone()).with(books).with(web), feeds })
     }
+}
+
+/// Google Books and Open Library, or in a headless run, a loopback stand-in
+/// for both (`KINTSUGI_HEADLESS_BOOKS=http://127.0.0.1:<port>/`), so tests
+/// never reach the live APIs.
+fn author_adapter() -> ingest::Result<AuthorAdapter> {
+    #[cfg(feature = "headless")]
+    if let Some(base) = std::env::var("KINTSUGI_HEADLESS_BOOKS")
+        .ok()
+        .and_then(|b| ingest::Url::parse(&b).ok())
+        .filter(|u| u.scheme() == "http" && u.host_str() == Some("127.0.0.1"))
+    {
+        return AuthorAdapter::with_endpoints(ingest::authors::AuthorEndpoints::at(base), ingest::api::ApiLimits::default());
+    }
+    AuthorAdapter::new()
 }
 
 /// App data, not the vault. Headless and scratch runs use their own folder.
@@ -143,7 +166,10 @@ async fn full_text(app: &AppHandle, item: &Item) -> Result<()> {
     let feed = app.state::<Feed>();
     let (content, tried) = with(app, |s| Ok((s.content(item.id)?, s.full_text_tried(item.id)?)))?;
     let short = content.as_deref().is_none_or(|c| c.chars().count() < EXCERPT_CHARS);
-    let Some(url) = item.url.as_deref().filter(|_| short && !tried && item.media == "article") else {
+    // A page change's text is the change, and a book's is its listing: the
+    // page behind either link isn't "the rest of the article".
+    let article = item.media == "article" && !matches!(item.source_kind, SourceKind::Page | SourceKind::Author);
+    let Some(url) = item.url.as_deref().filter(|_| short && !tried && article) else {
         return Ok(());
     };
     let Ok(target) = Target::url(url) else { return Ok(()) };
@@ -232,6 +258,14 @@ pub struct Polled {
 /// channel feeds fail transiently (a non-200 means "retry", not "gone"), so
 /// they never back off further than an hour; nor do X accounts, whose
 /// FxTwitter page holds only the latest ~20 posts.
+fn interval(kind: SourceKind) -> i64 {
+    match kind {
+        SourceKind::Page => PAGE_INTERVAL,
+        SourceKind::Author => AUTHOR_INTERVAL,
+        _ => INTERVAL,
+    }
+}
+
 fn retry_after(kind: SourceKind, failures: i64) -> i64 {
     let cap = if matches!(kind, SourceKind::Youtube | SourceKind::X) { 60 * 60 } else { 24 * 60 * 60 };
     (FIRST_RETRY << (failures.clamp(1, 16) - 1)).min(cap)
@@ -245,6 +279,9 @@ fn describe(kind: SourceKind, error: ingest::Error) -> String {
         (_, ingest::Error::Status(410)) => "the site says this feed is gone (HTTP 410)".into(),
         (_, ingest::Error::Status(status)) => format!("HTTP {status}"),
         (SourceKind::X, ingest::Error::Unavailable) => "FxTwitter didn't answer; the account may be private or gone".into(),
+        (SourceKind::Author, ingest::Error::Unavailable) => "Google Books and Open Library didn't answer".into(),
+        (SourceKind::Page, ingest::Error::Unsupported) => "not a web page Kintsugi can watch (an image or a file?)".into(),
+        (SourceKind::Page, ingest::Error::Unavailable) => "couldn't read any text on that page".into(),
         (_, ingest::Error::Unavailable) => "couldn't reach it".into(),
         (_, ingest::Error::TimedOut) => "timed out".into(),
         (_, ingest::Error::TooLarge) => "too large to be a feed".into(),
@@ -258,6 +295,7 @@ fn new_item(item: ingest::Item) -> NewItem {
     let media = match item.extras.get("media").and_then(|m| m.as_str()) {
         Some("video") => "video",
         Some("audio") => "audio",
+        Some("book") => "book",
         _ => "article",
     };
     NewItem {
@@ -276,16 +314,29 @@ fn new_item(item: ingest::Item) -> NewItem {
 /// Poll one source through the engine, record its health, store new entries.
 async fn poll(store: &Mutex<Store>, engine: &Engine, due: &Due) -> Polled {
     let subscription = Subscription { url: due.url.clone(), cursor: due.cursor.clone() };
-    let source = if due.kind == SourceKind::X { ingest::SourceType::X } else { ingest::SourceType::Rss };
+    let source = match due.kind {
+        SourceKind::X => ingest::SourceType::X,
+        SourceKind::Page => ingest::SourceType::Web,
+        SourceKind::Author => ingest::SourceType::Author,
+        _ => ingest::SourceType::Rss,
+    };
     let outcome = engine.poll(source, &subscription).await;
     let result: Result<usize> = (|| {
         let store = store.lock().map_err(|_| "the feed database is unavailable".to_string())?;
         let now = now();
         match outcome {
             Ok(polled) => {
-                let entries: Vec<NewItem> = polled.items.into_iter().map(new_item).collect();
+                let mut entries: Vec<NewItem> = polled.items.into_iter().map(new_item).collect();
+                if due.kind == SourceKind::Author && !due.first {
+                    // A title the author's catalogue only now lists is news
+                    // even if its date is older than the feed's 30 days (the
+                    // author adapter never returns one twice).
+                    for entry in &mut entries {
+                        entry.published_at = entry.published_at.filter(|p| now - p < store::EXPIRE_AFTER);
+                    }
+                }
                 let added = store.insert_items(due.id, &entries, now, due.first)?;
-                store.record_success(due.id, now, polled.cursor.as_deref(), polled.source.as_ref(), now + INTERVAL)?;
+                store.record_success(due.id, now, polled.cursor.as_deref(), polled.source.as_ref(), now + interval(due.kind))?;
                 Ok(added)
             }
             Err(error) => {
@@ -370,7 +421,7 @@ async fn find_feed(feeds: &FeedAdapter, input: &str) -> Result<String> {
     let url = presets::checked_url(input)?;
     match feeds.discover(&url).await {
         Ok(found) => Ok(found.to_string()),
-        Err(ingest::Error::NotAFeed) => Err("No feed there. Try the site's RSS or Atom link.".into()),
+        Err(ingest::Error::NotAFeed) => Err("No feed there. Try the site's RSS or Atom link, or follow it as a Page to hear when it changes.".into()),
         Err(_) => Ok(url.to_string()),
     }
 }
@@ -410,6 +461,12 @@ async fn resolve(feeds: &FeedAdapter, input: Subscribe) -> Result<(String, Sourc
         },
         Subscribe::Podcast { feed_url, title } => (presets::checked_url(&feed_url)?.to_string(), SourceKind::Podcast, title),
         Subscribe::X { account } => (presets::x_account(&account)?, SourceKind::X, None),
+        Subscribe::Page { url } => (presets::checked_url(&url)?.to_string(), SourceKind::Page, None),
+        Subscribe::Author { name } => {
+            let url = presets::author(&name)?;
+            let name = ingest::authors::author_name(&url);
+            (url, SourceKind::Author, name)
+        }
     })
 }
 

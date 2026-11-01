@@ -2463,6 +2463,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "hex",
+ "regex",
  "reqwest",
  "roxmltree",
  "serde",

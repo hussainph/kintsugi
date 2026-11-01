@@ -1,6 +1,7 @@
 # Feed
 
-The contract for the Feed as built (KI-25). Direction lives in
+The contract for the Feed as built (KI-25, with X accounts from KI-33 and
+watched pages and authors from KI-43). Direction lives in
 `docs/vision.md` › Feed; where they disagree, this describes what exists.
 
 ## Storage
@@ -11,15 +12,17 @@ Headless runs keep it in `$KINTSUGI_CONFIG_DIR`; a debug run with
 `KINTSUGI_CONFIG_DIR` uses that folder, and a scratch-vault run without one
 uses a temporary folder. Schema version is `PRAGMA user_version` (1).
 
-- `sources`: URL (unique), kind (`feed`, `hn`, `youtube`, `podcast`, `x`), title,
+- `sources`: URL (unique), kind (`feed`, `hn`, `youtube`, `podcast`, `x`,
+  `page`, `author`), title,
   site URL, muted, and health: last fetch, last success, last HTTP status,
   last error, consecutive failures, next fetch, and the ingest adapter's
-  poll cursor (the feed adapter's `ETag` and `Last-Modified`, or the newest
-  X status id).
+  poll cursor (the feed adapter's `ETag` and `Last-Modified`, the newest
+  X status id, a watched page's validators, hash and lines, or an author's
+  seen titles).
   Unfollowing sets `removed_at`; following the same URL again revives it.
 - `items`: one row per `(source, guid)`, with plain-text summary (≤600
   characters) and content (≤19,000), image URL, media (`article`, `video`,
-  `audio`), published/fetched/sort times, and his actions: `liked_at`,
+  `audio`, `book`), published/fetched/sort times, and his actions: `liked_at`,
   `note`, `saved_path` (+ the stable `save_id` capture key), `dismissed_at`
   (Not interested), `expired_at`, and `full_text_at` (when the full article
   was fetched).
@@ -44,13 +47,14 @@ HTML.
 ## Sources and polling
 
 All fetching goes through the ingest engine (`docs/ingest.md`): its feed
-adapter polls and discovers feeds, its X adapter polls X accounts, and its
-web adapter fetches full articles. This module decides what to poll when, and keeps the store.
+adapter polls and discovers feeds, its X adapter polls X accounts, its web
+adapter watches pages and fetches full articles, and its author adapter polls
+authors. This module decides what to poll when, and keeps the store.
 
 - **Link**: any feed URL, or a page that advertises one with
   `<link rel="alternate">` (`FeedAdapter::discover`). A URL that doesn't
   answer right now is still followed, with its error in its health line; a
-  page with no feed is refused.
+  page with no feed is refused, with a hint to follow it as a Page.
 - **Hacker News**: `https://hnrss.org/{frontpage|best|newest|show|ask}`,
   optionally `?points=N`.
 - **YouTube**: a channel ID, `/channel/UC…`, `/user/…` or playlist URL maps
@@ -67,11 +71,34 @@ web adapter fetches full articles. This module decides what to poll when, and ke
   account's own posts and self-threads, newest-status-id cursor, title and
   image from the profile. FxTwitter returns only the latest ~20 posts, so
   failures back off to at most **1 hour** for X, as for YouTube.
+- **Pages** (`{ kind: "page", url }`, the Page tab): any HTTP(S) page,
+  stored as typed (normalized). The web adapter watches it
+  (`docs/ingest.md` › Watching a page): a conditional request every **6
+  hours**, the readable region as lines, noise (dates, times, "3 hours ago",
+  view/like/comment counters, copyright years, link targets) masked before
+  hashing. Following records a baseline and adds nothing. Each change after
+  that is one item: the first added line as its title (or "Removed: …"),
+  "2 lines added and 1 removed on <page>" as its summary, the added and
+  removed lines (up to 12 each) as its text, and the page as its link. The
+  source's title and image come from the page.
+- **Authors** (`{ kind: "author", name }`, the Author tab): stored as the
+  author's Open Library search page,
+  `https://openlibrary.org/search?author=<name>&sort=new`, titled with the
+  name. Polled **weekly** through the author adapter (Google Books
+  `inauthor:` newest first, Open Library when Google doesn't answer).
+  Following shows the author's latest three books; after that, each title
+  the catalogue newly lists is one item (media `book`): title and subtitle,
+  authors, cover, description, and a body with publisher, release date,
+  pages and ISBN, linking to the book's Google Books or Open Library page.
+  Reissues of a known title never return. A release first listed more than
+  30 days after its date still shows, sorted as just found.
+- Neither a page change nor a book is an excerpt of an article: reading one
+  never fetches its link as full text.
 
 One background task polls due, unmuted sources every minute (four at a
 time), and wakes on subscribe, import and unmute. Requests are conditional
 through the adapter's cursor; a 304 is a healthy fetch. Healthy sources poll
-every 30 minutes. A failure never removes a source: it records the HTTP
+every 30 minutes (pages every 6 hours, authors weekly). A failure never removes a source: it records the HTTP
 status (if any) and a readable reason, and retries after 5 minutes, doubling
 to a cap of 24 hours, or **1 hour for YouTube** (its feeds fail
 transiently; a non-200 means retry, not gone) and X. A rate limit reads
@@ -128,6 +155,9 @@ them with `search` (`kind: "feed"`).
 `feed_opml_export({ path })` writes OPML 2.0 to the path the save dialog
 chose (in headless, only inside the scratch vault or config). Outlines carry
 `kintsugiKind` and `kintsugiMuted` attributes, which other readers ignore.
+Pages and authors aren't feeds, so they're written as OPML 2.0 `type="link"`
+outlines with a `url` and no `xmlUrl`: other readers skip them, and import
+reads them back only when `kintsugiKind` is `page` or `author`.
 `feed_opml_import({ opml })` takes the file's text, read by the webview's
 file input (no arbitrary file reads cross IPC). It flattens folders, skips
 duplicates and already-followed URLs, counts unusable URLs, restores muted
@@ -153,14 +183,20 @@ ranking's `feed_picked({ n? })`, `feed_correct({ reason, id?, undo? })`,
 `Picked.tsx` renders **Picked for you** there (eight picks, four shown until
 "Show more", one exploring), each with "Why this?", and logs its impressions
 with surface `picked`. See [ranking.md](ranking.md).
-**Following** (a sheet) adds sources, shows each one's health, mutes,
+**Following** (a sheet) adds sources (tabs: Link, HN, YouTube, Podcast, X,
+Page, Author), shows each one's health, mutes,
 fetches now, unfollows, and imports/exports OPML.
 
 ## Testing
 
-Rust unit tests use fixtures in `src-tauri/src/feed/fixtures/` and a
-loopback server. `apps/desktop/test/runtime-feed.test.ts` drives the real
+Rust unit tests use the ingest crate's fixtures (feeds, X, watched pages in
+`crates/ingest/fixtures/watch/`, Google Books in `crates/ingest/fixtures/authors/`)
+and a loopback server. `apps/desktop/test/runtime-feed.test.ts` drives the real
 headless runtime with Playwright against `test/feed-fixtures.ts` (run it on
 its own with `node apps/desktop/test/feed-fixtures.ts`) and blocks every
 non-loopback request; screenshots go to `.headless/feed-shots/`. It runs Kin's
 headless mock model (`KINTSUGI_HEADLESS_KIN=mock`) for the ranking tools.
+The fixture server also serves a `/now` page whose version the test switches (noise only,
+then a real edit, with ETags), and stands in for Google Books: the test sets
+`KINTSUGI_HEADLESS_BOOKS=<fixture base>/`, which headless builds honour only
+for an `http://127.0.0.1` URL.

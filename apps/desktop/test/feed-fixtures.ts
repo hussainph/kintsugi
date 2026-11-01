@@ -1,6 +1,7 @@
 // A loopback fixture server for the Feed: a blog (with a page that links to
-// its feed), a YouTube-style Atom channel, a podcast, a JSON Feed, and a
-// broken source. Dates are relative to now so items are always fresh, and
+// its feed), a YouTube-style Atom channel, a podcast, a JSON Feed, a broken
+// source, a page without a feed that changes on demand (KI-43), and a Google
+// Books stand-in for followed authors. Dates are relative to now so items are always fresh, and
 // artwork is generated locally: no test ever touches the live network.
 //
 //   node apps/desktop/test/feed-fixtures.ts    prints the base URL and waits
@@ -126,12 +127,37 @@ const page = (base: string) => `<!doctype html><html><head><title>The Quiet Blog
 <link rel="alternate" type="application/rss+xml" title="The Quiet Blog" href="${base}/quiet/feed.xml"></head>
 <body><h1>The Quiet Blog</h1></body></html>`;
 
-export type Fixtures = { base: string; hits: Map<string, number>; close: () => Promise<void> };
+/** A /now page without a feed. Version 1 and 2 differ only in dates and counters; 3 is a real edit. */
+const now = (version: number) => {
+  const [date, visitors, views] = [["November 3, 2026 at 9:14 am", "1,204", "2,301"], ["Nov 5th, 2026 at 14:02", "1,377", "3.4k"], ["December 1, 2026", "2,050", "9,812"]][version - 1];
+  const reading = version < 3 ? "<li>The Dispossessed, for the second time</li>" : "<li>The Left Hand of Darkness</li>";
+  const extra = version < 3 ? "" : "<p>Learning to bind books by hand.</p>";
+  return `<!doctype html><html><head><title>Now · Ada</title><meta property="og:title" content="What I’m doing now"></head>
+<body><nav>Home · ${visitors} visitors today</nav><main><h1>What I’m doing now</h1><p>Updated ${date}</p>
+<h2>Reading</h2><ul><li>Piranesi by Susanna Clarke</li>${reading}</ul>
+<h2>Writing</h2><p>An essay on slow software. ${views} views</p>${extra}</main><footer>© 2026 Ada</footer></body></html>`;
+};
+
+/** Google Books' volumes for inauthor:"Susanna Clarke", newest first, with links back to this server. */
+const volumes = (base: string) =>
+  JSON.stringify({
+    kind: "books#volumes",
+    items: [
+      { id: "lost", volumeInfo: { title: "The Lost Garden", subtitle: "A Novel", authors: ["Susanna Clarke"], publisher: "Bloomsbury", publishedDate: iso(24 * 3).slice(0, 10), description: "A house with a garden that is never the same twice.", pageCount: 288, imageLinks: { thumbnail: `${base}/art/4.png` }, canonicalVolumeLink: `${base}/books/lost-garden` } },
+      { id: "about", volumeInfo: { title: "Reading Susanna Clarke", authors: ["M. Critic"], publishedDate: iso(24 * 10).slice(0, 10) } },
+      { id: "wood", volumeInfo: { title: "The Wood at Midwinter", authors: ["Susanna Clarke"], publishedDate: "2023-10-24", canonicalVolumeLink: `${base}/books/wood` } },
+      { id: "piranesi", volumeInfo: { title: "Piranesi", authors: ["Susanna Clarke"], publishedDate: "2020-09-15", canonicalVolumeLink: `${base}/books/piranesi` } },
+      { id: "jsmn", volumeInfo: { title: "Jonathan Strange & Mr Norrell", authors: ["Susanna Clarke"], publishedDate: "2004-09-08", canonicalVolumeLink: `${base}/books/jsmn` } },
+    ],
+  });
+
+export type Fixtures = { base: string; hits: Map<string, number>; setNow: (version: number) => void; close: () => Promise<void> };
 
 export async function startFeedFixtures(): Promise<Fixtures> {
   const art = artworkSpecs().map((spec) => generateArtwork({ ...spec, width: 360, height: 240 }));
   const hits = new Map<string, number>();
   let base = "";
+  let nowVersion = 1;
   const server: Server = createServer((req, res) => {
     const path = new URL(req.url ?? "/", "http://x").pathname;
     hits.set(path, (hits.get(path) ?? 0) + 1);
@@ -141,6 +167,20 @@ export async function startFeedFixtures(): Promise<Fixtures> {
     };
     const artwork = /^\/art\/(\d)\.png$/.exec(path);
     if (artwork && art[Number(artwork[1]) - 1]) return send("image/png", art[Number(artwork[1]) - 1]);
+    if (path === "/now") {
+      // Conditional requests: the same version's ETag gets a 304.
+      const etag = `"now-${nowVersion}"`;
+      if (req.headers["if-none-match"] === etag) {
+        hits.set("/now:304", (hits.get("/now:304") ?? 0) + 1);
+        res.writeHead(304, { etag });
+        return res.end();
+      }
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", etag });
+      return res.end(now(nowVersion));
+    }
+    if (path === "/books/v1/volumes") return send("application/json", volumes(base));
+    const book = /^\/books\/([\w-]+)$/.exec(path);
+    if (book) return send("text/html; charset=utf-8", `<!doctype html><html><head><title>${book[1]}</title></head><body><main><h1>${book[1]}</h1><p>A book page.</p></main></body></html>`);
     const post = /^\/quiet\/posts\/(\w+)$/.exec(path);
     if (post) return send("text/html; charset=utf-8", article(post[1]));
     switch (path) {
@@ -166,10 +206,10 @@ export async function startFeedFixtures(): Promise<Fixtures> {
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("fixture server has no port");
   base = `http://127.0.0.1:${address.port}`;
-  return { base, hits, close: () => new Promise((done) => server.close(() => done())) };
+  return { base, hits, setNow: (version) => void (nowVersion = version), close: () => new Promise((done) => server.close(() => done())) };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { base } = await startFeedFixtures();
-  console.log(`Feed fixtures at ${base}: /quiet/ /craft.atom /pod.xml /notes.json /workshop.xml /broken.xml`);
+  console.log(`Feed fixtures at ${base}: /quiet/ /craft.atom /pod.xml /notes.json /workshop.xml /broken.xml /now /books/v1/volumes`);
 }

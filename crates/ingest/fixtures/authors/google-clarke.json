@@ -1,0 +1,85 @@
+{
+  "kind": "books#volumes",
+  "totalItems": 412,
+  "items": [
+    {
+      "kind": "books#volume",
+      "id": "nEwB00k0001",
+      "volumeInfo": {
+        "title": "The Lost Garden",
+        "subtitle": "A Novel",
+        "authors": ["Susanna Clarke"],
+        "publisher": "Bloomsbury Publishing",
+        "publishedDate": "2026-10-14",
+        "description": "<p>A house with a garden that is <i>never</i> the same twice.</p><p>Clarke's first novel since <b>Piranesi</b>.</p>",
+        "industryIdentifiers": [{ "type": "ISBN_10", "identifier": "1526600001" }, { "type": "ISBN_13", "identifier": "9781526600001" }],
+        "pageCount": 288,
+        "printType": "BOOK",
+        "imageLinks": { "smallThumbnail": "http://books.google.com/books/content?id=nEwB00k0001&printsec=frontcover&img=1&zoom=5", "thumbnail": "http://books.google.com/books/content?id=nEwB00k0001&printsec=frontcover&img=1&zoom=1" },
+        "language": "en",
+        "infoLink": "http://books.google.com/books?id=nEwB00k0001&dq=inauthor:%22Susanna+Clarke%22&hl=&source=gbs_api",
+        "canonicalVolumeLink": "https://books.google.com/books/about/The_Lost_Garden.html?hl=&id=nEwB00k0001"
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "ab0utC1arke",
+      "volumeInfo": {
+        "title": "Reading Susanna Clarke",
+        "authors": ["M. Critic"],
+        "publishedDate": "2026-09",
+        "description": "A study of Clarke's novels."
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "piranesiPB26",
+      "volumeInfo": {
+        "title": "Piranesi (Anniversary Edition)",
+        "authors": ["Susanna Clarke"],
+        "publisher": "Bloomsbury",
+        "publishedDate": "2025-09-02",
+        "industryIdentifiers": [{ "type": "ISBN_13", "identifier": "9781526622433" }],
+        "pageCount": 272,
+        "canonicalVolumeLink": "https://books.google.com/books/about/Piranesi.html?id=piranesiPB26"
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "wildw00d0001",
+      "volumeInfo": {
+        "title": "The Wood at Midwinter",
+        "authors": ["Susanna Clarke"],
+        "publisher": "Bloomsbury",
+        "publishedDate": "2023-10-24",
+        "description": "A winter fairy tale.",
+        "pageCount": 64,
+        "canonicalVolumeLink": "https://books.google.com/books/about/The_Wood_at_Midwinter.html?id=wildw00d0001"
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "piranesiHB20",
+      "volumeInfo": {
+        "title": "Piranesi",
+        "authors": ["Susanna Clarke"],
+        "publisher": "Bloomsbury",
+        "publishedDate": "2020-09-15",
+        "description": "Piranesi's house is no ordinary building.",
+        "imageLinks": { "thumbnail": "http://books.google.com/books/content?id=piranesiHB20&img=1&zoom=1" },
+        "canonicalVolumeLink": "https://books.google.com/books/about/Piranesi.html?id=piranesiHB20"
+      }
+    },
+    {
+      "kind": "books#volume",
+      "id": "jsmn0000001",
+      "volumeInfo": {
+        "title": "Jonathan Strange & Mr Norrell",
+        "authors": ["Susanna Clarke"],
+        "publishedDate": "2004",
+        "canonicalVolumeLink": "https://books.google.com/books/about/Jonathan_Strange.html?id=jsmn0000001"
+      }
+    },
+    { "kind": "books#volume", "id": "untitled", "volumeInfo": { "authors": ["Susanna Clarke"] } }
+  ]
+}

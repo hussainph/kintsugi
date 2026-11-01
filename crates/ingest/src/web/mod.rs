@@ -16,6 +16,7 @@
 mod extract;
 mod oembed;
 pub mod render;
+pub mod watch;
 
 use crate::{
     Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType, Target, markdown,
@@ -250,6 +251,11 @@ impl Adapter for WebAdapter {
                 Target::File(_) => Err(Error::Unsupported),
             }
         })
+    }
+
+    /// "Follow this page": change detection (see [`watch`]).
+    fn poll<'a>(&'a self, subscription: &'a crate::Subscription) -> BoxFuture<'a, Result<crate::Polled>> {
+        Box::pin(watch::poll(self, subscription))
     }
 }
 

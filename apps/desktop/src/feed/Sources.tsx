@@ -1,5 +1,5 @@
 import { save as pickSavePath } from "@tauri-apps/plugin-dialog";
-import { AtSign, Download, Headphones, Newspaper, RotateCw, Rss, Search, Trash2, Upload, Video } from "lucide-react";
+import { AtSign, BookOpen, Download, FileDiff, Headphones, Newspaper, RotateCw, Rss, Search, Trash2, Upload, Video } from "lucide-react";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -17,8 +17,8 @@ type Props = {
   onChanged: () => void;
 };
 
-type Tab = "url" | "hn" | "youtube" | "podcast" | "x";
-const TABS: [Tab, string][] = [["url", "Link"], ["hn", "Hacker News"], ["youtube", "YouTube"], ["podcast", "Podcast"], ["x", "X"]];
+type Tab = "url" | "hn" | "youtube" | "podcast" | "x" | "page" | "author";
+const TABS: [Tab, string][] = [["url", "Link"], ["hn", "HN"], ["youtube", "YouTube"], ["podcast", "Podcast"], ["x", "X"], ["page", "Page"], ["author", "Author"]];
 
 const KIND_ICON: Record<SourceKind, ReactNode> = {
   feed: <Rss className="size-3.5" />,
@@ -26,6 +26,8 @@ const KIND_ICON: Record<SourceKind, ReactNode> = {
   youtube: <Video className="size-3.5" />,
   podcast: <Headphones className="size-3.5" />,
   x: <AtSign className="size-3.5" />,
+  page: <FileDiff className="size-3.5" />,
+  author: <BookOpen className="size-3.5" />,
 };
 
 /** Following: add sources, see each one's health, mute, and move them in and out as OPML. */
@@ -34,6 +36,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
   const [url, setUrl] = useState("");
   const [channel, setChannel] = useState("");
   const [account, setAccount] = useState("");
+  const [page, setPage] = useState("");
+  const [author, setAuthor] = useState("");
   const [list, setList] = useState<HnList>("frontpage");
   const [points, setPoints] = useState("");
   const [term, setTerm] = useState("");
@@ -52,6 +56,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
       setUrl("");
       setChannel("");
       setAccount("");
+      setPage("");
+      setAuthor("");
       onChanged();
     } catch (e) {
       toast.error(String(e));
@@ -65,6 +71,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
     if (tab === "url" && url.trim()) void follow({ kind: "url", url: url.trim() }, "url");
     if (tab === "youtube" && channel.trim()) void follow({ kind: "youtube", channel: channel.trim() }, "youtube");
     if (tab === "x" && account.trim()) void follow({ kind: "x", account: account.trim() }, "x");
+    if (tab === "page" && page.trim()) void follow({ kind: "page", url: page.trim() }, "page");
+    if (tab === "author" && author.trim()) void follow({ kind: "author", name: author.trim() }, "author");
     if (tab === "hn") {
       const min = Number.parseInt(points, 10);
       void follow({ kind: "hn", list, ...(min > 0 ? { points: min } : {}) }, "hn");
@@ -144,7 +152,7 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
     }
   };
 
-  const placeholder = { url: "A blog, site or feed URL", youtube: "Channel URL, @handle or channel ID", podcast: "Search podcasts by name", x: "@handle or x.com profile URL", hn: "" }[tab];
+  const placeholder = { url: "A blog, site or feed URL", youtube: "Channel URL, @handle or channel ID", podcast: "Search podcasts by name", x: "@handle or x.com profile URL", page: "A page URL to watch for changes", author: "An author’s name", hn: "" }[tab];
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -189,8 +197,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
               <Input
                 aria-label={placeholder}
                 placeholder={placeholder}
-                value={tab === "url" ? url : tab === "youtube" ? channel : tab === "x" ? account : term}
-                onChange={(e) => (tab === "url" ? setUrl : tab === "youtube" ? setChannel : tab === "x" ? setAccount : setTerm)(e.target.value)}
+                value={{ url, youtube: channel, x: account, page, author, podcast: term, hn: "" }[tab]}
+                onChange={(e) => ({ url: setUrl, youtube: setChannel, x: setAccount, page: setPage, author: setAuthor, podcast: setTerm, hn: setTerm }[tab])(e.target.value)}
                 className="h-9"
               />
               <Button type="submit" disabled={!!busy}>
@@ -201,6 +209,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
           {tab === "url" && <p className="text-[11px] text-muted-foreground">RSS, Atom or JSON Feed. A page that links to its feed works too.</p>}
           {tab === "youtube" && <p className="text-[11px] text-muted-foreground">New uploads arrive through the channel’s feed. YouTube sometimes stalls; Kintsugi keeps trying.</p>}
           {tab === "x" && <p className="text-[11px] text-muted-foreground">Their own posts and threads, through FxTwitter. No X account needed; it’s best-effort.</p>}
+          {tab === "page" && <p className="text-[11px] text-muted-foreground">For pages without a feed. Kintsugi checks every few hours and posts what changed, ignoring dates and counters.</p>}
+          {tab === "author" && <p className="text-[11px] text-muted-foreground">New books arrive weekly, through Google Books and Open Library.</p>}
           {tab === "podcast" && podcasts && (
             <ul className="max-h-60 space-y-1 overflow-y-auto" aria-label="Podcasts found">
               {podcasts.length === 0 && <li className="py-2 text-xs text-muted-foreground">No podcasts with a public feed matched.</li>}

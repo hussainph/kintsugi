@@ -35,7 +35,8 @@ CREATE TABLE sources (
   last_error TEXT,
   failures INTEGER NOT NULL DEFAULT 0,
   next_fetch_at INTEGER NOT NULL DEFAULT 0,
-  -- The ingest feed adapter's opaque poll cursor (ETag / Last-Modified).
+  -- The ingest adapter's opaque poll cursor (ETag / Last-Modified, the newest
+  -- X status, a watched page's hash and lines, an author's seen titles).
   cursor TEXT
 );
 -- No cascade: unsubscribing keeps the items he acted on (ranking signals).
@@ -92,6 +93,10 @@ pub enum SourceKind {
     Podcast,
     /// An X account, polled through the ingest engine's X adapter.
     X,
+    /// A page without a feed, watched for changes by the web adapter.
+    Page,
+    /// An author, polled for new books by the author adapter.
+    Author,
 }
 
 impl SourceKind {
@@ -102,6 +107,8 @@ impl SourceKind {
             Self::Youtube => "youtube",
             Self::Podcast => "podcast",
             Self::X => "x",
+            Self::Page => "page",
+            Self::Author => "author",
         }
     }
     pub fn parse(value: &str) -> Option<Self> {
@@ -111,6 +118,8 @@ impl SourceKind {
             "youtube" => Self::Youtube,
             "podcast" => Self::Podcast,
             "x" => Self::X,
+            "page" => Self::Page,
+            "author" => Self::Author,
             _ => return None,
         })
     }
