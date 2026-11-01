@@ -140,13 +140,16 @@ export class Library {
 
   /** `seen` is the text the editor showed when the owner typed: if a merge
    *  or the Mac's update landed since, the keystroke is folded into it rather
-   *  than undoing it. A keystroke that collides with it is dropped. */
+   *  than undoing it. A keystroke that collides with it is kept, and the
+   *  Mac's copy waits beside it as a conflict until the owner picks one. */
   edit(path: string, text: string, seen?: string) {
     const doc = this.find(path);
     if (!doc || doc.text === text) return;
     if (seen !== undefined && seen !== doc.text) {
       const merged = merge3(seen, text, doc.text);
       if (merged.clean) this.put({ ...doc, text: merged.text });
+      else if (doc.conflict || doc.base === null || doc.version === null || doc.base === text) this.put({ ...doc, text });
+      else this.put({ ...doc, text, conflict: { text: doc.base, version: doc.version } });
       return;
     }
     this.put({ ...doc, text });

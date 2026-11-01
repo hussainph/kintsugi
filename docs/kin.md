@@ -18,6 +18,14 @@ chat completions (OpenAI, OpenRouter, Z.AI, Ollama) and the ChatGPT Codex
 Responses backend. Keys are resolved in Rust (below, Credentials) and never
 reach the webview.
 
+Every model call (`wire::send`, Kin's steps and the webview's `ai_stream`)
+gives up after 120 s with nothing from the provider, before the response
+starts or between streamed chunks. A rate limit (429), a server error (5xx),
+a lost connection or such a stall is tried again up to three times, waiting
+1, 2 then 4 s (or the provider's `Retry-After`, up to 20 s; a longer one
+fails the call), but only while no text has streamed: once the owner has
+seen part of a reply, a failure ends the step rather than repeating it.
+
 ## Credentials (KI-48)
 
 Code: `ai/credentials.rs` (the order), `ai/opencode_auth.rs`, `ai/pi_auth.rs`.

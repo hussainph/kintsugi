@@ -349,7 +349,37 @@ test('a keystroke made against text that has since changed is folded in', async 
   await library.sync(client);
   library.edit('a.mdx', 'one!\n\ntwo\n', seen);
   assert.equal(library.get('a.mdx')?.text, 'one!\n\ntwo, Mac\n');
-  // Colliding with what landed: the keystroke is dropped, the Mac's text stays.
+  // Colliding with what landed: the keystroke is kept, and the Mac's copy
+  // waits beside it until the owner picks one.
   library.edit('a.mdx', 'one!\n\ntwo?\n', seen);
-  assert.equal(library.get('a.mdx')?.text, 'one!\n\ntwo, Mac\n');
+  assert.equal(library.get('a.mdx')?.text, 'one!\n\ntwo?\n');
+  assert.deepEqual(library.get('a.mdx')?.conflict, { text: 'one\n\ntwo, Mac\n', version: version('one\n\ntwo, Mac\n') });
+});
+
+test('a colliding keystroke survives a sync and is sent once the owner keeps it', async () => {
+  const library = new Library(memory(), NOW);
+  const { client, docs } = mac({ 'a.mdx': 'one\n\ntwo\n' });
+  await library.sync(client);
+  const seen = library.get('a.mdx')!.text;
+  docs.set('a.mdx', 'one\n\ntwo, Mac\n');
+  await library.sync(client);
+  library.edit('a.mdx', 'one\n\ntwo, phone\n', seen);
+  // Nothing is sent or overwritten while the conflict waits.
+  await library.sync(client);
+  assert.equal(docs.get('a.mdx'), 'one\n\ntwo, Mac\n');
+  assert.equal(library.get('a.mdx')?.text, 'one\n\ntwo, phone\n');
+  assert.ok(library.get('a.mdx')?.conflict);
+  library.keepMine('a.mdx');
+  await library.sync(client);
+  assert.equal(docs.get('a.mdx'), 'one\n\ntwo, phone\n');
+  assert.equal(library.get('a.mdx')?.conflict, undefined);
+
+  // Choosing the Mac's copy instead drops the keystroke, as the owner asked.
+  const shown = library.get('a.mdx')!.text;
+  docs.set('a.mdx', 'one\n\ntwo, Mac again\n');
+  await library.sync(client);
+  library.edit('a.mdx', 'one\n\ntwo, phone again\n', shown);
+  library.useTheirs('a.mdx');
+  assert.equal(library.get('a.mdx')?.text, 'one\n\ntwo, Mac again\n');
+  assert.equal(library.get('a.mdx')?.conflict, undefined);
 });

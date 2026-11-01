@@ -821,7 +821,10 @@ take the app down. Each run is limited to an hour.
   swiftc` (deployment target macOS 13; it checks for 26 at runtime) into
   `binaries/kintsugi-transcribe-<target>`. It ships as a Tauri sidecar
   (`bundle.externalBin`), next to the app binary. If there's no Swift
-  toolchain, a stub that exits 3 takes its place. The PDF helper
+  toolchain, a stub that exits 3 takes its place. A stub never counts as
+  up to date (`build/sidecar.rs`), and on macOS a build that wrote one runs
+  `build.rs` again next time, so a failed Swift build is retried rather than
+  sticking. The PDF helper
   (`kintsugi-pdf`, from `swift/pdf.swift`) is built and shipped the same
   way; its stub makes PDFs fall back to Docling, if installed.
 

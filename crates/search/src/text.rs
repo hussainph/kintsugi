@@ -3,8 +3,10 @@
 /// Target chunk size. A chunk is what gets embedded and what a snippet comes
 /// from: a few paragraphs, well under model2vec's 512-token window.
 const CHUNK_CHARS: usize = 900;
-/// A document is indexed up to this many chunks (about 115,000 characters).
-pub const MAX_CHUNKS: usize = 128;
+/// A document is indexed up to about this many characters: room for a clip's
+/// whole source (its sidecar keeps up to 250,000, `MAX_FULL_SOURCE_CHARS` in
+/// crates/vault) plus its summary and own text. Some 330 to 660 chunks.
+pub const MAX_CHARS: usize = 300_000;
 pub const SNIPPET_CHARS: usize = 220;
 const MAX_TERMS: usize = 12;
 
@@ -13,11 +15,14 @@ const MAX_TERMS: usize = 12;
 pub fn chunks(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut current = String::new();
+    // Characters in `out` so far.
+    let mut indexed = 0;
     for paragraph in text.split("\n\n").map(str::trim).filter(|p| !p.is_empty()) {
         for piece in split_long(paragraph) {
             if !current.is_empty() && current.chars().count() + piece.chars().count() > CHUNK_CHARS {
+                indexed += current.chars().count();
                 out.push(std::mem::take(&mut current));
-                if out.len() == MAX_CHUNKS {
+                if indexed >= MAX_CHARS {
                     return out;
                 }
             }
@@ -30,7 +35,6 @@ pub fn chunks(text: &str) -> Vec<String> {
     if !current.is_empty() || out.is_empty() {
         out.push(current);
     }
-    out.truncate(MAX_CHUNKS);
     out
 }
 
@@ -100,7 +104,21 @@ mod tests {
         assert!(parts.iter().all(|p| p.chars().count() <= CHUNK_CHARS + 10));
         assert!(parts[0].starts_with("Intro."));
         let many = "para\n\n".repeat(10_000).replace("para", &"x".repeat(800));
-        assert_eq!(chunks(&many).len(), MAX_CHUNKS);
+        let capped = chunks(&many);
+        assert_eq!(capped.len(), MAX_CHARS.div_ceil(800));
+        assert!(capped.iter().map(|c| c.chars().count()).sum::<usize>() < MAX_CHARS + CHUNK_CHARS);
+    }
+
+    #[test]
+    fn a_whole_long_source_is_chunked() {
+        // A 250,000-character transcript of short lines: nothing past the cap is cut.
+        let line = "Speaker one: and then the kiln cooled overnight.";
+        let mut source = format!("{line}\n\n").repeat(250_000 / (line.len() + 2));
+        source.push_str("The very last words: urushi lacquer.");
+        assert!(source.chars().count() > 249_000);
+        let parts = chunks(&source);
+        assert!(parts.len() > 128, "{}", parts.len());
+        assert!(parts.last().unwrap().ends_with("urushi lacquer."));
     }
 
     #[test]

@@ -321,3 +321,37 @@ fn a_long_clip_is_found_by_words_past_its_excerpt_and_its_sidecar_is_not_a_docum
     let mut index = indexed(root, None);
     assert_eq!(ids(&mut index, &q("urushi")), [path]);
 }
+
+#[test]
+fn the_tail_of_a_full_length_sidecar_is_searchable() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let path = kintsugi_vault::clip_create(
+        root,
+        &kintsugi_vault::ClipCapture {
+            url: Some("https://www.youtube.com/watch?v=long".into()),
+            text: None,
+            note: Some("A very long talk".into()),
+            title: Some("The longest talk".into()),
+            image: None,
+            image_type: None,
+            file: None,
+            captured_at: "2026-10-29T14:05".into(),
+            via: kintsugi_vault::ClipVia::Mac,
+        },
+    )
+    .unwrap();
+    // Close to the sidecar's 250,000-character limit, the rare word at the very end.
+    let paragraph = "Speaker one: and then we left the pots in the cooling chamber overnight, as always.\n\n";
+    let mut source = paragraph.repeat(249_000 / paragraph.len());
+    source.push_str("At the very end: urushi.");
+    assert!(source.chars().count() < kintsugi_vault::MAX_FULL_SOURCE_CHARS);
+    kintsugi_vault::clip_update(root, &path, &kintsugi_vault::ClipUpdate { source: Some(source), ..Default::default() }).unwrap();
+    let sidecar = fs::read_to_string(root.join("inspiration/sources/the-longest-talk.txt")).unwrap();
+    assert!(sidecar.trim_end().ends_with("urushi."));
+    let started = std::time::Instant::now();
+    let mut index = indexed(root, Some(model()));
+    let took = started.elapsed();
+    assert_eq!(ids(&mut index, &q("urushi")), [path]);
+    eprintln!("indexed a {}-character clip in {took:?}", sidecar.len());
+}
