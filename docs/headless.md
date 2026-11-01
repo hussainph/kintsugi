@@ -158,6 +158,9 @@ Patterns that made the suite fail now and then, mostly on a loaded machine:
   of the last document could replace one he clicked while the vault loaded.
   Opens are now sequenced (only the latest lands), and the startup open is
   skipped once anything else has been opened.
+  Settings → Blog had the same shape: the stored path, loading when the
+  dialog opened, overwrote a folder typed before it arrived, so Save sent
+  an empty path. A late load no longer replaces what he typed or saved.
 
 Sleeps that remain are for screenshots or before checking that something
 did *not* happen; those can only pass wrongly, never fail spuriously.

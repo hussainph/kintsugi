@@ -1,5 +1,5 @@
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
@@ -11,13 +11,27 @@ export function BlogSettings() {
   const [status, setStatus] = useState<BlogStatus | null>(null);
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
+  // Typed (or saved) before the stored path arrived: keep his, not the stored one (KI-47).
+  const edited = useRef(false);
+  // Only the latest status lands: a save made before the first load answers must win.
+  const latest = useRef(0);
 
   useEffect(() => {
-    blog.status().then((s) => { setStatus(s); setPath(s.path ?? ""); }).catch((e) => toast.error(String(e)));
+    const ticket = ++latest.current;
+    blog
+      .status()
+      .then((s) => {
+        if (ticket !== latest.current) return;
+        setStatus(s);
+        if (!edited.current) setPath(s.path ?? "");
+      })
+      .catch((e) => toast.error(String(e)));
   }, []);
 
   const save = async (next: string) => {
     setBusy(true);
+    edited.current = true;
+    ++latest.current;
     try {
       const s = await blog.configure({ path: next });
       setStatus(s);
@@ -39,6 +53,7 @@ export function BlogSettings() {
     setBusy(true);
     try {
       toast(importSummary(await blog.import()));
+      ++latest.current;
       setStatus(await blog.status());
     } catch (e) {
       toast.error(String(e));
@@ -55,7 +70,10 @@ export function BlogSettings() {
           className="h-8 font-mono text-xs"
           placeholder="~/Desktop/code/3d-portfolio"
           value={path}
-          onChange={(e) => setPath(e.target.value)}
+          onChange={(e) => {
+            edited.current = true;
+            setPath(e.target.value);
+          }}
           onKeyDown={(e) => e.key === "Enter" && save(path)}
           aria-label="Blog repository folder"
         />
