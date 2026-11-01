@@ -1,30 +1,40 @@
 {
   "edit": [
+    { "provider": "opencode-go", "model": "kimi-k3" },
     { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "low" },
     { "provider": "anthropic", "model": "claude-sonnet-5-5" },
     { "provider": "zai", "model": "glm-5.3" },
+    { "provider": "opencode", "model": "kimi-k3" },
     { "provider": "openrouter", "model": "~anthropic/claude-haiku-latest" }
   ],
   "complete": [
+    { "provider": "opencode-go", "model": "glm-5.3-flash" },
     { "provider": "zai", "model": "glm-5.3-flash" },
+    { "provider": "opencode", "model": "glm-5.3-flash" },
     { "provider": "anthropic", "model": "claude-haiku-5-5" },
     { "provider": "openrouter", "model": "~google/gemini-flash-latest" },
     { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "none" }
   ],
   "chat": [
+    { "provider": "opencode-go", "model": "kimi-k3" },
     { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "medium" },
     { "provider": "anthropic", "model": "claude-sonnet-5-5" },
     { "provider": "zai", "model": "glm-5.3" },
+    { "provider": "opencode", "model": "kimi-k3" },
     { "provider": "openrouter", "model": "~anthropic/claude-sonnet-latest" }
   ],
   "ideas": [
+    { "provider": "opencode-go", "model": "kimi-k3" },
     { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "high" },
     { "provider": "anthropic", "model": "claude-sonnet-5-5" },
     { "provider": "zai", "model": "glm-5.3" },
+    { "provider": "opencode", "model": "kimi-k3" },
     { "provider": "openrouter", "model": "~anthropic/claude-sonnet-latest" }
   ],
   "triage": [
+    { "provider": "opencode-go", "model": "glm-5.3-flash" },
     { "provider": "zai", "model": "glm-5.3-flash" },
+    { "provider": "opencode", "model": "glm-5.3-flash" },
     { "provider": "anthropic", "model": "claude-haiku-5-5" },
     { "provider": "openrouter", "model": "~google/gemini-flash-latest" },
     { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "none" }

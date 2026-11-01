@@ -16,6 +16,12 @@ test('scratch guard rejects owner paths, ancestors and symlink aliases before mk
     }
     symlinkSync(resolve(home, 'Documents/Kintsugi'), resolve(root, 'alias'));
     assert.throws(() => scratchPath(resolve(root, 'alias/new'), home), /Refusing/);
+    for (const path of [resolve(home, '.local'), resolve(home, '.local/share/opencode'), resolve(home, '.local/share/opencode/x')]) {
+      assert.throws(() => scratchPath(path, home, ''), /Refusing/);
+    }
+    const xdg = resolve(root, 'xdg');
+    assert.throws(() => scratchPath(resolve(xdg, 'opencode/sub'), home, xdg), /Refusing/);
+    assert.equal(scratchPath(resolve(xdg, 'other'), home, xdg), resolve(xdg, 'other'));
     assert.equal(scratchPath(resolve(root, 'scratch'), home), resolve(root, 'scratch'));
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

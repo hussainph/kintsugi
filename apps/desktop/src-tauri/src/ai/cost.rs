@@ -8,7 +8,7 @@
 //! for still runs and reports that the cap is reached.
 //!
 //! Prices are estimates in US dollars per million tokens, matched on model
-//! family. Subscription logins (ChatGPT Codex, the Z.AI coding plan) and
+//! family. Subscriptions (ChatGPT Codex, the Z.AI coding plan, OpenCode Go) and
 //! local models cost nothing per token; their tokens are still counted. An
 //! unknown paid model is priced high, so the cap errs towards stopping early.
 
@@ -46,12 +46,16 @@ const FAMILIES: &[(&str, Price)] = &[
     ("gemini-flash", Price { input: 0.3, output: 2.5, cache_read: 0.03, cache_write: 0.3 }),
     ("-mini", Price { input: 0.25, output: 2.0, cache_read: 0.025, cache_write: 0.25 }),
     ("gpt", Price { input: 1.25, output: 10.0, cache_read: 0.125, cache_write: 1.25 }),
+    // Open models, at OpenCode Zen's listed prices (opencode.ai, Console › Models).
+    ("glm-5.3-flash", Price { input: 0.15, output: 0.5, cache_read: 0.03, cache_write: 0.0 }),
+    ("glm", Price { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 0.0 }),
+    ("kimi", Price { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.0 }),
 ];
 
 /// The price of a model, and whether it's a guess.
 pub fn price(provider: &str, model: &str) -> (Price, bool) {
     // Flat-rate subscriptions and the Mac's own models.
-    if matches!(provider, "openai-codex" | "zai" | "ollama") {
+    if matches!(provider, "openai-codex" | "zai" | "opencode-go" | "ollama") {
         return (FREE, false);
     }
     let model = model.to_lowercase();
@@ -302,6 +306,10 @@ mod tests {
         assert_eq!(price("openrouter", "~anthropic/claude-haiku-latest").0.output, 5.0);
         assert_eq!(price("openai-codex", "gpt-6-luna"), (FREE, false));
         assert_eq!(price("zai", "glm-5.3"), (FREE, false));
+        assert_eq!(price("opencode-go", "kimi-k3"), (FREE, false));
+        assert_eq!(price("opencode", "glm-5.3-flash").0.input, 0.15);
+        assert_eq!(price("opencode", "glm-5.3").0.output, 4.4);
+        assert_eq!(price("opencode", "claude-sonnet-5-5").0.input, 3.0);
         assert_eq!(price("openrouter", "mystery-model"), (UNKNOWN, true));
         let usage = Usage { input: 1000, output: 2000, cache_read: 10_000, cache_write: 4000 };
         let cost = usd(&price("anthropic", "claude-sonnet-5-5").0, &usage);

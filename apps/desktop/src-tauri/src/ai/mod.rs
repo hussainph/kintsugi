@@ -1,6 +1,8 @@
-//! Kintsugi's model harness: Pi's credentials, Kintsugi's own transport.
-//! The webview sends prompts and receives text; keys never leave Rust.
+//! Kintsugi's model harness: the owner's OpenCode or Pi credentials,
+//! Kintsugi's own transport. The webview sends prompts and receives text;
+//! keys never leave Rust.
 //!
+//! - `credentials`: where a credential comes from (OpenCode, Pi, env).
 //! - `wire`: three wire formats, streaming text and tool calls.
 //! - `agent`: Kin's loop, many tool calls per turn, cancellable.
 //! - `tools`: Kin's read-only vault tools.
@@ -19,11 +21,13 @@ mod agent;
 pub mod chat;
 pub mod comments;
 pub mod cost;
+mod credentials;
 mod history;
 pub mod ideas;
 mod jobs;
 pub mod kin;
 pub mod memory;
+mod opencode_auth;
 mod pi_auth;
 pub mod prompt;
 #[cfg(feature = "headless")]
@@ -32,10 +36,14 @@ pub(crate) mod tools;
 mod wire;
 
 pub use chat::Chat;
+/// OpenCode's data folder (its credentials live there), for path guards.
+#[cfg(feature = "headless")]
+pub(crate) use opencode_auth::data_dir as opencode_data_dir;
 pub use kin::Kin;
 
 use crate::AppHandle;
-use pi_auth::{Auth, Kind, Store};
+use credentials::{Chain, Source};
+use pi_auth::Auth;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
@@ -45,7 +53,7 @@ use std::task::Poll;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{Manager, State, async_runtime};
-use wire::{Event, PROVIDERS, Provider, Request, Wire};
+use wire::{Event, PROVIDERS, Provider, Request};
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -58,8 +66,12 @@ pub struct Ai(Mutex<HashMap<String, async_runtime::JoinHandle<()>>>);
 pub struct ProviderStatus {
     id: &'static str,
     name: &'static str,
-    /// Where the credential comes from, or why there isn't a usable one.
+    /// What kind of credential there is (`api_key`, `login`, `local`), or
+    /// why there isn't a usable one (`unsupported_login`, `expired_login`,
+    /// `none`); `mock` in a scripted headless run.
     auth: &'static str,
+    /// Where it comes from: `opencode`, `pi`, `env` or `local`.
+    source: Option<Source>,
 }
 
 /// Every provider Kintsugi speaks, and whether it can be used right now.
@@ -81,29 +93,16 @@ pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
 fn statuses() -> Result<Vec<ProviderStatus>> {
     #[cfg(feature = "headless")]
     if !crate::headless::ai_enabled() {
-        return Ok(PROVIDERS.iter().map(|p| ProviderStatus { id: p.id, name: p.name, auth: "none" }).collect());
+        return Ok(PROVIDERS.iter().map(|p| ProviderStatus { id: p.id, name: p.name, auth: "none", source: None }).collect());
     }
-    let kinds: HashMap<String, Kind> = Store::default_location()?.list()?.into_iter().collect();
-    Ok(PROVIDERS
+    let chain = Chain::default_location()?;
+    PROVIDERS
         .iter()
         .map(|p| {
-            let env = p.env_key.is_some_and(|k| std::env::var(k).is_ok_and(|v| !v.is_empty()));
-            let auth = match (kinds.get(p.id), p.wire) {
-                (Some(Kind::ApiKey), _) => "pi_api_key",
-                (Some(Kind::Oauth), Wire::Codex | Wire::OpenAiChat) => "pi_login",
-                // A Claude subscription login: Kintsugi only uses Anthropic API keys.
-                (Some(Kind::Oauth), Wire::Anthropic) if !env => "unsupported_login",
-                _ if env => "env",
-                _ if p.keyless => "local",
-                _ => "none",
-            };
-            ProviderStatus {
-                id: p.id,
-                name: p.name,
-                auth,
-            }
+            let status = chain.status(p)?;
+            Ok(ProviderStatus { id: p.id, name: p.name, auth: status.auth, source: status.source })
         })
-        .collect())
+        .collect()
 }
 
 /// What a model is used for decides how fast and how strong it needs to be.
@@ -179,7 +178,7 @@ fn preferences(task: Task) -> &'static [ModelRef] {
 /// Mirrors `usable` in src/lib/models.ts: local servers are never picked
 /// automatically, and a login Kintsugi can't use doesn't count.
 fn usable(auth: &str) -> bool {
-    !matches!(auth, "none" | "unsupported_login" | "local")
+    !matches!(auth, "none" | "unsupported_login" | "expired_login" | "local")
 }
 
 fn ready(m: &ModelRef, statuses: &[ProviderStatus]) -> bool {
@@ -255,7 +254,7 @@ pub enum AiError {
 impl AiError {
     pub fn message(self) -> &'static str {
         match self {
-            AiError::NotConfigured => "No AI provider is set up. Run `pi`, log in or add an API key.",
+            AiError::NotConfigured => "No AI provider is set up. Log in with OpenCode (or Pi), or add an API key.",
             AiError::Request => "The AI provider request failed.",
             AiError::TimedOut => "The AI provider took too long to answer.",
             AiError::PromptTooLong => "The AI prompt was too long.",
@@ -407,24 +406,7 @@ pub(crate) async fn resolve(provider: &Provider) -> Result<Option<Auth>> {
     if !crate::headless::ai_enabled() {
         return Err("AI is disabled in headless mode".into());
     }
-    let env = || provider.env_key.and_then(|k| std::env::var(k).ok()).filter(|v| !v.is_empty());
-    match Store::default_location()?.auth(provider.id).await? {
-        Some(Auth::Bearer { .. }) if provider.wire == Wire::Anthropic => match env() {
-            Some(key) => Ok(Some(Auth::ApiKey(key))),
-            None => Err("Pi has a Claude subscription login, but Kintsugi needs an Anthropic API key. \
-                         Run `pi` and add an API key for Anthropic, or set ANTHROPIC_API_KEY."
-                .into()),
-        },
-        Some(auth) => Ok(Some(auth)),
-        None => match env() {
-            Some(key) => Ok(Some(Auth::ApiKey(key))),
-            None if provider.keyless => Ok(None),
-            None => Err(format!(
-                "No credentials for {}. Run `pi` and log in, or add an API key.",
-                provider.name
-            )),
-        },
-    }
+    Chain::default_location()?.resolve(provider).await
 }
 
 #[cfg(test)]
@@ -432,7 +414,7 @@ mod tests {
     use super::*;
 
     fn status(id: &'static str, auth: &'static str) -> ProviderStatus {
-        ProviderStatus { id, name: id, auth }
+        ProviderStatus { id, name: id, auth, source: None }
     }
 
     #[test]
@@ -450,10 +432,10 @@ mod tests {
         let first = &preferences(Task::Edit)[0];
         let second = &preferences(Task::Edit)[1];
         let id = |m: &ModelRef| wire::provider(&m.provider).unwrap().id;
-        let all_usable = vec![status(id(first), "pi_login"), status(id(second), "env")];
+        let all_usable = vec![status(id(first), "login"), status(id(second), "api_key")];
         assert_eq!(model_for(Task::Edit, &all_usable), Some(first));
-        for unusable in ["none", "unsupported_login", "local"] {
-            let statuses = vec![status(id(first), unusable), status(id(second), "pi_api_key")];
+        for unusable in ["none", "unsupported_login", "expired_login", "local"] {
+            let statuses = vec![status(id(first), unusable), status(id(second), "api_key")];
             assert_eq!(model_for(Task::Edit, &statuses), Some(second), "{unusable}");
         }
         assert_eq!(model_for(Task::Edit, &[]), None);
@@ -487,7 +469,7 @@ mod tests {
     }
 }
 
-/// Real requests against Pi's credentials: `cargo test live -- --ignored --nocapture`.
+/// Real requests against the owner's credentials (OpenCode, Pi, env): `cargo test live -- --ignored --nocapture`.
 #[cfg(test)]
 mod live {
     use super::*;

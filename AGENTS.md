@@ -100,10 +100,11 @@ reports native window count, Dock policy and focus.
   vault/config and credential folders, their ancestors, descendants and symlink
   aliases. The path prompt only opens folders inside the initial scratch vault;
   restart with another override to change the top-level scratch folder.
-- AI is disabled by default: no Pi credentials are read and providers report
-  no auth. Set `KINTSUGI_HEADLESS_PI_READONLY=1` only for a read-only AI check;
-  Pi credentials are then read without lock, refresh or write, so an expired
-  login cannot be refreshed in headless mode.
+- AI is disabled by default: no OpenCode or Pi credentials are read and
+  providers report no auth. Set `KINTSUGI_HEADLESS_AI_READONLY=1` (the old
+  name `KINTSUGI_HEADLESS_PI_READONLY=1` still works) only for a read-only AI
+  check; OpenCode and Pi credentials are then read without lock, refresh or
+  write, so an expired login cannot be refreshed in headless mode.
 - To try Kin's chat without any provider, set `KINTSUGI_HEADLESS_KIN=mock`: a
   scripted local model answers (no credentials read, nothing leaves the
   machine, $0). See `docs/kin.md` › The chat.

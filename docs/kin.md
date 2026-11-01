@@ -15,8 +15,59 @@ HTTP provider.
 
 All three wire formats carry tool calls: Anthropic Messages, OpenAI-style
 chat completions (OpenAI, OpenRouter, Z.AI, Ollama) and the ChatGPT Codex
-Responses backend. Keys are resolved in Rust from Pi's credentials and never
+Responses backend. Keys are resolved in Rust (below, Credentials) and never
 reach the webview.
+
+## Credentials (KI-48)
+
+Code: `ai/credentials.rs` (the order), `ai/opencode_auth.rs`, `ai/pi_auth.rs`.
+Kintsugi stores no credentials and never signs in itself; the owner logs in
+with OpenCode (`opencode auth login`, or `/connect` in its TUI) or Pi. For
+each provider the first usable credential wins, in this order:
+
+1. **OpenCode login.** OpenCode 2 keeps logins in its SQLite database,
+   `$XDG_DATA_HOME/opencode/opencode.db` (default `~/.local/share/opencode/`,
+   `$OPENCODE_DB` overrides it), table `credential`: per provider the active
+   row, else the newest, with a JSON value `{type: "key", key}` or
+   `{type: "oauth", methodID, access, refresh, expires, metadata.accountID}`.
+   OpenCode 1's `auth.json` beside it (`{type: "api", key}` /
+   `{type: "oauth", access, refresh, expires, accountId}`) is read only when
+   there is no database: OpenCode 2 imports it once and never updates it.
+   Verified against OpenCode v2.0.32's source (`packages/core/src/credential.ts`,
+   `integration.ts`, the `import_legacy_credentials` migration).
+2. **Pi login**, `~/.pi/agent/auth.json` (or `$PI_CODING_AGENT_DIR`).
+3. **Environment**: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`,
+   `ZAI_API_KEY`, `OPENCODE_API_KEY` (Zen). GUI apps rarely inherit these.
+
+OpenCode ids map to Kintsugi's: `anthropic`, `openrouter`, `opencode` (OpenCode
+Zen), `opencode-go` (OpenCode Go) as they are; `openai` is an OpenAI API key,
+or as an OAuth login ChatGPT on the Codex backend (`openai-codex`);
+`zai-coding-plan`, else `zai`, is `zai` (the coding-plan endpoint).
+
+- **What can't be used.** A Claude subscription login (OpenCode's or Pi's)
+  is refused: Kintsugi uses only Anthropic API keys. OpenCode's newer ChatGPT
+  sign-in (`chatgpt-token-sharing`, which calls api.openai.com with a scoped
+  token) isn't the Codex backend and is refused too; the ChatGPT browser or
+  headless login works. A login Kintsugi can't use doesn't stop the search:
+  a key further down the order is still used.
+- **OpenCode logins are read-only.** The database is opened read-only and
+  nothing is ever written to OpenCode's folder. OpenCode 2.0.32 refreshes
+  OAuth tokens and writes them back with no cross-process lock (a later
+  OpenCode adds a private flock), and OpenAI rotates refresh tokens, so a
+  refresh here could race OpenCode's and log one of them out. An expiring
+  OpenCode login (under five minutes left) is shown as expired: open OpenCode
+  once and it refreshes it. Pi's file has a lock both sides respect, so Pi's
+  Codex login is still refreshed and written back as before (natively only).
+- **OpenCode Zen and Go** are OpenAI-compatible chat completions at
+  `https://opencode.ai/inference/openai/v1` (Zen, pay as you go) and
+  `https://opencode.ai/inference/go/openai/v1` (Go, the subscription); the
+  gateway translates for models whose native API differs. Requests carry
+  `x-opencode-session` (Go requires one), a hash of the model and the fixed
+  prompt prefix, so a conversation is routed and cached together. Go counts
+  as a subscription ($0 in the ledger); Zen is priced per model family.
+- **Settings** lists every provider and where its credential comes from:
+  "OpenCode login", "Pi login" or "environment", or why it can't be used.
+
 
 ## Tools
 
@@ -376,5 +427,6 @@ Code: `packages/editor/src/anchors.ts` (anchoring, pure) and `comments.ts`
 ## Settings
 
 Settings (⌘, or the sidebar) shows the privacy statement, this month's
-spend by task, the monthly cap and the model for each Kin task. ⇧⌘K opens a
+spend by task, the monthly cap, the model for each Kin task and, under AI
+providers, where each provider's credential comes from (above, Credentials). ⇧⌘K opens a
 minimal developer panel to run one turn (with a "don't remember this" box).

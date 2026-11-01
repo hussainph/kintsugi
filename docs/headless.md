@@ -64,10 +64,14 @@ directories, descendants, ancestors and symlink aliases. The folder prompt can
 only open subdirectories of this run's initial vault; restart with another
 `KINTSUGI_VAULT` to choose a different top-level scratch folder.
 
-AI is disabled by default, including environment-provider credentials. No Pi
-credential file is read. `KINTSUGI_HEADLESS_PI_READONLY=1` opts into real AI and
-enrichment. In this mode Pi credentials are read-only: no lock, refresh or write
-is allowed; expired OAuth must be refreshed outside headless mode. Phone
+AI is disabled by default, including environment-provider credentials. No
+OpenCode or Pi credential file is read. `KINTSUGI_HEADLESS_AI_READONLY=1` (or
+its old name, `KINTSUGI_HEADLESS_PI_READONLY=1`) opts into real AI and
+enrichment. In this mode OpenCode and Pi credentials are read-only: no lock,
+refresh or write is allowed; an expired login must be refreshed outside
+headless mode (open OpenCode, or the native app for Pi). Both credential
+folders (`~/.pi`, OpenCode's `$XDG_DATA_HOME/opencode` or
+`~/.local/share/opencode`) are refused as scratch paths, with their ancestors. Phone
 restoration is skipped and enabling phone access is refused because Tailscale
 configuration is machine-global.
 

@@ -657,6 +657,11 @@ pub(crate) mod tests {
                             .iter()
                             .find_map(|h| headers.get(*h)?.to_str().ok().map(String::from))
                             .unwrap_or_default();
+                        // OpenCode's gateways also get a session id.
+                        let key = match headers.get("x-opencode-session").and_then(|v| v.to_str().ok()) {
+                            Some(session) => format!("{key} session={session}"),
+                            None => key,
+                        };
                         seen.lock().unwrap().push((key, body));
                         let sse = queue.lock().unwrap().pop_front().unwrap_or_default();
                         ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], sse)
@@ -732,6 +737,29 @@ pub(crate) mod tests {
             // Same prefix on both requests.
             assert_eq!(requests[0].1["messages"][0], requests[1].1["messages"][0]);
             assert_eq!(requests[0].1["tools"], requests[1].1["tools"]);
+        }
+
+        #[test]
+        fn opencode_go_turn_sends_one_stable_session_id() {
+            let f = fixture();
+            let first = sse(&[
+                json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "id": "call_1", "type": "function",
+                    "function": { "name": "search", "arguments": "{\"query\":\"kiln\"}" } }] }, "finish_reason": "tool_calls" }] }),
+            ]) + "data: [DONE]\n\n";
+            let second = sse(&[json!({ "choices": [{ "delta": { "content": "posts/kintsugi.md" }, "finish_reason": "stop" }] })])
+                + "data: [DONE]\n\n";
+            let rt = runtime();
+            let (base, recorded) = rt.block_on(provider("/chat/completions", vec![first, second]));
+            let summary = run_remote(&rt, &f, &remote("opencode-go", "kimi-k3", base));
+            assert_eq!(summary.text, "posts/kintsugi.md");
+            // A subscription: tokens counted, nothing charged.
+            assert_eq!(summary.usd, 0.0);
+            let requests = recorded.lock().unwrap();
+            let (auth, session) = requests[0].0.split_once(" session=").unwrap();
+            assert_eq!(auth, "Bearer test-key");
+            assert!(session.starts_with("ses_"));
+            assert_eq!(requests[0].0, requests[1].0);
+            assert_eq!(requests[0].1["max_tokens"].is_number(), true);
         }
 
         #[test]
