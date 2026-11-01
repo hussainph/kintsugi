@@ -89,6 +89,8 @@ pub struct Turn {
     pub chips: Vec<Chip>,
     /// `YYYY-MM-DD`, part of the dynamic context.
     pub today: String,
+    /// False when the conversation is marked "don't remember this".
+    pub remember: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -177,7 +179,7 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
     let Harness { tools, meter, memory, cancel, limits } = *harness;
     let reference = model.model();
     let system = prompt::system(memory);
-    let mut items = vec![Item::User(prompt::user_message(&turn.question, &turn.chips, &turn.today))];
+    let mut items = vec![Item::User(prompt::user_message(&turn.question, &turn.chips, &turn.today, turn.remember))];
     let mut summary = Summary {
         text: String::new(),
         stop: Stop::StepLimit,
@@ -347,6 +349,7 @@ pub(crate) mod tests {
             question: "Where have I written about kilns?".into(),
             chips: vec![],
             today: "2026-11-02".into(),
+            remember: true,
         }
     }
 
@@ -362,7 +365,7 @@ pub(crate) mod tests {
         meter: Meter,
     }
 
-    static NO_MEMORY: Memory = Memory { about: String::new(), notes: String::new() };
+    static NO_MEMORY: Memory = Memory { about: Vec::new(), notes: Vec::new(), skills: Vec::new() };
 
     impl Fixture {
         fn harness<'a>(&'a self, cancel: &'a Cancel, limits: Limits) -> Harness<'a> {
@@ -529,6 +532,85 @@ pub(crate) mod tests {
         let content = &results[0].content;
         assert!(content.starts_with("<data tool=\"read\">") && content.ends_with("</data>"));
         assert_eq!(content.matches("</data>").count(), 1);
+    }
+
+    fn vault_files(root: &std::path::Path) -> std::collections::BTreeMap<String, Vec<u8>> {
+        let mut out = std::collections::BTreeMap::new();
+        let mut stack = vec![root.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else {
+                    out.insert(kintsugi_vault::relative(root, &path), std::fs::read(&path).unwrap());
+                }
+            }
+        }
+        out
+    }
+
+    /// Memory end to end: Kin saves a line and writes a skill mid-turn. Both
+    /// apply at once, but the turn's prefix stays frozen; the next
+    /// conversation's snapshot carries them, byte-stable; and nothing outside
+    /// `.kintsugi/agent/` changes.
+    #[test]
+    fn memory_writes_apply_at_once_and_the_prefix_stays_frozen() {
+        use crate::ai::memory::{Access, Source, Store};
+        let f = fixture();
+        let data = tempfile::tempdir().unwrap();
+        let store = || Store::open(f.vault.path(), Some(data.path())).unwrap();
+        let before = vault_files(f.vault.path());
+        let first = store().snapshot();
+        let access = Access { store: store(), source: Source::chat("t2", "Remember that I like short essays"), remember: true };
+        let tools = Tools::new(f.vault.path(), f._outputs.path().into(), "t2").unwrap().with_memory(access);
+        let cancel = Cancel::default();
+        let harness = Harness { tools: &tools, meter: &f.meter, memory: &first, cancel: &cancel, limits: Limits::default() };
+        let mock = Mock::new(vec![
+            calls(
+                &[
+                    ("c1", "memory", json!({ "file": "user", "ops": [{ "op": "add", "text": "Prefers short essays." }] })),
+                    ("c2", "skill", json!({ "name": "steelman", "action": "write", "description": "Argue the strongest version of a passage.", "body": "1. Restate it.\n2. Strengthen it.", "command": true })),
+                ],
+                "",
+            ),
+            calls(&[("c3", "skill", json!({ "name": "steelman" })), ("c4", "search", json!({ "query": "kiln" }))], ""),
+            answer("Noted."),
+        ]);
+        block_on(run(&mock, &harness, &turn(false), &mut |_| {})).unwrap();
+
+        let seen = mock.seen.lock().unwrap();
+        assert!(seen.iter().all(|r| r.system == seen[0].system && r.tools == seen[0].tools), "frozen within the turn");
+        assert!(!seen[0].system.contains("Prefers short essays.") && seen[0].system.contains("- secret notes about kiln"));
+        let Item::Results(saved) = &seen[1].items[2] else { panic!("expected results") };
+        assert!(!saved[0].is_error && saved[0].content.contains("1. Prefers short essays."), "{}", saved[0].content);
+        assert!(!saved[1].is_error, "{}", saved[1].content);
+        let Item::Results(loaded) = &seen[2].items[4] else { panic!("expected results") };
+        assert!(loaded[0].content.starts_with("<skill name=\"steelman\" command=\"true\">") && loaded[0].content.contains("2. Strengthen it."));
+
+        let next = prompt::system(&store().snapshot());
+        assert!(next.contains("- Prefers short essays.\n"), "{next}");
+        assert!(next.contains("- steelman: Argue the strongest version of a passage. [/ command]\n"));
+        assert_eq!(next, prompt::system(&store().snapshot()), "the same memory renders the same prefix");
+        let instructions = &seen[0].system[..seen[0].system.find("\n## About Hussain").unwrap()];
+        assert!(next.starts_with(instructions));
+
+        let after = vault_files(f.vault.path());
+        let changed: Vec<&String> = after.keys().chain(before.keys()).filter(|k| before.get(*k) != after.get(*k)).collect();
+        assert_eq!(changed, [".kintsugi/agent/USER.md", ".kintsugi/agent/skills/steelman/SKILL.md"]);
+    }
+
+    #[test]
+    fn without_memory_access_the_memory_tools_refuse() {
+        let f = fixture();
+        let mock = Mock::new(vec![
+            calls(&[("c1", "memory", json!({ "file": "user", "ops": [{ "op": "add", "text": "x" }] }))], ""),
+            answer("ok"),
+        ]);
+        run_turn(&f, &mock, &turn(false), &Cancel::default()).0.unwrap();
+        let Item::Results(results) = &mock.seen.lock().unwrap()[1].items[2] else { panic!() };
+        assert!(results[0].is_error && results[0].content.contains("isn't available"));
+        assert!(!f.vault.path().join(".kintsugi/agent/USER.md").exists());
     }
 
     /// A local server speaking a provider's wire format, so a turn runs the

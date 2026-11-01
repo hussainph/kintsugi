@@ -19,6 +19,7 @@ import { Refine } from "@/refine/Refine";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { KinDev } from "@/kin/KinDev";
 import { Settings } from "@/kin/Settings";
+import { AboutYou } from "@/kin/AboutYou";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
@@ -504,6 +505,7 @@ export default function App() {
         onClose={() => setPhoneOpen(false)}
       />
       <Settings />
+      <AboutYou />
       <KinDev />
       <Toaster position="bottom-center" />
     </SidebarProvider>

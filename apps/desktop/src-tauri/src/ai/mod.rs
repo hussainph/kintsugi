@@ -7,12 +7,16 @@
 //! - `prompt`: the fixed, cacheable prefix and the dynamic tail.
 //! - `cost`: prices, the usage ledger and the monthly cap.
 //! - `kin`: the Tauri commands for Kin and its settings.
+//! - `memory`: Kin's capped memory and skills in `.kintsugi/agent/`.
+//! - `about`: the About you commands, and the memory snapshot for helpers.
 
+pub mod about;
 mod agent;
 pub mod cost;
 pub mod kin;
+pub mod memory;
 mod pi_auth;
-mod prompt;
+pub mod prompt;
 mod tools;
 mod wire;
 

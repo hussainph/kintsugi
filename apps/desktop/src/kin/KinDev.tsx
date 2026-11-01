@@ -14,6 +14,7 @@ export function KinDev() {
   const [question, setQuestion] = useState("");
   const [task, setTask] = useState<KinTask>("chat");
   const [background, setBackground] = useState(false);
+  const [remember, setRemember] = useState(true);
   const [text, setText] = useState("");
   const [log, setLog] = useState<Log[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -60,7 +61,7 @@ export function KinDev() {
     setSummary(null);
     setError(null);
     setRunning(true);
-    const turn = ask({ question, task, background }, onEvent);
+    const turn = ask({ question, task, background, remember }, onEvent);
     cancel.current = () => void turn.cancel();
     try {
       setSummary(await turn.done);
@@ -77,7 +78,7 @@ export function KinDev() {
       <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Kin (developer)</DialogTitle>
-          <DialogDescription>Ask one question. Kin searches and reads the vault, read-only.</DialogDescription>
+          <DialogDescription>Ask one question. Kin searches and reads the vault; it can only change its own memory and skills.</DialogDescription>
         </DialogHeader>
         <Textarea
           autoFocus
@@ -98,6 +99,10 @@ export function KinDev() {
           <label className="flex items-center gap-1.5">
             <input type="checkbox" checked={background} onChange={(e) => setBackground(e.target.checked)} />
             background (stops at the cap)
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input type="checkbox" checked={!remember} onChange={(e) => setRemember(!e.target.checked)} />
+            don’t remember this
           </label>
           <span className="flex-1" />
           {running ? (

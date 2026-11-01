@@ -5,13 +5,14 @@
 
 use super::agent::{self, Cancel, KinEvent, Limits, Remote};
 use super::cost::{Report, Settings};
-use super::prompt::{Chip, Memory};
+use super::memory::{Access, Source};
+use super::prompt::Chip;
 use super::tools::Tools;
 use super::{ModelRef, Task, chosen_model, meter, preferences, ready, resolve, statuses, wire};
 use crate::AppHandle;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::ipc::Channel;
 use tauri::{Manager, State, async_runtime};
@@ -35,12 +36,6 @@ pub(crate) fn data_dir(app: &AppHandle) -> Option<PathBuf> {
     crate::config::directory(app).ok().map(|d| d.join("kin"))
 }
 
-/// Kin's memory for a vault. The seam for KI-30, which loads `USER.md`,
-/// `NOTES.md` and the skills index from `.kintsugi/agent/`; empty until then.
-fn memory(_root: &Path) -> Memory {
-    Memory::default()
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnRequest {
@@ -54,6 +49,14 @@ pub struct TurnRequest {
     /// What's on screen, as references.
     #[serde(default)]
     pub context: Vec<Chip>,
+    /// False when the conversation is marked "don't remember this": Kin
+    /// can't change memory or skills during it.
+    #[serde(default = "yes")]
+    pub remember: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 fn kin_task(id: Option<&str>) -> Result<Task> {
@@ -108,16 +111,21 @@ async fn start(app: &AppHandle, turn: TurnRequest, task: Task, cancel: &Cancel, 
     let provider = wire::provider(&model.provider).ok_or("unknown provider")?;
     let auth = resolve(provider).await?;
     let remote = Remote { model, provider, base_url: provider.base_url.into(), auth };
-    let tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?;
+    // One snapshot per conversation (today, a turn), frozen for its prefix.
+    let store = super::about::store(app, &root)?;
+    let memory = store.snapshot();
+    store.loaded(&memory);
+    let access = Access { store, source: Source::chat(&turn.id, &turn.question), remember: turn.remember };
+    let tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?.with_memory(access);
     let request = agent::Turn {
         task,
         background: turn.background,
         question: turn.question,
         chips: turn.context,
         today: chrono::Local::now().format("%Y-%m-%d").to_string(),
+        remember: turn.remember,
     };
     // The loop emits its own error event; don't send a second one.
-    let memory = memory(&root);
     let harness = agent::Harness { tools: &tools, meter, memory: &memory, cancel, limits: Limits::default() };
     let _ = agent::run(&remote, &harness, &request, emit).await;
     Ok(())
@@ -241,6 +249,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(turn.context[0].path, "posts/a.md");
-        assert!(!turn.background && turn.task.is_none());
+        assert!(!turn.background && turn.task.is_none() && turn.remember);
+        let forgetful: TurnRequest = serde_json::from_str(r#"{"id":"b","question":"Hm","remember":false}"#).unwrap();
+        assert!(!forgetful.remember);
     }
 }

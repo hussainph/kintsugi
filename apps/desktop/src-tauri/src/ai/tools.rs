@@ -1,12 +1,13 @@
 //! Kin's tools: coding-agent style, read-only, over the vault.
 //!
 //! Three core tools are always loaded (`search`, `read`, `list`) with short
-//! schemas. Anything else is an extra tool reached through `tool`, so its
+//! schemas, plus `memory` and `skill`, which `memory::Access` runs. Anything else is an extra tool reached through `tool`, so its
 //! schema costs nothing until Kin asks for it and the tool list (part of the
 //! cached prompt prefix) never changes mid-turn.
 //!
 //! Safety, by construction:
-//! - Nothing here writes to the vault. The only file this module creates is
+//! - Nothing here writes to the vault. Kin's memory and skills, the one
+//!   exception, are written by `memory`, only inside `.kintsugi/agent/`. The only file this module creates is
 //!   a long output, spilled into Kin's own outputs folder in app data
 //!   (`spill`), never inside the vault. A test checks the source for writes.
 //! - Paths stay inside the vault: no `..`, no absolute paths, no hidden
@@ -15,6 +16,7 @@
 //!   the prompt prefix tells Kin that text inside is content to read, never
 //!   instructions to follow.
 
+use super::memory::Access;
 use super::wire::{ToolCall, ToolSpec};
 use kintsugi_vault::{self as vault, INBOX, INSPIRATION};
 use serde_json::{Value, json};
@@ -80,6 +82,44 @@ pub fn specs() -> &'static [ToolSpec] {
                 }),
             },
             ToolSpec {
+                name: "memory",
+                description: "Change your memory: USER.md (about Hussain) or NOTES.md (where things are). A batch of edits, applied together or not at all.",
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "file": { "type": "string", "enum": ["user", "notes"] },
+                        "ops": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "op": { "type": "string", "enum": ["add", "patch", "remove"] },
+                                    "old": { "type": "string", "description": "patch/remove: a unique part of the line." },
+                                    "text": { "type": "string", "description": "add/patch: the new line." }
+                                },
+                                "required": ["op"]
+                            }
+                        }
+                    },
+                    "required": ["file", "ops"]
+                }),
+            },
+            ToolSpec {
+                name: "skill",
+                description: "Load a skill by name to follow it. action write creates or updates one; delete removes it.",
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "action": { "type": "string", "enum": ["read", "write", "delete"] },
+                        "description": { "type": "string", "description": "write: one line for the index." },
+                        "body": { "type": "string", "description": "write: the procedure." },
+                        "command": { "type": "boolean", "description": "write: also an AI command in the editor's / menu." }
+                    },
+                    "required": ["name"]
+                }),
+            },
+            ToolSpec {
                 name: "tool",
                 description: "Run an extra tool. Call with only a name to see its arguments.",
                 parameters: json!({
@@ -138,6 +178,8 @@ pub struct Tools {
     /// All spilled outputs; `read @out/...` resolves here.
     outputs: PathBuf,
     turn: String,
+    /// Kin's memory and skills; without it, `memory` and `skill` refuse.
+    memory: Option<Access>,
 }
 
 impl Tools {
@@ -148,7 +190,13 @@ impl Tools {
         if outputs.starts_with(given) || outputs.starts_with(&root) || resolved.starts_with(&root) {
             return Err("Kin's outputs must live outside the vault".into());
         }
-        Ok(Tools { root, outputs, turn: safe_name(turn) })
+        Ok(Tools { root, outputs, turn: safe_name(turn), memory: None })
+    }
+
+    /// Gives the turn Kin's memory and skills.
+    pub fn with_memory(mut self, access: Access) -> Self {
+        self.memory = Some(access);
+        self
     }
 
     pub fn run(&self, call: &ToolCall) -> Output {
@@ -158,7 +206,16 @@ impl Tools {
             "read" => self.read(args),
             "list" => self.list(args),
             "tool" => self.extra(args),
-            other => Err(format!("No tool named {other}. Tools: search, read, list, tool.")),
+            // Kin's own memory, not vault content: not wrapped as data.
+            "memory" | "skill" => {
+                let Some(access) = &self.memory else { return Output::error("Memory isn't available here.") };
+                let result = if call.name == "memory" { access.memory(args) } else { access.skill(args) };
+                return match result {
+                    Ok(text) => Output { content: text, is_error: false },
+                    Err(message) => Output::error(message),
+                };
+            }
+            other => Err(format!("No tool named {other}. Tools: search, read, list, memory, skill, tool.")),
         };
         match result {
             Ok(text) => Output { content: self.fit(&call.id, wrap(&call.name, &text)), is_error: false },
@@ -603,7 +660,7 @@ pub(crate) mod tests {
         assert!(tools.run(&call("tool", json!({ "name": "write" }))).is_error);
         assert!(tools.run(&call("delete", json!({}))).is_error);
         // The schema's enum lists exactly the extras.
-        let names = &specs()[3].parameters["properties"]["name"]["enum"];
+        let names = &specs()[5].parameters["properties"]["name"]["enum"];
         assert_eq!(names, &json!(["outline", "recent"]));
     }
 
@@ -626,7 +683,8 @@ pub(crate) mod tests {
     }
 
     /// Kin can't write to Inspiration or the owner's writing: the only write
-    /// in this module is `spill`, into the outputs folder.
+    /// in this module is `spill`, into the outputs folder. Memory and skills
+    /// are written by `memory.rs`, which has its own scoped test.
     #[test]
     fn tools_never_write_to_the_vault() {
         let source = include_str!("tools.rs");
@@ -636,7 +694,7 @@ pub(crate) mod tests {
         }
         assert_eq!(code.matches("write_atomic").count(), 1, "only spill writes");
         let names: Vec<_> = specs().iter().map(|s| s.name).collect();
-        assert_eq!(names, ["search", "read", "list", "tool"]);
+        assert_eq!(names, ["search", "read", "list", "memory", "skill", "tool"]);
     }
 
     #[test]

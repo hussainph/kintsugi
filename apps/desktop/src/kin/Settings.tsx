@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
-import { dollars, kin, KinSettings, KinTask, modelLabel, openKinDev, sameModel, UsageReport } from "@/lib/kin";
+import { dollars, kin, KinSettings, KinTask, modelLabel, openAboutYou, openKinDev, sameModel, UsageReport } from "@/lib/kin";
 
 /** The plain privacy statement, as the vision puts it. */
 export const PRIVACY =
@@ -171,6 +171,9 @@ export function Settings() {
           })}
         </section>
 
+        <Button variant="ghost" size="sm" className="justify-self-start" onClick={() => { setOpen(false); openAboutYou(); }}>
+          What Kin remembers (About you)
+        </Button>
         <Button variant="ghost" size="sm" className="justify-self-start" onClick={() => { setOpen(false); openKinDev(); }}>
           Try Kin (developer panel, ⇧⌘K)
         </Button>
