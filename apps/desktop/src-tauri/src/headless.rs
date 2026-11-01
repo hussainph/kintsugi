@@ -66,6 +66,20 @@ pub(crate) fn kin_mock() -> bool {
     std::env::var("KINTSUGI_HEADLESS_KIN").as_deref() == Ok("mock")
 }
 
+/// The daily Ideas batch starts on its own only when asked for with
+/// `KINTSUGI_HEADLESS_IDEAS_DAILY=1`, so a smoke test (or a mock run) never
+/// spends allowance on a batch nobody requested. "Ask for more" still works.
+pub(crate) fn ideas_daily() -> bool {
+    std::env::var("KINTSUGI_HEADLESS_IDEAS_DAILY").as_deref() == Ok("1")
+}
+
+/// Prints each model request's shape (item kinds, reasoning carried, stop
+/// reason, token counts; never content) to stderr:
+/// `KINTSUGI_HEADLESS_WIRE_TRACE=1`.
+pub(crate) fn wire_trace() -> bool {
+    std::env::var("KINTSUGI_HEADLESS_WIRE_TRACE").as_deref() == Ok("1")
+}
+
 /// Real AI, opted into with `KINTSUGI_HEADLESS_AI_READONLY=1` (or its old
 /// name, `KINTSUGI_HEADLESS_PI_READONLY=1`). OpenCode's and Pi's credentials
 /// are then read, never locked, refreshed or written.

@@ -190,7 +190,7 @@ fn a_batch_is_checked_stored_and_reported() {
     let root = vault();
     let s = sources(root.path());
     let mut store = Store::open(None);
-    let trace = Trace { searches: vec!["repair".into(), "care".into()], files: vec!["a.md".into(), "a.md".into(), "b.md".into()], tool_calls: 5, millis: 12_400, usd: 0.031, model: "anthropic/x".into() };
+    let trace = Trace { searches: vec!["repair".into(), "care".into()], files: vec!["a.md".into(), "a.md".into(), "b.md".into()], tool_calls: 5, millis: 12_400, usd: 0.031, model: "anthropic/x".into(), steps: vec![] };
     let ideas = serde_json::json!([
         { "title": "Repair's cost", "hunch": "The cost side.", "observed": ["2 docs"], "quotes": [{ "source": "posts/on-craft", "text": "It is a record of care." }, { "source": "notes/repair", "text": "The patch is not hidden." }] },
         { "title": "Invented", "hunch": "x", "observed": ["y"], "quotes": [{ "source": "posts/on-craft", "text": "It is a record of care." }, { "source": "notes/repair", "text": "Made up entirely here." }] }

@@ -73,7 +73,9 @@ headless mode (open OpenCode, or the native app for Pi). Both credential
 folders (`~/.pi`, OpenCode's `$XDG_DATA_HOME/opencode` or
 `~/.local/share/opencode`) are refused as scratch paths, with their ancestors. Phone
 restoration is skipped and enabling phone access is refused because Tailscale
-configuration is machine-global.
+configuration is machine-global. The daily Ideas batch never starts on its own in
+headless runs unless `KINTSUGI_HEADLESS_IDEAS_DAILY=1`, so a real-AI check
+spends nothing on work nobody asked for.
 
 Folder dialogs become path prompts. The opener adapter validates URLs/paths in
 Rust and opens only within the headless browser, never via LaunchServices or

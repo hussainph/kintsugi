@@ -7,7 +7,10 @@ this file describes what is built. Code: `apps/desktop/src-tauri/src/ai/`.
 
 `agent::run` takes a question, asks the model, runs the tools it calls,
 feeds the results back and repeats until the model answers (at most 24
-model calls). Text, tool calls, tool results and per-step costs stream to
+model calls). With three calls left, a note appended after the last tool
+results tells Kin to stop looking and answer with what it has. A step that
+ends with neither text nor tool calls (a reasoning model that spent its
+whole reply thinking) is asked once more for the answer. Text, tool calls, tool results and per-step costs stream to
 the webview over a Tauri Channel (`kin_turn`); `kin_cancel` stops a turn,
 dropping any request in flight. The loop is independent of Tauri and runs
 against any `agent::Model`, so tests use a scripted model and a local mock
@@ -15,7 +18,12 @@ HTTP provider.
 
 All three wire formats carry tool calls: Anthropic Messages, OpenAI-style
 chat completions (OpenAI, OpenRouter, Z.AI, Ollama) and the ChatGPT Codex
-Responses backend. Keys are resolved in Rust (below, Credentials) and never
+Responses backend. The Codex backend runs with `store: false`, so it keeps
+nothing between requests: Kintsugi asks for `include:
+["reasoning.encrypted_content"]` and sends each step's `reasoning` items back,
+verbatim and before that step's function calls, on every later request of
+the turn (as pi-ai does). Across turns only the visible text is sent.
+Keys are resolved in Rust (below, Credentials) and never
 reach the webview.
 
 Every model call (`wire::send`, Kin's steps and the webview's `ai_stream`)
@@ -254,7 +262,18 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   (`about::snapshot`) in the prefix, and no memory-writing tools. Chat turns
   take a fresh snapshot and can update memory like any conversation. A job running when the app quit is queued again on start. It
   reports back quietly as a helper entry in the log (a dot on the avatar, no
-  popup). Feed ranking and Ideas are meant to use this.
+  popup). Feed ranking and Ideas are meant to use this. Helpers get 16k
+  output tokens per call (chat turns 4k): a batch of ideas is long, and a
+  reasoning model's thinking counts against the same budget. Each run's step
+  trace (tools called, stop reason, text length and output tokens per call;
+  no content) is kept on the job in `jobs.json` and printed to stderr as a
+  `kin: helper …` line, and a helper that ends without a report says why
+  (out of steps, its reply spent on thinking, or empty).
+- Headless runs never start the daily Ideas batch on their own unless
+  `KINTSUGI_HEADLESS_IDEAS_DAILY=1`, so a real-AI smoke test spends nothing
+  unasked; "Ask for more" still works. `KINTSUGI_HEADLESS_WIRE_TRACE=1` prints
+  each model request's shape (item kinds, reasoning items carried, stop
+  reason, output tokens; never content) to stderr.
 - Headless runs can try it all without a provider: `KINTSUGI_HEADLESS_KIN=mock`
   swaps in a scripted local model that reads the first chip (a document,
   clip or `feed:<id>`), or calls `shortlist` when asked for one, or searches,
