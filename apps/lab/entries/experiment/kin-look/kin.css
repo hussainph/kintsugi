@@ -1,0 +1,144 @@
+/*
+ * KI-23: Kin's mark and its one colour. Scoped to this Lab entry; nothing here
+ * is a product token yet (KI-41 promotes the chosen one into packages/ui).
+ *
+ * Gold is reserved for Kin. Marks use --kin; text that must read as Kin's uses
+ * --kin-ink (AA on the page background in both themes).
+ */
+:root {
+  --kin: oklch(0.66 0.125 76); /* 3.2:1 on white, for marks and rules */
+  --kin-hi: oklch(0.9 0.085 92);
+  --kin-lo: oklch(0.56 0.11 66);
+  --kin-ink: oklch(0.5 0.1 68); /* 6.1:1 on white */
+  --kin-wash: color-mix(in oklch, var(--kin) 12%, transparent);
+  --kin-rule: var(--kin);
+  --kin-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --kin-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+.dark {
+  --kin: oklch(0.79 0.12 84);
+  --kin-hi: oklch(0.93 0.07 94);
+  --kin-lo: oklch(0.63 0.11 72);
+  --kin-ink: oklch(0.83 0.11 85); /* 11.7:1 on dark */
+  --kin-wash: color-mix(in oklch, var(--kin) 14%, transparent);
+}
+
+/*
+ * State motion. Ambient loops are slow and small (a working state is seen for
+ * seconds, not hundreds of times a day). Only transform and opacity move.
+ * Reduced motion never gets these classes: each state also has a static form.
+ */
+.kin-glint {
+  animation: kin-glint 2.4s linear infinite;
+}
+@keyframes kin-glint {
+  from {
+    stroke-dashoffset: 18;
+  }
+  to {
+    stroke-dashoffset: -118;
+  }
+}
+.kin-ring {
+  animation: kin-ring 3.2s var(--kin-ease-in-out) infinite alternate;
+}
+@keyframes kin-ring {
+  from {
+    opacity: 0.18;
+  }
+  to {
+    opacity: 0.7;
+  }
+}
+.kin-breathe {
+  transform-box: view-box;
+  transform-origin: 24px 24px;
+  animation: kin-breathe 3.2s var(--kin-ease-in-out) infinite alternate;
+}
+@keyframes kin-breathe {
+  from {
+    transform: scale(0.965);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+.kin-orbit {
+  transform-box: view-box;
+  transform-origin: 24px 24px;
+  animation: kin-orbit 6s linear infinite;
+}
+@keyframes kin-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.kin-drift {
+  animation: kin-drift 2.6s var(--kin-ease-in-out) infinite alternate;
+}
+@keyframes kin-drift {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(var(--kin-dx), var(--kin-dy));
+  }
+}
+.kin-seam-pulse {
+  animation: kin-seam 3.2s var(--kin-ease-in-out) infinite alternate;
+}
+@keyframes kin-seam {
+  from {
+    opacity: 0.6;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.kin-bead {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: kin-bead 240ms var(--kin-ease-out) both;
+}
+@keyframes kin-bead {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+.kin-tilt {
+  transform-box: view-box;
+  transform-origin: 24px 40px;
+  animation: kin-tilt 3.2s var(--kin-ease-in-out) infinite alternate;
+}
+@keyframes kin-tilt {
+  from {
+    transform: rotate(-3deg);
+  }
+  to {
+    transform: rotate(2deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kin-glint,
+  .kin-breathe,
+  .kin-orbit,
+  .kin-drift,
+  .kin-tilt,
+  .kin-bead {
+    animation: none;
+  }
+}
+
+/* Anything Kin produced: a gold hairline and a small signed label. */
+.kin-made {
+  border-inline-start: 2px solid var(--kin-rule);
+  padding-inline-start: 0.75rem;
+}
+.kin-suggested {
+  text-decoration: underline;
+  text-decoration-color: var(--kin);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  text-decoration-style: dotted;
+}
