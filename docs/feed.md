@@ -25,12 +25,17 @@ uses a temporary folder. Schema version is `PRAGMA user_version` (1).
   was fetched).
 - `events`: **append-only** (triggers reject UPDATE and DELETE). Every
   impression and every action, with time in ms, item, source, `surface`
-  (`newest`; `picked` is reserved for KI-32) and `position`. Kinds:
+  (`newest`, `picked` for Picked for you, `kin` for Kin's picks) and
+  `position`. Kinds:
   `impression`, `open` (read in the app), `open_original`, `like`, `unlike`,
   `note`, `note_cleared`, `save`, `not_interested`, `undo_not_interested`,
-  `discuss`, `subscribe`, `unsubscribe`, `mute`, `unmute`. A note event
-  records its length, not its words. Ranking (KI-32) reads this log to learn
-  online and to evaluate offline.
+  `discuss`, `subscribe`, `unsubscribe`, `mute`, `unmute`, and from ranking
+  (KI-32) `correction` / `undo_correction` (`data.reason`, a "Why this?"
+  reason removed or restored) and `kin_pick` (surface `kin`, `data.tool`: an
+  item Kin's `shortlist` or `similar_to` returned). A note event
+  records its length, not its words. Ranking ([ranking.md](ranking.md))
+  reads this log to learn online and to evaluate offline; it never learns
+  from `kin` events.
 
 Item text is Markdown from the ingest engine. No feed HTML reaches the
 webview, and the reader renders the Markdown as plain paragraphs, never as
@@ -89,8 +94,9 @@ after 30 days.
 
 ## Actions
 
-- **Like** toggles `liked_at`. The toast says it is a signal for Picked for
-  you, with Undo; showing what it changed comes with ranking.
+- **Like** toggles `liked_at`. The toast says what it changed in Picked for
+  you (the source, author or topic affinities it moved, and picks that came
+  in or made room, from `feed_effect`), with Undo, which reverses it exactly.
 - **Note** stays on the item, saved as he types. Once saved, the note lives
   in the clip and is edited in Inspiration.
 - **Save** is the only way from the Feed into Inspiration. It goes through
@@ -101,7 +107,7 @@ after 30 days.
   (the source), `author` and the item's text as its `## Source`;
   enrichment fills in the rest. `clips:changed` fires as for any capture.
 - **Not interested** hides the item, with Undo.
-- **Discuss** opens Kin's chat with the item pinned as a `feed` context chip (`{ kind: "feed", path: <item id>, label: <title> }`, see `docs/kin.md`) and logs the event. An item open in the reader is also on-screen context for the chat. Kin has no feed-reading tool yet, so it sees the title.
+- **Discuss** opens Kin's chat with the item pinned as a `feed` context chip (`{ kind: "feed", path: <item id>, label: <title> }`, see `docs/kin.md`) and logs the event. An item open in the reader is also on-screen context for the chat. The chip reaches Kin as `feed:<id>`, which its `read` tool opens (title, source, author, link, his actions and note, then the text), see [ranking.md](ranking.md) › Kin's tools.
 
 **Full text.** When he opens an article whose feed text is an excerpt
 (under 600 characters), `feed_read` fetches the page once through the
@@ -134,15 +140,19 @@ state, and lets the poller fetch new sources in the background.
 `feed_podcast_search({ term })`, `feed_opml_import`, `feed_opml_export`,
 `feed_items({ offset?, limit?, source? })`, `feed_read({ id, place? })`,
 `feed_act({ id, action, place? })`, `feed_note({ id, note, place? })`,
-`feed_save({ id, place? })`, `feed_impressions({ impressions })`. `place` is
+`feed_save({ id, place? })`, `feed_impressions({ impressions })`, and
+ranking's `feed_picked({ n? })`, `feed_correct({ reason, id?, undo? })`,
+`feed_effect({ id })` ([ranking.md](ranking.md)). `place` is
 `{ surface, position }`. Changes emit `feed:changed`. Types live in
 `apps/desktop/src/feed/api.ts`.
 
 ## UI
 
 `apps/desktop/src/feed/`. The Feed sits beside Inspiration in the sidebar
-(⇧⌘F). `Feed` takes a `picked?: ReactNode` slot above the newest list: KI-32
-renders Picked for you there and logs its impressions with surface `picked`.
+(⇧⌘F). `Feed` takes a `picked?: ReactNode` slot above the newest list:
+`Picked.tsx` renders **Picked for you** there (eight picks, four shown until
+"Show more", one exploring), each with "Why this?", and logs its impressions
+with surface `picked`. See [ranking.md](ranking.md).
 **Following** (a sheet) adds sources, shows each one's health, mutes,
 fetches now, unfollows, and imports/exports OPML.
 
@@ -152,4 +162,5 @@ Rust unit tests use fixtures in `src-tauri/src/feed/fixtures/` and a
 loopback server. `apps/desktop/test/runtime-feed.test.ts` drives the real
 headless runtime with Playwright against `test/feed-fixtures.ts` (run it on
 its own with `node apps/desktop/test/feed-fixtures.ts`) and blocks every
-non-loopback request; screenshots go to `.headless/feed-shots/`.
+non-loopback request; screenshots go to `.headless/feed-shots/`. It runs Kin's
+headless mock model (`KINTSUGI_HEADLESS_KIN=mock`) for the ranking tools.

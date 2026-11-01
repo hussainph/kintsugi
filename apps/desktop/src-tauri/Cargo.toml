@@ -37,6 +37,7 @@ axum = { version = "0.8.9", default-features = false, features = ["http1", "json
 kintsugi-vault.workspace = true
 kintsugi-ingest.workspace = true
 kintsugi-search.workspace = true
+kintsugi-rank.workspace = true
 libc = "0.2"
 futures-util = "0.3.34"
 base64 = "0.23.1"

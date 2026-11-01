@@ -220,6 +220,10 @@ pub struct Store {
     db: Connection,
 }
 
+/// What ranking (KI-32, `feed::picked`) reads: every item and source, and
+/// the event log from a cursor.
+mod ranking;
+
 const SOURCE_COLUMNS: &str = "s.id, s.url, s.kind, s.title, s.site_url, s.image, s.muted, s.added_at,
   s.last_fetch_at, s.last_success_at, s.last_status, s.last_error, s.failures, s.next_fetch_at,
   (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.dismissed_at IS NULL AND i.expired_at IS NULL)";

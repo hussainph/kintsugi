@@ -121,6 +121,10 @@ microseconds on the CPU and makes no network call.
   results stay newest first. If the index fails, the library falls back to
   lexical search. See [inspiration.md](inspiration.md).
 - **Kin**: the `search` tool (see [kin.md](kin.md)).
+- **Feed ranking** ([ranking.md](ranking.md)): `Index::doc_vectors(scope)`
+  gives one vector per document (the normalized mean of its chunks' vectors)
+  for feed items and clips, and `Index::embedder()` embeds anything not
+  indexed. Without a model, ranking uses its own hashed text vectors.
 - **Webview**: `search({ query, k?, kinds?, within? })` returns `SearchHit[]`
   (`src/lib/search.ts`). `k` defaults to 20, with a maximum of 100.
 

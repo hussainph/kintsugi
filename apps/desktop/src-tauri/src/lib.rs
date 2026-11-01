@@ -145,6 +145,9 @@ fn builder() -> tauri::Builder<Runtime> {
             blog::blog_links,
             blog::blog_check,
             blog::blog_publish,
+            feed::picked::feed_picked,
+            feed::picked::feed_correct,
+            feed::picked::feed_effect,
         ])
 }
 

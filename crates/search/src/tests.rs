@@ -277,3 +277,21 @@ fn live_potion_base_8m() {
     assert_eq!(top(&mut index, "staying focused", 1), ["inbox/2026-11-01.md"]);
     assert!(top(&mut index, "zebra", 5).is_empty());
 }
+
+/// Feed ranking reads one vector per document from the index.
+#[test]
+fn doc_vectors_are_one_normalized_vector_per_document_in_a_scope() {
+    let dir = vault();
+    assert!(indexed(dir.path(), None).doc_vectors("v").unwrap().is_empty(), "no model, no vectors");
+    let mut index = indexed(dir.path(), Some(model()));
+    index.upsert("feed", &[Doc { id: "feed:1".into(), kind: Some(Kind::Feed), body: "glaze and clay".into(), stamp: "1".into(), ..Default::default() }]).unwrap();
+    let vault_vectors = index.doc_vectors("v").unwrap();
+    assert!(vault_vectors.contains_key("inspiration/anagama.md") && !vault_vectors.contains_key("feed:1"));
+    let feed = index.doc_vectors("feed").unwrap();
+    let kiln = &vault_vectors["drafts/kiln.mdx"];
+    let norm: f32 = kiln.iter().map(|x| x * x).sum::<f32>().sqrt();
+    assert!((norm - 1.0).abs() < 1e-4);
+    let close: f32 = feed["feed:1"].iter().zip(kiln).map(|(a, b)| a * b).sum();
+    let far: f32 = feed["feed:1"].iter().zip(&vault_vectors["posts/budget.md"]).map(|(a, b)| a * b).sum();
+    assert!(close > far, "{close} vs {far}");
+}

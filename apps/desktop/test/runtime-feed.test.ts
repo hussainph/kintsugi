@@ -5,7 +5,10 @@
 //
 // Subscribe, poll, read, act (like / note / save / Not interested / mute),
 // save into Inspiration (via: feed, note and source travel), OPML round-trip,
-// and the event log. Screenshots land in .headless/feed-shots/.
+// and the event log. KI-32: Picked for you (cold start from the seeded clips,
+// Why this? corrections with undo, what a like changed), and Kin reading a
+// feed item and calling the ranking tools through the headless mock model.
+// Screenshots land in .headless/feed-shots/.
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -15,7 +18,7 @@ import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
-import { BLOG_TITLES, startFeedFixtures, type Fixtures } from "./feed-fixtures.ts";
+import { BLOG_TITLES, WORKSHOP, startFeedFixtures, type Fixtures } from "./feed-fixtures.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const TIMEOUT = Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000);
@@ -62,6 +65,8 @@ before(async () => {
       KINTSUGI_CONFIG_DIR: config,
       KINTSUGI_FRONTEND_PORT: String(frontend),
       KINTSUGI_BACKEND_PORT: String(backend),
+      // Kin's scripted local model: no provider, no credentials, no cost.
+      KINTSUGI_HEADLESS_KIN: "mock",
     },
   });
   url = await new Promise<string>((done, fail) => {
@@ -104,8 +109,12 @@ after(async () => {
   }
 });
 
-const feedItems = () => page.locator("[data-feed-item]");
-const item = (title: string) => page.locator("article[data-feed-item]", { has: page.getByRole("button", { name: title, exact: true }) });
+// The newest-first list; Picked for you (KI-32) shows some of the same items above it.
+const newest = () => page.getByRole("feed", { name: "Newest first" });
+const picked = () => page.getByRole("region", { name: "Picked for you" });
+const feedItems = () => newest().locator("[data-feed-item]");
+const item = (title: string) => newest().locator("article[data-feed-item]", { has: page.getByRole("button", { name: title, exact: true }) });
+const pick = (title: string) => picked().locator("article[data-feed-item]", { has: page.getByRole("button", { name: title, exact: true }) });
 const db = () => new DatabaseSync(resolve(config, "feed.sqlite"), { readOnly: true });
 const events = (kind: string) => db().prepare("SELECT * FROM events WHERE kind = ? ORDER BY id").all(kind) as Record<string, unknown>[];
 const titles = async () => (await feedItems().locator("h2").allInnerTexts()).map((t) => t.trim());
@@ -142,8 +151,8 @@ test("follow sources and read them newest first", { timeout: TIMEOUT }, async ()
   assert.match(await page.getByText(/need(s)? attention/).innerText(), /1 needs attention/);
 
   // Read in the app: full text from the feed, scripts dropped.
-  await page.getByRole("button", { name: BLOG_TITLES[0], exact: true }).click();
-  const reading = page.getByRole("region", { name: `Reading ${BLOG_TITLES[0]}` });
+  await newest().getByRole("button", { name: BLOG_TITLES[0], exact: true }).click();
+  const reading = newest().getByRole("region", { name: `Reading ${BLOG_TITLES[0]}` });
   await reading.getByText(/the essay is what survives the argument/).waitFor();
   // The feed carried an excerpt; the full article came through the ingest engine.
   await reading.getByText(/only on the page, never in the feed/).waitFor();
@@ -152,7 +161,7 @@ test("follow sources and read them newest first", { timeout: TIMEOUT }, async ()
 
   // Impressions were logged with their positions.
   await page.waitForTimeout(2000);
-  const seen = events("impression");
+  const seen = events("impression").filter((e) => e.surface === "newest");
   assert.ok(seen.length >= 3, `impressions: ${JSON.stringify(seen)}`);
   assert.deepEqual(seen.slice(0, 3).map((e) => [e.position, e.surface]), [[0, "newest"], [1, "newest"], [2, "newest"]]);
   assert.equal(events("open").length, 1);
@@ -202,7 +211,7 @@ test("like, note, save into Inspiration, not interested", { timeout: TIMEOUT }, 
 
   // Discuss opens Kin's chat with the item attached as a context chip.
   await item("Episode 12: Mending").getByRole("button", { name: "Discuss" }).click();
-  await page.getByText("Episode 12: Mending").nth(1).waitFor();
+  await page.getByRole("dialog", { name: "Kin" }).getByText("Episode 12: Mending").first().waitFor();
   await shot("06b-discuss");
   await page.keyboard.press("Escape");
 
@@ -247,7 +256,7 @@ test("mute a source, and round-trip subscriptions as OPML", { timeout: TIMEOUT }
   await shot("07-opml-imported");
   await page.keyboard.press("Escape");
   // The imported source was fetched in the background and is newest.
-  await page.getByRole("button", { name: "Attention is a garden", exact: true }).waitFor({ timeout: 30_000 });
+  await newest().getByRole("button", { name: "Attention is a garden", exact: true }).waitFor({ timeout: 30_000 });
   assert.equal((await titles())[0], "Attention is a garden");
 
   // Unmuting brings its items back.
@@ -258,4 +267,101 @@ test("mute a source, and round-trip subscriptions as OPML", { timeout: TIMEOUT }
   await shot("08-feed");
   assert.ok(existsSync(resolve(config, "feed.sqlite")), "the feed lives in app data");
   assert.equal(existsSync(resolve(vault, "feed.sqlite")) || readdirSync(vault).some((f) => f.includes("sqlite")), false, "never in the vault");
+});
+
+test("Picked for you: ranked locally, with Why this? and corrections", { timeout: TIMEOUT }, async () => {
+  await page.getByRole("button", { name: "Following" }).click();
+  await follow("Link", `${fixtures.base}/workshop.xml`, /Following Workshop Letters/);
+  await page.keyboard.press("Escape");
+  await item(WORKSHOP[0].title).waitFor({ timeout: 30_000 });
+  await picked().waitFor();
+  const shownTitles = async () => (await picked().locator("article h2").allInnerTexts()).map((t) => t.trim());
+  await picked().getByRole("button", { name: /Show \d+ more/ }).click();
+  const picks = await shownTitles();
+  assert.ok(picks.length >= 6, `picks: ${picks}`);
+  // Cold start from the seeded clips (kintsugi, golden joinery, sleep, the
+  // quiet web): the repair pieces rank above the fresher football and markets.
+  const at = (title: string) => (picks.includes(title) ? picks.indexOf(title) : 99);
+  assert.ok(at(WORKSHOP[0].title) < at(WORKSHOP[2].title) && at(WORKSHOP[0].title) < at(WORKSHOP[3].title), `order: ${picks}`);
+  // One pick in eight explores.
+  assert.equal(await picked().getByText("Exploring", { exact: true }).count(), 1);
+
+  // Why this? names the clip it's close to; that reason can be removed.
+  const gold = pick(WORKSHOP[0].title);
+  await gold.getByRole("button", { name: "Why this?" }).click();
+  const why = gold.getByRole("list", { name: `Why ${WORKSHOP[0].title}` });
+  await why.getByRole("listitem").first().waitFor();
+  const reasons = await why.getByRole("listitem").allInnerTexts();
+  assert.ok(reasons.some((r) => /Close to “.+”, in Inspiration|You often keep|topic you keep/.test(r)), `reasons: ${reasons}`);
+  await shot("09-picked-why-this");
+  const removable = why.getByRole("button", { name: /^Don’t use this:/ }).first();
+  const removed = (await removable.getAttribute("aria-label"))!.replace("Don’t use this: ", "");
+  await removable.click();
+  await page.getByText("Picked for you won’t use that").waitFor();
+  await shot("10-correction");
+  let corrections = events("correction");
+  assert.equal(corrections.length, 1);
+  assert.equal(corrections[0].surface, "picked");
+  const reason = JSON.parse(String(corrections[0].data)).reason as string;
+  assert.match(reason, /^(anchor:|source:|author:|topic:)/);
+  // Undo puts it back, as its own event in the append-only log.
+  await page.getByRole("button", { name: "Undo" }).first().click();
+  await page.waitForTimeout(500);
+  assert.equal(events("undo_correction").length, 1);
+  corrections = events("undo_correction");
+  assert.equal(JSON.parse(String(corrections[0].data)).reason, reason);
+  await gold.getByRole("button", { name: "Why this?" }).click();
+  await gold.getByRole("button", { name: "Why this?" }).click();
+  await gold.getByText(removed).first().waitFor();
+
+  // A like says what it changed, and Undo reverses it. (Earlier toasts first
+  // clear, so the screenshot shows this one.)
+  await page.waitForFunction(() => !document.querySelector("[data-sonner-toast]"), null, { timeout: 30_000 });
+  const glaze = pick(WORKSHOP[5].title).or(item(WORKSHOP[5].title)).first();
+  await glaze.getByRole("button", { name: "Like", exact: true }).click();
+  const toastText = page.locator("[data-sonner-toast]").filter({ hasText: "Liked" }).last();
+  await toastText.waitFor();
+  assert.match(await toastText.innerText(), /More weight on .+ \d+% → \d+%|New in Picked for you|made room/);
+  await page.waitForTimeout(800); // the toast's entrance animation
+  await shot("11-like-effect");
+  await toastText.getByRole("button", { name: "Undo" }).click();
+  await page.waitForTimeout(500);
+  assert.equal(events("unlike").length, 2, "the KI-25 undo and this one");
+
+  // Picked impressions are logged with their own surface and positions.
+  await page.waitForTimeout(2000);
+  const seen = events("impression").filter((e) => e.surface === "picked");
+  assert.ok(seen.length >= 4, `picked impressions: ${seen.length}`);
+  assert.ok(seen.some((e) => e.position === 0));
+  await picked().scrollIntoViewIfNeeded();
+  await shot("12-picked-for-you");
+});
+
+test("Kin reads a feed item and uses the ranking tools; its picks are logged apart", { timeout: TIMEOUT }, async () => {
+  const kin = page.getByRole("dialog", { name: "Kin" });
+  const replies = kin.locator('[data-role="kin"]');
+  const target = item(WORKSHOP[4].title);
+  const id = await target.getAttribute("data-feed-item");
+  await target.getByRole("button", { name: "Discuss" }).click();
+  await kin.waitFor();
+  const box = kin.getByRole("textbox", { name: "Message Kin" });
+  await box.fill("What is this one about?");
+  await box.press("Enter");
+  // KI-25's Discuss only gave Kin the title; now it reads the item itself.
+  const read = replies.last().getByText(`read {"limit":20,"path":"feed:${id}"}`, { exact: false });
+  await read.waitFor({ timeout: 30_000 });
+  await replies.last().getByText(/It returned: feed:\d+ title: The quiet web is still here source: Workshop Letters author: Mira Kane/).waitFor({ timeout: 30_000 });
+  await shot("13-kin-reads-feed-item");
+
+  await box.fill("Give me a shortlist of the feed");
+  await box.press("Enter");
+  await replies.last().getByText(`tool {"args":{"n":5},"name":"shortlist"}`, { exact: false }).waitFor({ timeout: 30_000 });
+  await replies.last().getByText(/It returned: \[ \{"age":"\d+[hd]","id":"feed:\d+"/).waitFor({ timeout: 30_000 });
+  await shot("14-kin-shortlist");
+  const kinPicks = events("kin_pick");
+  assert.equal(kinPicks.length, 5);
+  assert.ok(kinPicks.every((e) => e.surface === "kin" && JSON.parse(String(e.data)).tool === "shortlist"));
+  // Kin's picks are never his impressions.
+  assert.equal(events("impression").filter((e) => e.surface === "kin").length, 0);
+  await page.keyboard.press("Escape");
 });

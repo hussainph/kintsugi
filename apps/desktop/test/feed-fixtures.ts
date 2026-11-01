@@ -95,6 +95,26 @@ function notes(base: string) {
   });
 }
 
+/** KI-32's ranking fixture: a mixed newsletter, some close to the seeded clips (kintsugi, gold, repair, sleep), some far. */
+export const WORKSHOP = [
+  { slug: "gold", title: "Golden seams: kintsugi repair at home", author: "Mira Kane", hours: 9, body: "Kintsugi repair with gold lacquer: the broken bowl, the golden joinery, the seam that shows the repair." },
+  { slug: "rest", title: "Why we sleep less in winter", author: "Sam Ode", hours: 4, body: "Sleep, rest and the long dark evenings: insomnia, naps and why bedtime drifts." },
+  { slug: "football", title: "Transfer window: strikers and derby fixtures", author: "Lee Ball", hours: 1, body: "The league leaders chase a striker before the derby; goalkeeper fixtures and transfer fees." },
+  { slug: "markets", title: "Quarterly earnings and dividend stocks", author: "Ann Fund", hours: 2, body: "Earnings season, dividend stocks, bond yields and a nervous market." },
+  { slug: "web", title: "The quiet web is still here", author: "Mira Kane", hours: 12, body: "Small personal websites, slow blogs and the quiet web of people writing for themselves." },
+  { slug: "glaze", title: "Mending a cracked glaze with gold", author: "Mira Kane", hours: 20, body: "A cracked glaze, mended with gold: kintsugi repair, lacquer and patience." },
+  { slug: "gadget", title: "Unboxing the new charger", author: "Gil Tech", hours: 3, body: "Unboxing a charger, battery specs and a laptop stand." },
+  { slug: "rain", title: "A short film about rain and attention", author: "Sam Ode", hours: 30, body: "Rain on a window, attention, and a short film about slowing down." },
+];
+
+function workshop(base: string) {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>Workshop Letters</title><link>${base}/workshop</link>
+${WORKSHOP.map((p) => `<item><title>${escape(p.title)}</title><link>${base}/workshop/${p.slug}</link><guid>${base}/workshop/${p.slug}</guid>
+<dc:creator>${p.author}</dc:creator><pubDate>${rfc822(p.hours)}</pubDate><description>${escape(p.body)}</description></item>`).join("\n")}
+</channel></rss>`;
+}
+
 /** The full article behind a post: more than the feed carries. */
 const article = (slug: string) => `<!doctype html><html><head><title>${slug}</title></head><body><nav>Home · About</nav>
 <article><h1>${slug}</h1><p>Every tool is an argument about what matters.</p>
@@ -132,6 +152,8 @@ export async function startFeedFixtures(): Promise<Fixtures> {
         return send("application/atom+xml", channel(base));
       case "/pod.xml":
         return send("application/rss+xml", podcast(base));
+      case "/workshop.xml":
+        return send("application/rss+xml", workshop(base));
       case "/notes.json":
         return send("application/feed+json", notes(base));
       case "/broken.xml":
@@ -149,5 +171,5 @@ export async function startFeedFixtures(): Promise<Fixtures> {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { base } = await startFeedFixtures();
-  console.log(`Feed fixtures at ${base}: /quiet/ /craft.atom /pod.xml /notes.json /broken.xml`);
+  console.log(`Feed fixtures at ${base}: /quiet/ /craft.atom /pod.xml /notes.json /workshop.xml /broken.xml`);
 }

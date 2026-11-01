@@ -75,6 +75,10 @@ pub trait Brain: Send + Sync + 'static {
     fn finish_job(&self, _job: &Job, report: String, _trace: &Trace) -> Result<String> {
         Ok(report)
     }
+    /// The Feed, for `read feed:<id>` and the ranking tools.
+    fn feed(&self) -> Option<super::tools::FeedTool> {
+        None
+    }
     fn meter(&self) -> &Meter;
     fn emit(&self, event: ChatEvent);
     fn today(&self) -> String {
@@ -386,6 +390,9 @@ impl<B: Brain> Engine<B> {
             if let Some(ideas) = self.0.brain.ideas() {
                 tools = tools.with_ideas(ideas);
             }
+            if let Some(feed) = self.0.brain.feed() {
+                tools = tools.with_feed(feed);
+            }
             if chat && let Some(access) = self.0.brain.memory_access(&vault, turn, &request.question) {
                 tools = tools.with_memory(access);
             }
@@ -681,6 +688,10 @@ impl Brain for AppBrain {
 
     fn finish_job(&self, job: &Job, report: String, trace: &Trace) -> Result<String> {
         super::ideas::finish_job(&self.0, job, report, trace)
+    }
+
+    fn feed(&self) -> Option<super::tools::FeedTool> {
+        Some(crate::feed::kin_hook(&self.0))
     }
 
     fn meter(&self) -> &Meter {

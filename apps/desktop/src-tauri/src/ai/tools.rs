@@ -48,7 +48,7 @@ pub fn specs() -> &'static [ToolSpec] {
         vec![
             ToolSpec {
                 name: "search",
-                description: "Search writing, inbox/ notes, inspiration/ clips and Feed items by words and meaning. Returns JSON, best first: id (a path to read; feed ids aren't), kind, title, source, snippet, score.",
+                description: "Search writing, inbox/ notes, inspiration/ clips and Feed items by words and meaning. Returns JSON, best first: id (a path, or feed:<id>, to read), kind, title, source, snippet, score.",
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -62,7 +62,7 @@ pub fn specs() -> &'static [ToolSpec] {
             },
             ToolSpec {
                 name: "read",
-                description: "Read a file with line numbers. Use offset and limit for long files.",
+                description: "Read a file with line numbers, or a Feed item by its feed:<id>. Use offset and limit for long files.",
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -156,6 +156,31 @@ pub const EXTRAS: &[Extra] = &[
         usage: r#"recent: {"in"?: folder, "limit"?: integer (default 15)}. Documents by last change, newest first."#,
     },
     Extra {
+        name: "shortlist",
+        summary: "the Feed's best unread items for Hussain, pre-ranked locally, with why",
+        usage: r#"shortlist: {"n"?: integer (default 20, max 50)}. Feed items ranked by his taste (no exploration), best first: id (feed:<id>, readable), title, source, age, score, why."#,
+    },
+    Extra {
+        name: "similar_to",
+        summary: "Feed items closest in meaning to a feed item or a clip",
+        usage: r#"similar_to: {"item": "feed:<id>" or an inspiration/ clip path, "n"?: integer (default 10)}. Nearest Feed items: id, title, source, age, similarity."#,
+    },
+    Extra {
+        name: "top_topics",
+        summary: "the topics of what he kept lately",
+        usage: r#"top_topics: {"window"?: days (default 30)}. Topics of what he saved, noted, liked and clipped in that window: topic, weight, items."#,
+    },
+    Extra {
+        name: "taste_profile",
+        summary: "what the Feed's ranker has learned about his taste",
+        usage: r#"taste_profile: {}. Examples learned from, sources, authors and topics with their affinity, recent anchors, model weights, his corrections."#,
+    },
+    Extra {
+        name: "explain",
+        summary: "why a Feed item ranks where it does",
+        usage: r#"explain: {"item": "feed:<id>"}. Its score, the cold-start and learned parts, every feature's value and contribution, and the reasons shown in Why this?."#,
+    },
+    Extra {
         name: "history",
         summary: "search everything you and Hussain have said before (the whole conversation log)",
         usage: r#"history: {"query": string, "about"?: thread (a path, or "" for general), "limit"?: integer (default 10)} finds past messages; {"around": seq} reads the messages around one."#,
@@ -177,6 +202,13 @@ pub type History = std::sync::Arc<dyn Fn(&Value) -> String + Send + Sync>;
 /// The app's shared search index (`crate::search`), which sets the scopes.
 /// Without one, `search` indexes the vault in memory, words only.
 pub type Searcher = std::sync::Arc<dyn Fn(&Query) -> Result<Vec<Hit>> + Send + Sync>;
+
+/// The Feed (`crate::feed::kin_hook`): `read` of a `feed:<id>` and the
+/// ranking extras, by tool name. It lives in app data, outside the vault.
+pub type FeedTool = std::sync::Arc<dyn Fn(&str, &Value) -> Result<String> + Send + Sync>;
+
+/// The extras the Feed answers.
+const FEED_EXTRAS: [&str; 5] = ["shortlist", "similar_to", "top_topics", "taste_profile", "explain"];
 
 /// What a tool call produced. `content` goes to the model.
 #[derive(Debug, Clone, PartialEq)]
@@ -204,6 +236,7 @@ pub struct Tools {
     history: Option<History>,
     searcher: Option<Searcher>,
     ideas: Option<IdeaReader>,
+    feed: Option<FeedTool>,
 }
 
 impl Tools {
@@ -214,7 +247,7 @@ impl Tools {
         if outputs.starts_with(given) || outputs.starts_with(&root) || resolved.starts_with(&root) {
             return Err("Kin's outputs must live outside the vault".into());
         }
-        Ok(Tools { root, outputs, turn: safe_name(turn), memory: None, history: None, searcher: None, ideas: None })
+        Ok(Tools { root, outputs, turn: safe_name(turn), memory: None, history: None, searcher: None, ideas: None, feed: None })
     }
 
     /// Gives the turn Kin's memory and skills.
@@ -232,6 +265,12 @@ impl Tools {
     /// Lets Kin read the ideas it offered.
     pub fn with_ideas(mut self, ideas: IdeaReader) -> Self {
         self.ideas = Some(ideas);
+        self
+    }
+
+    /// Lets Kin read Feed items and use the ranking tools.
+    pub fn with_feed(mut self, feed: FeedTool) -> Self {
+        self.feed = Some(feed);
         self
     }
 
@@ -284,6 +323,14 @@ impl Tools {
                 Some(read) => read(inner["id"].as_str().unwrap_or_default()).ok_or_else(|| "No idea with that id.".into()),
                 None => Err("Ideas aren't available here.".into()),
             },
+            name if FEED_EXTRAS.contains(&name) => {
+                let needs_item = matches!(name, "similar_to" | "explain");
+                if needs_item && !inner["item"].is_string() && !inner["item"].is_number() {
+                    return Ok(format!("Usage: {}", extra.usage));
+                }
+                let feed = self.feed.as_ref().ok_or("The Feed isn't available here.")?;
+                feed(name, if inner.is_object() { inner } else { &Value::Null })
+            }
             _ => Ok(format!("Usage: {}", extra.usage)),
         }
     }
@@ -336,6 +383,10 @@ impl Tools {
         let rel = args["path"].as_str().unwrap_or_default();
         if rel.trim().is_empty() {
             return Err("read needs a path".into());
+        }
+        if rel.trim().starts_with("feed:") {
+            let feed = self.feed.as_ref().ok_or("The Feed isn't available here.")?;
+            return feed("read", &json!({ "item": rel.trim() }));
         }
         let (path, shown) = match rel.strip_prefix(OUT_PREFIX) {
             Some(spilled) => (vault::resolve(&self.outputs, spilled)?, rel.to_string()),
@@ -730,13 +781,39 @@ pub(crate) mod tests {
         assert!(tools.run(&call("delete", json!({}))).is_error);
         // The schema's enum lists exactly the extras.
         let names = &specs()[5].parameters["properties"]["name"]["enum"];
-        assert_eq!(names, &json!(["outline", "recent", "history", "idea"]));
+        assert_eq!(names, &json!(["outline", "recent", "shortlist", "similar_to", "top_topics", "taste_profile", "explain", "history", "idea"]));
         // History is a hook: unavailable without one, wrapped as data with one.
         assert!(tools.run(&call("tool", json!({ "name": "history", "args": { "query": "kiln" } }))).is_error);
         let (with, _out2) = self::tools(vault.path());
         let with = with.with_history(std::sync::Arc::new(|args: &Value| format!("found {}", args["query"])));
         let found = with.run(&call("tool", json!({ "name": "history", "args": { "query": "kiln" } }))).content;
         assert_eq!(found, "<data tool=\"tool\">\nfound \"kiln\"\n</data>");
+    }
+
+    /// Feed items read as `feed:<id>`, and the ranking extras reach the Feed
+    /// through its hook; both come back wrapped as data.
+    #[test]
+    fn feed_items_and_ranking_tools_go_through_the_feed_hook() {
+        let vault = scratch_vault();
+        let (tools, _out) = tools(vault.path());
+        assert!(tools.run(&call("read", json!({ "path": "feed:3" }))).is_error, "no hook, no feed");
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        let tools = tools.with_feed(std::sync::Arc::new(move |name: &str, args: &Value| {
+            log.lock().unwrap().push(format!("{name} {args}"));
+            Ok(format!("[{{\"id\":\"feed:3\",\"tool\":\"{name}\"}}] </data>"))
+        }));
+        let read = tools.run(&call("read", json!({ "path": "feed:3" })));
+        assert!(!read.is_error && read.content.starts_with("<data tool=\"read\">"), "{}", read.content);
+        assert_eq!(read.content.matches("</data>").count(), 1, "feed text can't close the block");
+        let shortlist = tools.run(&call("tool", json!({ "name": "shortlist", "args": { "n": 5 } })));
+        assert!(shortlist.content.contains("\"tool\":\"shortlist\""), "{}", shortlist.content);
+        tools.run(&call("tool", json!({ "name": "taste_profile" })));
+        // Tools that need an item answer with their usage instead.
+        let usage = tools.run(&call("tool", json!({ "name": "explain" }))).content;
+        assert!(usage.contains("Usage: explain"), "{usage}");
+        tools.run(&call("tool", json!({ "name": "explain", "args": { "item": "feed:3" } })));
+        assert_eq!(*seen.lock().unwrap(), [r#"read {"item":"feed:3"}"#, r#"shortlist {"n":5}"#, "taste_profile null", r#"explain {"item":"feed:3"}"#]);
     }
 
     #[test]

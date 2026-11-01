@@ -13,9 +13,8 @@ const PAGE = 40;
 
 type Props = {
   /**
-   * KI-32's ranked "Picked for you" section renders here, above the newest
-   * items. It logs its own impressions with surface "picked". Until ranking
-   * exists the Feed is newest first only.
+   * KI-32's ranked "Picked for you" section (`Picked.tsx`) renders here,
+   * above the newest items. It logs its own impressions with surface "picked".
    */
   picked?: ReactNode;
 };

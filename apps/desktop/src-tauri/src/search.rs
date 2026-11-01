@@ -88,6 +88,31 @@ impl Search {
     }
 }
 
+/// What Feed ranking (KI-32) reads from the index: one vector per feed item
+/// and per vault document, and the model to embed anything else with.
+/// `None` until the model is loaded: ranking then uses hashed text vectors.
+pub struct Vectors {
+    pub feed: std::collections::HashMap<String, Vec<f32>>,
+    pub vault: std::collections::HashMap<String, Vec<f32>>,
+    pub embedder: Arc<dyn search::Embedder>,
+}
+
+impl Search {
+    pub fn vectors(&self, app: &AppHandle, root: Option<&Path>) -> Option<Vectors> {
+        self.with(app, |index| {
+            let Some(embedder) = index.embedder() else { return Ok(None) };
+            let mut vault = Default::default();
+            if let Some((root, key)) = root.and_then(|r| scope(r).ok()) {
+                search::vault::sync(index, &key, &root)?;
+                vault = index.doc_vectors(&key)?;
+            }
+            Ok(Some(Vectors { feed: index.doc_vectors(FEED_SCOPE)?, vault, embedder }))
+        })
+        .ok()
+        .flatten()
+    }
+}
+
 /// Loads the embedding model in the background (downloading it once), then
 /// embeds whatever the index holds without vectors.
 pub fn init(app: &AppHandle) {

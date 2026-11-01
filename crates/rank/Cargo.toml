@@ -1,0 +1,15 @@
+[package]
+name = "kintsugi-rank"
+description = "Kintsugi's Feed ranking: local, learned, explainable; no LLM calls"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# Only the replay example's optional `--db`, which reads a copy of a Feed
+# database read-only.
+rusqlite = { version = "0.41", features = ["bundled"] }

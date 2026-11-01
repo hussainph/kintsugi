@@ -1,12 +1,13 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowUpRight, BookmarkCheck, BookmarkPlus, EyeOff, Headphones, Heart, MessagesSquare, NotebookPen, Video } from "lucide-react";
-import { useEffect, useRef, useState, type Ref } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { discuss as discussWithKin, useScreenContext } from "@/lib/chat";
-import { feed, type FeedItem as Item, type Place } from "./api";
+import { feed, refreshPicked, type FeedItem as Item, type Place } from "./api";
+import { describeEffect } from "./ranking";
 import { ago, itemTitle, paragraphs, webUrl } from "./model";
 
 type Props = {
@@ -15,12 +16,14 @@ type Props = {
   place: Place;
   onChange: (item: Item) => void;
   onDismiss: (item: Item) => void;
+  /** Below the actions: Picked for you's "Why this?". */
+  footer?: ReactNode;
 };
 
 const requestClip = (path: string) => window.dispatchEvent(new CustomEvent("kintsugi:open-clip", { detail: { path } }));
 
 /** One item: what it is, then the four things he can do with it. */
-export function FeedItem({ ref, item, place, onChange, onDismiss }: Props) {
+export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Props) {
   const [reading, setReading] = useState<{ text: string | null } | null>(null);
   const [noting, setNoting] = useState(false);
   const [note, setNote] = useState(item.note ?? "");
@@ -73,10 +76,23 @@ export function FeedItem({ ref, item, place, onChange, onDismiss }: Props) {
     const next = await run(() => feed.act(item.id, liked ? "like" : "unlike", place));
     if (!next) return;
     onChange(next);
+    // What the like changed in Picked for you, with an exact undo.
+    const effect = liked ? await feed.effect(item.id).catch(() => null) : null;
+    refreshPicked();
     if (liked) {
       toast("Liked", {
-        description: "A signal for Picked for you, once it arrives. Nothing else changes yet.",
-        action: { label: "Undo", onClick: () => void feed.act(item.id, "unlike", place).then(onChange).catch((e) => toast.error(String(e))) },
+        description: effect ? describeEffect(effect) : "A signal for Picked for you.",
+        action: {
+          label: "Undo",
+          onClick: () =>
+            void feed
+              .act(item.id, "unlike", place)
+              .then((undone) => {
+                onChange(undone);
+                refreshPicked();
+              })
+              .catch((e) => toast.error(String(e))),
+        },
       });
     }
   };
@@ -89,6 +105,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss }: Props) {
       const next = await run(() => feed.save(item.id, place));
       if (!next?.savedPath) return;
       onChange(next);
+      refreshPicked();
       const path = next.savedPath;
       toast("Saved to Inspiration", {
         description: next.note ? "Your note went with it." : undefined,
@@ -104,11 +121,19 @@ export function FeedItem({ ref, item, place, onChange, onDismiss }: Props) {
     const next = await run(() => feed.act(item.id, "notInterested", place));
     if (!next) return;
     onDismiss(next);
+    refreshPicked();
     toast("Not interested", {
       description: "Hidden. The strongest signal Picked for you gets.",
       action: {
         label: "Undo",
-        onClick: () => void feed.act(item.id, "undoNotInterested", place).then(onChange).catch((e) => toast.error(String(e))),
+        onClick: () =>
+          void feed
+            .act(item.id, "undoNotInterested", place)
+            .then((undone) => {
+              onChange(undone);
+              refreshPicked();
+            })
+            .catch((e) => toast.error(String(e))),
       },
     });
   };
@@ -242,6 +267,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss }: Props) {
           Not interested
         </Button>
       </div>
+      {footer}
     </article>
   );
 }

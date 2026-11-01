@@ -1,6 +1,7 @@
 //! A scripted stand-in for a model, for headless runs only
 //! (`KINTSUGI_HEADLESS_KIN=mock`). It never calls out and costs nothing,
-//! but it exercises the real loop: it reads the first chip (or searches),
+//! but it exercises the real loop: it reads the first chip (a document,
+//! clip or Feed item as `feed:<id>`) or searches,
 //! then answers slowly, word by word, so interrupting and batching can be
 //! seen and tested in a browser tab.
 //!
@@ -35,14 +36,12 @@ fn said(message: &str) -> &str {
     message.split("\n\n<context>").next().unwrap_or(message).trim()
 }
 
-/// The first on-screen chip that's a vault path.
+/// The first on-screen chip that's a vault path or a Feed item.
 fn first_chip(message: &str) -> Option<String> {
     let context = message.split("On screen (read these if they matter):").nth(1)?;
     context.lines().skip(1).take_while(|l| l.starts_with("- ")).find_map(|line| {
-        let mut parts = line[2..].split_whitespace();
-        let kind = parts.next()?;
-        let path = parts.next()?;
-        (kind != "feed" && (path.ends_with(".md") || path.ends_with(".mdx"))).then(|| path.to_string())
+        let path = line[2..].split_whitespace().nth(1)?;
+        (path.starts_with("feed:") || path.ends_with(".md") || path.ends_with(".mdx")).then(|| path.to_string())
     })
 }
 
@@ -76,6 +75,10 @@ impl Model for Scripted {
         } else if let Some(Item::User(message)) = ex.items.last() {
             // First step of a turn: look something up.
             let call = match first_chip(message) {
+                // The Feed's ranking tools, so headless runs can drive them.
+                _ if said(message).to_lowercase().contains("shortlist") => {
+                    ToolCall { id: "mock-1".into(), name: "tool".into(), arguments: json!({ "name": "shortlist", "args": { "n": 5 } }) }
+                }
                 Some(path) => ToolCall { id: "mock-1".into(), name: "read".into(), arguments: json!({ "path": path, "limit": 20 }) },
                 None => {
                     let word = said(message).split(|c: char| !c.is_alphanumeric()).max_by_key(|w| w.len()).unwrap_or("kintsugi");
@@ -88,14 +91,23 @@ impl Model for Scripted {
                 Item::Assistant { calls, .. } => calls.first().map(|c| format!("{} {}", c.name, c.arguments)),
                 _ => None,
             });
+            // The start of what the tool returned, so a test can see Kin got it.
+            let returned = ex.items.iter().rev().find_map(|i| match i {
+                Item::Results(results) => results.first().map(|r| {
+                    let text = r.content.replace("<data tool=\"read\">", "").replace("<data tool=\"tool\">", "");
+                    text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(160).collect::<String>()
+                }),
+                _ => None,
+            });
             let earlier = ex.items.iter().filter(|i| matches!(i, Item::Assistant { calls, .. } if calls.is_empty())).count();
             let recap = question.contains("Earlier in this conversation");
             format!(
                 "You said: “{}”. I looked with {}. This thread has {earlier} earlier exchange(s){}. \
-                 This reply comes from the headless mock model, so nothing was sent to a provider.",
+                 This reply comes from the headless mock model, so nothing was sent to a provider.{}",
                 said(question).lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join(" / "),
                 looked.unwrap_or_else(|| "nothing".into()),
                 if recap { " and a summary" } else { "" },
+                returned.map(|r| format!(" It returned: {r}")).unwrap_or_default(),
             )
         };
         let mut words = text.split_inclusive(' ').peekable();

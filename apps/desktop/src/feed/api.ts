@@ -73,6 +73,14 @@ export type Place = { surface: Surface; position: number };
 export type Action = "like" | "unlike" | "notInterested" | "undoNotInterested" | "openOriginal" | "discuss";
 export type Impression = { id: number; position: number; surface: Surface };
 
+/** One reason behind a pick. Removable ones are corrections (KI-32). */
+export type Reason = { key: string; label: string; removable: boolean };
+export type Pick = { item: FeedItem; id: number; score: number; explore: boolean; reasons: Reason[] };
+export type Picked = { picks: Pick[]; examples: number; learnedShare: number };
+/** An affinity a like moved, from 0 to 1 (0.25 is "no opinion yet"). */
+export type Change = { key: string; label: string; before: number; after: number };
+export type Effect = { changes: Change[]; added: { id: number; title: string }[]; removed: { id: number; title: string }[] };
+
 export const feed = {
   sources: () => invoke<Source[]>("feed_sources"),
   subscribe: (input: Subscribe) => invoke<Subscribed>("feed_subscribe", { input }),
@@ -88,6 +96,13 @@ export const feed = {
   note: (id: number, note: string, place?: Place) => invoke<FeedItem>("feed_note", { id, note, place }),
   save: (id: number, place?: Place) => invoke<FeedItem>("feed_save", { id, place }),
   impressions: (impressions: Impression[]) => invoke<void>("feed_impressions", { impressions }),
+  picked: (n?: number) => invoke<Picked>("feed_picked", { n }),
+  correct: (reason: string, id?: number, undo = false) => invoke<void>("feed_correct", { reason, id, undo }),
+  effect: (id: number) => invoke<Effect>("feed_effect", { id }),
 };
+
+/** Picked for you reloads on this window event (likes, saves, corrections). */
+export const PICKED_REFRESH = "kintsugi:picked-refresh";
+export const refreshPicked = () => window.dispatchEvent(new Event(PICKED_REFRESH));
 
 export const FEED_CHANGED = "feed:changed";

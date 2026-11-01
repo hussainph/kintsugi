@@ -198,6 +198,11 @@ impl Index {
         self.embedder.is_some()
     }
 
+    /// The model, for callers that embed text of their own (Feed ranking).
+    pub fn embedder(&self) -> Option<Arc<dyn Embedder>> {
+        self.embedder.clone()
+    }
+
     /// Each document's stamp in a scope, by id.
     pub fn stamps(&self, scope: &str) -> Result<HashMap<String, String>> {
         let mut statement = self.conn.prepare_cached("SELECT id, stamp FROM docs WHERE scope = ?1").map_err(sql)?;
@@ -400,6 +405,30 @@ impl Index {
         let mut ranked: Vec<(i64, f32, i64)> = best.into_iter().map(|(doc, (s, chunk))| (doc, s, chunk)).collect();
         ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         Ok(Some(ranked.into_iter().take(candidates).map(|(doc, _, chunk)| (doc, chunk)).collect()))
+    }
+
+    /// One vector per document in `scope`: the normalized mean of its chunks'
+    /// vectors. Feed ranking (`kintsugi-rank`) reads these as item and clip
+    /// embeddings. Empty without a model or before anything is embedded.
+    pub fn doc_vectors(&mut self, scope: &str) -> Result<HashMap<String, Vec<f32>>> {
+        if self.embedder.is_none() {
+            return Ok(HashMap::new());
+        }
+        if self.vectors.is_none() {
+            self.vectors = Some(self.load_vectors()?);
+        }
+        let (vectors, docs) = self.vectors.as_ref().unwrap();
+        let mut sums: HashMap<i64, Vec<f32>> = HashMap::new();
+        for cached in vectors {
+            if docs.get(&cached.doc).is_none_or(|d| d.scope != scope) {
+                continue;
+            }
+            let sum = sums.entry(cached.doc).or_insert_with(|| vec![0.0; cached.vector.len()]);
+            if sum.len() == cached.vector.len() {
+                sum.iter_mut().zip(&cached.vector).for_each(|(s, x)| *s += x);
+            }
+        }
+        Ok(sums.into_iter().map(|(doc, sum)| (docs[&doc].id.clone(), normalized(sum))).collect())
     }
 
     fn load_vectors(&self) -> Result<(Vec<Cached>, HashMap<i64, DocMeta>)> {

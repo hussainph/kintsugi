@@ -9,8 +9,11 @@
 //! poll when, and keeps the store.
 
 mod opml;
+pub(crate) mod picked;
 mod presets;
 mod store;
+
+pub use picked::kin_hook;
 
 use crate::AppHandle;
 use kintsugi_ingest::{self as ingest, CaptureOptions, Engine, Subscription, Target, feed::{FeedAdapter, Podcast}, web::WebAdapter, x::XAdapter};
@@ -46,6 +49,8 @@ pub struct Feed {
     /// One poll pass at a time, so a manual refresh and the timer don't
     /// fetch the same source twice.
     polling: tokio::sync::Mutex<()>,
+    /// Picked for you's ranker (KI-32), derived from the event log.
+    ranking: picked::Ranking,
 }
 
 /// The engine (feed and X adapters for polling, web adapter for full text) plus a

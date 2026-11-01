@@ -44,6 +44,7 @@ A pnpm + Cargo monorepo:
 | `crates/vault` | The vault on disk: reading, versioned writes, captures |
 | `crates/ingest` | The ingestion engine: source adapters to normalized Markdown items ([docs/ingest.md](docs/ingest.md)) |
 | `crates/search` | Local hybrid search: FTS5 plus on-device model2vec embeddings, fused by rank ([docs/search.md](docs/search.md)) |
+| `crates/rank` | Feed ranking: taste vectors, online logistic regression, exploration and diversity, offline replay; no LLM calls ([docs/ranking.md](docs/ranking.md)) |
 
 ```sh
 pnpm install

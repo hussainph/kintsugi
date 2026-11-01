@@ -26,19 +26,26 @@ short schemas:
 | Tool | Does |
 | --- | --- |
 | `search` | Hybrid search ([search.md](search.md)) over writing, `inbox/`, `inspiration/` and Feed items: `{query, k?, in?, kind?}` → a JSON array of `{id, kind, title?, source?, snippet, score}`, best first, never full text |
-| `read` | A file with line numbers; `offset`/`limit` for long files |
+| `read` | A file with line numbers; `offset`/`limit` for long files. `feed:<id>` reads a Feed item (Discuss's chip, a `search` or `shortlist` hit) |
 | `list` | A folder's subfolders and documents, with titles |
 | `memory` | Batched add / patch / remove on `USER.md` or `NOTES.md` |
 | `skill` | Loads a skill's body by name; `write` / `delete` change one |
 | `tool` | Runs an extra tool by name; with only a name, returns its usage |
 
 Extra tools, loaded on demand through `tool`: `outline` (a document's
-headings), `recent` (recently changed documents) and `history` (searches
+headings), `recent` (recently changed documents), the Feed's ranking tools
+`shortlist`, `similar_to`, `top_topics`, `taste_profile` and `explain`
+(compact JSON, ranked locally with no model calls; see
+[ranking.md](ranking.md)) and `history` (searches
 the whole conversation log, or reads around one entry with `{"around": seq}`). New tools join this
 list, so the tool array (part of the cached prefix) never changes mid-turn.
 
 - `search` uses the app's shared index (`Tools::with_searcher`). Without
   one, as in tests, it indexes the vault in memory, by words only.
+- Feed items and the ranking tools go through `Tools::with_feed`
+  (`feed::kin_hook`): the Feed lives in app data, not the vault. Items Kin's
+  `shortlist` and `similar_to` return are logged as `kin_pick` events, which
+  ranking never learns from, so Kin can't train the ranker on its own picks.
 - Paths stay inside the vault: no `..`, absolute paths, hidden entries or
   symlinks.
 - Nothing writes to the vault except Kin's own memory and skills in
@@ -190,8 +197,9 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   reports back quietly as a helper entry in the log (a dot on the avatar, no
   popup). Feed ranking and Ideas are meant to use this.
 - Headless runs can try it all without a provider: `KINTSUGI_HEADLESS_KIN=mock`
-  swaps in a scripted local model that reads the first chip (or searches),
-  then answers slowly, word by word. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
+  swaps in a scripted local model that reads the first chip (a document,
+  clip or `feed:<id>`), or calls `shortlist` when asked for one, or searches,
+  then answers slowly, word by word, quoting the start of what the tool returned. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
   the idle wait. `test/runtime-kin.test.ts` drives it in headless Chromium.
 
 ## Ideas (KI-39)
