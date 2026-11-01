@@ -8,7 +8,8 @@
     "./merge": "./src/merge.ts",
     "./remote": "./src/remote.ts",
     "./references": "./src/references.ts",
-    "./vault": "./src/vault.ts"
+    "./vault": "./src/vault.ts",
+    "./books": "./src/books.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.ts",

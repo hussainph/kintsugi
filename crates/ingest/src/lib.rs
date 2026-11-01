@@ -33,6 +33,9 @@ pub mod web;
 pub mod x;
 mod fetch;
 pub mod podcast;
+pub mod pdf;
+pub mod epub;
+pub mod books;
 #[cfg(test)]
 mod test_http;
 pub mod tools;
@@ -64,6 +67,12 @@ pub enum SourceType {
     Youtube,
     /// A podcast episode, with a publisher or on-device transcript.
     Podcast,
+    /// A PDF, from a local file or a link.
+    Pdf,
+    /// An EPUB e-book, from a local file or a link.
+    Epub,
+    /// A book's catalog record from Open Library (no text of the book).
+    Book,
 }
 
 impl SourceType {
@@ -75,6 +84,9 @@ impl SourceType {
             SourceType::Reddit => "reddit",
             SourceType::Youtube => "youtube",
             SourceType::Podcast => "podcast",
+            SourceType::Pdf => "pdf",
+            SourceType::Epub => "epub",
+            SourceType::Book => "book",
         }
     }
 }
@@ -191,7 +203,7 @@ impl std::error::Error for Error {}
 #[derive(Debug, Clone, PartialEq)]
 pub enum Target {
     Url(Url),
-    /// A local file, for adapters such as PDFs and EPUBs (none yet).
+    /// A local file: a PDF or an EPUB.
     File(PathBuf),
 }
 

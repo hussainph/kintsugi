@@ -81,6 +81,11 @@ module.exports = function withCapture(config) {
             NSExtensionActivationSupportsText: true,
             NSExtensionActivationSupportsWebURLWithMaxCount: 1,
             NSExtensionActivationSupportsImageWithMaxCount: 1,
+            // One PDF or EPUB (com.adobe.pdf, org.idpf.epub-container or a
+            // `.pdf`/`.epub` file URL). The rule can't name file types, so
+            // any single file activates; the sheet refuses other types and
+            // files over 50 MB without saving.
+            NSExtensionActivationSupportsFileWithMaxCount: 1,
           },
         },
       },

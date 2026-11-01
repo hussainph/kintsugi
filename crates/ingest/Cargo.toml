@@ -19,6 +19,7 @@ feed-rs = "3"
 # Optional tools, transcripts and podcast feeds (KI-34).
 sha2 = "0.10"
 hex = "0.4"
+tar = { version = "0.4", default-features = false }
 zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 roxmltree = "0.21"

@@ -39,13 +39,19 @@ inspiration/
   why-we-sleep.md
   media/
     why-we-sleep.jpg
+  files/
+    golden-seam.pdf
 ```
 
 - File name: `slugify(title)` (or of the URL host/path, or the first line of
   text, when there's no title yet), made unique like documents are. The file
   name never changes after capture, so links to it stay valid.
-- Media (a shared image, a screenshot, a page's hero image) lives in
-  `inspiration/media/<slug>.<ext>`, one primary image per clip.
+- Media (a shared image, a screenshot, a page's hero image, a PDF's first
+  page, a book's cover) lives in `inspiration/media/<slug>.<ext>`, one
+  primary image per clip.
+- A captured file (a PDF or an EPUB) lives in
+  `inspiration/files/<slug>.pdf|epub`, one per clip, never overwritten. It
+  is the clip's source: enrichment reads it instead of fetching anything.
 - `vault::tree` (the writing sidebar, and the phone's tree) skips
   `inspiration/`. Clips have their own views.
 
@@ -86,12 +92,13 @@ Frontmatter fields. All optional except `kind` and `captured`:
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `link` (article, blog, page), `post` (X, Instagram, Threads, Bluesky, TikTok…), `video`, `image`, `quote` (a passage with a source), `note` (just a thought) |
+| `kind` | `link` (article, blog, page), `post` (X, Instagram, Threads, Bluesky, TikTok…), `video`, `image`, `quote` (a passage with a source), `note` (just a thought), `document` (a PDF), `book` (an EPUB, or a book saved from Open Library) |
 | `title` | Human title. Written by the capture if known, else by enrichment |
 | `url` | Canonical source URL |
 | `site` | Publisher or platform name |
 | `author` | Author or account handle |
 | `image` | Path relative to the clip file |
+| `file` | A saved PDF or EPUB, relative to the clip file: always `files/<clip slug>.pdf` or `.epub` |
 | `captured` | The capturing device's local time, `YYYY-MM-DDTHH:MM`, as inbox captures use |
 | `via` | `mac`, `phone`, `share` (a share sheet or extension), `feed` (saved from the Feed; see `docs/feed.md`) |
 | `tags` | Lowercase tags. Enrichment adds them, preferring tags already in use. The writer may edit them |
@@ -105,7 +112,8 @@ Readers also accept block lists (`tags:\n  - a`), because Obsidian writes them.
 ## Capture
 
 A capture carries any of: `url`, `text` (a shared passage or a note), `note`,
-one image (bytes + MIME type), plus `capturedAt` and `via`. An optional
+one image (bytes + MIME type), one file (a PDF or EPUB: bytes, MIME type and
+its original name), plus `capturedAt` and `via`. An optional
 client-generated `id` is a UUID string in hyphenated 8-4-4-4-12 hexadecimal
 form (case-insensitive). Generate it once when queuing a capture and persist
 it with that capture; every delivery attempt, including the share extension
@@ -114,11 +122,29 @@ An optional `title` is used when the capturing app already knows it. URLs
 must be HTTP or HTTPS; empty captures are rejected. `capturedAt` is required local time
 in `YYYY-MM-DDTHH:MM` form. The receiver writes the clip at once:
 
-- the `kind` guessed from what arrived (a known social host → `post`, a
-  video host → `video`, an image without a URL → `image`, text with a URL →
+- the `kind` guessed from what arrived (a PDF → `document`, an EPUB →
+  `book`, an `openlibrary.org` link → `book`, a known social host → `post`,
+  a video host → `video`, an image without a URL → `image`, text with a URL →
   `quote`, text alone → `note`, otherwise `link`),
 - shared text as a blockquote when there's a URL, as plain text otherwise,
-- the image saved to `media/`.
+- the image saved to `media/`,
+- the file saved to `files/`. Its name (without extension, `_` and `-` as
+  spaces) names the clip, but isn't its title: enrichment takes the title
+  from the document. Files are `application/pdf` (with `%PDF-` in the first
+  kilobyte) or `application/epub+zip` (a zip), 1 byte to 50 MiB
+  (`MAX_CLIP_FILE_BYTES`). A file can arrive with a URL (where it came
+  from) or a note; the file stays the source.
+
+### Books
+
+A book is saved by title or ISBN. The Mac's **Keep something › Find a
+book** searches Open Library (`book_search({ query })` →
+`{ key, url, title, authors, year, isbn, coverUrl, editions }[]`, see
+[ingest.md](ingest.md#books)) and saves the chosen book as a clip with its
+work's URL and title. A bare ISBN typed into the phone's capture box or the
+picker is saved as `https://openlibrary.org/isbn/<isbn>` (`parseIsbn` and
+`isbnUrl` in `@kintsugi/core/books`). Enrichment fills the author, cover,
+description and publication details.
 
 ### Channels
 
@@ -127,16 +153,27 @@ in `YYYY-MM-DDTHH:MM` form. The receiver writes the clip at once:
   queues the capture and the app or extension delivers it to the Mac, same
   outbox guarantees as text captures today.
 - **Phone app**: the existing capture box. Pasting a URL makes a clip.
-- **Mac**: paste or drop a URL, image or text into the Inspiration library.
+- **Mac**: paste or drop a URL, image, text, PDF or EPUB into the
+  Inspiration library, or choose a file in **Keep something**.
+- **Files from the phone**: share a PDF or EPUB (from Files, Safari,
+  Books, Mail) into Kintsugi. The share extension queues it in the App Group
+  without holding it in memory, and the app (not the extension's background
+  upload) delivers it once the Mac reports `api` 4 or later; until then it
+  waits on the phone. See `apps/mobile/share/README.md`.
   (Later: a browser extension, and a macOS share extension.)
 
 ### Phone API
 
 Added to the server in `apps/desktop/src-tauri/src/phone/server.rs` and its
-client in `packages/core/src/remote.ts`; `hello` reports `api: 2`.
+client in `packages/core/src/remote.ts`; `hello` reports `api: 4` (4 added
+file captures).
 
 - `POST /v1/clips`: `{ id?, url?, text?, note?, title?, image?: base64, imageType?,
-  capturedAt, via }` → `{ path }` with 200, including on a duplicate `id`.
+  file?: base64, fileType?, fileName?, capturedAt, via }` → `{ path }` with
+  200, including on a duplicate `id`. `fileType` is required with `file`;
+  `fileName` keeps only its last path component. A file over 50 MiB is 413,
+  invalid base64 or a mismatched type 400. The request body limit for this
+  route is about 70 MiB; the client allows a file capture 100 seconds.
   Invalid UUID strings return 400 (wrong field types return 422; null IDs
   are treated as omitted).
   Images up to 15 MiB decoded; `imageType`
@@ -149,7 +186,7 @@ client in `packages/core/src/remote.ts`; `hello` reports `api: 2`.
   encoding overhead.
 - `GET /v1/clips` → `ClipSummary[]`, newest first (path breaks timestamp ties).
   A summary has `path`, `kind`, `captured`, `tags`, and nullable `title`,
-  `url`, `site`, `author`, `image`, `via`, `summary`, `enriched`, `enrichError`.
+  `url`, `site`, `author`, `image`, `file`, `via`, `summary`, `enriched`, `enrichError`.
   `path` is vault-relative; `image` remains relative to the clip file.
 - `GET /v1/clip?path=…` → the summary fields plus `text` (own text, without
   frontmatter or source) and `hasSource`. Extracted source is kept on disk,
@@ -172,7 +209,10 @@ Existing document and inbox-capture API calls remain compatible.
 The desktop commands are `clip_list`, `clip_read`, `clip_create({ capture })`,
 `clip_update({ path, title?, tags?, note? })` and `clip_trash({ path })`.
 Desktop captures carry image bytes rather than base64 (`DesktopClipCapture`
-uses a JSON number array; convert a `Uint8Array` with `Array.from`).
+uses a JSON number array; convert a `Uint8Array` with `Array.from`). Files
+are base64 on the desktop too: a number array would be several times the
+size of a 50 MiB PDF. `clip_open_file({ path })` opens a clip's saved file
+in its default app (headless runs refuse, pointing at the vault folder).
 Both desktop and phone captures accept the same optional `id` and use one
 receipt service in the desktop app. It keeps the latest **1024 distinct IDs**
 (oldest first eviction, duplicate reads do not refresh order), scoped to the
@@ -209,7 +249,10 @@ Successful desktop and phone mutations emit `clips:changed` with
 captures emit no event.
 
 The vault crate exports `clip_list`, `clip_read`, `clip_create`, `clip_update`,
-`clip_enrich`, `clip_save_media`, `clip_trash`, and `clips_needing_enrichment`.
+`clip_enrich`, `clip_save_media`, `clip_file_path`, `clip_trash`, and
+`clips_needing_enrichment`. `clip_file_path` resolves only the clip's own
+`files/<slug>.<pdf|epub>`, with the same containment and symlink checks as
+media.
 `clip_validate_capture` checks payloads without writing;
 `clip_create_with_receipt` invokes an app-owned reservation callback under
 the naming/path locks, before saving media or Markdown, and skips the
@@ -226,8 +269,8 @@ the pre-fetch summary under that lock: it fills only a still-missing title,
 leaves concurrently edited tags alone,
 and cannot change own text. `clip_save_media` fills a missing primary image
 and sets its field; if an image already exists, it returns that path without
-replacing the screenshot. Media writes never overwrite an existing file.
-Capture naming also avoids orphan media names. `clip_trash` takes the
+replacing the screenshot. Media and file writes never overwrite an existing
+file. Capture naming also avoids orphan media and file names. `clip_trash` (the clip, its image and its saved file) takes the
 desktop's OS Trash callback under the same lock, so enrichment cannot
 resurrect a trashed clip. Pending enrichment
 excludes clips with either `enriched` or `enrich_error` set. Invalid external
@@ -238,8 +281,13 @@ clip files are skipped by listing, while reading one reports an error.
 A background worker picks up clips without `enriched` (on capture, at
 launch, and when a vault opens), one at a time:
 
-1. **Fetch**: the clip's URL is captured through the ingest engine
-   ([ingest.md](ingest.md)): OpenGraph / Twitter card / `<title>` metadata,
+1. **Fetch**: the clip's saved file, if it has one, else its URL, is
+   captured through the ingest engine ([ingest.md](ingest.md)). A PDF is
+   read with PDFKit (or Docling, once he has installed it in Settings ›
+   Optional tools), an EPUB unzipped chapter by chapter, an Open Library
+   link becomes the book's record; the document's title and author fill
+   the clip, and its first page or cover becomes the image. A URL gets
+   OpenGraph / Twitter card / `<title>` metadata,
    oEmbed where the platform offers it (YouTube, X, Bluesky, TikTok, Vimeo),
    the readable article as Markdown (Readability via `dom_smoothie`, with a
    hidden-webview Defuddle fallback for pages that need JavaScript), and
@@ -251,7 +299,8 @@ launch, and when a vault opens), one at a time:
    existing tags from both writing documents and clips. Prefer that shared
    vocabulary so the writer's own work and outside inspiration meet in search.
    It returns a title if missing, a one-sentence summary, 2 to 5 tags, and a
-   corrected `kind`.
+   corrected `kind` (never applied to a clip with a saved file: it stays a
+   `document` or `book`).
 3. **Write back**: the frontmatter fields and the `## Source` section, with
    `enriched` set. The writer's own text is never touched. Failures retry
    with backoff, then set `enrich_error`.
@@ -324,11 +373,15 @@ webview. Missing, corrupt or unsupported images get a quiet fallback.
 The window disables Tauri's native drag interception so HTML drops receive
 both Finder files and browser URLs/text. Clipboard and dropped files use
 `clip_create` with `via: mac`; there is no arbitrary local-file-read command.
-Raster files with an empty browser MIME type use an extension allowlist.
+Raster files with an empty browser MIME type use an extension allowlist, and
+so do PDFs and EPUBs (`clipFileType` in `@kintsugi/core/clips`). Cards of
+documents and books without an image show a file or book glyph, and the
+detail view offers **Open PDF** / **Open book**.
 
 Paste/drop listeners are active only while the library is open, including its
 detail view. Pasting into an input or editable note remains normal editing;
-**Keep something** also accepts a link, text or an image explicitly. Whole
+**Keep something** also accepts a link, text, an image, a PDF or an EPUB
+explicitly, and finds books by title or ISBN. Whole
 HTTP(S) URLs become links; other text stays intact as a note. Each capture
 is persisted before the UI reports success. Title, quote/note and tag edits
 save field patches on blur, navigation and window blur, with a retry/discard

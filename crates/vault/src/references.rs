@@ -497,6 +497,7 @@ mod tests {
                 note: None,
                 image: None,
                 image_type: None,
+                file: None,
                 captured_at: "2026-10-29T14:05".into(),
                 via: ClipVia::Mac,
             },

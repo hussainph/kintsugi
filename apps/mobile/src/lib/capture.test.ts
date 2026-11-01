@@ -3,11 +3,11 @@ import { test } from 'node:test';
 import { HttpError, Offline, remote } from '@kintsugi/core/remote';
 import { randomUUID } from 'node:crypto';
 
-import { captureURL } from './capture-input.ts';
+import { captureBook, captureTarget, captureURL } from './capture-input.ts';
 import { CaptureRetry } from './capture-retry.ts';
 import { loadLegacyOutbox, OUTBOX_KEY } from './legacy-outbox.ts';
 import { postClip } from './clip-capture.ts';
-import { type CaptureQueue, drainCaptures } from './drain-captures.ts';
+import { type CaptureQueue, drainCaptures, heldForMacUpdate, macAccepts } from './drain-captures.ts';
 
 const payload = { id: '9ea47ca4-bc24-431c-bfca-6975af53c15d', url: 'https://example.com/', capturedAt: '2026-10-29T10:30', via: 'share' as const };
 
@@ -228,4 +228,87 @@ test('malformed 2xx acknowledgement stays retryable with the same persisted UUID
     await drainCaptures(port, (capture) => postClip(client, capture), retry);
     assert.equal(events.includes('ack:waiting'), true);
   } finally { globalThis.fetch = original; }
+});
+
+test('a bare ISBN in the capture box becomes an Open Library book clip', () => {
+  for (const [input, isbn] of [
+    ['9780306406157', '9780306406157'],
+    [' 978-0-306-40615-7\n', '9780306406157'],
+    ['ISBN 0-8044-2957-X', '080442957X'],
+    ['isbn: 0306406152', '0306406152'],
+  ]) {
+    assert.equal(captureBook(input), `https://openlibrary.org/isbn/${isbn}`);
+    assert.deepEqual(captureTarget(input), { url: `https://openlibrary.org/isbn/${isbn}`, kind: 'book' });
+  }
+  // A wrong check digit, an ISBN inside prose, or a plain number stays a note.
+  for (const value of ['9780306406158', 'read 9780306406157 tonight', '12345', '2026']) {
+    assert.equal(captureTarget(value), null, value);
+  }
+  assert.deepEqual(captureTarget('https://example.com/'), { url: 'https://example.com/', kind: 'link' });
+});
+
+const document = {
+  id: '3b241101-e2bb-4255-8caf-4136c566a962', file: 'JVBERi0xLjcK', fileType: 'application/pdf',
+  fileName: 'Paper.pdf', note: 'chapter 3', capturedAt: '2026-10-29T10:31', via: 'share' as const,
+};
+
+function fileQueue(items: { id: string; file?: boolean; error?: string }[], payloads: Record<string, object>) {
+  const events: string[] = [];
+  const port: CaptureQueue = {
+    pending: async () => JSON.stringify(items),
+    claim: async (id) => { events.push(`claim:${id}`); return true; },
+    read: async (id) => { events.push(`read:${id}`); return JSON.stringify(payloads[id]); },
+    acknowledge: async (id) => { events.push(`ack:${id}`); },
+    release: async (id) => { events.push(`release:${id}`); },
+    reject: async (id) => { events.push(`reject:${id}`); },
+  };
+  return { port, events };
+}
+
+test('a PDF capture is delivered like an image capture once the Mac takes files', async () => {
+  const original = globalThis.fetch;
+  const client = remote({ url: 'https://mac.example', token: 'test-token' });
+  const { port, events } = fileQueue([{ id: 'pdf', file: true }], { pdf: document });
+  try {
+    globalThis.fetch = async (input, init) => {
+      assert.equal(input, 'https://mac.example/v1/clips');
+      assert.deepEqual(JSON.parse(init?.body as string), document);
+      return Response.json({ path: 'inspiration/paper.md' });
+    };
+    await drainCaptures(port, (capture) => postClip(client, capture), undefined, 4);
+    assert.deepEqual(events, ['claim:pdf', 'read:pdf', 'ack:pdf', 'release:pdf']);
+  } finally { globalThis.fetch = original; }
+});
+
+test('the same file capture rejected by the Mac (413) is kept, not deleted', async () => {
+  const { port, events } = fileQueue([{ id: 'pdf', file: true }], { pdf: document });
+  await assert.rejects(drainCaptures(port, async () => { throw new HttpError(413, 'too large'); }, undefined, 4));
+  assert.deepEqual(events, ['claim:pdf', 'read:pdf', 'reject:pdf', 'release:pdf']);
+});
+
+for (const api of [0, 2, 3]) {
+  test(`a Mac at API ${api} gets other captures; files stay queued, unrejected`, async () => {
+    const { port, events } = fileQueue(
+      [{ id: 'listed', file: true }, { id: 'unlisted' }, { id: 'link' }],
+      { listed: document, unlisted: { ...document, id: randomUUID() }, link: payload },
+    );
+    const delivered: unknown[] = [];
+    await drainCaptures(port, async (capture) => { delivered.push(capture); }, new CaptureRetry(), api);
+    assert.deepEqual(delivered, [payload]);
+    // A flagged file isn't even claimed or read (its payload can be 67 MB).
+    assert.equal(events.some((event) => event.endsWith(':listed')), false);
+    // One the listing didn't flag is checked after reading, then released as is.
+    assert.deepEqual(events.filter((event) => event.endsWith(':unlisted')), ['claim:unlisted', 'read:unlisted', 'release:unlisted']);
+    assert.equal(events.some((event) => event.startsWith('reject:') || event === 'ack:listed' || event === 'ack:unlisted'), false);
+  });
+}
+
+test('the API gate: files need hello.api 4; the update note counts only held files', () => {
+  assert.equal(macAccepts(document, 3), false);
+  assert.equal(macAccepts(document, 4), true);
+  assert.equal(macAccepts(payload, 2), true);
+  const items = [{ id: 'a', file: true }, { id: 'b' }, { id: 'c', file: true, error: 'rejected' }];
+  assert.deepEqual(heldForMacUpdate(items, 3).map((item) => item.id), ['a']);
+  assert.deepEqual(heldForMacUpdate(items, 4), []);
+  assert.deepEqual(heldForMacUpdate(items, 0), [], 'unknown until the Mac answers hello');
 });

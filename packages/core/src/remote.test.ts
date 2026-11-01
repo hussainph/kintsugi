@@ -46,6 +46,7 @@ const summary: ClipSummary = {
   site: "Example",
   author: null,
   image: "media/why-we-sleep.jpg",
+  file: null,
   summary: null,
   enriched: null,
   enrichError: "Fetch failed",

@@ -15,7 +15,7 @@ const MAX_STORE_BYTES: u64 = 8 * 1024 * 1024;
 static LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Deserialize)]
-#[serde(from = "WireCapture")]
+#[serde(try_from = "WireCapture")]
 pub struct Capture {
     pub id: Option<String>,
     pub clip: vault::ClipCapture,
@@ -32,13 +32,71 @@ struct WireCapture {
     title: Option<String>,
     image: Option<Vec<u8>>,
     image_type: Option<String>,
+    /// Base64, like the phone API: a number array would be several times
+    /// the size of a 50 MiB PDF.
+    file: Option<String>,
+    file_type: Option<String>,
+    file_name: Option<String>,
     captured_at: String,
     via: vault::ClipVia,
 }
 
-impl From<WireCapture> for Capture {
-    fn from(wire: WireCapture) -> Self {
-        Self {
+/// Base64 adds a third; a little slack for padding and line breaks.
+pub const MAX_ENCODED_FILE_BYTES: usize = vault::MAX_CLIP_FILE_BYTES.div_ceil(3) * 4 + 16;
+
+/// Why a capture's file field was refused, before it reaches the vault.
+#[derive(Debug, PartialEq)]
+pub enum FileError {
+    TooLarge,
+    Invalid(&'static str),
+}
+
+impl std::fmt::Display for FileError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooLarge => f.write_str("PDFs and EPUBs must be 50 MiB or smaller."),
+            Self::Invalid(message) => f.write_str(message),
+        }
+    }
+}
+
+/// Decodes a capture's base64 file. The type and bytes are checked by the
+/// vault; this checks only the encoding, the size and that a type came along.
+pub fn decode_file(
+    file: Option<String>,
+    file_type: Option<String>,
+    file_name: Option<String>,
+) -> Result<Option<vault::ClipFile>, FileError> {
+    use base64::Engine;
+    let Some(encoded) = file else {
+        return match file_type {
+            Some(_) => Err(FileError::Invalid("A clip file type needs a file.")),
+            None => Ok(None),
+        };
+    };
+    if encoded.len() > MAX_ENCODED_FILE_BYTES {
+        return Err(FileError::TooLarge);
+    }
+    let mime = file_type.ok_or(FileError::Invalid("A clip file needs its type."))?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded.as_bytes())
+        .map_err(|_| FileError::Invalid("The clip file must be valid base64."))?;
+    if bytes.len() > vault::MAX_CLIP_FILE_BYTES {
+        return Err(FileError::TooLarge);
+    }
+    // Only a bare name is kept; it names the clip and never becomes a path.
+    let name = file_name
+        .map(|n| n.rsplit(['/', '\\']).next().unwrap_or_default().chars().take(255).collect::<String>())
+        .filter(|n| !n.trim().is_empty());
+    Ok(Some(vault::ClipFile { bytes, mime, name }))
+}
+
+impl TryFrom<WireCapture> for Capture {
+    type Error = FileError;
+
+    fn try_from(wire: WireCapture) -> Result<Self, FileError> {
+        let file = decode_file(wire.file, wire.file_type, wire.file_name)?;
+        Ok(Self {
             id: wire.id,
             clip: vault::ClipCapture {
                 url: wire.url,
@@ -47,10 +105,11 @@ impl From<WireCapture> for Capture {
                 title: wire.title,
                 image: wire.image,
                 image_type: wire.image_type,
+                file,
                 captured_at: wire.captured_at,
                 via: wire.via,
             },
-        }
+        })
     }
 }
 

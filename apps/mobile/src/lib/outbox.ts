@@ -5,14 +5,16 @@ import Storage from 'expo-sqlite/kv-store';
 import { useSyncExternalStore } from 'react';
 
 import { KintsugiCapture as Capture } from '../../modules/capture';
-import { captureURL } from './capture-input';
+import { captureTarget } from './capture-input';
 import { CaptureRetry } from './capture-retry';
 import { postClip } from './clip-capture';
-import { drainCaptures } from './drain-captures';
+import { drainCaptures, macAccepts } from './drain-captures';
 import { loadLegacyOutbox, type Note, OUTBOX_KEY } from './legacy-outbox';
 
 export type { Note } from './legacy-outbox';
-type Waiting = { id: string; capturedAt: string; error?: string };
+export { heldForMacUpdate } from './drain-captures';
+/** `file`: carries a PDF or EPUB, which waits for a Mac with `hello.api` 4. */
+export type Waiting = { id: string; capturedAt: string; error?: string; file?: boolean };
 const loaded = loadLegacyOutbox(Storage, randomUUID);
 export const outboxWarning = loaded.warning;
 const storageBlocked = loaded.blocked;
@@ -37,9 +39,11 @@ export async function refreshOutbox() {
   notify();
 }
 
+/** A complete URL, or a bare ISBN (as its Open Library URL), becomes a clip;
+ *  anything else is an inbox note. */
 export async function capture(text: string, captureID?: string): Promise<void> {
   const capturedAt = localStamp();
-  const url = captureURL(text);
+  const url = captureTarget(text)?.url;
   const clip: ClipCapture | undefined = url ? { id: captureID ?? randomUUID(), url, capturedAt, via: 'phone' } : undefined;
   if (clip && Capture) {
     const id = await Capture.enqueue(JSON.stringify(clip));
@@ -65,7 +69,7 @@ export function send(client: Remote, api = 2): Promise<void> {
       for (const note of notes) {
         if (note.error || !retry.ready(note.id)) continue;
         try {
-          if (note.clip && api < 2) continue;
+          if (note.clip && (api < 2 || !macAccepts(note.clip, api))) continue;
           if (note.clip) await postClip(client, note.clip);
           else await client.capture(note.text, note.capturedAt);
           save(notes.filter((n) => n.id !== note.id));
@@ -84,7 +88,7 @@ export function send(client: Remote, api = 2): Promise<void> {
       }
       if (Capture && api >= 2) {
         try {
-          await drainCaptures(Capture, (payload) => postClip(client, payload), retry);
+          await drainCaptures(Capture, (payload) => postClip(client, payload), retry, api);
         } catch (error) {
           if (error instanceof Offline || error instanceof Unpaired) throw error;
           failures.push(error);

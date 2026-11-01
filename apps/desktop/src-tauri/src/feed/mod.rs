@@ -660,6 +660,7 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
             title: item.title.clone(),
             image: None,
             image_type: None,
+            file: None,
             captured_at: chrono::Local::now().format("%Y-%m-%dT%H:%M").to_string(),
             via: vault::ClipVia::Feed,
         },

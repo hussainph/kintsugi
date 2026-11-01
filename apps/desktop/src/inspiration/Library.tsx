@@ -128,12 +128,12 @@ export function Library({ ref, openClip, renderUsedIn }: Props) {
         {data.clips.length ? <Masonry active={!detail} key={JSON.stringify([query, tags])} items={data.clips} total={data.total} loading={loading} onOpen={setDetail} onMore={more} /> : <div className="flex flex-1 flex-col items-center justify-center pb-20 text-center">
           <Bookmark className="mb-6 size-7 stroke-1 text-muted-foreground/40" />
           <h2 className="font-[family-name:var(--font-prose)] text-2xl">{query || tags.length ? "Nothing here just yet." : "Good things find their way here."}</h2>
-          <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{query || tags.length ? "Try another word, or let a tag go." : "Paste a link, drop an image, or keep a passing thought. It’s all welcome."}</p>
+          <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{query || tags.length ? "Try another word, or let a tag go." : "Paste a link, drop an image or a PDF, or keep a passing thought. It’s all welcome."}</p>
           {(query || tags.length > 0) ? <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => { setQuery(""); setTags([]); }}>Clear filters</Button> : <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => setAdding(true)}><Plus />Keep your first inspiration</Button>}
         </div>}
-        <p className="shrink-0 pt-2 pb-3 text-center text-[11px] text-muted-foreground/65">Paste or drop a link, image, or text anywhere here.</p>
+        <p className="shrink-0 pt-2 pb-3 text-center text-[11px] text-muted-foreground/65">Paste or drop a link, image, PDF, EPUB or text anywhere here.</p>
       </div>
-      {dragging && <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-2xl border border-dashed border-foreground/30 bg-background/95"><div className="text-center"><Plus className="mx-auto mb-4 size-6 stroke-1" /><p className="font-[family-name:var(--font-prose)] text-2xl">Let it land here.</p><p className="mt-2 text-sm text-muted-foreground">A link, an image, a little inspiration.</p></div></div>}
+      {dragging && <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-2xl border border-dashed border-foreground/30 bg-background/95"><div className="text-center"><Plus className="mx-auto mb-4 size-6 stroke-1" /><p className="font-[family-name:var(--font-prose)] text-2xl">Let it land here.</p><p className="mt-2 text-sm text-muted-foreground">A link, an image, a PDF, a little inspiration.</p></div></div>}
       <CaptureDialog open={adding} onClose={() => setAdding(false)} capture={capture} />
     </section>
   );

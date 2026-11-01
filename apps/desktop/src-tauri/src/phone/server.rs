@@ -130,7 +130,8 @@ fn same(a: &[u8], b: &[u8]) -> bool {
 async fn hello(State(ctx): State<Ctx>) -> Reply<serde_json::Value> {
     let root = ctx.root()?;
     let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    Ok(Json(json!({ "app": "kintsugi", "api": 3, "vault": name })))
+    // 4: clip captures accept files (PDFs and EPUBs).
+    Ok(Json(json!({ "app": "kintsugi", "api": 4, "vault": name })))
 }
 
 async fn tree(State(ctx): State<Ctx>) -> Reply<Vec<vault::Entry>> {
@@ -209,7 +210,8 @@ async fn capture(State(ctx): State<Ctx>, Json(body): Json<CaptureBody>) -> Reply
 
 // Base64 adds a third to the image size; leave room for the capture's text.
 // This larger limit applies only to POST /v1/clips, not document writes.
-const CLIP_BODY_LIMIT: usize = 22 * 1024 * 1024;
+// Files (PDFs, EPUBs) are larger than images: 50 MiB decoded.
+const CLIP_BODY_LIMIT: usize = clip_capture::MAX_ENCODED_FILE_BYTES + 2 * 1024 * 1024;
 const MAX_CLIP_IMAGE_BYTES: usize = vault::MAX_CLIP_IMAGE_BYTES;
 const MAX_ENCODED_IMAGE_BYTES: usize = MAX_CLIP_IMAGE_BYTES.div_ceil(3) * 4;
 
@@ -223,6 +225,9 @@ struct ClipBody {
     title: Option<String>,
     image: Option<String>,
     image_type: Option<String>,
+    file: Option<String>,
+    file_type: Option<String>,
+    file_name: Option<String>,
     captured_at: String,
     via: vault::ClipVia,
 }
@@ -255,6 +260,13 @@ impl ClipBody {
                 Ok(bytes)
             })
             .transpose()?;
+        let file = clip_capture::decode_file(self.file, self.file_type, self.file_name).map_err(|e| {
+            let status = match e {
+                clip_capture::FileError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+                clip_capture::FileError::Invalid(_) => StatusCode::BAD_REQUEST,
+            };
+            Error(status, e.to_string())
+        })?;
         Ok(clip_capture::Capture {
             id: self.id,
             clip: vault::ClipCapture {
@@ -264,6 +276,7 @@ impl ClipBody {
                 title: self.title,
                 image,
                 image_type: self.image_type,
+                file,
                 captured_at: self.captured_at,
                 via: self.via,
             },
@@ -555,8 +568,57 @@ mod tests {
             let body: serde_json::Value = response.json().await.unwrap();
             assert_eq!(
                 body,
-                json!({ "app": "kintsugi", "api": 3, "vault": root.file_name().unwrap().to_str().unwrap() })
+                json!({ "app": "kintsugi", "api": 4, "vault": root.file_name().unwrap().to_str().unwrap() })
             );
+        });
+    }
+
+    #[test]
+    fn shared_pdfs_are_saved_beside_their_clip_and_bad_files_rejected() {
+        with_server(async |base, http, root, _changes, clip_changes| {
+            use base64::Engine;
+            let pdf = b"%PDF-1.4\n%%EOF\n";
+            let encoded = base64::engine::general_purpose::STANDARD.encode(pdf);
+            let response = http
+                .post(format!("{base}/v1/clips"))
+                .bearer_auth(TOKEN)
+                .json(&json!({
+                    "id": "22222222-2222-4222-8222-222222222222",
+                    "file": encoded,
+                    "fileType": "application/pdf",
+                    "fileName": "../../Field Notes.pdf",
+                    "note": "Read the second half",
+                    "capturedAt": "2026-10-29T09:14",
+                    "via": "share"
+                }))
+                .send()
+                .await
+                .unwrap();
+            assert_eq!(response.status(), 200);
+            let created: serde_json::Value = response.json().await.unwrap();
+            let path = created["path"].as_str().unwrap();
+            assert_eq!(path, "inspiration/field-notes.md");
+            let clip: serde_json::Value =
+                http.get(clip_url(&base, path)).bearer_auth(TOKEN).send().await.unwrap().json().await.unwrap();
+            assert_eq!(clip["kind"], "document");
+            assert_eq!(clip["file"], "files/field-notes.pdf");
+            assert_eq!(std::fs::read(root.join("inspiration/files/field-notes.pdf")).unwrap(), pdf);
+            assert_eq!(*clip_changes.lock().unwrap(), vec![path.to_string()]);
+
+            for (body, status) in [
+                (json!({ "file": "not base64!", "fileType": "application/pdf" }), 400),
+                (json!({ "file": encoded, "fileType": "text/html" }), 400),
+                (json!({ "file": encoded }), 400),
+                (json!({ "file": base64::engine::general_purpose::STANDARD.encode(b"<html>"), "fileType": "application/pdf" }), 400),
+                (json!({ "file": "A".repeat(crate::clip_capture::MAX_ENCODED_FILE_BYTES + 4), "fileType": "application/pdf" }), 413),
+            ] {
+                let mut body = body;
+                body["capturedAt"] = json!("2026-10-29T09:15");
+                body["via"] = json!("share");
+                let response = http.post(format!("{base}/v1/clips")).bearer_auth(TOKEN).json(&body).send().await.unwrap();
+                assert_eq!(response.status(), status, "{}", &body.to_string()[..80.min(body.to_string().len())]);
+            }
+            assert_eq!(std::fs::read_dir(root.join("inspiration/files")).unwrap().count(), 1);
         });
     }
 
@@ -935,7 +997,7 @@ mod tests {
         with_server(async |base, http, root, changes, clip_changes| {
             let path = vault::clip_create(&root, &vault::ClipCapture {
                 url: None, text: Some("Own text".into()), note: None, title: None,
-                image: None, image_type: None, captured_at: "2026-10-29T10:00".into(), via: vault::ClipVia::Phone,
+                image: None, image_type: None, file: None, captured_at: "2026-10-29T10:00".into(), via: vault::ClipVia::Phone,
             }).unwrap();
             let write = http.put(format!("{base}/v1/doc")).bearer_auth(TOKEN)
                 .json(&json!({"path": path, "text": "overwrite"})).send().await.unwrap();

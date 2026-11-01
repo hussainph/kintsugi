@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fmt;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -53,6 +53,21 @@ pub enum ToolSource {
     /// speech models). The manager only records consent; the adapter that
     /// uses it asks the system to fetch it once consent exists.
     System,
+    /// A pinned Python package, installed by `runner` (uv, itself a tool in
+    /// the catalog) into its own environment inside the tool's version
+    /// directory, with a uv-managed Python. uv checks every package against
+    /// the hash the index publishes. `prepare` then runs once from the new
+    /// environment's `bin/` (for example to fetch model weights), with
+    /// `{dir}` replaced by the version directory. Updating means shipping a
+    /// new spec, as with [`ToolSource::Pinned`].
+    PythonPackage {
+        runner: &'static ToolSpec,
+        /// The requirement uv installs, e.g. `docling[ocrmac]`.
+        package: &'static str,
+        version: &'static str,
+        python: &'static str,
+        prepare: &'static [&'static str],
+    },
 }
 
 /// How a GitHub release publishes its checksums.
@@ -75,6 +90,8 @@ pub enum Archive {
     None,
     /// A zip holding the entry (by file name, anywhere in the archive).
     Zip,
+    /// A gzipped tarball holding the entry (by file name, anywhere in it).
+    TarGz,
 }
 
 /// Everything the manager needs to know about one optional tool.
@@ -93,7 +110,8 @@ pub struct ToolSpec {
     /// `std::env::consts` (`macos-aarch64`). Unused for pinned files.
     pub assets: &'static [(&'static str, &'static str)],
     pub archive: Archive,
-    /// The installed file's name inside its version directory.
+    /// The installed file's path inside its version directory (`bin/docling`
+    /// for a Python package).
     pub entry: &'static str,
     /// Mark the entry executable.
     pub executable: bool,
@@ -266,9 +284,8 @@ impl Tools {
             supported: match spec.source {
                 ToolSource::Pinned { .. } => true,
                 ToolSource::GitHubRelease { .. } => spec.asset().is_some(),
-                ToolSource::System => spec.assets.iter().any(|(platform, _)| {
-                    *platform == format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH)
-                }),
+                ToolSource::System => listed_here(spec),
+                ToolSource::PythonPackage { runner, .. } => listed_here(spec) && runner.asset().is_some(),
             },
             consented: state.consented_at.is_some(),
             path: self.path(spec),
@@ -345,6 +362,9 @@ impl Tools {
         if self.state(spec).consented_at.is_none() {
             return Err(ToolError::NeedsConsent);
         }
+        if let ToolSource::PythonPackage { .. } = spec.source {
+            return self.install_python(spec).await;
+        }
         let release = self.check(spec).await?;
         self.install_release(spec, &release).await
     }
@@ -356,6 +376,12 @@ impl Tools {
         let state = self.state(spec);
         if state.consented_at.is_none() {
             return self.path(spec).ok_or(ToolError::NeedsConsent);
+        }
+        if let ToolSource::PythonPackage { version, .. } = spec.source {
+            if state.installed.is_none_or(|i| i.version != version) || self.path(spec).is_none() {
+                self.install_python(spec).await?;
+            }
+            return self.path(spec).ok_or(ToolError::Storage);
         }
         let fresh = state
             .checked_at
@@ -440,6 +466,11 @@ impl Tools {
     async fn resolve(&self, spec: &ToolSpec) -> ToolResult<Release> {
         match &spec.source {
             ToolSource::System => Err(ToolError::SystemManaged),
+            ToolSource::PythonPackage { version, .. } => Ok(Release {
+                version: (*version).into(),
+                url: Url::parse("https://pypi.org/simple/").map_err(|_| ToolError::Unavailable)?,
+                sha256: String::new(),
+            }),
             ToolSource::Pinned { version, url, sha256 } => Ok(Release {
                 version: (*version).into(),
                 url: Url::parse(url).map_err(|_| ToolError::Unavailable)?,
@@ -537,6 +568,91 @@ impl Tools {
         Ok(())
     }
 
+    /// Installs a [`ToolSource::PythonPackage`] with its runner (which must
+    /// itself be consented), into a fresh version directory: uv's tool
+    /// environment in `env/`, its scripts in `bin/`, Python itself shared in
+    /// `tools/python/`, and no download cache left behind. Nothing goes to
+    /// the person's own Python or uv settings.
+    async fn install_python(&self, spec: &ToolSpec) -> ToolResult<Installed> {
+        let ToolSource::PythonPackage { runner, package, version, python, prepare } = spec.source else {
+            return Err(ToolError::Unavailable);
+        };
+        if !listed_here(spec) {
+            return Err(ToolError::UnsupportedPlatform);
+        }
+        let uv = Box::pin(self.ensure(runner)).await?;
+        let _guard = self.lock(spec).await;
+        let version = safe_component(version).ok_or(ToolError::Unavailable)?.to_string();
+        if let Some(installed) = self.state(spec).installed.filter(|i| i.version == version)
+            && self.path(spec).is_some()
+        {
+            return Ok(installed);
+        }
+        // uv writes absolute paths into the environment's scripts and links,
+        // so it installs straight into the final version directory. A
+        // different version that already works stays until this one is done.
+        let dir = self.dir(spec);
+        let target = dir.join(&version);
+        let _ = std::fs::remove_dir_all(&target);
+        std::fs::create_dir_all(&target).map_err(|_| ToolError::Storage)?;
+        let result = async {
+            let target = target.canonicalize().map_err(|_| ToolError::Storage)?;
+            let requirement = format!("{package}=={version}");
+            let mut command = self.uv(&uv, &target);
+            command.args(["tool", "install", "--python", python, requirement.as_str()]);
+            run_quietly(command, Duration::from_secs(60 * 60)).await?;
+            if let Some((program, args)) = prepare.split_first() {
+                let mut command = tokio::process::Command::new(target.join("bin").join(program));
+                let dir = target.to_string_lossy();
+                command.args(args.iter().map(|arg| arg.replace("{dir}", &dir)));
+                command.env("HF_HOME", target.join("hf"));
+                run_quietly(command, Duration::from_secs(60 * 60)).await?;
+            }
+            let entry = std::fs::read(target.join(spec.entry)).map_err(|_| ToolError::BadArchive)?;
+            Ok::<_, ToolError>(hex::encode(Sha256::digest(&entry)))
+        }
+        .await;
+        let sha256 = match result {
+            Ok(sha256) => sha256,
+            Err(error) => {
+                let _ = std::fs::remove_dir_all(&target);
+                return Err(error);
+            }
+        };
+        let installed = Installed { version: version.clone(), sha256, installed_at: crate::now() };
+        let mut state = self.state(spec);
+        state.installed = Some(installed.clone());
+        state.checked_at = Some(crate::now());
+        state.latest = Some(version.clone());
+        self.save(spec, &state)?;
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() && entry.file_name() != version.as_str() {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                }
+            }
+        }
+        Ok(installed)
+    }
+
+    /// uv confined to the tools folder: no user config, its own cache and
+    /// Python installs, and the tool environment under `dir`.
+    fn uv(&self, uv: &Path, dir: &Path) -> tokio::process::Command {
+        let mut command = tokio::process::Command::new(uv);
+        command
+            .env("UV_NO_CONFIG", "1")
+            .env("UV_TOOL_DIR", dir.join("env"))
+            .env("UV_TOOL_BIN_DIR", dir.join("bin"))
+            .env("UV_PYTHON_INSTALL_DIR", self.root.join("python"))
+            // Packages are installed once into their own environment, so
+            // uv's download cache (over a gigabyte for Docling) isn't kept.
+            .env("UV_NO_CACHE", "1")
+            .env("UV_PYTHON_PREFERENCE", "only-managed")
+            .env_remove("VIRTUAL_ENV")
+            .env_remove("PYTHONPATH");
+        command
+    }
+
     fn dir(&self, spec: &ToolSpec) -> PathBuf {
         self.root.join(spec.id)
     }
@@ -592,6 +708,29 @@ fn sum_for(text: &str, name: &str) -> Option<String> {
 fn unpack(spec: &ToolSpec, download: &Path, entry: &Path) -> ToolResult<()> {
     match spec.archive {
         Archive::None => std::fs::rename(download, entry).map_err(|_| ToolError::Storage)?,
+        Archive::TarGz => {
+            let file = std::fs::File::open(download).map_err(|_| ToolError::Storage)?;
+            let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
+            let mut found = false;
+            for item in tar.entries().map_err(|_| ToolError::BadArchive)? {
+                let mut item = item.map_err(|_| ToolError::BadArchive)?;
+                let named = item.path().ok().is_some_and(|p| p.file_name().is_some_and(|n| n == spec.entry));
+                if !named || !item.header().entry_type().is_file() {
+                    continue;
+                }
+                if item.size() > spec.max_bytes.saturating_mul(4) {
+                    return Err(ToolError::TooLarge);
+                }
+                let mut out = std::fs::File::create(entry).map_err(|_| ToolError::Storage)?;
+                std::io::copy(&mut (&mut item).take(spec.max_bytes.saturating_mul(4)), &mut out)
+                    .map_err(|_| ToolError::BadArchive)?;
+                found = true;
+                break;
+            }
+            if !found {
+                return Err(ToolError::BadArchive);
+            }
+        }
         Archive::Zip => {
             let file = std::fs::File::open(download).map_err(|_| ToolError::Storage)?;
             let mut zip = zip::ZipArchive::new(file).map_err(|_| ToolError::BadArchive)?;
@@ -618,6 +757,27 @@ fn unpack(spec: &ToolSpec, download: &Path, entry: &Path) -> ToolResult<()> {
         }
     }
     Ok(())
+}
+
+/// Whether the spec lists this platform (for tools without a download asset).
+fn listed_here(spec: &ToolSpec) -> bool {
+    let key = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
+    spec.assets.iter().any(|(platform, _)| *platform == key)
+}
+
+/// Runs an installer step with no output to logs (it may print paths or
+/// package names, never anything the person wrote) and a time limit.
+async fn run_quietly(mut command: tokio::process::Command, limit: Duration) -> ToolResult<()> {
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    let mut child = command.spawn().map_err(|_| ToolError::Unavailable)?;
+    match tokio::time::timeout(limit, child.wait()).await {
+        Ok(Ok(status)) if status.success() => Ok(()),
+        _ => Err(ToolError::Unavailable),
+    }
 }
 
 /// Version strings become directory names, so only plain ones are allowed.

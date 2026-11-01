@@ -225,6 +225,28 @@ pub fn clip_update(
     Ok(clip)
 }
 
+/// Opens a clip's saved PDF or EPUB in its default app. Only the clip's own
+/// `files/<name>` is ever opened, after the vault's containment checks.
+#[tauri::command]
+pub fn clip_open_file(vault: State<Vault>, path: String) -> Result<()> {
+    let root = vault.root()?;
+    let clip = vault::clip_read(&root, &path)?;
+    let file = clip.summary.file.ok_or("this clip has no saved file")?;
+    let target = vault::clip_file_path(&root, &path, &file)?;
+    if !target.is_file() {
+        return Err("the saved file is missing".into());
+    }
+    #[cfg(feature = "headless")]
+    {
+        let _ = target;
+        Err("Files can't be opened in headless mode; find it in the vault's inspiration/files folder.".into())
+    }
+    #[cfg(not(feature = "headless"))]
+    {
+        tauri_plugin_opener::open_path(&target, None::<&str>).map_err(|_| "could not open the file".into())
+    }
+}
+
 /// The Markdown and its primary image go to the macOS Trash, not an unlink.
 #[tauri::command]
 pub fn clip_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<()> {

@@ -2,21 +2,24 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    transcription_helper();
+    swift_helper("transcribe", "podcast transcription");
+    swift_helper("pdf", "reading PDFs");
     tauri_build::build()
 }
 
-/// Builds `kintsugi-transcribe`, the on-device transcription helper
-/// (`crates/ingest/swift/transcribe.swift`, Apple SpeechAnalyzer), as a Tauri
-/// sidecar: `binaries/kintsugi-transcribe-<target>`, shipped beside the app
-/// binary. Off macOS, or without a Swift toolchain, a stub that reports
-/// "unsupported" (exit 3) takes its place, so podcasts fall back to show
-/// notes instead of breaking the build.
-fn transcription_helper() {
-    let source = Path::new("../../../crates/ingest/swift/transcribe.swift");
+/// Builds a Swift helper from `crates/ingest/swift/<name>.swift` as a Tauri
+/// sidecar: `binaries/kintsugi-<name>-<target>`, shipped beside the app
+/// binary. `transcribe` is on-device transcription (Apple SpeechAnalyzer);
+/// `pdf` reads PDFs with Apple PDFKit. Off macOS, or without a Swift
+/// toolchain, a stub that reports "unsupported" (exit 3) takes its place,
+/// so podcasts fall back to show notes (and PDFs to Docling, if installed)
+/// instead of breaking the build.
+fn swift_helper(name: &str, purpose: &str) {
+    let source = Path::new("../../../crates/ingest/swift").join(format!("{name}.swift"));
+    let source = source.as_path();
     println!("cargo:rerun-if-changed={}", source.display());
     let target = std::env::var("TARGET").expect("cargo sets TARGET");
-    let out = Path::new("binaries").join(format!("kintsugi-transcribe-{target}"));
+    let out = Path::new("binaries").join(format!("kintsugi-{name}-{target}"));
     std::fs::create_dir_all("binaries").expect("create binaries/");
     let fresh = match (std::fs::metadata(&out).and_then(|m| m.modified()), std::fs::metadata(source).and_then(|m| m.modified())) {
         (Ok(built), Ok(changed)) => built >= changed,
@@ -40,8 +43,8 @@ fn transcription_helper() {
             .is_ok_and(|status| status.success())
     });
     if !built {
-        println!("cargo:warning=kintsugi-transcribe was not built; podcast transcription is unavailable in this build");
-        std::fs::write(&out, "#!/bin/sh\necho 'on-device transcription is not available in this build' >&2\nexit 3\n")
+        println!("cargo:warning=kintsugi-{name} was not built; {purpose} is unavailable in this build");
+        std::fs::write(&out, format!("#!/bin/sh\necho '{purpose} is not available in this build' >&2\nexit 3\n"))
             .expect("write the helper stub");
         #[cfg(unix)]
         {

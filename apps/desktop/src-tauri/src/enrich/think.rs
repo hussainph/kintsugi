@@ -13,7 +13,7 @@ use std::fmt;
 use std::time::Duration;
 
 /// The clip kinds `docs/inspiration.md` allows.
-pub const KINDS: [&str; 6] = ["link", "post", "video", "image", "quote", "note"];
+pub const KINDS: [&str; 8] = ["link", "post", "video", "image", "quote", "note", "document", "book"];
 
 /// What the think step knows about one clip. Any field may be empty.
 #[derive(Debug, Clone, Default)]
@@ -130,7 +130,8 @@ pub fn prompt(input: &Input) -> (String, String) {
          whenever one fits, and add new tags only for topics they don't cover.\n\
          - kind: one of link (an article, blog post or page), post (a social media post: X, \
          Instagram, Threads, Bluesky, TikTok…), video, image, quote (a passage with a source), \
-         note (the writer's own thought, no source). Keep current_kind unless the content \
+         note (the writer's own thought, no source), document (a PDF, paper or report), book. \
+         Keep current_kind unless the content \
          clearly shows it is wrong."
     );
 

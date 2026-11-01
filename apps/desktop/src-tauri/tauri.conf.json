@@ -37,7 +37,7 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
-    "externalBin": ["binaries/kintsugi-transcribe"],
+    "externalBin": ["binaries/kintsugi-transcribe", "binaries/kintsugi-pdf"],
     "category": "Productivity",
     "copyright": "© 2026 Hussain Phalasiya",
     "macOS": {

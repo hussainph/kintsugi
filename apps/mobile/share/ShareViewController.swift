@@ -4,16 +4,33 @@ import UniformTypeIdentifiers
 import ImageIO
 
 private let imageLimit = 15 * 1024 * 1024
+/// `MAX_CLIP_FILE_BYTES` in core, as the Mac accepts it.
+private let fileLimit = CaptureStore.maxFileBytes
 
 private enum ShareError: LocalizedError {
-  case unsupported, imageTooLarge, unsupportedImage
+  case unsupported, imageTooLarge, unsupportedImage, unsupportedFile, fileTooLarge, emptyFile, damagedFile
   var errorDescription: String? {
     switch self {
-    case .unsupported: return "Share a link, some text, or one image."
+    case .unsupported: return "Share a link, some text, one image, or a PDF or EPUB."
     case .imageTooLarge: return "This image is over 15 MB. Share a smaller image or a link instead."
     case .unsupportedImage: return "Share a JPEG, PNG, GIF, WebP, HEIC, HEIF or AVIF image instead."
+    case .unsupportedFile: return "Kintsugi saves PDFs and EPUBs. This file is neither, so it wasn’t saved."
+    case .fileTooLarge: return "This file is over 50 MB, so it wasn’t saved. Kintsugi saves PDFs and EPUBs up to 50 MB."
+    case .emptyFile: return "This file is empty, so it wasn’t saved."
+    case .damagedFile: return "This doesn’t look like a PDF or EPUB inside, so it wasn’t saved."
     }
   }
+}
+
+/// A shared PDF or EPUB, copied into the extension's temporary folder so it
+/// outlives the provider's callback. Its bytes are read only while saving,
+/// a chunk at a time (`CaptureStore.enqueue(fields:file:)`).
+private struct SharedDocument: Sendable {
+  let url: URL
+  let name: String
+  let type: String
+  let size: Int
+  var isPDF: Bool { type == "application/pdf" }
 }
 
 /// A native sheet: no JS runtime, page fetching, or main-app launch on the capture path.
@@ -50,10 +67,14 @@ private final class ShareModel: ObservableObject {
   private let captureID = UUID().uuidString
   private var image: Data?
   private var imageType: String?
+  @Published private(set) var document: SharedDocument?
   private let context: NSExtensionContext?
+  /// Where shared files are staged; removed when the sheet finishes.
+  private let staging = FileManager.default.temporaryDirectory
+    .appendingPathComponent("share-\(UUID().uuidString)", isDirectory: true)
 
   init(context: NSExtensionContext?) { self.context = context }
-  var canSave: Bool { !loading && !saving && (url != nil || !text.isEmpty || image != nil) }
+  var canSave: Bool { !loading && !saving && (url != nil || !text.isEmpty || image != nil || document != nil) }
   var host: String { url.flatMap(URL.init(string:))?.host ?? "Shared inspiration" }
 
   func load() async {
@@ -61,11 +82,17 @@ private final class ShareModel: ObservableObject {
     do {
       let items = context?.inputItems as? [NSExtensionItem] ?? []
       var passages = [String]()
+      var otherFile = false
       for item in items {
         let providers = item.attachments ?? []
         // attributedContentText is a fallback; many hosts repeat it in a text provider.
         if let content = item.attributedContentText?.string, !content.isEmpty { passages.append(content) }
         for provider in providers {
+          // One PDF or EPUB per share; it is the whole capture (see below).
+          if let type = Self.documentType(provider) {
+            if document == nil { document = try await loadDocument(provider, type: type) }
+            continue
+          }
           // File URLs also conform to public.url. Prefer the image representation
           // so Photos/Files providers advertising both cannot lose their image.
           if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier), image == nil {
@@ -88,6 +115,16 @@ private final class ShareModel: ObservableObject {
                ] as CFDictionary) {
               preview = UIImage(cgImage: thumbnail)
             }
+          } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            // Files and some hosts share a bare file URL (an `.epub` often comes this way).
+            let value = try await loadItem(provider, type: UTType.fileURL.identifier)
+            let candidate = (value as? URL)
+              ?? (value as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+            if let candidate, candidate.isFileURL, let type = Self.documentType(name: candidate.lastPathComponent) {
+              if document == nil { document = try stageDocument(candidate, name: provider.suggestedName, type: type) }
+            } else {
+              otherFile = true
+            }
           } else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
             let value = try await loadItem(provider, type: UTType.url.identifier)
             let candidate = (value as? URL)?.absoluteString ?? (value as? String)
@@ -100,8 +137,17 @@ private final class ShareModel: ObservableObject {
             if let value = value as? String { passages.append(value) }
             else if let value = value as? NSAttributedString { passages.append(value.string) }
             else if let data = value as? Data, let value = String(data: data, encoding: .utf8) { passages.append(value) }
+          } else if provider.hasItemConformingToTypeIdentifier(UTType.data.identifier) {
+            otherFile = true // a Word document, a ZIP…: say so rather than "nothing to share"
           }
         }
+      }
+      // A document is the capture on its own: hosts such as Safari add the
+      // page's URL, title or a thumbnail beside the file, and a clip is one
+      // thing. The optional note still applies.
+      if document != nil {
+        url = nil; image = nil; imageType = nil; preview = nil
+        return
       }
       // Social apps often supply "caption https://…" as a single text item.
       if url == nil {
@@ -121,10 +167,13 @@ private final class ShareModel: ObservableObject {
         if !value.isEmpty && !unique.contains(value) { unique.append(value) }
       }
       text = unique.joined(separator: "\n\n")
-      if url == nil && text.isEmpty && image == nil { throw ShareError.unsupported }
+      if url == nil && text.isEmpty && image == nil {
+        throw otherFile ? ShareError.unsupportedFile : ShareError.unsupported
+      }
     } catch {
       // Never enable Save for a partially loaded share; do not silently lose its image/text.
-      url = nil; text = ""; image = nil; preview = nil
+      url = nil; text = ""; image = nil; preview = nil; document = nil
+      try? FileManager.default.removeItem(at: staging)
       self.error = error.localizedDescription
     }
   }
@@ -137,6 +186,31 @@ private final class ShareModel: ObservableObject {
     let payloadID = captureID
     let sharedURL = url, sharedText = text, sharedImage = image, mimeType = imageType
     let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let document {
+      Task {
+        do {
+          // Streams the file into the queue a chunk at a time (never whole in
+          // memory). The app sends it: only it checks that the Mac takes
+          // files (`hello.api` 4), and a 50 MiB upload would outlast this
+          // extension's background upload window.
+          try await Task.detached {
+            var fields: [String: Any] = [
+              "id": payloadID, "capturedAt": capturedAt, "via": "share",
+              "fileType": document.type, "fileName": document.name,
+            ]
+            if !trimmedNote.isEmpty { fields["note"] = trimmedNote }
+            _ = try CaptureStore().enqueue(fields: fields, file: document.url)
+          }.value
+          try? FileManager.default.removeItem(at: staging)
+          UINotificationFeedbackGenerator().notificationOccurred(.success)
+          context?.completeRequest(returningItems: nil)
+        } catch {
+          saving = false
+          self.error = "Couldn’t save on this iPhone. \(error.localizedDescription) Try again."
+        }
+      }
+      return
+    }
     Task {
       do {
         // Encode once, off the main thread. Avoid a 20 MB JSON String roundtrip
@@ -164,7 +238,86 @@ private final class ShareModel: ObservableObject {
     }
   }
 
-  func cancel() { context?.completeRequest(returningItems: nil) }
+  func cancel() {
+    try? FileManager.default.removeItem(at: staging)
+    context?.completeRequest(returningItems: nil)
+  }
+
+  /// The PDF or EPUB type a provider offers, by UTI.
+  private static func documentType(_ provider: NSItemProvider) -> String? {
+    if provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) { return UTType.pdf.identifier }
+    if provider.hasItemConformingToTypeIdentifier(UTType.epub.identifier) { return UTType.epub.identifier }
+    return nil
+  }
+
+  /// The PDF or EPUB type of a file name, by extension (`clipFileType` in core).
+  private static func documentType(name: String) -> String? {
+    switch (name as NSString).pathExtension.lowercased() {
+    case "pdf": return UTType.pdf.identifier
+    case "epub": return UTType.epub.identifier
+    default: return nil
+    }
+  }
+
+  private func loadDocument(_ provider: NSItemProvider, type: String) async throws -> SharedDocument {
+    // Stage the file while the provider's temporary URL is valid; sizes are
+    // checked before anything is copied.
+    let suggestedName = provider.suggestedName
+    return try await withCheckedThrowingContinuation { continuation in
+      _ = provider.loadFileRepresentation(forTypeIdentifier: type) { [staging] url, error in
+        do {
+          if let error { throw error }
+          guard let url else { throw ShareError.unsupportedFile }
+          continuation.resume(returning: try Self.stage(url, name: suggestedName, type: type, into: staging))
+        } catch { continuation.resume(throwing: error) }
+      }
+    }
+  }
+
+  private func stageDocument(_ url: URL, name: String?, type: String) throws -> SharedDocument {
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+    return try Self.stage(url, name: name, type: type, into: staging)
+  }
+
+  /// Checks a shared file (a regular file, 1 byte to 50 MiB, whose first
+  /// bytes match its type) and copies it into `staging` (a clone on APFS: no
+  /// bytes pass through memory).
+  private nonisolated static func stage(_ source: URL, name: String?, type: String, into staging: URL) throws -> SharedDocument {
+    let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+    // An EPUB kept as a folder package isn't one file the Mac can take.
+    guard values.isRegularFile == true, let size = values.fileSize else { throw ShareError.unsupportedFile }
+    guard size <= fileLimit else { throw ShareError.fileTooLarge }
+    guard size > 0 else { throw ShareError.emptyFile }
+    let handle = try FileHandle(forReadingFrom: source)
+    let head = try handle.read(upToCount: 1024) ?? Data()
+    try? handle.close()
+    let isPDF = type == UTType.pdf.identifier
+    let magic = isPDF ? Data("%PDF-".utf8) : Data([0x50, 0x4B, 0x03, 0x04]) // EPUB is a ZIP
+    guard isPDF ? head.range(of: magic) != nil : head.starts(with: magic) else { throw ShareError.damagedFile }
+
+    let fileName = Self.fileName(name ?? source.lastPathComponent, fallback: source.lastPathComponent, pdf: isPDF)
+    try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+    let copy = staging.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.copyItem(at: source, to: copy)
+    return SharedDocument(url: copy, name: fileName, type: isPDF ? "application/pdf" : "application/epub+zip", size: size)
+  }
+
+  /// The original file name, never a path, ending in the type's extension.
+  private nonisolated static func fileName(_ name: String, fallback: String, pdf: Bool) -> String {
+    let ext = pdf ? "pdf" : "epub"
+    func clean(_ value: String) -> String {
+      (value.split(separator: "/").last.map(String.init) ?? "")
+        .replacingOccurrences(of: "\\", with: "")
+        .filter { !$0.isNewline && $0.unicodeScalars.allSatisfy { !CharacterSet.controlCharacters.contains($0) } }
+        .trimmingCharacters(in: .whitespaces)
+    }
+    var base = clean(name)
+    if base.isEmpty || base.hasPrefix(".") { base = clean(fallback) }
+    if base.isEmpty || base.hasPrefix(".") { base = pdf ? "Document" : "Book" }
+    if (base as NSString).pathExtension.lowercased() != ext { base += ".\(ext)" }
+    return String(base.prefix(200))
+  }
 
   private static func webURL(_ value: String) -> URL? {
     guard let url = URL(string: value), ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
@@ -230,6 +383,19 @@ private struct CaptureSheet: View {
                   .clipShape(RoundedRectangle(cornerRadius: 10))
                   .accessibilityLabel("Shared image preview")
               }
+              if let document = model.document {
+                HStack(alignment: .top, spacing: 12) {
+                  Image(systemName: document.isPDF ? "doc.richtext" : "book.closed")
+                    .font(.system(size: 34)).foregroundStyle(muted)
+                    .frame(width: 44).accessibilityHidden(true)
+                  VStack(alignment: .leading, spacing: 4) {
+                    Text(document.name).font(.system(.body, design: .serif)).lineLimit(3)
+                    Text("\(document.isPDF ? "PDF" : "EPUB") · \(ByteCountFormatter.string(fromByteCount: Int64(document.size), countStyle: .file))")
+                      .font(.caption).foregroundStyle(muted)
+                  }
+                }
+                .accessibilityElement(children: .combine)
+              }
               if model.url != nil {
                 Label(model.host, systemImage: "link").font(.subheadline.weight(.medium))
                 Text(model.url ?? "").font(.caption).foregroundStyle(muted).lineLimit(3)
@@ -248,7 +414,9 @@ private struct CaptureSheet: View {
                 .padding(14).background(surface, in: RoundedRectangle(cornerRadius: 12))
                 .disabled(model.saving)
             }
-            Text("Saved on this iPhone first. Sent when your Mac is back.")
+            Text(model.document == nil
+                 ? "Saved on this iPhone first. Sent when your Mac is back."
+                 : "Saved on this iPhone first. Kintsugi sends it to your Mac the next time you open the app.")
               .font(.footnote).foregroundStyle(muted)
           }
           if let error = model.error {

@@ -1,4 +1,4 @@
-import { ArrowUpRight, Quote } from "lucide-react";
+import { ArrowUpRight, BookOpen, FileText, Quote } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@kintsugi/ui/components/button";
 import { clipLabel, clipSite, type ClipPreview } from "./api";
@@ -72,9 +72,9 @@ function Card({ tile, onOpen, onFocus, onBlur }: { tile: Tile; onOpen: (path: st
               <p className="line-clamp-6 whitespace-pre-wrap break-words font-[family-name:var(--font-prose)] text-[19px] leading-relaxed" style={{ WebkitLineClamp: Math.max(2, Math.floor((bodyHeight - 48 - (clip.kind === "quote" ? 28 : 0)) / 31)) }}>{own || clip.summary}</p>
             ) : (
               <div className="space-y-3 break-words">
-                <ArrowUpRight className="size-5 text-muted-foreground/60" />
+                {clip.kind === "book" ? <BookOpen className="size-5 stroke-[1.5] text-muted-foreground/60" /> : clip.kind === "document" ? <FileText className="size-5 stroke-[1.5] text-muted-foreground/60" /> : <ArrowUpRight className="size-5 text-muted-foreground/60" />}
                 <p className="font-[family-name:var(--font-prose)] text-xl leading-snug">{clip.title || clipSite(clip)}</p>
-                <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{clip.url || "Saved for later"}</p>
+                <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{(clip.kind === "book" || clip.kind === "document") && clip.author || clip.url || clip.file?.split("/").pop() || "Saved for later"}</p>
               </div>
             )}
           </div>

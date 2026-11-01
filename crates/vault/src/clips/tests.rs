@@ -8,6 +8,7 @@ fn capture(text: &str) -> ClipCapture {
         title: None,
         image: None,
         image_type: None,
+        file: None,
         captured_at: "2026-10-29T14:05".into(),
         via: ClipVia::Mac,
     }
@@ -20,6 +21,7 @@ fn receipt_reservation_happens_before_media_and_markdown_are_written() {
     let capture = ClipCapture {
         image: Some(vec![1, 2, 3]),
         image_type: Some("image/png".into()),
+        file: None,
         ..capture("A note")
     };
     let error = clip_create_with_receipt(root, &capture, &[], |path| {
@@ -97,6 +99,7 @@ fn captures_links_quotes_notes_and_images_without_enrichment() {
             title: Some("A screenshot".into()),
             image: Some(bytes.clone()),
             image_type: Some("image/png".into()),
+            file: None,
             ..capture("")
         },
     )
@@ -400,15 +403,18 @@ fn invalid_captures_write_nothing_and_errors_do_not_echo_content() {
         ClipCapture {
             image: Some(vec![1]),
             image_type: None,
+            file: None,
             ..capture("note")
         },
         ClipCapture {
             image_type: Some("image/png".into()),
+            file: None,
             ..capture("note")
         },
         ClipCapture {
             image: Some(vec![1]),
             image_type: Some(format!("image/{secret}")),
+            file: None,
             ..capture("note")
         },
     ] {
@@ -665,6 +671,7 @@ fn orphan_media_is_never_overwritten_by_capture_or_enrichment() {
             title: Some("Screenshot".into()),
             image: Some(vec![1]),
             image_type: Some("image/jpeg".into()),
+            file: None,
             ..capture("")
         },
     )
@@ -845,4 +852,82 @@ fn phone_serialization_exposes_own_text_but_not_the_large_source() {
         json.get("summary").unwrap().is_null(),
         "summary field is text, not a nested object"
     );
+}
+
+fn pdf_bytes() -> Vec<u8> {
+    b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n".to_vec()
+}
+
+fn file_capture(bytes: Vec<u8>, mime: &str, name: Option<&str>) -> ClipCapture {
+    ClipCapture {
+        text: None,
+        file: Some(ClipFile { bytes, mime: mime.into(), name: name.map(Into::into) }),
+        ..capture("unused")
+    }
+}
+
+#[test]
+fn pdfs_and_epubs_are_saved_beside_the_clip_and_named_from_the_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let path = clip_create(root, &file_capture(pdf_bytes(), "application/pdf", Some("Golden_Seam-draft.v2.pdf"))).unwrap();
+    assert_eq!(path, "inspiration/golden-seam-draft-v2.md");
+    let clip = clip_read(root, &path).unwrap();
+    assert_eq!(clip.summary.kind, ClipKind::Document);
+    assert_eq!(clip.summary.title, None);
+    assert_eq!(clip.summary.file.as_deref(), Some("files/golden-seam-draft-v2.pdf"));
+    let saved = clip_file_path(root, &path, "files/golden-seam-draft-v2.pdf").unwrap();
+    assert_eq!(fs::read(&saved).unwrap(), pdf_bytes());
+    let json = serde_json::to_value(&clip.summary).unwrap();
+    assert_eq!(json["file"], "files/golden-seam-draft-v2.pdf");
+
+    // A second capture with the same name never overwrites the file.
+    let again = clip_create(root, &file_capture(pdf_bytes(), "application/pdf", Some("Golden_Seam-draft.v2.pdf"))).unwrap();
+    assert_eq!(again, "inspiration/golden-seam-draft-v2-2.md");
+    // An orphan file reserves its name too.
+    fs::write(root.join("inspiration/files/orphan.pdf"), b"x").unwrap();
+    let orphan = clip_create(root, &file_capture(pdf_bytes(), "application/pdf", Some("orphan.pdf"))).unwrap();
+    assert_eq!(orphan, "inspiration/orphan-2.md");
+
+    let epub = clip_create(root, &file_capture(b"PK\x03\x04mimetypeapplication/epub+zip".to_vec(), "application/epub+zip", None)).unwrap();
+    assert_eq!(epub, "inspiration/document.md");
+    let clip = clip_read(root, &epub).unwrap();
+    assert_eq!(clip.summary.kind, ClipKind::Book);
+    assert_eq!(clip.summary.file.as_deref(), Some("files/document.epub"));
+
+    // Trash takes the file with the clip.
+    let mut trashed = Vec::new();
+    clip_trash(root, &path, |targets| {
+        trashed = targets.to_vec();
+        Ok(())
+    })
+    .unwrap();
+    assert_eq!(trashed, vec![root.join(&path), saved]);
+}
+
+#[test]
+fn files_must_be_what_they_claim_and_within_the_cap() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    for (bytes, mime, error) in [
+        (b"<html>".to_vec(), "application/pdf", "clip file does not match its type"),
+        (pdf_bytes(), "application/epub+zip", "clip file does not match its type"),
+        (pdf_bytes(), "text/html", "unsupported clip file type"),
+        (Vec::new(), "application/pdf", "clip files must be between 1 byte and 50 MiB"),
+        (vec![b'%'; MAX_CLIP_FILE_BYTES + 1], "application/pdf", "clip files must be between 1 byte and 50 MiB"),
+    ] {
+        assert_eq!(clip_create(root, &file_capture(bytes, mime, Some("x.pdf"))).unwrap_err(), error);
+    }
+    assert!(!root.join("inspiration/files").exists());
+    // Hand-edited paths outside files/<stem> are refused.
+    let path = clip_create(root, &capture("A note")).unwrap();
+    for file in ["files/other.pdf", "../secret.pdf", "files/a-note.exe", "media/a-note.pdf"] {
+        assert!(clip_file_path(root, &path, file).is_err(), "{file}");
+    }
+}
+
+#[test]
+fn open_library_links_are_books() {
+    assert_eq!(clip_guess_kind(Some("https://openlibrary.org/isbn/9780140328721"), None, false), ClipKind::Book);
+    assert_eq!(clip_guess_kind(Some("https://openlibrary.org.evil.test/works/OL1W"), None, false), ClipKind::Link);
 }

@@ -16,13 +16,13 @@ in camelCase):
 
 | Field | Meaning |
 | --- | --- |
-| `source` | Which adapter made it: `web`, `rss`, `x`, `reddit`, `youtube` or `podcast` (more to come: `pdf`…) |
-| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`), for YouTube the video id (`youtube:dQw4w9WgXcQ`), for podcasts the feed URL and GUID. Feeds deduplicate on it |
+| `source` | Which adapter made it: `web`, `rss`, `x`, `reddit`, `youtube`, `podcast`, `pdf`, `epub` or `book` |
+| `id` | Canonical id, `<source>:<key>`. For web pages the key is the canonical URL, for X the status id (`x:20`), for Reddit the post id (`reddit:1abc2d`), for YouTube the video id (`youtube:dQw4w9WgXcQ`), for podcasts the feed URL and GUID. A PDF or EPUB file is `pdf:sha256:<hex>` / `epub:sha256:<hex>` (an EPUB with an ISBN is `epub:isbn:<isbn>`), a linked one its URL; a book its Open Library work (`book:OL45804W`). Feeds deduplicate on it |
 | `url` | Canonical URL, if any: no fragment, no tracking parameters (`utm_*`, `fbclid`, `gclid`, `mc_cid`, `mc_eid`, `igshid`, `ref_src`) |
 | `title`, `author`, `site`, `description` | As the source declared them, whitespace-collapsed and length-bounded |
 | `published` | When the source says it was published, as written there (usually ISO 8601) |
 | `captured` | When the engine captured it, RFC 3339 UTC |
-| `media` | Images, the primary one first: `{ kind: "image", url? }`. Downloaded bytes travel beside the item in Rust (never serialized), only when the capture asked for them, and only as checked raster formats (PNG, JPEG, GIF, WebP; never SVG or HTML) |
+| `media` | Images, the primary one first: `{ kind: "image", url? }` (a PDF's page one, an EPUB's or book's cover). Downloaded bytes travel beside the item in Rust (never serialized), only when the capture asked for them, and only as checked raster formats (PNG, JPEG, GIF, WebP; never SVG or HTML) |
 | `body` | Readable content as Markdown, at most 20,000 characters, cut at a paragraph or line break near the end when possible. Inline `data:` images are dropped and blank-line runs collapsed. Empty for a video or a bare image. A transcript may run to 250,000 characters (see [Transcripts](#transcripts)) |
 | `extras` | Adapter facts. Every item sets `extractor`. Web pages use `readability`, `html`, `oembed`, `defuddle`, `image` or `none`, and may set `lang` and `modified`. X, Reddit and transcript items list theirs below |
 
@@ -38,7 +38,8 @@ means the capture needs a download the person hasn't agreed to yet.
 An `Adapter` has three jobs:
 
 - `matches(target)`: a cheap check, with no I/O, of whether it handles a target. A target is a
-  URL (`Target::url` accepts only credential-free HTTP(S)) or a local file.
+  URL (`Target::url` accepts only credential-free HTTP(S)) or a local file
+  (`Target::File`: PDFs and EPUBs, matched by extension).
 - `capture(target, { want_media })`: fetch and normalize one item.
 - `poll(subscription)`: return items newer than the subscription's opaque
   `cursor`, plus the next cursor and, when the source sent a fresh document,
@@ -58,9 +59,11 @@ web adapter instance is both registered and Reddit's fallback.
 
 The Mac app's clip enrichment registers `XAdapter`, then `RedditAdapter`
 (with the web adapter as its fallback), then `YouTubeAdapter`, then
-`PodcastAdapter` (links to audio files), then `WebAdapter`
+`PodcastAdapter` (links to audio files), then `PdfAdapter`, `EpubAdapter`
+and `BookAdapter`, then `WebAdapter`
 (`apps/desktop/src-tauri/src/enrich/mod.rs`). Clips of X and Reddit URLs
-therefore go through the platform adapters.
+therefore go through the platform adapters, and a clip with a saved file
+(`file:` in its frontmatter) is captured from that file, not its link.
 
 The AI is not an extractor. Downstream consumers may use it to clean up
 or summarize an item (clip enrichment does), but every body comes from a
@@ -298,6 +301,140 @@ comment tree. Subreddits can't be followed (Reddit's RSS ends in November
   walls, not account walls. While Reddit is rate limiting, there is no
   fallback.
 
+## PDFs
+
+`pdf::PdfAdapter` (`source: pdf`) reads a local PDF (`Target::File` ending
+in `.pdf`) or a link to one: a URL path ending in `.pdf`, or arXiv's
+`/pdf/<id>`. Links download to a temporary file (at most 50 MB, two
+minutes, the web URL policy on every redirect) and must start with
+`%PDF-` in their first kilobyte; a login page served at a `.pdf` URL fails
+as `Unavailable`.
+
+**Out of the box: Apple PDFKit.** `pdf::PdfKitReader` runs `kintsugi-pdf`
+(`crates/ingest/swift/pdf.swift`) as a child process with a 60-second
+limit. It prints `{ pageCount, locked, title, author, subject, keywords,
+created, outline, pages: [{ page, lines: [{ text, size, bold, y }] }] }`,
+stopping after 400,000 characters, and with `--thumbnail <png>` renders
+page one at most 800 pixels on its long side. Exit codes: 3 unsupported
+(the build stub), 5 not a readable PDF. stderr is discarded: PDFKit logs
+can carry document text. A PDF that is "encrypted" only against editing is
+opened with the empty password; one that needs a real password gives
+metadata only (`locked: true`, `textReason: locked`).
+
+`pdf::layout` turns the lines into Markdown: the size most characters are
+set in is the body size; shorter lines at least 1.2× larger are headings
+(the largest `##`, then `###`, `####`; a title wrapped over two lines is
+joined). Lines are rejoined into paragraphs, with a paragraph break where
+the gap to the previous line is over 1.5× the usual line spacing, at a
+column change, before bullets (`•`, `◦`, `–`… become `- `), and across a
+page break only after a sentence end. A word hyphenated at a line end is
+rejoined when the next line starts lower-case. Running headers and footers
+(the first or last two lines of a page, recurring with digits ignored on
+at least half the pages) and page numbers (`12`, `xiv`, `Page 3 of 9`) are
+dropped. If the type gives no headings, lines matching the PDF's outline
+become headings. Text is made Markdown-safe like post text.
+
+The item: `title` is the declared title unless it's a word processor's
+leftover (`Microsoft Word - …`, `untitled`, a file name), else the first
+heading; `author`; `description` is the subject; `published` the creation
+date (ISO 8601); `media` page one (only when asked); `extras`: `extractor`
+(`pdfkit` or `docling`), `pages`, `keywords`, `locked`, and `textReason:
+no-text` for a scan with no text layer (Docling's OCR can read those).
+
+**Optional: Docling.** When the `docling` tool is installed (see
+[Optional tools](#optional-tools)), `pdf::Docling` converts the body
+instead: `docling <file> --to md --image-export-mode placeholder
+--ocr-engine ocrmac --artifacts-path <version>/models --output <tmp>`, with
+`HF_HUB_OFFLINE=1` so a conversion never downloads anything, and a
+10-minute limit. Image placeholders are removed. PDFKit still supplies
+the metadata and thumbnail. If Docling isn't installed, the item says
+`converter: docling, converterReason: tool-not-installed`; if it fails or
+times out, `converterReason: failed`, and the PDFKit body is kept. Docling
+can also read a PDF PDFKit refused.
+
+### Choosing a PDF reader
+
+Researched 2026-11-01.
+
+| | Apple PDFKit (Swift helper) | pdfium-render | Docling | marker |
+| --- | --- | --- | --- | --- |
+| Download | None: part of macOS | Pdfium isn't included; a ~5 MB `libpdfium` from bblanchon/pdfium-binaries must ship in the app or be downloaded | About 2 GB (Python, PyTorch, layout and table models) | Several GB |
+| Isolation | Separate process, killed at its time limit | In-process C++; not thread-safe (pdfium-render serializes every call behind one mutex) | Separate process | Separate process |
+| Output | Text lines with fonts and positions, metadata, outline, page images | The same | Layout-aware Markdown: reading order, tables, formulas, code | Similar to Docling |
+| License | Part of macOS | MIT/Apache (bindings), BSD (Pdfium) | MIT code; models Apache-2.0 and CDLA-Permissive-2.0 | GPL code; model weights restrict commercial use |
+
+**Choice: PDFKit by default, Docling optional.** PDFKit needs nothing
+downloaded and reuses the Swift-helper pattern the transcriber
+established, so a hostile PDF can only crash a child process. pdfium-render
+would add a native library to ship and sign and run untrusted parsing
+inside the app. Docling is the high-quality converter: on a two-column
+paper or a report with tables, PDFKit's text is in reading order per
+column at best and tables come out as runs of cells. MarkItDown was
+considered; for PDFs it wraps pdfminer.six, which gives plain text no
+better than PDFKit's. marker is not offered, because of its model licence.
+
+Sources:
+[pdfium-render README](https://github.com/ajrcarey/pdfium-render#binding-to-pdfium),
+[Docling](https://github.com/docling-project/docling),
+[Docling layout model licence](https://huggingface.co/docling-project/docling-layout-heron),
+[Docling table models](https://huggingface.co/docling-project/docling-models).
+
+## EPUBs
+
+`epub::EpubAdapter` (`source: epub`) reads a local `.epub` or a link whose
+path ends in `.epub` (downloaded like a PDF, 50 MB cap). It unzips in
+memory with caps: at most 10,000 entries, 2 MB for `container.xml` and the
+package document, 4 MB per chapter and 8 MB for the cover, each checked
+both by the declared size and while inflating. Paths resolve inside the
+archive only (percent-decoded, `..` never above the root). XML with a DTD
+is refused.
+
+- **Metadata** from the OPF package's Dublin Core: `title`, `creator`s
+  (up to five, joined as `author`), `publisher` (as `site`), `date`
+  (`published`), `language` (`extras.lang`), `description` (HTML reduced
+  to text), and an ISBN from an `identifier` (`extras.isbn`).
+- **Cover**: the manifest item with `properties="cover-image"` (EPUB 3) or
+  the one named by `<meta name="cover">` (EPUB 2), as a checked raster
+  image, only when asked.
+- **Body**: the spine's XHTML items in order, each through the web path's
+  HTML-to-Markdown conversion. Non-linear items and front matter (the nav
+  document, and items whose id or file name is `cover`, `titlepage`,
+  `toc`, `contents`, `copyright` or `nav`) are skipped. Images, scripts,
+  styles, forms, SVG and MathML are left out; links into the book become
+  plain text, outside links stay. Chapters are read until about twice the
+  body cap, then the body is capped as usual: a book keeps its opening
+  chapters, with `extras.truncated`.
+- `extras`: `extractor: epub`, `chapters` (spine documents), `lang`,
+  `isbn`, `truncated`.
+
+## Books
+
+`books::BookAdapter` (`source: book`) uses [Open
+Library](https://openlibrary.org/developers/api) (the Internet Archive's
+catalog; no key, data CC0). Requests carry a descriptive user agent and
+are spaced 400 ms apart (identified clients may make three a second), with
+the shared API client's rate-limit handling.
+
+- `search(query, limit)` asks `/search.json` for a title (and author) or,
+  when the query is an ISBN, by `isbn=`. A hit is `{ key, url, title,
+  authors, year, isbn, coverUrl, editions }` with `url` the work's page.
+  The Mac's `book_search` command serves the "Find a book" picker.
+- As an adapter it captures `openlibrary.org` pages: `/works/OL…W`,
+  `/books/OL…M` and `/isbn/<isbn>` (which Open Library redirects to the
+  edition). It reads the edition (for ISBNs and editions), its work, and up
+  to three authors. A book saved from the picker, or by ISBN on the phone
+  or Mac, is a clip with that URL; enrichment captures it here.
+- The item: `id` `book:<work id>`, `url` the work's page, `title`,
+  `author`, `site: Open Library`, `published` (first publication),
+  `description`, and the cover (`covers.openlibrary.org/b/id/<id>-L.jpg`,
+  downloaded only when asked; Open Library's 1×1 placeholder is ignored).
+  The body is the description followed by a list: by, first published,
+  publisher, pages, ISBN, subjects. `extras`: `extractor: openlibrary`,
+  `isbn`, `pages`, `subjects`, `edition`. It is the catalog record, never
+  the book's text.
+- ISBNs are validated by check digit (`books::normalize_isbn`, mirrored
+  by `parseIsbn` in `packages/core/src/books.ts`).
+
 ## Optional tools
 
 Heavy helpers are never bundled. `kintsugi_ingest::tools` downloads them
@@ -330,20 +467,39 @@ vault.
   checksum, last check, latest version) and `tools/<id>/<version>/<entry>`.
 - **Generic.** A tool is a `ToolSpec` in `tools/catalog.rs`: id, name,
   purpose, homepage, license, source (`GitHubRelease { repo, checksums }`,
-  `Pinned { version, url, sha256 }` or `System`), per-platform asset names,
-  archive (`None` or `Zip`), entry file, size cap and update interval.
-  Adding a tool (Docling or MarkItDown for PDFs, a model file) is a new spec
+  `Pinned { version, url, sha256 }`, `PythonPackage { runner, package,
+  version, python, prepare }` or `System`), per-platform asset names,
+  archive (`None`, `Zip` or `TarGz`), entry file, size cap and update
+  interval. Adding a tool (a model file, another converter) is a new spec
   and doesn't change the manager. `System` tools are fetched by the
   operating system, so the manager only records consent for them.
+- **Python packages.** A `PythonPackage` (Docling) is installed by its
+  runner, uv, itself a catalog tool that must be installed and consented:
+  `uv tool install --python <python> <package>==<version>` straight into
+  `tools/<id>/<version>/` (`env/` for the environment, `bin/` for its
+  scripts; uv writes absolute paths, so it isn't staged and moved), with
+  `UV_NO_CONFIG=1`, `UV_PYTHON_PREFERENCE=only-managed`, Python itself in
+  `tools/python/` and no download cache kept (`UV_NO_CACHE`). Nothing
+  touches the Mac's own Python or uv settings. uv checks each package
+  against the hash the index publishes. The spec's `prepare` command then
+  runs once from `bin/` (`{dir}` is the version directory); Docling uses it
+  to fetch its layout and table models into `<version>/models`, so
+  conversions run offline. The recorded checksum is the entry script's.
+  The version is pinned in the spec: updating means shipping a new spec,
+  and `tools_update` installs it if it differs. Each step is limited to an
+  hour, with no output logged. A failed install removes the version
+  directory and keeps any older working version.
 
 | Tool | Source | Why | Updates |
 | --- | --- | --- | --- |
 | `yt-dlp` | `yt-dlp/yt-dlp` latest release, `yt-dlp_macos` (universal), `SHA2-256SUMS` | YouTube captions | Checked at most daily, and after a failure at most hourly |
 | `deno` | `denoland/deno` latest release, `deno-<arch>-apple-darwin.zip`, `.sha256sum` | yt-dlp has needed a JavaScript runtime for YouTube's player challenges since 2025.11 ([EJS wiki](https://github.com/yt-dlp/yt-dlp/wiki/EJS)); installed with yt-dlp | Weekly |
 | `apple-speech` | macOS (`System`) | The on-device speech model for podcast transcription | By macOS |
+| `docling` | `docling[ocrmac]==2.145.0` from PyPI through uv, Python 3.12, plus the layout and table models (about 2 GB). Apple silicon only: PyTorch has no Intel Mac wheels | High-quality PDF conversion (columns, tables, formulas); OCR through Apple's Vision framework (`ocrmac`), so no OCR model | With a new spec |
+| `uv` | `astral-sh/uv` latest release, `uv-<arch>-apple-darwin.tar.gz`, `.sha256` | Installs Docling; installed with it | Weekly |
 
 Commands: `tools_list`, `tools_install({ id })` (consent plus download;
-yt-dlp brings Deno), `tools_update({ id })`, `tools_remove({ id })`
+yt-dlp brings Deno, Docling brings uv), `tools_update({ id })`, `tools_remove({ id })`
 (`apps/desktop/src-tauri/src/tools.rs`, types in
 `apps/desktop/src/lib/tools.ts`).
 
@@ -490,7 +646,9 @@ take the app down. Each run is limited to an hour.
   swiftc` (deployment target macOS 13; it checks for 26 at runtime) into
   `binaries/kintsugi-transcribe-<target>`. It ships as a Tauri sidecar
   (`bundle.externalBin`), next to the app binary. If there's no Swift
-  toolchain, a stub that exits 3 takes its place.
+  toolchain, a stub that exits 3 takes its place. The PDF helper
+  (`kintsugi-pdf`, from `swift/pdf.swift`) is built and shipped the same
+  way; its stub makes PDFs fall back to Docling, if installed.
 
 ### Choosing a transcription engine
 
@@ -548,6 +706,17 @@ oEmbed response. The Reddit fixtures in `fixtures/reddit/` follow the
 - **Podcasts:** use a saved feed and transcripts (`fixtures/podcast/`)
   and a fake `Transcriber`.
 - **Transcription helper:** its protocol is tested with fake scripts.
+- **PDFs:** `fixtures/pdf/repair.pdf` (two pages with a running header,
+  page numbers, headings and a hyphenated line, written by
+  `fixtures/pdf/make.py`) and the helper's saved output for it
+  (`repair.json`) test the layout and the adapter. On a Mac with a Swift
+  toolchain, `pdfkit_helper_reads_the_fixture` compiles the real helper and
+  reads the fixture with PDFKit (it skips elsewhere). Docling's install and
+  conversion run against a fake uv that writes fake `docling` scripts.
+- **EPUBs:** `fixtures/epub/repair.epub` (written by `make.py`: metadata
+  with an ISBN, a cover, nav, copyright page and two chapters) plus
+  archives built in the tests (a DTD, an oversized chapter, not a zip).
+- **Books:** trimmed Open Library responses in `fixtures/books/`.
 
 No test downloads a real tool or model. The opt-in tests are `#[ignore]`d:
 
@@ -558,6 +727,12 @@ No test downloads a real tool or model. The opt-in tests are `#[ignore]`d:
   `target/live-tools/` and fetches a real video's captions.
 - `live_speech_analyzer` compiles the Swift helper and transcribes speech
   from `say`. It never asks macOS to download a model.
+- `live_book_by_isbn_and_search` asks Open Library for an ISBN and a
+  search.
+- `live_docling` installs uv, Python and Docling with its models (about
+  2 GB) into `target/live-tools/` and converts the PDF fixture. It passed
+  on 2026-11-01 in about four minutes, including the install. Delete
+  `target/live-tools/` afterwards.
 
 Run them with `cargo test -p kintsugi-ingest -- --ignored`, or one at a
 time by name (`-- --ignored live_speech_analyzer`).

@@ -73,8 +73,62 @@ pub const APPLE_SPEECH: ToolSpec = ToolSpec {
     update_every: None,
 };
 
+/// uv, Astral's Python package manager. It installs Python tools (Docling)
+/// into their own environments, with a Python it downloads itself, so
+/// nothing depends on or changes the Mac's own Python.
+pub const UV: ToolSpec = ToolSpec {
+    id: "uv",
+    name: "uv",
+    purpose: "Installs Python tools such as Docling",
+    homepage: "https://github.com/astral-sh/uv",
+    license: "MIT or Apache-2.0",
+    source: ToolSource::GitHubRelease { repo: "astral-sh/uv", checksums: Checksums::PerAsset(".sha256") },
+    assets: &[
+        ("macos-aarch64", "uv-aarch64-apple-darwin.tar.gz"),
+        ("macos-x86_64", "uv-x86_64-apple-darwin.tar.gz"),
+        ("linux-x86_64", "uv-x86_64-unknown-linux-gnu.tar.gz"),
+        ("linux-aarch64", "uv-aarch64-unknown-linux-gnu.tar.gz"),
+    ],
+    archive: Archive::TarGz,
+    entry: "uv",
+    executable: true,
+    max_bytes: 100 * 1024 * 1024,
+    approx_bytes: 15 * 1024 * 1024,
+    update_every: Some(Duration::from_secs(7 * 24 * 60 * 60)),
+};
+
+/// Docling (IBM Research, MIT): layout-aware PDF conversion with reading
+/// order, tables, code and formulas, much better than plain text
+/// extraction for papers and reports. Installed with uv, with its layout and
+/// table models fetched once at install (so conversions run offline), and
+/// Apple's Vision framework for OCR through `ocrmac` (no OCR model
+/// download). Apple silicon only: PyTorch ships no Intel Mac wheels.
+/// marker is deliberately not offered: its model weights carry a
+/// commercial-use restriction.
+pub const DOCLING: ToolSpec = ToolSpec {
+    id: "docling",
+    name: "Docling",
+    purpose: "High-quality PDF conversion: tables, columns, formulas",
+    homepage: "https://github.com/docling-project/docling",
+    license: "MIT (models: Apache-2.0, CDLA-Permissive-2.0)",
+    source: ToolSource::PythonPackage {
+        runner: &UV,
+        package: "docling[ocrmac]",
+        version: "2.145.0",
+        python: "3.12",
+        prepare: &["docling-tools", "models", "download", "-o", "{dir}/models", "layout", "tableformer"],
+    },
+    assets: &[("macos-aarch64", "")],
+    archive: Archive::None,
+    entry: "bin/docling",
+    executable: true,
+    max_bytes: 0,
+    approx_bytes: 1_900 * 1024 * 1024,
+    update_every: None,
+};
+
 /// Every tool, in the order Settings shows them.
-pub const ALL: &[&ToolSpec] = &[&YT_DLP, &DENO, &APPLE_SPEECH];
+pub const ALL: &[&ToolSpec] = &[&YT_DLP, &DENO, &APPLE_SPEECH, &DOCLING, &UV];
 
 pub fn by_id(id: &str) -> Option<&'static ToolSpec> {
     ALL.iter().copied().find(|spec| spec.id == id)

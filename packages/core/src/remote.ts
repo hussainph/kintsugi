@@ -60,13 +60,16 @@ export function parsePairLink(link: string): Pairing | null {
 }
 
 const TIMEOUT = 8000;
+/** A 50 MiB PDF takes a while over Tailscale or a phone connection; kept
+ *  under the phone's 120-second delivery lease. */
+const FILE_TIMEOUT = 100_000;
 
 export function remote({ url, token }: Pairing) {
-  async function call<T>(method: string, path: string, body?: unknown, accept: number[] = []): Promise<T> {
+  async function call<T>(method: string, path: string, body?: unknown, accept: number[] = [], timeout = TIMEOUT): Promise<T> {
     let response: Response;
     // AbortSignal.timeout isn't in every runtime this runs in (React Native).
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), TIMEOUT);
+    const timer = setTimeout(() => abort.abort(), timeout);
     try {
       response = await fetch(url + path, {
         method,
@@ -122,7 +125,8 @@ export function remote({ url, token }: Pairing) {
       call<{ path: string }>("POST", "/v1/capture", { text, capturedAt }),
     clips: () => call<ClipSummary[]>("GET", "/v1/clips"),
     clip: (path: string) => call<Clip>("GET", "/v1/clip" + query(path)),
-    captureClip: (capture: ClipCapture) => call<{ path: string }>("POST", "/v1/clips", capture),
+    captureClip: (capture: ClipCapture) =>
+      call<{ path: string }>("POST", "/v1/clips", capture, [], capture.file ? FILE_TIMEOUT : TIMEOUT),
   };
 }
 

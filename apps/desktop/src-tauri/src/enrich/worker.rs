@@ -69,7 +69,7 @@ pub fn start(app: &AppHandle) {
 }
 
 trait Engine {
-    fn enrich(&self, clip: &Clip, existing_tags: Vec<String>) -> impl Future<Output = Result<Update>> + Send;
+    fn enrich(&self, root: &Path, clip: &Clip, existing_tags: Vec<String>) -> impl Future<Output = Result<Update>> + Send;
 }
 
 /// Enrichment is one consumer of the ingest engine: the clip's URL becomes a
@@ -77,14 +77,20 @@ trait Engine {
 struct Enricher(Ingest);
 
 impl Enricher {
-    async fn page(&self, clip: &Clip) -> Result<Page> {
-        let Some(url) = &clip.summary.url else {
-            return Ok(Page::default());
-        };
+    async fn page(&self, root: &Path, clip: &Clip) -> Result<Page> {
         let options = CaptureOptions {
             want_media: clip.summary.image.is_none(),
         };
-        let item = match Target::url(url) {
+        // A saved PDF or EPUB is the source itself; its link (if any) is
+        // only where it came from.
+        let target = match (&clip.summary.file, &clip.summary.url) {
+            (Some(file), _) => kintsugi_vault::clip_file_path(root, &clip.summary.path, file)
+                .map(Target::File)
+                .map_err(|_| kintsugi_ingest::Error::Unavailable),
+            (None, Some(url)) => Target::url(url),
+            (None, None) => return Ok(Page::default()),
+        };
+        let item = match target {
             Ok(target) => self.0.capture(&target, options).await,
             Err(error) => Err(error),
         };
@@ -93,8 +99,8 @@ impl Enricher {
 }
 
 impl Engine for Enricher {
-    async fn enrich(&self, clip: &Clip, existing_tags: Vec<String>) -> Result<Update> {
-        let page = self.page(clip).await?;
+    async fn enrich(&self, root: &Path, clip: &Clip, existing_tags: Vec<String>) -> Result<Update> {
+        let page = self.page(root, clip).await?;
         build_update(clip, page, existing_tags).await
     }
 }
@@ -184,6 +190,8 @@ fn kind_name(kind: kintsugi_vault::ClipKind) -> &'static str {
         ClipKind::Image => "image",
         ClipKind::Quote => "quote",
         ClipKind::Note => "note",
+        ClipKind::Document => "document",
+        ClipKind::Book => "book",
     }
 }
 
@@ -217,7 +225,7 @@ async fn process<S: Store, E: Engine>(store: &S, engine: &E, root: &Path, clip: 
     for attempt in 0..=delays.len() {
         let result = async {
             let tags = store.tags(root)?;
-            let update = engine.enrich(clip, tags).await?;
+            let update = engine.enrich(root, clip, tags).await?;
             store.apply(root, clip, &update)
         }
         .await;
@@ -266,7 +274,7 @@ mod tests {
     struct Flaky(Mutex<usize>);
 
     impl Engine for Flaky {
-        async fn enrich(&self, _: &Clip, tags: Vec<String>) -> Result<Update> {
+        async fn enrich(&self, _: &Path, _: &Clip, tags: Vec<String>) -> Result<Update> {
             assert_eq!(tags, ["writing"]);
             let mut left = self.0.lock().unwrap();
             if *left > 0 {
@@ -296,6 +304,7 @@ mod tests {
                 site: None,
                 author: None,
                 image: None,
+                file: None,
                 captured: "2026-10-29T14:05".into(),
                 via: None,
                 tags: vec![],
@@ -339,7 +348,7 @@ mod tests {
         link.summary.url = Some(url);
         // A clip that already has its image never downloads another.
         link.summary.image = Some("media/shot.png".into());
-        let page = futures_block(enricher.page(&link)).unwrap();
+        let page = futures_block(enricher.page(Path::new("/nonexistent"), &link)).unwrap();
         server.join().unwrap();
         assert_eq!(page.title.as_deref(), Some("On slow software"));
         assert_eq!(page.site.as_deref(), Some("Field Notes"));
@@ -352,8 +361,42 @@ mod tests {
         let mut bare = clip();
         bare.text.clear();
         bare.summary.url = Some("https://user:secret@example.org/".into());
-        let error = futures_block(enricher.page(&bare)).unwrap_err();
+        let error = futures_block(enricher.page(Path::new("/nonexistent"), &bare)).unwrap_err();
         assert_eq!(error, "source must use http or https without credentials");
+    }
+
+    #[test]
+    fn saved_files_are_read_from_the_vault_not_their_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let epub = std::fs::read("../../../crates/ingest/fixtures/epub/repair.epub").unwrap();
+        let path = kintsugi_vault::clip_create(
+            root,
+            &kintsugi_vault::ClipCapture {
+                // The link is never fetched: the file is the source.
+                url: Some("https://user:secret@example.org/repair.epub".into()),
+                text: None,
+                note: None,
+                title: None,
+                image: None,
+                image_type: None,
+                file: Some(kintsugi_vault::ClipFile { bytes: epub, mime: "application/epub+zip".into(), name: Some("repair.epub".into()) }),
+                captured_at: "2026-10-29T14:05".into(),
+                via: kintsugi_vault::ClipVia::Mac,
+            },
+        )
+        .unwrap();
+        let clip = kintsugi_vault::clip_read(root, &path).unwrap();
+        let enricher = Enricher(Ingest::new().with(kintsugi_ingest::epub::EpubAdapter::new().unwrap()));
+        let page = futures_block(enricher.page(root, &clip)).unwrap();
+        assert_eq!(page.title.as_deref(), Some("The Golden Seam"));
+        assert_eq!(page.author.as_deref(), Some("Ada Example, Ben Sample"));
+        assert!(page.source_text.starts_with("# One: The crack"));
+        assert_eq!(page.image.unwrap().mime, "image/png");
+        // A hand-edited file path outside the clip's own is refused.
+        let mut moved = clip.clone();
+        moved.summary.file = Some("files/elsewhere.epub".into());
+        assert_eq!(futures_block(enricher.page(root, &moved)).unwrap_err(), "could not fetch source page");
     }
 
     fn futures_block<T>(f: impl Future<Output = T>) -> T {
@@ -375,11 +418,11 @@ mod tests {
     fn queued_clips_are_processed_one_at_a_time() {
         struct Serial(Mutex<Vec<String>>);
         impl Engine for Serial {
-            async fn enrich(&self, clip: &Clip, tags: Vec<String>) -> Result<Update> {
+            async fn enrich(&self, root: &Path, clip: &Clip, tags: Vec<String>) -> Result<Update> {
                 self.0.lock().unwrap().push(format!("start {}", clip.summary.path));
                 tokio::task::yield_now().await;
                 self.0.lock().unwrap().push(format!("end {}", clip.summary.path));
-                Flaky(Mutex::new(0)).enrich(clip, tags).await
+                Flaky(Mutex::new(0)).enrich(root, clip, tags).await
             }
         }
         run(async {

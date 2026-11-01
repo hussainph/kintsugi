@@ -11,6 +11,7 @@ public enum CaptureError: Error, LocalizedError, Equatable {
   case busy
   case unpaired
   case invalidPairing
+  case needsApp
   case io(String)
 
   public var errorDescription: String? {
@@ -24,6 +25,7 @@ public enum CaptureError: Error, LocalizedError, Equatable {
     case .busy: return "That capture is already being delivered."
     case .unpaired: return "This phone isn't paired with a Mac."
     case .invalidPairing: return "The pairing must be a JSON object with url and token strings."
+    case .needsApp: return "Kintsugi sends files itself, once it knows your Mac can take them."
     case .io(let message): return message
     }
   }
@@ -36,7 +38,7 @@ public enum CaptureError: Error, LocalizedError, Equatable {
 ///
 ///     <root>/.lock                         flock(2) guarding leases and removals
 ///     <root>/captures/<id>/payload.json    the POST /v1/clips body, verbatim
-///     <root>/captures/<id>/meta.json       {"capturedAt": …, "captureId": …}, for cheap listing
+///     <root>/captures/<id>/meta.json       {"capturedAt": …, "captureId": …, "file": true?}, for cheap listing
 ///     <root>/captures/<id>/rejection       why the Mac refused it, if it did
 ///     <root>/captures/<id>/lease           "<expiry epoch s>\n<owner>" while claimed
 ///     <root>/captures/.tmp-* / .trash-*    in-flight writes and removals
@@ -64,6 +66,14 @@ public final class CaptureStore: @unchecked Sendable {
   public static let leaseDuration: TimeInterval = 120
   /// A 15 MiB image as base64 (20 MiB) plus text, as `POST /v1/clips` accepts.
   public static let maxPayloadBytes = 22 * 1024 * 1024
+  /// A PDF or EPUB, as `POST /v1/clips` accepts from API 4 (`MAX_CLIP_FILE_BYTES` in core).
+  public static let maxFileBytes = 50 * 1024 * 1024
+  /// A payload carrying a file: 50 MiB as base64 (66.7 MiB) plus its other
+  /// fields, within the Mac's clip body limit.
+  public static let maxFilePayloadBytes = 70 * 1024 * 1024
+  /// Bytes of a file encoded at a time (a multiple of 3, so chunks
+  /// concatenate into one base64 string without padding between them).
+  static let fileChunkBytes = 3 * 64 * 1024
   /// Owner of the leases this process takes through `claim`.
   static let processOwner = UUID().uuidString
   static var protection: [FileAttributeKey: Any] {
@@ -91,13 +101,15 @@ public final class CaptureStore: @unchecked Sendable {
   /// it is a JSON object with a `capturedAt` string. A valid UUID `id` is kept
   /// (and the bytes with it); a missing or null one is generated here, once.
   /// Any other `id` is refused as `invalidPayload`.
+  /// A payload with a `file` field may be up to `maxFilePayloadBytes`, and is
+  /// listed with `file: true` (see `pending`).
   public func enqueue(_ payloadJSON: String) throws -> String {
     let payload = Data(payloadJSON.utf8)
-    guard payload.count <= Self.maxPayloadBytes else { throw CaptureError.tooLarge }
+    guard payload.count <= Self.maxFilePayloadBytes else { throw CaptureError.tooLarge }
     guard let object = try? JSONSerialization.jsonObject(with: payload) as? [String: Any],
           let capturedAt = object["capturedAt"] as? String
     else { throw CaptureError.invalidPayload }
-    return try enqueue(payload, capturedAt: capturedAt)
+    return try enqueue(payload, capturedAt: capturedAt, file: object["file"] != nil)
   }
 
   /// Durably queues a payload the caller built itself (trusted: it is not
@@ -107,21 +119,101 @@ public final class CaptureStore: @unchecked Sendable {
   /// or null one is generated once and written into the payload as it is
   /// committed, and anything else (a non-UUID `id`, a repeated `id`, a
   /// different or missing `capturedAt`) throws `invalidPayload`.
-  public func enqueue(_ payload: Data, capturedAt: String) throws -> String {
-    guard payload.count <= Self.maxPayloadBytes else { throw CaptureError.tooLarge }
+  /// `file` says the payload carries a `file` field: it may then be up to
+  /// `maxFilePayloadBytes`, and is listed as such.
+  public func enqueue(_ payload: Data, capturedAt: String, file: Bool = false) throws -> String {
+    let limit = file ? Self.maxFilePayloadBytes : Self.maxPayloadBytes
+    guard payload.count <= limit else { throw CaptureError.tooLarge }
     guard let fields = CapturePayload.scan(payload), fields.capturedAt == capturedAt,
           let identified = CapturePayload.identified(payload, fields)
     else { throw CaptureError.invalidPayload }
     // The bound holds for what is committed, a generated id included.
-    guard identified.segments.reduce(0, { $0 + $1.count }) <= Self.maxPayloadBytes else { throw CaptureError.tooLarge }
-    let meta = try Self.meta(capturedAt: capturedAt, captureID: identified.captureID)
+    guard identified.segments.reduce(0, { $0 + $1.count }) <= limit else { throw CaptureError.tooLarge }
+    let meta = try Self.meta(capturedAt: capturedAt, captureID: identified.captureID, file: file)
+    return try commit(meta: meta) { url in
+      try Self.write(identified.segments, to: url, durable: true)
+    }
+  }
 
+  /// Durably queues a capture carrying a file (a PDF or EPUB of at most
+  /// `maxFileBytes`) and returns its queue id. The file is base64-encoded
+  /// straight into payload.json a chunk at a time, so neither its bytes nor
+  /// their encoding is ever whole in memory: a 50 MiB file stays well inside
+  /// the share extension's memory limit. `fields` are the payload's other
+  /// top-level fields and must carry a `capturedAt` string and no `file`; a
+  /// UUID `id` is kept, a missing or null one is generated here, and any
+  /// other `id` throws `invalidPayload`. The file goes in as `file`.
+  public func enqueue(fields: [String: Any], file: URL) throws -> String {
+    var fields = fields
+    guard let capturedAt = fields["capturedAt"] as? String, fields["file"] == nil,
+          JSONSerialization.isValidJSONObject(fields)
+    else { throw CaptureError.invalidPayload }
+    let captureID: String
+    switch fields["id"] {
+    case nil, is NSNull:
+      captureID = CapturePayload.newUUID()
+      fields["id"] = captureID
+    case let value as String where CapturePayload.isUUID(value):
+      captureID = value
+    default:
+      throw CaptureError.invalidPayload
+    }
+    let values = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+    guard values.isRegularFile == true, let size = values.fileSize else { throw CaptureError.invalidPayload }
+    guard size <= Self.maxFileBytes else { throw CaptureError.tooLarge }
+    var head = try JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])
+    guard head.last == UInt8(ascii: "}") else { throw CaptureError.invalidPayload }
+    head.removeLast()
+    head.append(Data(#","file":""#.utf8))
+    let tail = Data(#""}"#.utf8)
+    guard head.count + (size + 2) / 3 * 4 + tail.count <= Self.maxFilePayloadBytes else { throw CaptureError.tooLarge }
+    let meta = try Self.meta(capturedAt: capturedAt, captureID: captureID, file: true)
+    let reader = try FileHandle(forReadingFrom: file)
+    defer { try? reader.close() }
+    return try commit(meta: meta) { url in
+      try Self.write(to: url, durable: true) { fd in
+        try Self.writeAll(fd, head)
+        var carry = Data() // bytes past the last multiple of 3, encoded with the next chunk
+        var total = 0
+        while true {
+          let more = try autoreleasepool { () throws -> Bool in
+            guard let chunk = try reader.read(upToCount: Self.fileChunkBytes), !chunk.isEmpty else { return false }
+            total += chunk.count
+            // The file changed under us: refuse rather than exceed the bound.
+            guard total <= Self.maxFileBytes else { throw CaptureError.tooLarge }
+            let bytes = carry.isEmpty ? chunk : carry + chunk
+            let whole = bytes.count / 3 * 3
+            try Self.writeAll(fd, bytes.prefix(whole).base64EncodedData())
+            carry = Data(bytes.suffix(from: bytes.startIndex + whole))
+            return true
+          }
+          if !more { break }
+        }
+        if !carry.isEmpty { try Self.writeAll(fd, carry.base64EncodedData()) }
+        try Self.writeAll(fd, tail)
+      }
+    }
+  }
+
+  /// Whether a capture carries a file (its meta.json says so). Files are
+  /// delivered by the app, which checks the Mac's API version first.
+  public func carriesFile(_ id: String) throws -> Bool {
+    let dir = try captureDirectory(id)
+    guard let meta = try? Data(contentsOf: dir.appendingPathComponent("meta.json")),
+          let object = try? JSONSerialization.jsonObject(with: meta) as? [String: Any]
+    else { return false }
+    return object["file"] as? Bool == true
+  }
+
+  /// Commits a new capture directory: its payload (written by `payload` to
+  /// the URL given) and `meta`, made visible by one atomic rename.
+  private func commit(meta: Data, payload: (URL) throws -> Void) throws -> String {
     let captures = try capturesDirectory()
     let id = Self.newID(now())
     let tmp = captures.appendingPathComponent(".tmp-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: false, attributes: Self.protection)
     do {
-      try Self.write(identified.segments, to: tmp.appendingPathComponent("payload.json"), durable: true)
+      try payload(tmp.appendingPathComponent("payload.json"))
       try Self.write(meta, to: tmp.appendingPathComponent("meta.json"), durable: true)
       try Self.syncDirectory(tmp)
       try Self.rename(tmp, captures.appendingPathComponent(id, isDirectory: true))
@@ -134,11 +226,12 @@ public final class CaptureStore: @unchecked Sendable {
   }
 
   /// Every queued capture, oldest first, leased or not, as a JSON array of
-  /// `{id, capturedAt}`. Payloads stay on disk; `read` loads one.
+  /// `{id, capturedAt, error?, file?}` (`file: true` when it carries a PDF or
+  /// EPUB). Payloads stay on disk; `read` loads one.
   public func pending() throws -> String {
     let captures = try capturesDirectory()
     sweep(captures)
-    var items: [[String: String]] = []
+    var items: [[String: Any]] = []
     for id in try Self.list(captures).filter(Self.isID).sorted() {
       let dir = captures.appendingPathComponent(id, isDirectory: true)
       guard let meta = try? Data(contentsOf: dir.appendingPathComponent("meta.json")) else {
@@ -151,7 +244,8 @@ public final class CaptureStore: @unchecked Sendable {
         try? quarantine(id)
         continue
       }
-      var item = ["id": id, "capturedAt": capturedAt]
+      var item: [String: Any] = ["id": id, "capturedAt": capturedAt]
+      if object["file"] as? Bool == true { item["file"] = true }
       if let rejection = try? String(contentsOf: dir.appendingPathComponent("rejection"), encoding: .utf8) {
         item["error"] = rejection
       }
@@ -377,13 +471,16 @@ public final class CaptureStore: @unchecked Sendable {
       // Commit the payload rename before its metadata can claim it is identified.
       try Self.syncDirectory(dir)
     }
-    try Self.write(Self.meta(capturedAt: capturedAt, captureID: identified.captureID), to: metaURL, durable: true)
+    let file = object["file"] as? Bool == true
+    try Self.write(Self.meta(capturedAt: capturedAt, captureID: identified.captureID, file: file), to: metaURL, durable: true)
     try Self.syncDirectory(dir)
     return .identified(identified.captureID)
   }
 
-  static func meta(capturedAt: String, captureID: String) throws -> Data {
-    try JSONSerialization.data(withJSONObject: ["capturedAt": capturedAt, "captureId": captureID], options: [.sortedKeys])
+  static func meta(capturedAt: String, captureID: String, file: Bool = false) throws -> Data {
+    var meta: [String: Any] = ["capturedAt": capturedAt, "captureId": captureID]
+    if file { meta["file"] = true }
+    return try JSONSerialization.data(withJSONObject: meta, options: [.sortedKeys])
   }
 
   /// Removes what crashed processes left: removals always, writes once stale.
@@ -462,6 +559,13 @@ public final class CaptureStore: @unchecked Sendable {
   /// `write` for a file made of consecutive `segments` (slices share their
   /// payload's storage, so splicing an `id` in copies nothing large).
   static func write(_ segments: [Data], to url: URL, durable: Bool) throws {
+    try write(to: url, durable: durable) { fd in
+      for data in segments { try writeAll(fd, data) }
+    }
+  }
+
+  /// `write` for a file whose bytes `body` writes to the descriptor it is given.
+  static func write(to url: URL, durable: Bool, _ body: (Int32) throws -> Void) throws {
     let tmp = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent)-\(UUID().uuidString)")
     let fd = open(tmp.path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o600)
     guard fd >= 0 else { throw posixError("open") }
@@ -469,24 +573,27 @@ public final class CaptureStore: @unchecked Sendable {
     defer { if !committed { unlink(tmp.path) } }
     do {
       defer { close(fd) }
-      for data in segments {
-        try data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
-          var offset = 0
-          while offset < buffer.count {
-            let written = Darwin.write(fd, buffer.baseAddress! + offset, buffer.count - offset)
-            if written < 0 {
-              if errno == EINTR { continue }
-              throw posixError("write")
-            }
-            offset += written
-          }
-        }
-      }
+      try body(fd)
       // fsync(2) on Darwin may leave data in the drive cache; F_FULLFSYNC doesn't.
       if durable && fcntl(fd, F_FULLFSYNC) != 0 && fsync(fd) != 0 { throw posixError("fsync") }
     }
     try rename(tmp, url)
     committed = true
+  }
+
+  static func writeAll(_ fd: Int32, _ data: Data) throws {
+    try data.withUnsafeBytes { (buffer: UnsafeRawBufferPointer) in
+      guard let base = buffer.baseAddress else { return }
+      var offset = 0
+      while offset < buffer.count {
+        let written = Darwin.write(fd, base + offset, buffer.count - offset)
+        if written < 0 {
+          if errno == EINTR { continue }
+          throw posixError("write")
+        }
+        offset += written
+      }
+    }
   }
 
   static func rename(_ from: URL, _ to: URL) throws {

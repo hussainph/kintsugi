@@ -260,3 +260,48 @@ fn system_tools_only_record_consent() {
     assert_eq!(status.supported, cfg!(target_os = "macos"));
     assert!(status.path.is_none());
 }
+
+#[test]
+fn per_asset_checksums_and_tarballs() {
+    // uv's layout: `<name>/uv` and `<name>/uvx` in a gzipped tarball.
+    let binary = b"\x7fELF fake uv".to_vec();
+    let mut tarball = Vec::new();
+    {
+        let gz = flate2::write::GzEncoder::new(&mut tarball, flate2::Compression::fast());
+        let mut tar = tar::Builder::new(gz);
+        for (name, bytes) in [("uv-fake/uvx", b"other".as_slice()), ("uv-fake/fake-tool", binary.as_slice())] {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o755);
+            header.set_cksum();
+            tar.append_data(&mut header, name, bytes).unwrap();
+        }
+        tar.into_inner().unwrap().finish().unwrap();
+    }
+    let server = Server::start(vec![
+        ("/repos/owner/fake/releases/latest", 200, "application/json", release_json("0.13.6", &["tool_bin.sha256"])),
+        ("/dl/0.13.6/tool_bin", 200, "application/gzip", tarball.clone()),
+        ("/dl/0.13.6/tool_bin.sha256", 200, "text/plain", format!("{} *tool_bin\n", sha(&tarball)).into_bytes()),
+    ]);
+    let (_dir, tools) = tools(&server);
+    let spec = spec(Checksums::PerAsset(".sha256"), Archive::TarGz);
+    tools.grant(&spec).unwrap();
+    let path = run(tools.ensure(&spec)).unwrap();
+    assert_eq!(std::fs::read(path).unwrap(), binary);
+}
+
+#[test]
+fn docling_is_offered_on_apple_silicon_and_installs_with_uv() {
+    let server = Server::start(vec![]);
+    let (_dir, tools) = tools(&server);
+    let status = tools.status(&catalog::DOCLING);
+    assert_eq!(status.kind, "download");
+    assert_eq!(status.supported, cfg!(all(target_os = "macos", target_arch = "aarch64")));
+    let ToolSource::PythonPackage { runner, package, .. } = catalog::DOCLING.source else { panic!("docling is a Python package") };
+    assert_eq!(runner.id, "uv");
+    assert!(package.starts_with("docling"));
+    assert!(!package.contains("marker"));
+    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        assert_eq!(catalog::UV.asset(), Some("uv-aarch64-apple-darwin.tar.gz"));
+    }
+}

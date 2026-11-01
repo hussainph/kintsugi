@@ -1,6 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ArrowUpRight, MessageCircle, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, BookOpen, FileText, MessageCircle, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { toast } from "sonner";
 import type { Clip, ClipChanged, ClipEdit } from "@kintsugi/core/clips";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@kintsugi/ui/components/input";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import { discuss, useScreenContext } from "@/lib/chat";
-import { clipLabel, clips, clipSite, sourceUrl } from "./api";
+import { clipFileLabel, clipLabel, clips, clipSite, sourceUrl } from "./api";
 import { parseTags } from "./capture";
 import { ClipImage } from "./ClipImage";
 
@@ -117,6 +117,7 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
   </div>;
 
   const source = sourceUrl(clip.url);
+  const fileLabel = clipFileLabel(clip);
   return (
     <div className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">
       <div className="mb-8 flex items-center justify-between gap-3">
@@ -131,10 +132,13 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
         {clip.image && <div className="flex min-h-48 items-start justify-center rounded-xl bg-muted/40 p-2"><ClipImage path={clip.path} image={clip.image} alt={clipLabel(clip)} className="max-h-[68vh] w-full rounded-lg object-contain" /></div>}
         <div className="min-w-0 space-y-8 select-text">
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">{clipSite(clip)} <span className="px-1.5 opacity-40">·</span> {clip.captured.slice(0, 10)}</p>
+            <p className="text-xs text-muted-foreground">{clipSite(clip)}{clip.author && (clip.kind === "book" || clip.kind === "document") && <><span className="px-1.5 opacity-40">·</span>{clip.author}</>} <span className="px-1.5 opacity-40">·</span> {clip.captured.slice(0, 10)}</p>
             <Input aria-label="Clip title" placeholder="Untitled" value={draft.title} onChange={(e) => edit("title", e.target.value)} onBlur={() => void save()} className="h-auto rounded-none border-0 px-0 py-1 text-xl! font-medium shadow-none focus-visible:ring-0" />
             {clip.summary && <p className="text-sm leading-relaxed text-muted-foreground">{clip.summary}</p>}
-            {source && <button className="inline-flex max-w-full items-center gap-1 text-xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground" onClick={() => openUrl(source).catch((e) => toast.error(String(e)))} title={source}><span className="truncate">Open source</span><ArrowUpRight className="size-3" /></button>}
+            {(fileLabel || source) && <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              {fileLabel && <Button variant="outline" size="sm" onClick={() => clips.openFile(clip.path).catch((e) => toast.error(String(e)))} title={clip.file ?? undefined}>{fileLabel === "PDF" ? <FileText /> : <BookOpen />}Open {fileLabel}</Button>}
+              {source && <button className="inline-flex max-w-full items-center gap-1 text-xs text-muted-foreground underline decoration-border underline-offset-4 hover:text-foreground" onClick={() => openUrl(source).catch((e) => toast.error(String(e)))} title={source}><span className="truncate">Open source</span><ArrowUpRight className="size-3" /></button>}
+            </div>}
           </div>
           <div className="space-y-3">
             <label htmlFor="clip-note" className="text-xs text-muted-foreground">Your words</label>
@@ -160,7 +164,7 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
       </div>
       <Dialog open={confirmTrash} onOpenChange={(next) => { if (!trashing) setConfirmTrash(next); }}>
         <DialogContent className="motion-reduce:animate-none">
-          <DialogHeader><DialogTitle>Move this clip to Trash?</DialogTitle><DialogDescription>Its saved image goes with it. You can recover both from the Mac’s Trash.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>Move this clip to Trash?</DialogTitle><DialogDescription>{clip.file ? "Its saved file and image go with it. You can recover them from the Mac’s Trash." : "Its saved image goes with it. You can recover both from the Mac’s Trash."}</DialogDescription></DialogHeader>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" disabled={trashing} onClick={() => setConfirmTrash(false)}>Keep it</Button>
             <Button variant="destructive" disabled={trashing} onClick={async () => {

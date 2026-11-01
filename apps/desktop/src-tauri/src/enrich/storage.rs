@@ -65,7 +65,8 @@ impl Store for VaultStore {
         }
         let patch = ClipUpdate {
             title: update.title.clone(),
-            kind: (current.summary.kind == baseline.kind).then_some(kind),
+            // A saved PDF or EPUB stays a document or book whatever the model says.
+            kind: (current.summary.kind == baseline.kind && baseline.file.is_none()).then_some(kind),
             site: current.summary.site.is_none().then(|| update.site.clone()).flatten(),
             author: current.summary.author.is_none().then(|| update.author.clone()).flatten(),
             tags: Some(tags),
@@ -135,6 +136,7 @@ mod tests {
                 title: None,
                 image: None,
                 image_type: None,
+                file: None,
                 captured_at: "2026-10-29T14:05".into(),
                 via: ClipVia::Mac,
             },

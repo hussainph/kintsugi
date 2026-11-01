@@ -5,6 +5,8 @@
 //   capture-tests die-locked <dir>    SIGKILLs itself while holding the lock
 //   capture-tests claim-read <dir> <id>  claims (win or lose), then prints the
 //                                     payload's id as read; exits 4 on failure
+//   capture-tests enqueue-file <dir> <file>  queues the file and prints the
+//                                     process's peak resident bytes; exits 5 on failure
 import Foundation
 
 let arguments = CommandLine.arguments
@@ -20,6 +22,13 @@ if arguments.count >= 3 {
           let id = object["id"] as? String
     else { exit(4) }
     print(id)
+    exit(0)
+  case "enqueue-file":
+    let fields: [String: Any] = ["capturedAt": "2026-10-29T14:05", "via": "share", "fileType": "application/pdf", "fileName": "a.pdf"]
+    guard (try? store.enqueue(fields: fields, file: URL(fileURLWithPath: arguments[3]))) != nil else { exit(5) }
+    var usage = rusage()
+    getrusage(RUSAGE_SELF, &usage)
+    print(usage.ru_maxrss) // bytes on Darwin
     exit(0)
   case "die-locked":
     _ = try? store.withLock { kill(getpid(), SIGKILL) }
@@ -722,6 +731,120 @@ test("processes and threads racing for a legacy capture all see one id") { dir i
   check(payloadID(try store.read(queueID)) == all.first, "and it is the persisted one")
   let leases = names(dir.appendingPathComponent("captures/\(queueID)")).filter { $0 == "lease" }
   check(leases.count == 1, "one claim won")
+}
+
+// MARK: - Files (KI-35)
+
+func object(_ json: String) -> [String: Any] {
+  (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any]) ?? [:]
+}
+
+func scratchFile(_ dir: URL, _ bytes: Data, name: String = "Paper.pdf") throws -> URL {
+  try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+  let url = dir.appendingPathComponent(name)
+  try bytes.write(to: url)
+  return url
+}
+
+let fileFields: [String: Any] = [
+  "id": "1f0c2b7e-5d3a-4c8e-9b1a-2e6f7d8c9a0b", "capturedAt": "2026-10-29T14:05", "via": "share",
+  "fileType": "application/pdf", "fileName": "Paper \"final\".pdf", "note": "é ✨",
+]
+
+test("a file is base64-encoded into the payload a chunk at a time, at every boundary") { dir in
+  let store = CaptureStore(directory: dir)
+  let chunk = CaptureStore.fileChunkBytes
+  for size in [0, 1, 2, 3, 4, chunk - 1, chunk, chunk + 1, chunk * 2 + 2] {
+    let bytes = Data((0..<size).map { UInt8(truncatingIfNeeded: $0 &* 31 &+ 7) })
+    let file = try scratchFile(dir.appendingPathComponent("in-\(size)"), bytes)
+    let id = try store.enqueue(fields: fileFields, file: file)
+    let payload = object(try store.read(id))
+    check(payload["file"] as? String == bytes.base64EncodedString(), "file round-trips at \(size) bytes")
+    check(payload["id"] as? String == fileFields["id"] as? String, "id kept at \(size)")
+    check(payload["fileName"] as? String == "Paper \"final\".pdf" && payload["note"] as? String == "é ✨", "fields kept")
+    check(payload.count == fileFields.count + 1, "no other fields")
+    check(try store.captureID(id) == fileFields["id"] as? String, "meta records the id")
+    check(try store.carriesFile(id), "meta records the file")
+    try store.acknowledge(id)
+  }
+  check(try store.pending() == "[]", "all settled")
+}
+
+test("file captures are listed as such; others aren't") { dir in
+  let store = CaptureStore(directory: dir)
+  let plain = try store.enqueue(payload)
+  let file = try store.enqueue(fields: fileFields, file: try scratchFile(dir.appendingPathComponent("in"), Data("%PDF-1.7".utf8)))
+  let viaJS = try store.enqueue(#"{"capturedAt":"2026-10-29T14:06","file":"JVBERi0=","fileType":"application/pdf","fileName":"a.pdf","via":"share"}"#)
+  let items = try JSONSerialization.jsonObject(with: Data(store.pending().utf8)) as! [[String: Any]]
+  let flagged = Dictionary(uniqueKeysWithValues: items.map { ($0["id"] as! String, $0["file"] as? Bool) })
+  check(flagged[plain] == .some(nil), "a URL capture has no file flag")
+  check(flagged[file] == .some(true) && flagged[viaJS] == .some(true), "both file enqueues are flagged: \(flagged)")
+  check(try !store.carriesFile(plain) && store.carriesFile(viaJS), "carriesFile agrees")
+}
+
+test("a file enqueue generates a missing id and refuses bad fields, leaving nothing") { dir in
+  let store = CaptureStore(directory: dir)
+  let file = try scratchFile(dir.appendingPathComponent("in"), Data("%PDF-1.7".utf8))
+  var fields = fileFields
+  fields["id"] = nil
+  let id = try store.enqueue(fields: fields, file: file)
+  check(isUUID(payloadID(try store.read(id))), "generated")
+  try store.acknowledge(id)
+  for bad: [String: Any] in [
+    fileFields.merging(["id": "not-a-uuid"]) { $1 },
+    fileFields.merging(["file": "x"]) { $1 },
+    fileFields.filter { $0.key != "capturedAt" },
+  ] {
+    check(throwsError(.invalidPayload) { _ = try store.enqueue(fields: bad, file: file) }, "refused: \(bad.keys.sorted())")
+  }
+  check(throwsError(.invalidPayload) { _ = try store.enqueue(fields: fileFields, file: dir) }, "a folder isn't a file")
+  check(try store.pending() == "[]", "nothing queued")
+  check(names(dir.appendingPathComponent("captures")).isEmpty, "no temp files")
+}
+
+test("files over 50 MiB are refused before reading them") { dir in
+  let store = CaptureStore(directory: dir)
+  let file = try scratchFile(dir.appendingPathComponent("in"), Data())
+  let handle = try FileHandle(forWritingTo: file)
+  try handle.truncate(atOffset: UInt64(CaptureStore.maxFileBytes + 1)) // sparse
+  try handle.close()
+  check(throwsError(.tooLarge) { _ = try store.enqueue(fields: fileFields, file: file) }, "too large")
+  check(names(dir.appendingPathComponent("captures")).isEmpty, "nothing written")
+  let big = Data(count: CaptureStore.maxPayloadBytes + 1)
+  check(throwsError(.tooLarge) { _ = try store.enqueue(big, capturedAt: "x") }, "the 22 MiB bound still holds without a file")
+}
+
+test("a 50 MiB file streams into a payload within the Mac's limit") { dir in
+  let store = CaptureStore(directory: dir)
+  let file = try scratchFile(dir.appendingPathComponent("in"), Data(count: CaptureStore.maxFileBytes))
+  let started = Date()
+  let id = try store.enqueue(fields: fileFields, file: file)
+  let elapsed = Date().timeIntervalSince(started)
+  let size = try store.payloadURL(id).resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+  check(size > CaptureStore.maxFileBytes / 3 * 4 && size <= CaptureStore.maxFilePayloadBytes, "size \(size)")
+  check(CapturePayload.scan(try Data(contentsOf: store.payloadURL(id), options: .alwaysMapped))?.capturedAt == "2026-10-29T14:05", "one well-formed object")
+  print("     (50 MiB file enqueue: \(Int(elapsed * 1000)) ms)")
+  // In a fresh process, so earlier tests' allocations don't count: the file
+  // and its encoding never sit whole in memory (the extension's limit is ~120 MB).
+  let pipe = Pipe()
+  let child = Process()
+  child.executableURL = URL(fileURLWithPath: CommandLine.arguments[0])
+  child.arguments = ["enqueue-file", dir.path, file.path]
+  child.standardOutput = pipe
+  try child.run()
+  let output = pipe.fileHandleForReading.readDataToEndOfFile()
+  child.waitUntilExit()
+  let peak = Int(String(decoding: output, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)) ?? .max
+  check(child.terminationStatus == 0 && peak < 32 * 1024 * 1024, "peak resident \(peak) bytes")
+  print("     (50 MiB file enqueue peak resident: \(peak / 1024 / 1024) MiB)")
+}
+
+test("the extension's upload leaves file captures to the app") { dir in
+  let store = CaptureStore(directory: dir)
+  let id = try store.enqueue(fields: fileFields, file: try scratchFile(dir.appendingPathComponent("in"), Data("%PDF-1.7".utf8)))
+  let delivery = CaptureDelivery(identifier: "test", store: store, pairing: { CapturePairing(url: "http://127.0.0.1:9", token: "t") })
+  check(throwsError(.needsApp) { try delivery.start(id: id) }, "needs the app")
+  check(try store.claim(id), "left unclaimed for the app")
 }
 
 print(failures == 0 ? "\nall passed" : "\n\(failures) failure(s)")

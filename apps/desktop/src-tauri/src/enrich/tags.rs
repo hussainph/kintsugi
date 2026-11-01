@@ -277,6 +277,7 @@ mod tests {
                 title: Some("Why we sleep".into()),
                 image: None,
                 image_type: None,
+                file: None,
                 captured_at: "2026-10-29T14:05".into(),
                 via: ClipVia::Mac,
             },

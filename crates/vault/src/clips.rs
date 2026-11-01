@@ -13,6 +13,8 @@ use url::Url;
 
 pub const INSPIRATION: &str = "inspiration";
 pub const MAX_CLIP_IMAGE_BYTES: usize = 15 * 1024 * 1024;
+/// Saved PDFs and EPUBs (`inspiration/files/`).
+pub const MAX_CLIP_FILE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_SOURCE_CHARS: usize = 20_000;
 const SOURCE_MARKER: &str = "<!-- kintsugi:source -->";
 const IMAGE_FORMATS: &[(&str, &str)] = &[
@@ -25,6 +27,8 @@ const IMAGE_FORMATS: &[(&str, &str)] = &[
     ("image/heif", "heif"),
     ("image/avif", "avif"),
 ];
+
+const FILE_FORMATS: &[(&str, &str)] = &[("application/pdf", "pdf"), ("application/epub+zip", "epub")];
 
 // Capture names are selected together; unrelated clips can still be edited
 // independently. Weak entries keep the per-path lock table bounded.
@@ -62,6 +66,10 @@ pub enum ClipKind {
     Image,
     Quote,
     Note,
+    /// A PDF (or another saved document).
+    Document,
+    /// A book: an EPUB, or an Open Library record saved by title or ISBN.
+    Book,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -86,6 +94,8 @@ pub struct ClipSummary {
     pub site: Option<String>,
     pub author: Option<String>,
     pub image: Option<String>,
+    /// A saved PDF or EPUB, relative to the clip file (`files/<slug>.pdf`).
+    pub file: Option<String>,
     pub captured: String,
     pub via: Option<ClipVia>,
     pub tags: Vec<String>,
@@ -118,8 +128,20 @@ pub struct ClipCapture {
     pub title: Option<String>,
     pub image: Option<Vec<u8>>,
     pub image_type: Option<String>,
+    /// A PDF or EPUB to keep beside the clip.
+    pub file: Option<ClipFile>,
     pub captured_at: String,
     pub via: ClipVia,
+}
+
+/// A document saved with a clip. `name` is the file's original name, a
+/// title until enrichment reads the document's own; it never becomes a path.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClipFile {
+    pub bytes: Vec<u8>,
+    pub mime: String,
+    pub name: Option<String>,
 }
 
 /// An absent field is untouched; an empty optional scalar removes it. `note`
@@ -219,6 +241,9 @@ pub fn clip_guess_kind(url: Option<&str>, text: Option<&str>, has_image: bool) -
         .and_then(|s| source_url(s).ok())
         .and_then(|u| u.host_str().map(str::to_owned));
     if let Some(host) = host {
+        if host_is(&host, "openlibrary.org") {
+            return ClipKind::Book;
+        }
         if [
             "x.com",
             "twitter.com",
@@ -330,6 +355,10 @@ fn summary(fm: &Frontmatter<'_>, path: &str) -> Result<ClipSummary> {
     if let Some(image) = &image {
         media_relative(path, image)?;
     }
+    let file = fm.scalar("file");
+    if let Some(file) = &file {
+        file_relative(path, file)?;
+    }
     Ok(ClipSummary {
         path: path.into(),
         kind: enum_field(fm, "kind")?.ok_or("clip is missing kind")?,
@@ -338,6 +367,7 @@ fn summary(fm: &Frontmatter<'_>, path: &str) -> Result<ClipSummary> {
         site: fm.scalar("site"),
         author: fm.scalar("author"),
         image,
+        file,
         captured,
         via: enum_field(fm, "via")?,
         tags: tags(fm.list("tags")),
@@ -495,6 +525,74 @@ pub fn clip_media_path(root: &Path, path: &str, image: &str) -> Result<PathBuf> 
     contained(root, &media_relative(path, image)?)
 }
 
+fn file_extension(bytes: &[u8], mime: &str) -> Result<&'static str> {
+    if bytes.is_empty() || bytes.len() > MAX_CLIP_FILE_BYTES {
+        return Err("clip files must be between 1 byte and 50 MiB".into());
+    }
+    let mime = mime.trim().to_ascii_lowercase();
+    let ext = FILE_FORMATS
+        .iter()
+        .find(|(kind, _)| *kind == mime)
+        .map(|(_, ext)| *ext)
+        .ok_or("unsupported clip file type")?;
+    // The bytes must be what the type says: readers accept a PDF header
+    // anywhere in the first kilobyte; an EPUB is a zip.
+    let valid = match ext {
+        "pdf" => bytes[..bytes.len().min(1024)].windows(5).any(|w| w == b"%PDF-"),
+        _ => bytes.starts_with(b"PK\x03\x04"),
+    };
+    if !valid {
+        return Err("clip file does not match its type".into());
+    }
+    Ok(ext)
+}
+
+fn file_relative(path: &str, file: &str) -> Result<PathBuf> {
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("not a clip path")?;
+    let ext = Path::new(file)
+        .extension()
+        .and_then(|s| s.to_str())
+        .ok_or("invalid clip file path")?;
+    if !FILE_FORMATS.iter().any(|(_, allowed)| *allowed == ext) || file != format!("files/{stem}.{ext}") {
+        return Err("invalid clip file path".into());
+    }
+    Ok(Path::new(INSPIRATION).join(file))
+}
+
+/// Resolves a clip's saved PDF or EPUB, with the same containment checks as
+/// writes. `file` is relative to the clip file.
+pub fn clip_file_path(root: &Path, path: &str, file: &str) -> Result<PathBuf> {
+    clip_path(root, path)?;
+    contained(root, &file_relative(path, file)?)
+}
+
+fn save_file(root: &Path, path: &str, file: &ClipFile) -> Result<String> {
+    let ext = file_extension(&file.bytes, &file.mime)?;
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .ok_or("not a clip path")?;
+    let relative = format!("files/{stem}.{ext}");
+    let target = contained(root, &file_relative(path, &relative)?)?;
+    fs::create_dir_all(target.parent().ok_or("not a file path")?)
+        .map_err(|_| "could not create clip files folder")?;
+    write_bytes_new_atomic(&target, &file.bytes)
+        .map_err(|_| "could not save clip file without replacing an existing file")?;
+    Ok(relative)
+}
+
+/// A file name as a title: its stem, with separators as spaces.
+fn file_title(name: &str) -> Option<String> {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let stem = base.rsplit_once('.').map_or(base, |(stem, _)| stem);
+    let title = stem.replace(['_', '-'], " ");
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!title.is_empty()).then(|| title.chars().take(200).collect())
+}
+
 fn save_media(root: &Path, path: &str, bytes: &[u8], mime: &str) -> Result<String> {
     let ext = image_extension(bytes, mime)?;
     let stem = Path::new(path)
@@ -523,7 +621,10 @@ fn unique_clip(dir: &Path, stem: &str, reserved: &[String]) -> Result<PathBuf> {
         }
         let media_taken = IMAGE_FORMATS
             .iter()
-            .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("media/{name}.{ext}"))).is_ok());
+            .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("media/{name}.{ext}"))).is_ok())
+            || FILE_FORMATS
+                .iter()
+                .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("files/{name}.{ext}"))).is_ok());
         match fs::symlink_metadata(&path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && !media_taken => return Ok(path),
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -549,8 +650,16 @@ pub fn clip_validate_capture(capture: &ClipCapture) -> Result<()> {
     url.map(source_url).transpose()?;
     let text = nonempty(capture.text.as_deref());
     let note = nonempty(capture.note.as_deref());
-    if url.is_none() && text.is_none() && note.is_none() && capture.image.is_none() {
+    if url.is_none()
+        && text.is_none()
+        && note.is_none()
+        && capture.image.is_none()
+        && capture.file.is_none()
+    {
         return Err("nothing to capture".into());
+    }
+    if let Some(file) = &capture.file {
+        file_extension(&file.bytes, &file.mime)?;
     }
     match (&capture.image, &capture.image_type) {
         (Some(bytes), Some(mime)) => {
@@ -586,16 +695,24 @@ pub fn clip_create_with_receipt(
     let text = nonempty(capture.text.as_deref());
     let note = nonempty(capture.note.as_deref());
     let title = nonempty(capture.title.as_deref());
+    let file_name = capture
+        .file
+        .as_ref()
+        .and_then(|f| f.name.as_deref())
+        .and_then(file_title);
+    // A file's name names the clip (better than its link's path), but isn't
+    // its title: enrichment fills that from the document itself.
     let fallback = parsed_url
         .as_ref()
         .map(|u| format!("{}{}", u.host_str().unwrap_or_default(), u.path()));
     let name = title
+        .or(file_name.as_deref())
         .or(fallback.as_deref())
         .map(str::to_string)
         .unwrap_or_else(|| {
             text.or(note)
                 .map(capture_title)
-                .unwrap_or_else(|| "image".into())
+                .unwrap_or_else(|| if capture.file.is_some() { "document" } else { "image" }.into())
         });
     let dir = contained(root, Path::new(INSPIRATION))?;
     fs::create_dir_all(&dir).map_err(|_| "could not create inspiration folder")?;
@@ -604,14 +721,12 @@ pub fn clip_create_with_receipt(
     let _guard = lock.lock().map_err(|_| "clip storage unavailable")?;
     let target = clip_path(root, &path)?;
     let mut fm = Frontmatter::empty();
-    fm.set(
-        "kind",
-        Some(enum_value(clip_guess_kind(
-            url,
-            text,
-            capture.image.is_some(),
-        ))),
-    );
+    let kind = match capture.file.as_ref().map(|f| f.mime.trim().to_ascii_lowercase()) {
+        Some(mime) if mime == "application/epub+zip" => ClipKind::Book,
+        Some(_) => ClipKind::Document,
+        None => clip_guess_kind(url, text, capture.image.is_some()),
+    };
+    fm.set("kind", Some(enum_value(kind)));
     for (key, value) in [("title", title), ("url", url)] {
         if let Some(value) = value {
             fm.set(key, Some(Value::Scalar(value.into())));
@@ -649,11 +764,32 @@ pub fn clip_create_with_receipt(
     } else {
         None
     };
-    if write_atomic(&target, &fm.render(&body)).is_err() {
-        if let Some(image) = image {
-            if let Ok(image) = clip_media_path(root, &path, &image) {
-                let _ = fs::remove_file(image);
+    let remove_media = |image: Option<String>| {
+        if let Some(image) = image
+            && let Ok(image) = clip_media_path(root, &path, &image)
+        {
+            let _ = fs::remove_file(image);
+        }
+    };
+    let file = match &capture.file {
+        Some(file) => match save_file(root, &path, file) {
+            Ok(saved) => {
+                fm.set("file", Some(Value::Scalar(saved.clone())));
+                Some(saved)
             }
+            Err(error) => {
+                remove_media(image);
+                return Err(error);
+            }
+        },
+        None => None,
+    };
+    if write_atomic(&target, &fm.render(&body)).is_err() {
+        remove_media(image);
+        if let Some(file) = file
+            && let Ok(file) = clip_file_path(root, &path, &file)
+        {
+            let _ = fs::remove_file(file);
         }
         return Err("could not save clip".into());
     }
@@ -808,6 +944,12 @@ pub fn clip_trash(
         let image = clip_media_path(root, path, &image)?;
         if image.exists() {
             targets.push(image);
+        }
+    }
+    if let Some(file) = clip.summary.file {
+        let file = clip_file_path(root, path, &file)?;
+        if file.exists() {
+            targets.push(file);
         }
     }
     trash(&targets)

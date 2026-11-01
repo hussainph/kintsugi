@@ -1,4 +1,5 @@
 mod ai;
+mod books;
 mod clip_capture;
 mod config;
 mod enrich;
@@ -77,6 +78,8 @@ fn builder() -> tauri::Builder<Runtime> {
             vault::clip_create,
             vault::clip_update,
             vault::clip_trash,
+            vault::clip_open_file,
+            books::book_search,
             library::clip_search,
             library::clip_image,
             search::search,

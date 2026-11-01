@@ -7,5 +7,5 @@
 # will have schema files for capabilities auto-completion
 /gen/schemas
 
-# The transcription helper, built by build.rs from crates/ingest/swift
+# The Swift helpers (transcription, PDFs), built by build.rs from crates/ingest/swift
 /binaries/

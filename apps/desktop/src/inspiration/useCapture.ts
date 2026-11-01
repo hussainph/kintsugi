@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { DesktopClipCapture } from "@kintsugi/core/clips";
 import { clips } from "./api";
-import { imageCapture, isEditable, textCapture } from "./capture";
+import { anyFileCapture, isEditable, textCapture } from "./capture";
 
-/** HTML drops handle URLs/text as well as Finder files; native interception is off. */
+/** HTML drops handle URLs/text as well as Finder files (images, PDFs and
+ *  EPUBs); native interception is off. */
 export function useCapture(onCaptured: () => void) {
   const [dragging, setDragging] = useState(false);
   const callback = useRef(onCaptured);
@@ -27,8 +28,9 @@ export function useCapture(onCaptured: () => void) {
       }
       for (const file of files) {
         try {
-          const image = await imageCapture(file);
-          await capture({ ...image, ...(text?.url ? { url: text.url } : {}) });
+          // A PDF dragged from a browser keeps its page as the source URL.
+          const value = await anyFileCapture(file);
+          await capture({ ...value, ...(text?.url ? { url: text.url } : {}) });
         } catch (e) { toast.error(String(e)); }
       }
     };

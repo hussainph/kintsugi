@@ -380,3 +380,25 @@ fn retries_a_pending_reservation_if_the_clip_was_never_saved() {
     assert!(load(&index).unwrap()[0].complete);
     assert_eq!(vault::clip_list(&root).unwrap().len(), 1);
 }
+
+#[test]
+fn desktop_captures_carry_files_as_base64_with_a_bare_name() {
+    let capture: Capture = serde_json::from_value(serde_json::json!({
+        "file": "JVBERi0xLjQK",
+        "fileType": "application/pdf",
+        "fileName": "/Users/someone/Downloads/Paper.pdf",
+        "capturedAt": "2026-10-29T15:00",
+        "via": "mac"
+    }))
+    .unwrap();
+    let file = capture.clip.file.unwrap();
+    assert_eq!(file.bytes, b"%PDF-1.4\n");
+    assert_eq!(file.name.as_deref(), Some("Paper.pdf"));
+    for bad in [
+        serde_json::json!({ "file": "@@@", "fileType": "application/pdf", "capturedAt": "2026-10-29T15:00", "via": "mac" }),
+        serde_json::json!({ "file": "JVBERi0xLjQK", "capturedAt": "2026-10-29T15:00", "via": "mac" }),
+        serde_json::json!({ "fileType": "application/pdf", "capturedAt": "2026-10-29T15:00", "via": "mac" }),
+    ] {
+        assert!(serde_json::from_value::<Capture>(bad).is_err());
+    }
+}

@@ -63,7 +63,11 @@ public final class CaptureDelivery: NSObject, URLSessionDataDelegate, @unchecked
   /// Claims capture `id` and schedules its upload, returning once the task is
   /// resumed. Throws `busy` when another sender holds it and `unpaired` without
   /// a pairing; on any throw after the claim the capture is released.
+  /// Throws `needsApp` for a capture carrying a file: only the app can check
+  /// that the Mac takes files (`hello.api` 4), and a 50 MiB upload would
+  /// outlast the resource timeout and lease used here.
   public func start(id: String) throws {
+    if try store.carriesFile(id) { throw CaptureError.needsApp }
     let owner = UUID().uuidString
     guard try store.claim(id, owner: owner) else { throw CaptureError.busy }
     do {

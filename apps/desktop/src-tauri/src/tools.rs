@@ -33,9 +33,24 @@ pub fn transcriber_helper() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Tools that come along with another: yt-dlp needs Deno for YouTube.
+/// The PDF reader (Apple PDFKit), built from `crates/ingest/swift/pdf.swift`
+/// and shipped beside the app binary like the transcriber.
+pub fn pdf_helper() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let path = exe.parent()?.join("kintsugi-pdf");
+    path.is_file().then_some(path)
+}
+
+/// Tools that come along with another: yt-dlp needs Deno for YouTube, and
+/// Docling is installed by uv (first, so it is there to install Docling).
 fn with_companions(spec: &'static ToolSpec) -> Vec<&'static ToolSpec> {
-    if spec.id == catalog::YT_DLP.id { vec![spec, &catalog::DENO] } else { vec![spec] }
+    if spec.id == catalog::YT_DLP.id {
+        vec![spec, &catalog::DENO]
+    } else if spec.id == catalog::DOCLING.id {
+        vec![&catalog::UV, spec]
+    } else {
+        vec![spec]
+    }
 }
 
 fn spec(id: &str) -> Result<&'static ToolSpec> {

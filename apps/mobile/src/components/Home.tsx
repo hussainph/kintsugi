@@ -6,10 +6,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, AppState, Pressable, SectionList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { StatusDot } from '@/components/StatusDot';
-import { captureURL } from '@/lib/capture-input';
+import { captureTarget } from '@/lib/capture-input';
 import { library, useLibrary } from '@/lib/documents';
 import { docTitle, type LocalDoc, unsent } from '@/lib/library';
-import { capture, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
+import { capture, heldForMacUpdate, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
 import { usePairing } from '@/lib/pairing';
 import { fonts, useTheme } from '@/theme';
 
@@ -35,17 +35,26 @@ function sections(docs: LocalDoc[], vaultName: string): Section[] {
 /** Open where the owner left off, once per launch. */
 let restored = false;
 
+/** The capture button says where the text goes: a URL or a bare ISBN is
+ *  inspiration (a book for an ISBN); anything else goes to the inbox. */
+function saveLabel(text: string): string {
+  const target = captureTarget(text);
+  return !target ? 'Save to inbox' : target.kind === 'book' ? 'Save book' : 'Save inspiration';
+}
+
 const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
 export function Home({ client }: { client: Remote }) {
   const theme = useTheme();
   const { unpair, pairing } = usePairing();
   const outbox = useOutbox();
-  const waiting = outbox.filter((item) => !item.error);
-  const rejected = outbox.filter((item) => item.error);
   const { docs, connection } = useLibrary();
   const [vaultName, setVaultName] = useState(library.vaultName ?? 'Kintsugi');
   const [api, setApi] = useState(0);
+  // PDFs and EPUBs wait, still queued, for a Mac that takes files (API 4).
+  const held = heldForMacUpdate(outbox, api);
+  const waiting = outbox.filter((item) => !item.error && !held.includes(item));
+  const rejected = outbox.filter((item) => item.error);
   const [problem, setProblem] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState('');
@@ -118,12 +127,14 @@ export function Home({ client }: { client: Remote }) {
     if (!text || saving || !pairing) return;
     setSaving(true);
     try {
-      if (captureURL(text) && captureDraft.current?.text !== text) {
+      const target = captureTarget(text);
+      if (target && captureDraft.current?.text !== text) {
         captureDraft.current = { text, id: randomUUID() };
       }
-      if (captureURL(text)) {
-        // An uncertain disk-write failure followed by Save again is still the
-        // same URL capture, not a new UUID and a possible duplicate on the Mac.
+      if (target) {
+        // A URL or a bare ISBN (a book). An uncertain disk-write failure
+        // followed by Save again is still the same capture, not a new UUID
+        // and a possible duplicate on the Mac.
         await capture(text, captureDraft.current?.text === text ? captureDraft.current.id : undefined);
         captureDraft.current = null;
         setNote('');
@@ -208,13 +219,19 @@ export function Home({ client }: { client: Remote }) {
               {note.trim() !== '' && (
                 <Pressable disabled={saving} onPress={save} style={[styles.captureButton, { backgroundColor: theme.primary }]}>
                   <Text style={[styles.captureButtonText, { color: theme.onPrimary }]}>
-                    {saving ? 'Saving…' : captureURL(note) ? 'Save inspiration' : 'Save to inbox'}
+                    {saving ? 'Saving…' : saveLabel(note)}
                   </Text>
                 </Pressable>
               )}
             </View>
             {api > 0 && api < 2 && (
               <Text style={[styles.status, { color: theme.muted }]}>Update Kintsugi on your Mac to send inspiration clips.</Text>
+            )}
+            {api >= 2 && held.length > 0 && (
+              <Text style={[styles.status, { color: theme.muted }]}>
+                Update Kintsugi on your Mac to send files. {held.length === 1 ? 'A PDF or EPUB is' : `${held.length} PDFs or EPUBs are`}{' '}
+                waiting on this phone.
+              </Text>
             )}
             {rejected.length > 0 && (
               <Text style={[styles.status, { color: theme.danger }]}>

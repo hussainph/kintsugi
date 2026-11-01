@@ -14,7 +14,8 @@ pub use worker::{Worker, start, wake};
 /// The engine clips are enriched with: X posts and threads, Reddit posts with
 /// their comments, YouTube videos (transcripts through yt-dlp once the person
 /// installed it, oEmbed metadata until then), links to podcast audio
-/// (transcribed on this Mac), then any web page, with the hidden-webview
+/// (transcribed on this Mac), PDFs (PDFKit, or Docling once installed) and
+/// EPUBs, saved or linked, Open Library books, then any web page, with the hidden-webview
 /// JavaScript fallback on the Mac. Reddit falls back to the web adapter when
 /// its JSON is refused. Headless runs have no webview, so they use static
 /// extraction only.
@@ -30,12 +31,19 @@ fn ingest_engine(app: &crate::AppHandle) -> kintsugi_ingest::Result<kintsugi_ing
     let youtube = YouTubeAdapter::new(tools.clone())?.with_fallback(Arc::new(WebAdapter::new()?));
     let mut podcast = PodcastAdapter::new()?;
     if let Some(helper) = crate::tools::transcriber_helper() {
-        podcast = podcast.with_transcriber(Arc::new(SpeechAnalyzerTranscriber::new(helper).with_consent(tools)));
+        podcast = podcast.with_transcriber(Arc::new(SpeechAnalyzerTranscriber::new(helper).with_consent(tools.clone())));
     }
+    let reader = crate::tools::pdf_helper()
+        .map(|helper| Arc::new(kintsugi_ingest::pdf::PdfKitReader::new(helper)) as Arc<dyn kintsugi_ingest::pdf::PdfReader>);
+    let pdf = kintsugi_ingest::pdf::PdfAdapter::new(reader)?
+        .with_converter(Arc::new(kintsugi_ingest::pdf::Docling::new(tools.clone())));
     Ok(kintsugi_ingest::Engine::new()
         .with(kintsugi_ingest::x::XAdapter::new()?)
         .with(reddit)
         .with(youtube)
         .with(podcast)
+        .with(pdf)
+        .with(kintsugi_ingest::epub::EpubAdapter::new()?)
+        .with(kintsugi_ingest::books::BookAdapter::new()?)
         .with(web))
 }

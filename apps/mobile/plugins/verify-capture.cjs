@@ -43,6 +43,7 @@ const rule = info.NSExtension.NSExtensionAttributes.NSExtensionActivationRule;
 assert.equal(rule.NSExtensionActivationSupportsWebURLWithMaxCount, 1);
 assert.equal(rule.NSExtensionActivationSupportsImageWithMaxCount, 1);
 assert.equal(rule.NSExtensionActivationSupportsText, true);
+assert.equal(rule.NSExtensionActivationSupportsFileWithMaxCount, 1, 'one PDF or EPUB per share');
 const files = project.hash.project.objects.PBXFileReference;
 const sources = project.hash.project.objects.PBXSourcesBuildPhase;
 const phase = target.buildPhases.map(({ value }) => sources[value]).find(Boolean);
@@ -54,4 +55,4 @@ assert.equal(privacy.NSPrivacyAccessedAPITypes[0].NSPrivacyAccessedAPIType, 'NSP
 const resources = project.hash.project.objects.PBXResourcesBuildPhase;
 const resourcePhase = target.buildPhases.map(({ value }) => resources[value]).find(Boolean);
 assert(resourcePhase.files.some(({ value }) => unquote(files[builds[value].fileRef].path) === 'PrivacyInfo.xcprivacy'));
-console.log('Capture CNG target: sources, dependency, embedding, activation, privacy manifest, entitlements and keychain migration OK.');
+console.log('Capture CNG target: sources, dependency, embedding, activation (URL, text, image, file), privacy manifest, entitlements and keychain migration OK.');
