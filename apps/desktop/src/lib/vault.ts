@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Versioned } from "@kintsugi/core/remote";
 import type { Entry } from "@kintsugi/core/vault";
+import type { RelinkOutcome, RelinkPlan, RelinkWrite } from "./links";
 
 export * from "@kintsugi/core/vault";
 
@@ -22,4 +23,10 @@ export const vault = {
   createFolder: (dir: string, name: string) => invoke<string>("folder_create", { dir, name }),
   rename: (path: string, name: string) => invoke<string>("entry_rename", { path, name }),
   trash: (path: string) => invoke<void>("entry_trash", { path }),
+  /** The [[links]] that pointed at `from`, now renamed `to`; writes nothing.
+   *  `open`: the editor's text, which stands in for that document's disk copy. */
+  linksPlan: (from: string, to: string, open: { path: string; text: string } | null) =>
+    invoke<RelinkPlan>("links_plan", { from, to, open }),
+  /** Version-checked writes: a file changed since its `base` is left alone. */
+  linksWrite: (writes: RelinkWrite[]) => invoke<RelinkOutcome[]>("links_write", { writes }),
 };

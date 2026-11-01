@@ -153,6 +153,59 @@ pub fn entry_rename(app: AppHandle, vault: State<Vault>, path: String, name: Str
     Ok(renamed)
 }
 
+/// A document open in the editor: its text there stands in for the disk's.
+#[derive(serde::Deserialize)]
+pub struct OpenDoc {
+    path: String,
+    text: String,
+}
+
+/// After `from` was renamed to `to`: which [[links]] across the vault pointed
+/// at it and what they become (KI-13). Writes nothing; the blog mirror is
+/// never a source.
+#[tauri::command]
+pub async fn links_plan(
+    vault: State<'_, Vault>,
+    from: String,
+    to: String,
+    open: Option<OpenDoc>,
+) -> Result<vault::RelinkPlan> {
+    let root = vault.root()?;
+    let open: std::collections::HashMap<_, _> = open.into_iter().map(|d| (d.path, d.text)).collect();
+    tauri::async_runtime::spawn_blocking(move || {
+        vault::relink_plan(&root, &from, &to, &open, crate::blog::repo::is_mirror)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Writes a planned link update, or its undo. Each file is version-checked
+/// (`kintsugi_vault::update`): one changed or removed since it was read is
+/// left alone and reported, never overwritten.
+#[tauri::command]
+pub fn links_write(
+    app: AppHandle,
+    vault: State<Vault>,
+    writes: Vec<vault::RelinkWrite>,
+) -> Result<Vec<vault::RelinkOutcome>> {
+    let root = vault.root()?;
+    let outcomes = vault::relink_write(&root, &writes, |path| {
+        writing_path(path)?;
+        crate::blog::repo::refuse_mirror(&root, path)
+    });
+    let mut saved = false;
+    for (write, outcome) in writes.iter().zip(&outcomes) {
+        if outcome.result == vault::RelinkResult::Saved {
+            crate::watch::wrote(&app, &write.path, &write.text);
+            saved = true;
+        }
+    }
+    if saved {
+        references_changed(&app);
+    }
+    Ok(outcomes)
+}
+
 /// Moves to the macOS Trash rather than deleting, so it can be undone in Finder.
 #[tauri::command]
 pub fn entry_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<()> {

@@ -40,6 +40,7 @@ import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { Failure, Saves } from "@/lib/saves";
 import { decide, removes } from "@/lib/outside";
+import { invert, question, restored, skipped, updated, type Relink, type RelinkOutcome, type RelinkPlan } from "@/lib/links";
 import { version } from "@kintsugi/core/remote";
 import { useUpdates } from "@/lib/updates";
 import { Entry, flatten, Outside, parentDir, renamedPath, vault } from "@/lib/vault";
@@ -508,6 +509,144 @@ export default function App() {
     }
   };
 
+  // The links prompt or its result. Each toast gets its own id: sonner merges
+  // an update into the old one's buttons, and a reused id can be swept away
+  // with the toast it replaced.
+  const linksToast = useRef<string | number | undefined>(undefined);
+  const nextLinksToast = () => {
+    if (linksToast.current !== undefined) toast.dismiss(linksToast.current);
+    linksToast.current = `kintsugi-links-${Date.now()}-${Math.random()}`;
+    return linksToast.current;
+  };
+
+  // Kintsugi wrote `text` to `path` outside the editor's save queue: it is
+  // the disk's copy now, unless the writer has changes of their own pending.
+  const wroteBehind = (path: string, text: string) => {
+    if (bases.current.has(path) && !saves.current.paths().includes(path)) bases.current.set(path, text);
+  };
+
+  /** The [[links]] update for one rename, once applied: undo needs it. */
+  type Relinked = { disk: Relink[]; open?: Relink };
+
+  const linksDone = (title: string, notes: number, outcomes: RelinkOutcome[], undo?: () => void) => {
+    const left = skipped(outcomes);
+    const description = left.length ? `Skipped ${left.join(", ")}` : undefined;
+    const options = {
+      id: nextLinksToast(),
+      description,
+      // Something left alone stays until he has read it.
+      duration: left.length ? Infinity : 10_000,
+      ...(undo && { action: { label: "Undo", onClick: undo } }),
+    };
+    if (!notes) toast.error(title, options);
+    else toast(title, options);
+  };
+
+  /** Undo: every file back to its old links, again version-checked. */
+  const undoLinks = async ({ disk, open }: Relinked) => {
+    const outcomes: RelinkOutcome[] = [];
+    let links = 0;
+    let notes = 0;
+    if (open) {
+      const view = viewRef.current;
+      if (docPath.current === open.path && view) {
+        if (view.state.doc.toString() === open.after) {
+          view.dispatch({ changes: invert(open.before, open.edits) });
+          links += open.edits.length;
+          notes++;
+          outcomes.push({ path: open.path, result: "saved" });
+        } else outcomes.push({ path: open.path, result: "conflict" });
+      } else {
+        // It left the editor, which saved it on the way: undo it on disk.
+        await flush();
+        disk = [...disk, open];
+      }
+    }
+    try {
+      const written = disk.length
+        ? await vault.linksWrite(disk.map((f) => ({ path: f.path, text: f.before, base: version(f.after) })))
+        : [];
+      for (const outcome of written) {
+        const file = disk.find((f) => f.path === outcome.path)!;
+        if (outcome.result === "saved") {
+          wroteBehind(file.path, file.before);
+          links += file.edits.length;
+          notes++;
+        }
+        outcomes.push(outcome);
+      }
+    } catch (e) {
+      toast.error(`Couldn’t undo the link update: ${e}`, { id: nextLinksToast() });
+      return;
+    }
+    linksDone(notes ? restored(links, notes) : "Nothing to undo; every note changed since.", notes, outcomes);
+  };
+
+  /** Writes the update he agreed to. Other documents are written as they
+   *  were read for the prompt, so one changed since is left alone; the open
+   *  document changes through the editor, in step with its pending saves. */
+  const updateLinks = async (plan: RelinkPlan) => {
+    const view = viewRef.current;
+    const openPath = view ? docPath.current : null;
+    let open: Relink | undefined;
+    try {
+      if (openPath && view) {
+        const fresh = await vault.linksPlan(plan.from, plan.to, { path: openPath, text: view.state.doc.toString() });
+        open = fresh.files.find((f) => f.path === openPath);
+      }
+      const disk = plan.files.filter((f) => f.path !== openPath);
+      const written = disk.length
+        ? await vault.linksWrite(disk.map((f) => ({ path: f.path, text: f.after, base: f.version })))
+        : [];
+      const done: Relinked = { disk: [] };
+      const outcomes: RelinkOutcome[] = [];
+      for (const outcome of written) {
+        const file = disk.find((f) => f.path === outcome.path)!;
+        if (outcome.result === "saved") {
+          wroteBehind(file.path, file.after);
+          done.disk.push(file);
+        }
+        outcomes.push(outcome);
+      }
+      if (open) {
+        const now = viewRef.current;
+        if (now && docPath.current === open.path && now.state.doc.toString() === open.before) {
+          // An edit like his own: it saves, and ⌘Z in the editor undoes it too.
+          now.dispatch({ changes: open.edits });
+          done.open = open;
+          outcomes.push({ path: open.path, result: "saved" });
+        } else outcomes.push({ path: open.path, result: "conflict" });
+      }
+      const files = [...done.disk, ...(done.open ? [done.open] : [])];
+      const links = files.reduce((n, f) => n + f.edits.length, 0);
+      linksDone(
+        files.length ? updated(links, files.length) : "No links updated; every note changed since.",
+        files.length,
+        outcomes,
+        files.length ? () => void undoLinks(done) : undefined,
+      );
+    } catch (e) {
+      toast.error(`Couldn’t update links: ${e}`, { id: nextLinksToast() });
+    }
+  };
+
+  /** After a rename: offer, quietly, to rewrite the links that pointed at it.
+   *  Nothing is written until he says Update. */
+  const offerLinks = async (from: string, to: string, open: { path: string; text: string } | null) => {
+    try {
+      const plan = await vault.linksPlan(from, to, open);
+      if (!plan.files.length) return;
+      toast(question(plan.links, plan.files.length), {
+        id: nextLinksToast(),
+        duration: Infinity,
+        action: { label: "Update", onClick: () => void updateLinks(plan) },
+        cancel: { label: "Not now", onClick: () => {} },
+      });
+    } catch (e) {
+      toast.error(`Couldn’t look for links to update: ${e}`, { id: nextLinksToast() });
+    }
+  };
+
   const rename = async (path: string, name: string) => {
     // Keep a document a document: "draft" becomes "draft.mdx".
     const ext = /\.mdx?$/.exec(path)?.[0];
@@ -527,6 +666,9 @@ export default function App() {
       }
       setSelectedDir((dir) => renamedPath(dir, path, to) ?? dir);
       await refresh();
+      const view = viewRef.current;
+      const openPath = doc ? (moved ?? doc.path) : null;
+      void offerLinks(path, to, openPath && view ? { path: openPath, text: view.state.doc.toString() } : null);
     } catch (e) {
       fail(e);
     }

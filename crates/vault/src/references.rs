@@ -102,7 +102,7 @@ pub fn reference_index(root: &Path) -> Result<ReferenceIndex> {
     })
 }
 
-fn scan_documents(
+pub(crate) fn scan_documents(
     root: &Path,
     dir: &Path,
     documents: &mut Vec<ReferenceDocument>,
@@ -189,7 +189,7 @@ pub fn idea_clip_links(text: &str) -> Vec<Wikilink> {
 
 /// Strip only a leading YAML block, regardless of the YAML fields it contains.
 /// An unfinished frontmatter block is not prose and has no outgoing links.
-fn body(text: &str) -> &str {
+pub(crate) fn body(text: &str) -> &str {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut lines = text.split_inclusive('\n');
     if lines.next().map(str::trim_end) != Some("---") {
@@ -213,6 +213,16 @@ pub fn wikilinks(text: &str) -> Vec<Wikilink> {
 }
 
 fn wikilinks_in_body(text: &str) -> Vec<Wikilink> {
+    wikilink_spans(text)
+        .into_iter()
+        .map(|(_, link)| link)
+        .collect()
+}
+
+/// Links in prose with the byte range of the text between `[[` and `]]`, for
+/// rewriting them in place (KI-13). Same rules as [`wikilinks`], but `text`
+/// is a body: strip frontmatter first.
+pub(crate) fn wikilink_spans(text: &str) -> Vec<(std::ops::Range<usize>, Wikilink)> {
     let mut prose = text.as_bytes().to_vec();
     let fences = mask_fences(text, &mut prose);
     mask_inline_code(&mut prose, &fences);
@@ -236,7 +246,7 @@ fn wikilinks_in_body(text: &str) -> Vec<Wikilink> {
                 if prose[start..end] == text.as_bytes()[start..end]
                     && let Some(link) = parse_link(&text[start..end])
                 {
-                    links.push(link);
+                    links.push((start..end, link));
                 }
                 i = end + 2;
                 continue;
@@ -427,12 +437,12 @@ fn mask_inline_code(prose: &mut [u8], fences: &[std::ops::Range<usize>]) {
 }
 
 #[derive(Clone)]
-struct Target {
-    path: String,
-    document: bool,
+pub(crate) struct Target {
+    pub(crate) path: String,
+    pub(crate) document: bool,
 }
 
-struct Resolver {
+pub(crate) struct Resolver {
     basenames: HashMap<String, Vec<Target>>,
     paths: HashMap<String, Target>,
     stems: HashMap<String, Vec<Target>>,
@@ -440,6 +450,15 @@ struct Resolver {
 
 impl Resolver {
     fn new(documents: &[ReferenceDocument], clips: &[ClipSummary]) -> Self {
+        Self::from_paths(documents.iter().map(|d| d.path.as_str()), clips)
+    }
+
+    /// The same resolver over document paths alone, so a caller can resolve
+    /// against the vault as it was before a rename (KI-13).
+    pub(crate) fn from_paths<'a>(
+        documents: impl IntoIterator<Item = &'a str>,
+        clips: &[ClipSummary],
+    ) -> Self {
         let mut resolver = Self {
             basenames: HashMap::new(),
             paths: HashMap::new(),
@@ -449,7 +468,7 @@ impl Resolver {
         // documents first, exact root name preferred, ambiguous basenames
         // unresolved. Exact paths disambiguate without guessing a folder.
         for document in documents {
-            resolver.insert(&document.path, true);
+            resolver.insert(document, true);
         }
         for clip in clips {
             resolver.insert(&clip.path, false);
@@ -472,7 +491,7 @@ impl Resolver {
         self.stems.entry(stem.into()).or_default().push(target);
     }
 
-    fn resolve(&self, target: &str) -> Option<&Target> {
+    pub(crate) fn resolve(&self, target: &str) -> Option<&Target> {
         let target = target.strip_prefix("./").unwrap_or(target);
         // Links are names, not filesystem paths. Never join link text onto the
         // filesystem or normalize traversal into an otherwise valid target.
@@ -510,7 +529,7 @@ impl Resolver {
     }
 }
 
-fn without_extension(path: &str) -> &str {
+pub(crate) fn without_extension(path: &str) -> &str {
     for extension in [".mdx", ".md"] {
         if let Some(start) = path.len().checked_sub(extension.len())
             && path
