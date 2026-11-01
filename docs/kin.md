@@ -266,8 +266,8 @@ Ideas opens from the sidebar or ⇧⌘E.
   you.
 - **Ideas for this draft.** `openIdeas(path)` / `ideasForDraft(path)` in
   `src/ideas/api.ts` open Ideas filtered to ideas about, quoting or adopted
-  into that document. The editor footer has an "Ideas" link; KI-37's `/`
-  menu and ⌘K can call the same function.
+  into that document. The editor footer has an "Ideas" link, and ⌘K's
+  "Ideas for this draft" calls the same function.
 - **The layout** is KI-22's Ledger (`src/ideas/Ledger.tsx`), the only
   layout-specific file: `useIdeas` and `parts.tsx` serve any layout, so Desk
   or Letter is a sibling file swapped in `Ideas.tsx`.
@@ -302,7 +302,7 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   matched; choosing one adds its link after the passage), *Who disagrees?*
   (sends that question to the chat with the paragraph, via
   `discuss(chips, text, { send: true })`) and *Discuss this paragraph* (opens
-  the chat with it, unsent). "Ideas for this draft" waits for Ideas.
+  the chat with it, unsent) and *Ideas for this draft* (`ideasForDraft(path)`).
 - **Phone width.** Both menus fit `100vw − 16px`, rows are at least 44 px
   on a coarse pointer, and touch hints replace the key hints there.
 - **Headless.** With `KINTSUGI_HEADLESS_KIN=mock`, `ai_providers` offers the

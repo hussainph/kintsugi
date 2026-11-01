@@ -11,6 +11,7 @@ import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { discuss } from "@/lib/chat";
 import { memory } from "@/lib/kin";
+import { ideasForDraft } from "@/ideas/api";
 import { passageChips } from "@/kin/screen";
 import { type Action } from "@/refine/prompts";
 import { skillAction } from "@/refine/kin";
@@ -141,6 +142,8 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   }, [root]);
   const commands = useMemo<Commands>(() => ({
     skills,
+    actions: [{ id: "ideas", label: "Ideas for this draft", description: "Open Ideas filtered to this document" }],
+    onAction: (action) => { if (action.id === "ideas") ideasForDraft(activePath.current); },
     onSkill: (skill, range) => {
       if (!range) { toast("Write or select something for the skill to work on."); return; }
       const path = activePath.current;

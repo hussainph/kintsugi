@@ -6,12 +6,13 @@ import { paragraphTerms } from "@/references/Writing";
 import type { Action } from "./prompts";
 
 /** ⌘K's actions that write nothing: they find, or open Kin's chat. */
-export type KinAction = { id: "supporting" | "disagrees" | "discuss"; label: string; hint: string };
+export type KinAction = { id: "supporting" | "disagrees" | "discuss" | "ideas"; label: string; hint: string };
 
 export const KIN_ACTIONS: KinAction[] = [
   { id: "supporting", label: "Find supporting clips", hint: "Search your clips for this passage" },
   { id: "disagrees", label: "Who disagrees?", hint: "Ask Kin who argues against it" },
   { id: "discuss", label: "Discuss this paragraph", hint: "Open Kin's chat with it attached" },
+  { id: "ideas", label: "Ideas for this draft", hint: "Open Ideas filtered to this document" },
 ];
 
 export const WHO_DISAGREES =

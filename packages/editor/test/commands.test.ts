@@ -189,3 +189,14 @@ test("Kin is offered only when the host can open it, and Escape sticks", () => {
   dismissed.type("a");
   assert.equal(dismissed.menu(), false);
 });
+
+test("host actions (Ideas for this draft) run without writing, after blocks", () => {
+  const ran: string[] = [];
+  const ideas = { id: "ideas", label: "Ideas for this draft", description: "Open Ideas filtered to this document" };
+  const e = editor("Prose ", { commands: { actions: [ideas], onAction: (action) => ran.push(action.id) } });
+  e.type("/ideas");
+  assert.equal(e.key("Enter"), true);
+  assert.deepEqual(ran, ["ideas"]);
+  assert.equal(e.text(), "Prose ");
+  assert.equal(menuItems("", [], [ideas]).at(-1)?.kind, "action");
+});

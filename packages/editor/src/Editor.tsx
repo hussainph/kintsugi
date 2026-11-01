@@ -13,7 +13,7 @@ import { commandExtensions, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
 
 export type { KinAnchor, References } from "./references";
-export type { CommandSkill, Commands } from "./commands";
+export type { CommandAction, CommandSkill, Commands } from "./commands";
 export { paragraphNear, paragraphRange } from "./references";
 
 /** New text for a document from somewhere else, such as the phone. `seq`

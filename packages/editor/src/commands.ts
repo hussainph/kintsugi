@@ -8,8 +8,14 @@ import { paragraphNear } from "./references.ts";
 /** A skill flagged `command: true` (Kin's skills, KI-30). */
 export type CommandSkill = { name: string; description: string };
 
+/** Something the host does that writes nothing ("Ideas for this draft"). */
+export type CommandAction = { id: string; label: string; description: string };
+
 export type Commands = {
   skills?: CommandSkill[];
+  actions?: CommandAction[];
+  /** Runs an action; the `/command` is already gone. */
+  onAction?: (action: CommandAction) => void;
   /**
    * Runs a skill on the paragraph the `/` was typed in (or, on a blank line,
    * the one above): `null` when there's no text to run it on. The editor
@@ -82,7 +88,7 @@ export const BLOCKS: Block[] = [
   },
 ];
 
-type Item = { kind: "block"; block: Block } | { kind: "skill"; skill: CommandSkill };
+type Item = { kind: "block"; block: Block } | { kind: "skill"; skill: CommandSkill } | { kind: "action"; action: CommandAction };
 type Menu = { from: number; to: number; query: string; items: Item[]; index: number };
 
 const setMenu = StateEffect.define<Menu | null>();
@@ -100,7 +106,7 @@ function rank(query: string, label: string, keywords: string[]): number | null {
   return null;
 }
 
-export function menuItems(query: string, skills: readonly CommandSkill[]): Item[] {
+export function menuItems(query: string, skills: readonly CommandSkill[], actions: readonly CommandAction[] = []): Item[] {
   const scored = <T>(list: readonly T[], score: (item: T) => number | null) =>
     list.map((item, order) => ({ item, order, score: score(item) })).filter((x) => x.score !== null)
       .sort((a, b) => a.score! - b.score! || a.order - b.order).map((x) => x.item);
@@ -108,9 +114,12 @@ export function menuItems(query: string, skills: readonly CommandSkill[]): Item[
   const skillRank = (skill: CommandSkill) => rank(query, skill.name.replace(/[-_]/g, " "), [skill.name, ...skill.description.toLocaleLowerCase().split(/\W+/)]);
   const blocks = scored(BLOCKS, blockRank).map((block) => ({ kind: "block" as const, block }));
   const matched = scored(skills, skillRank).map((skill) => ({ kind: "skill" as const, skill }));
-  // Blocks lead, unless a skill is named better ("/plain" for plain-words).
-  const best = (items: Item[]) => items.length ? Math.min(...items.map((i) => (i.kind === "block" ? blockRank(i.block) : skillRank(i.skill))!)) : Infinity;
-  return best(matched) < best(blocks) ? [...matched, ...blocks] : [...blocks, ...matched];
+  const actionRank = (action: CommandAction) => rank(query, action.label, action.description.toLocaleLowerCase().split(/\W+/));
+  const acted = scored(actions, actionRank).map((action) => ({ kind: "action" as const, action }));
+  const score = (i: Item) => (i.kind === "block" ? blockRank(i.block) : i.kind === "skill" ? skillRank(i.skill) : actionRank(i.action))!;
+  const best = (items: Item[]) => items.length ? Math.min(...items.map(score)) : Infinity;
+  // Blocks lead, unless a skill or action is named better ("/plain" for plain-words).
+  return [blocks, matched, acted].map((items, order) => ({ items, order })).sort((a, b) => best(a.items) - best(b.items) || a.order - b.order).flatMap((g) => g.items);
 }
 
 /** `/` at a line start or after a space, outside YAML and code. The query is
@@ -125,7 +134,7 @@ function menuAt(state: EditorState, commands: Commands | undefined, dismissed: n
   if (!match || /\[\[[^\]]*$/.test(before)) return null;
   const from = head - match[1].length - 1;
   if (from === dismissed || !isReferenceContext(state.doc.toString(), from)) return null;
-  const items = menuItems(match[1], commands?.skills ?? []);
+  const items = menuItems(match[1], commands?.skills ?? [], commands?.actions ?? []);
   return items.length ? { from, to: head, query: match[1], items, index: 0 } : null;
 }
 
@@ -193,7 +202,8 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
       return true;
     }
     view.dispatch({ changes: { from: menu.from, to: menu.to }, selection: EditorSelection.cursor(menu.from), effects: setMenu.of(null), userEvent: "delete.command" });
-    getCommands()?.onSkill?.(item.skill, paragraphNear(view.state, menu.from));
+    if (item.kind === "action") getCommands()?.onAction?.(item.action);
+    else getCommands()?.onSkill?.(item.skill, paragraphNear(view.state, menu.from));
     return true;
   }
 
@@ -216,19 +226,22 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
       menu.items.forEach((item, index) => {
         if (item.kind !== group) {
           group = item.kind;
-          const heading = element("div", "cm-kintsugi-menu-group", item.kind === "block" ? "Blocks" : "Kin skills");
+          const heading = element("div", "cm-kintsugi-menu-group", { block: "Blocks", skill: "Kin skills", action: "Kin" }[item.kind]);
           heading.setAttribute("role", "presentation");
           list.append(heading);
         }
         const row = element("div", "cm-kintsugi-menu-option cm-command-option");
         row.id = `${list.id}-${index}`;
-        row.dataset.command = item.kind === "block" ? item.block.id : `skill:${item.skill.name}`;
+        row.dataset.command = item.kind === "block" ? item.block.id : item.kind === "skill" ? `skill:${item.skill.name}` : `action:${item.action.id}`;
         row.setAttribute("role", "option");
         row.setAttribute("aria-selected", String(index === menu.index));
         const labels = element("div", "cm-kintsugi-menu-labels");
         if (item.kind === "block") {
           row.append(element("span", "cm-kintsugi-menu-icon", item.block.icon));
           labels.append(element("div", "cm-kintsugi-menu-title", item.block.label));
+        } else if (item.kind === "action") {
+          row.append(element("span", "cm-kintsugi-menu-icon", "→"));
+          labels.append(element("div", "cm-kintsugi-menu-title", item.action.label), element("div", "cm-kintsugi-menu-meta", item.action.description));
         } else {
           row.append(element("span", "cm-kintsugi-menu-icon", "✦"));
           labels.append(element("div", "cm-kintsugi-menu-title", item.skill.name), element("div", "cm-kintsugi-menu-meta", item.skill.description));
@@ -238,7 +251,8 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
         list.append(row);
       });
       const selected = menu.items[menu.index];
-      if (selected?.kind === "skill") hint(hintRow, "↑↓ Choose · Enter Run on this paragraph, then review · Esc Close", "Tap to run on this paragraph; you review the edit first");
+      if (selected?.kind === "action") hint(hintRow, "↑↓ Choose · Enter Open · Esc Close", "Tap to open");
+      else if (selected?.kind === "skill") hint(hintRow, "↑↓ Choose · Enter Run on this paragraph, then review · Esc Close", "Tap to run on this paragraph; you review the edit first");
       else hint(hintRow, "↑↓ Choose · Enter Insert · Esc Close", "Tap a block to insert it");
       view.contentDOM.setAttribute("aria-controls", list.id);
       view.contentDOM.setAttribute("aria-expanded", "true");
