@@ -98,7 +98,7 @@ Modelled on Hermes Agent (KI-30). Code: `ai/memory.rs` (the store) and
   file, is marked "Not loaded" in About you, and never reaches the prompt.
 - **Skills.** The index (name, description, `[/ command]`) is in the prefix;
   bodies load with `skill`. `command: true` marks skills for the editor's `/`
-  menu; `kin_skills` / `kin_skill` list and read them for it (KI-37). Kin can
+  menu; `kin_skills` / `kin_skill` list and read them for it (KI-37, below). Kin can
   write skills itself, and is told to when Hussain repeats a request. At most
   40 skills, 160-character descriptions, 6,000-character bodies.
 - **Frozen snapshot.** `Store::snapshot` reads all of it once when a
@@ -275,6 +275,40 @@ Ideas opens from the sidebar or ⇧⌘E.
   helper searches, reads the top documents and offers ideas quoting them,
   plus one with an invented quote that the checks must drop.
   `test/runtime-ideas.test.ts` drives it in headless Chromium.
+
+## In the editor (KI-37)
+
+Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
+`@`), `menu.ts` (their shared look); webview: `src/refine/` (⌘K) and
+`src/references/Writing.tsx` (the wiring).
+
+- **`/`** at a line start or after a space opens the block menu: Markdown and
+  MDX blocks that turn the line into a heading, list, to-do, quote, callout
+  (`> [!NOTE]`), code block, divider, table, image, footnote or `<Component />`,
+  as one undoable change. Skills with `command: true` (`kin_skills`) follow
+  under "Kin skills"; one runs on the paragraph (or, on a blank line, the one
+  above) through ⌘K's rewrite path, so the result is a diff he accepts with
+  Enter. Nothing is written until then.
+- **`@`** opens the `[[` picker and writes the same `[[link]]`; title matches
+  lead in both. **Kin** is first while the query could be "kin": choosing it
+  takes `@Kin` back out and calls `References.onKin(anchor)` with the
+  paragraph's range, which the desktop turns into `discuss()` with a paragraph
+  chip. KI-38 replaces that handler with an anchored comment thread. `@` never
+  opens mid-word (email addresses), and a space closes it unless a title still
+  matches, so "@karpathy said" stays prose.
+- **⌘K** (the selection, else the paragraph) keeps its edits and lists the
+  command skills, then Kin's actions, which write nothing themselves: *Find
+  supporting clips* (one `clip_search` per paragraph term, ranked by terms
+  matched; choosing one adds its link after the passage), *Who disagrees?*
+  (sends that question to the chat with the paragraph, via
+  `discuss(chips, text, { send: true })`) and *Discuss this paragraph* (opens
+  the chat with it, unsent). "Ideas for this draft" waits for Ideas.
+- **Phone width.** Both menus fit `100vw − 16px`, rows are at least 44 px
+  on a coarse pointer, and touch hints replace the key hints there.
+- **Headless.** With `KINTSUGI_HEADLESS_KIN=mock`, `ai_providers` offers the
+  first edit model as `mock` and `ai_stream` answers with `scripted::edit`
+  (drops filler words), so ⌘K and skills can be reviewed without a provider.
+  `test/runtime-editor.test.ts` drives all of it in headless Chromium.
 
 ## Settings
 

@@ -6,25 +6,32 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps 
 import { toast } from "sonner";
 import type { Clip } from "@kintsugi/core/clips";
 import { attributedQuote, linkFor, type ReferenceSource } from "@kintsugi/core/references";
-import { Editor } from "@kintsugi/editor/Editor";
+import { Editor, type CommandSkill, type Commands, type KinAnchor } from "@kintsugi/editor/Editor";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { discuss } from "@/lib/chat";
+import { memory } from "@/lib/kin";
+import { passageChips } from "@/kin/screen";
+import { type Action } from "@/refine/prompts";
+import { skillAction } from "@/refine/kin";
 import { UsedIn } from "./UsedIn";
 import { useReferenceIndex } from "./useReferenceIndex";
 import { useReferenceSearch } from "./useReferenceSearch";
 import "./references.css";
 
-type Props = Omit<ComponentProps<typeof Editor>, "references"> & {
+type Props = Omit<ComponentProps<typeof Editor>, "references" | "commands"> & {
   root: string | null;
   onOpenDoc: (path: string) => void;
   onOpenClip?: (path: string) => void;
+  /** Opens ⌘K's review on a range, running `action` straight away. */
+  onRefine?: (from: number, to: number, action: Action) => void;
 };
 const name = (path: string) => path.replace(/^.*\//, "").replace(/\.mdx?$/, "");
 const documentFirst = (a: ReferenceSource, b: ReferenceSource) => Number(a.kind === "clip") - Number(b.kind === "clip");
 
 /** Editor-only integration: the library can replace this view without losing
  * the shared index. The margin never produces or changes the writer's words. */
-export function Writing({ root, onOpenDoc, onOpenClip, ...editor }: Props) {
+export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Props) {
   const index = useReferenceIndex(root);
   const activePath = useRef(editor.path);
   activePath.current = editor.path;
@@ -113,11 +120,39 @@ export function Writing({ root, onOpenDoc, onOpenClip, ...editor }: Props) {
   const hasMargin = referenced.length + related.length + backlinks.length + unresolved.length > 0;
   const readClipText = useCallback(async (source: ReferenceSource) => (await invoke<Clip>("clip_read", { path: source.path })).text, []);
   const onReferenceError = useCallback((error: unknown) => toast.error(String(error)), []);
-  const options = useMemo(() => ({ sources, search, readClipText, onError: onReferenceError, onOpen: open, onParagraph: setParagraph }), [sources, search, readClipText, onReferenceError, open]);
+  // @Kin: the paragraph goes to Kin's chat as a chip. KI-38 turns this into
+  // a comment thread anchored at `anchor.from`–`anchor.to`.
+  const onKin = useCallback((anchor: KinAnchor) => {
+    const view = editor.viewRef.current;
+    if (!view) return;
+    discuss(passageChips(view, activePath.current, anchor.from, anchor.to));
+  }, [editor.viewRef]);
+  const options = useMemo(() => ({ sources, search, readClipText, onError: onReferenceError, onOpen: open, onParagraph: setParagraph, onKin }), [sources, search, readClipText, onReferenceError, open, onKin]);
+
+  // Skills flagged for the / menu. Re-read when he comes back to the window,
+  // since About you or Kin may have changed them.
+  const [skills, setSkills] = useState<CommandSkill[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => memory.skills().then((all) => { if (!cancelled) setSkills(all.filter((skill) => skill.command).map(({ name, description }) => ({ name, description }))); }).catch(() => {});
+    load();
+    window.addEventListener("focus", load);
+    return () => { cancelled = true; window.removeEventListener("focus", load); };
+  }, [root]);
+  const commands = useMemo<Commands>(() => ({
+    skills,
+    onSkill: (skill, range) => {
+      if (!range) { toast("Write or select something for the skill to work on."); return; }
+      const path = activePath.current;
+      memory.skill(skill.name).then((full) => {
+        if (activePath.current === path) onRefine?.(range.from, range.to, skillAction(full));
+      }).catch((error) => toast.error(String(error)));
+    },
+  }), [skills, onRefine]);
 
   return (
     <div className="reference-writing">
-      <Editor {...editor} references={options} />
+      <Editor {...editor} references={options} commands={commands} />
       <button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} title="Reference margin" onClick={() => {
         const next = !margin; setMargin(next);
         try { localStorage.setItem("kintsugi:margin", next ? "visible" : "hidden"); } catch { /* A convenience only. */ }

@@ -1,23 +1,38 @@
 import { EditorView } from "@codemirror/view";
 import { diffWords } from "diff";
-import { Sparkles } from "lucide-react";
+import { Bookmark, MessageCircle, Search, Sparkles, Swords, Wand2 } from "lucide-react";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@kintsugi/ui/components/command";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@kintsugi/ui/components/popover";
 import { Cancelled, Message, stream } from "@/lib/ai";
+import { discuss } from "@/lib/chat";
+import { memory, type Skill } from "@/lib/kin";
 import { modelFor } from "@/lib/models";
+import { passageChips } from "@/kin/screen";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { Action, ACTIONS, ask, choices, clean } from "./prompts";
+import { type Found, KIN_ACTIONS, type KinAction, skillAction, supportingClips, WHO_DISAGREES } from "./kin";
 
-type Props = { view: EditorView; from: number; to: number; onClose: () => void };
+type Props = {
+  view: EditorView;
+  from: number;
+  to: number;
+  /** The open document, for Kin's chips and unambiguous links. */
+  path: string;
+  docs: { path: string; title?: string | null }[];
+  /** Start straight away (a skill from the `/` menu) instead of listing actions. */
+  initial?: Action;
+  onClose: () => void;
+};
 
 type Version = { text: string; done: boolean };
 
 /** ⌘K on a selection: pick an edit, see it as a diff, accept or don't.
- *  Nothing reaches the document until the writer presses Enter. */
-export function Refine({ view, from, to, onClose }: Props) {
+ *  Nothing reaches the document until the writer presses Enter. Kin's
+ *  actions below the edits write nothing: they find clips or open the chat. */
+export function Refine({ view, from, to, path, docs, initial, onClose }: Props) {
   const original = view.state.sliceDoc(from, to);
   const [action, setAction] = useState<Action | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
@@ -25,10 +40,24 @@ export function Refine({ view, from, to, onClose }: Props) {
   const [choice, setChoice] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [found, setFound] = useState<{ clips: Found[] | null; error?: string } | null>(null);
   const inflight = useRef<{ cancel: () => void } | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => () => inflight.current?.cancel(), []);
+  useEffect(() => {
+    memory.skills().then((all) => setSkills(all.filter((s) => s.command))).catch(() => {});
+  }, []);
+  // A skill from the `/` menu runs at once, shown like any other edit.
+  const started = useRef(false);
+  useEffect(() => {
+    if (initial && !started.current) {
+      started.current = true;
+      void run(initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial]);
 
   const start = view.coordsAtPos(from);
   const end = view.coordsAtPos(to) ?? start;
@@ -77,6 +106,33 @@ export function Refine({ view, from, to, onClose }: Props) {
     onClose();
   };
 
+  const kinAction = (a: KinAction) => {
+    const chips = passageChips(view, path, from, to);
+    if (a.id === "discuss") {
+      onClose();
+      return discuss(chips);
+    }
+    if (a.id === "disagrees") {
+      onClose();
+      return discuss(chips, WHO_DISAGREES, { send: true });
+    }
+    setFound({ clips: null });
+    supportingClips(original, docs).then((clips) => setFound({ clips })).catch((e) => setFound({ clips: [], error: String(e) }));
+  };
+
+  /** A reference to a supporting clip, after the passage: his choice, never prose. */
+  const reference = (link: string) => {
+    if (view.state.sliceDoc(from, to) !== original) {
+      toast.error("The text changed. Try again.");
+      return onClose();
+    }
+    // Right after the passage's last word, before any trailing whitespace.
+    const at = to - /\s*$/.exec(original)![0].length;
+    const insert = ` ${link}`;
+    view.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input.reference" });
+    onClose();
+  };
+
   const version = versions[index];
   const options = action?.shape === "choices" && version ? choices(version.text) : [];
 
@@ -118,9 +174,14 @@ export function Refine({ view, from, to, onClose }: Props) {
         align="start"
         sideOffset={8}
         className="w-[min(32rem,calc(100vw-2rem))] p-0"
-        onOpenAutoFocus={(e) => action && e.preventDefault()}
+        onOpenAutoFocus={(e) => (action || initial) && e.preventDefault()}
       >
-        {!action ? (
+        {found ? (
+          <Supporting found={found} onReference={reference} onOpen={(clip) => {
+            onClose();
+            window.dispatchEvent(new CustomEvent("kintsugi:open-clip", { detail: { path: clip } }));
+          }} onBack={() => setFound(null)} />
+        ) : !action ? (
           <Command>
             <CommandInput
               value={query}
@@ -145,12 +206,35 @@ export function Refine({ view, from, to, onClose }: Props) {
                   </CommandItem>
                 </CommandGroup>
               )}
-              <CommandGroup>
+              <CommandGroup heading="Edit">
                 {actions.map((a) => (
                   <CommandItem key={a.id} value={a.label} onSelect={() => run(a)}>
                     {a.label}
                   </CommandItem>
                 ))}
+              </CommandGroup>
+              {skills.length > 0 && (
+                <CommandGroup heading="Skills">
+                  {skills.map((skill) => (
+                    <CommandItem key={skill.name} value={`skill ${skill.name} ${skill.description}`} onSelect={() => run(skillAction(skill))}>
+                      <Wand2 />
+                      <span className="truncate">{skill.name}</span>
+                      <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">{skill.description}</span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              <CommandGroup heading="Kin">
+                {KIN_ACTIONS.map((a) => {
+                  const Icon = a.id === "supporting" ? Search : a.id === "disagrees" ? Swords : MessageCircle;
+                  return (
+                    <CommandItem key={a.id} value={a.label} onSelect={() => kinAction(a)}>
+                      <Icon />
+                      <span className="truncate">{a.label}</span>
+                      <span className="ml-auto hidden truncate pl-2 text-xs text-muted-foreground sm:inline">{a.hint}</span>
+                    </CommandItem>
+                  );
+                })}
               </CommandGroup>
             </CommandList>
           </Command>
@@ -218,6 +302,62 @@ export function Refine({ view, from, to, onClose }: Props) {
         )}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** Clips that share the passage's words. Choosing one adds its [[link]]
+ *  after the passage; opening it shows the clip. */
+function Supporting({ found, onReference, onOpen, onBack }: {
+  found: { clips: Found[] | null; error?: string };
+  onReference: (link: string) => void;
+  onOpen: (path: string) => void;
+  onBack: () => void;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => root.current?.focus(), []);
+  return (
+    <Command ref={root} tabIndex={-1} className="outline-none" onKeyDown={(e) => { if (e.key === "Backspace") { e.preventDefault(); onBack(); } }}>
+      <div className="flex items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground">
+        <Search className="size-3.5" />
+        <span>Supporting clips</span>
+      </div>
+      <CommandList>
+        {found.error ? (
+          <p className="px-3 py-4 text-sm text-destructive">{found.error}</p>
+        ) : !found.clips ? (
+          <p className="px-3 py-4 text-sm text-muted-foreground">Searching your clips…</p>
+        ) : !found.clips.length ? (
+          <p className="px-3 py-4 text-sm text-muted-foreground">No clips share this passage’s words.</p>
+        ) : (
+          <CommandGroup>
+            {found.clips.map(({ source, link }) => (
+              <CommandItem key={source.path} value={source.path} onSelect={() => onReference(link)} className="items-start">
+                <Bookmark className="mt-0.5" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">{source.title}</span>
+                  {(source.site || source.summary) && (
+                    <span className="line-clamp-2 text-xs text-muted-foreground">{[source.site, source.summary].filter(Boolean).join(" · ")}</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-xs text-primary hover:underline"
+                  onClick={(e) => { e.stopPropagation(); onOpen(source.path); }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  Open
+                </button>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+      </CommandList>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-2 text-xs text-muted-foreground">
+        <span><Kbd>↵</Kbd> add its link after the passage</span>
+        <span><Kbd>⌫</Kbd> back</span>
+        <span className="ml-auto"><Kbd>esc</Kbd> close</span>
+      </div>
+    </Command>
   );
 }
 

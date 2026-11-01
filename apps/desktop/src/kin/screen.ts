@@ -4,16 +4,20 @@ import { selectionChip, type Chip } from "@/lib/chips";
 
 /** What the editor shows: the selected passage (if any), then the document. */
 export function editorChips(view: EditorView | null, path: string): Chip[] {
-  const name = path.replace(/^.*\//, "").replace(/\.mdx?$/, "");
-  if (!view) return [{ kind: "doc", path, label: name }];
+  if (!view) return [docChip(null, path)];
+  const { from, to, empty } = view.state.selection.main;
+  return empty ? [docChip(view, path)] : passageChips(view, path, from, to);
+}
+
+/** A passage of the document (⌘K's range, `@Kin`'s paragraph), then the document. */
+export function passageChips(view: EditorView, path: string, from: number, to: number): Chip[] {
   const { state } = view;
-  const title = field(state.doc.toString(), "title");
-  const chips: Chip[] = [];
-  const { from, to, empty } = state.selection.main;
-  if (!empty) {
-    const chip = selectionChip(path, state.sliceDoc(from, to), state.doc.lineAt(from).number, state.doc.lineAt(to).number);
-    if (chip) chips.push(chip);
-  }
-  chips.push({ kind: "doc", path, label: typeof title === "string" && title.trim() ? title.trim() : name });
-  return chips;
+  const chip = selectionChip(path, state.sliceDoc(from, to), state.doc.lineAt(from).number, state.doc.lineAt(to).number);
+  return chip ? [chip, docChip(view, path)] : [docChip(view, path)];
+}
+
+function docChip(view: EditorView | null, path: string): Chip {
+  const name = path.replace(/^.*\//, "").replace(/\.mdx?$/, "");
+  const title = view && field(view.state.doc.toString(), "title");
+  return { kind: "doc", path, label: typeof title === "string" && title.trim() ? title.trim() : name };
 }

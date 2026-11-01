@@ -12,10 +12,11 @@ import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
-import { External } from "@kintsugi/editor/Editor";
+import { External, paragraphRange } from "@kintsugi/editor/Editor";
 import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
 import { Refine } from "@/refine/Refine";
+import type { Action } from "@/refine/prompts";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { KinChat } from "@/kin/Chat";
 import { KinDev } from "@/kin/KinDev";
@@ -72,7 +73,7 @@ export default function App() {
   const [selectedDir, setSelectedDir] = useState("");
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [save, setSave] = useState<SaveState>("saved");
-  const [refine, setRefine] = useState<{ from: number; to: number } | null>(null);
+  const [refine, setRefine] = useState<{ from: number; to: number; action?: Action } | null>(null);
   const [external, setExternal] = useState<External | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
@@ -363,7 +364,7 @@ export default function App() {
     const view = viewRef.current;
     if (!view) return;
     let { from, to } = view.state.selection.main;
-    if (from === to) ({ from, to } = view.state.doc.lineAt(from));
+    if (from === to) ({ from, to } = paragraphRange(view.state) ?? view.state.doc.lineAt(from));
     if (!view.state.sliceDoc(from, to).trim()) return toast("Select some text to edit.");
     setRefine({ from, to });
   };
@@ -521,6 +522,7 @@ export default function App() {
             root={root}
             onOpenDoc={openDoc}
             onOpenClip={requestClip}
+            onRefine={(from, to, action) => setRefine({ from, to, action })}
             path={doc.path}
             text={doc.text}
             onChange={onChange}
@@ -563,11 +565,14 @@ export default function App() {
           </footer>
         )}
       </SidebarInset>
-      {refine && viewRef.current && (
+      {refine && viewRef.current && doc && (
         <Refine
           view={viewRef.current}
           from={refine.from}
           to={refine.to}
+          path={doc.path}
+          docs={docs}
+          initial={refine.action}
           onClose={() => {
             setRefine(null);
             viewRef.current?.focus();
