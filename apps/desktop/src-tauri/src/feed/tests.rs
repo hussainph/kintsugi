@@ -165,3 +165,104 @@ fn x_failures_retry_within_the_hour() {
     assert_eq!(retry_after(SourceKind::X, 30), 60 * 60);
     assert!(describe(SourceKind::X, ingest::Error::RateLimited).contains("try again"));
 }
+
+const WATCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/watch");
+
+#[test]
+fn watched_pages_post_their_changes() {
+    runtime().block_on(async {
+        // Version 1, then the same page with new dates and counters, then a 304
+        // for the ETag it sent, then a real edit.
+        let version = Arc::new(AtomicUsize::new(0));
+        let conditional = Arc::new(AtomicUsize::new(0));
+        let (v, c) = (version.clone(), conditional.clone());
+        let app = Router::new().route(
+            "/now",
+            get(move |headers: HeaderMap| {
+                let (v, c) = (v.clone(), c.clone());
+                async move {
+                    let n = v.load(Ordering::SeqCst);
+                    let tag = format!("\"v{n}\"");
+                    if headers.get(header::IF_NONE_MATCH).and_then(|h| h.to_str().ok()) == Some(tag.as_str()) {
+                        c.fetch_add(1, Ordering::SeqCst);
+                        return StatusCode::NOT_MODIFIED.into_response();
+                    }
+                    let file = ["now-v1.html", "now-v1-noise.html", "now-v2.html"][n.min(2)];
+                    let html = std::fs::read_to_string(format!("{WATCH}/{file}")).unwrap();
+                    ([(header::ETAG, tag), (header::CONTENT_TYPE, "text/html".into())], html).into_response()
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let store = Mutex::new(Store::memory());
+        let engine = engine();
+        let (url, kind, _) = resolve(&FeedAdapter::new().unwrap(), Subscribe::Page { url: format!("{base}/now") }).await.unwrap();
+        assert_eq!(kind, SourceKind::Page);
+        let (source, _) = store.lock().unwrap().add_source(&url, kind, None, now()).unwrap();
+        let poll_once = || async {
+            let due = store.lock().unwrap().due_one(source.id).unwrap();
+            poll(&store, &engine, &due).await
+        };
+
+        let baseline = poll_once().await;
+        assert_eq!((baseline.added, baseline.error.as_deref()), (0, None), "following records a baseline");
+        let followed = store.lock().unwrap().source(source.id).unwrap();
+        assert_eq!(followed.title.as_deref(), Some("What I'm doing now"));
+        assert!(followed.next_fetch_at - now() > 5 * 60 * 60, "pages poll every few hours");
+
+        version.store(1, Ordering::SeqCst);
+        assert_eq!(poll_once().await.added, 0, "new dates and counters aren't a change");
+        assert_eq!(poll_once().await.added, 0);
+        assert_eq!(conditional.load(Ordering::SeqCst), 1, "the ETag came back as If-None-Match");
+
+        version.store(2, Ordering::SeqCst);
+        let changed = poll_once().await;
+        assert_eq!((changed.added, changed.error), (1, None));
+        let page = store.lock().unwrap().items(0, 10, None).unwrap();
+        let item = &page.items[0];
+        assert_eq!(item.title.as_deref(), Some("The Left Hand of Darkness"));
+        assert_eq!(item.summary.as_deref(), Some("2 lines added and 1 removed on What I'm doing now"));
+        assert_eq!(item.url.as_deref(), Some(url.as_str()));
+        assert_eq!(item.source_kind, SourceKind::Page);
+        let content = store.lock().unwrap().content(item.id).unwrap().unwrap();
+        assert!(content.contains("**Removed**\n\n- The Dispossessed"), "{content}");
+    });
+}
+
+#[test]
+fn authors_bring_their_new_books() {
+    runtime().block_on(async {
+        let google = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/authors/google-clarke.json")).unwrap();
+        let app = Router::new().route("/books/v1/volumes", get(move || {
+            let google = google.clone();
+            async move { ([(header::CONTENT_TYPE, "application/json")], google) }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = kintsugi_ingest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let books = AuthorAdapter::with_endpoints(kintsugi_ingest::authors::AuthorEndpoints::at(base), kintsugi_ingest::api::ApiLimits::default()).unwrap();
+        let engine = Engine::new().with(FeedAdapter::new().unwrap()).with(books);
+
+        let store = Mutex::new(Store::memory());
+        let (url, kind, title) = resolve(&FeedAdapter::new().unwrap(), Subscribe::Author { name: " Susanna Clarke ".into() }).await.unwrap();
+        assert_eq!((kind, title.as_deref()), (SourceKind::Author, Some("Susanna Clarke")));
+        let (source, _) = store.lock().unwrap().add_source(&url, kind, title.as_deref(), now()).unwrap();
+        let due = store.lock().unwrap().due_one(source.id).unwrap();
+        let first = poll(&store, &engine, &due).await;
+        assert_eq!(first.error, None);
+        let page = store.lock().unwrap().items(0, 10, None).unwrap();
+        let titles: Vec<_> = page.items.iter().map(|i| i.title.clone().unwrap()).collect();
+        // The latest three show on following, even though they're old.
+        assert_eq!(titles, ["The Lost Garden: A Novel", "The Wood at Midwinter", "Piranesi"]);
+        assert!(page.items.iter().all(|i| i.media == "book" && i.source_kind == SourceKind::Author));
+        let followed = store.lock().unwrap().source(source.id).unwrap();
+        assert!(followed.next_fetch_at - now() > 6 * 24 * 60 * 60, "authors poll weekly");
+
+        let due = store.lock().unwrap().due_one(source.id).unwrap();
+        assert_eq!(poll(&store, &engine, &due).await.added, 0);
+    });
+    assert!(describe(SourceKind::Author, ingest::Error::Unavailable).contains("Open Library"));
+}

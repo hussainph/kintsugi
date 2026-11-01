@@ -8,7 +8,9 @@
 // and the event log. KI-32: Picked for you (cold start from the seeded clips,
 // Why this? corrections with undo, what a like changed), and Kin reading a
 // feed item and calling the ranking tools through the headless mock model.
-// Screenshots land in .headless/feed-shots/.
+// KI-43: watched pages and followed authors (Google Books is the fixture
+// server, through KINTSUGI_HEADLESS_BOOKS). Screenshots land in
+// .headless/feed-shots/.
 import assert from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -67,6 +69,7 @@ before(async () => {
       KINTSUGI_BACKEND_PORT: String(backend),
       // Kin's scripted local model: no provider, no credentials, no cost.
       KINTSUGI_HEADLESS_KIN: "mock",
+      KINTSUGI_HEADLESS_BOOKS: `${fixtures.base}/`,
     },
   });
   url = await new Promise<string>((done, fail) => {
@@ -364,4 +367,92 @@ test("Kin reads a feed item and uses the ranking tools; its picks are logged apa
   // Kin's picks are never his impressions.
   assert.equal(events("impression").filter((e) => e.surface === "kin").length, 0);
   await page.keyboard.press("Escape");
+});
+
+test("watch a page without a feed, and follow an author's new books", { timeout: TIMEOUT }, async () => {
+  await page.getByRole("button", { name: "Following" }).click();
+  // Following a page records a baseline: nothing in the feed yet.
+  await follow("Page", `${fixtures.base}/now`, /Following What I’m doing now/);
+  await page.getByText("Nothing new right now.").first().waitFor();
+  const sources = page.getByRole("list", { name: "Sources" });
+  const watched = sources.getByRole("listitem", { name: "What I’m doing now" });
+  await watched.locator('[data-health="ok"]').waitFor();
+
+  const fetchNow = async (expect: { full: number; notModified: number }) => {
+    await watched.getByRole("button", { name: "Fetch What I’m doing now now" }).click();
+    for (let i = 0; (fixtures.hits.get("/now") ?? 0) + (fixtures.hits.get("/now:304") ?? 0) < expect.full + expect.notModified; i++) {
+      if (i > 300) throw new Error(`the page was never fetched: ${JSON.stringify([...fixtures.hits])}`);
+      await page.waitForTimeout(100);
+    }
+    await watched.locator('[data-health="ok"]').waitFor();
+  };
+  assert.equal(fixtures.hits.get("/now"), 1);
+  // New dates and visitor counts are not a change.
+  fixtures.setNow(2);
+  await fetchNow({ full: 2, notModified: 0 });
+  // The same version again answers 304 to the ETag Kintsugi sent.
+  await fetchNow({ full: 2, notModified: 1 });
+  assert.equal(fixtures.hits.get("/now:304"), 1, "the second fetch was conditional");
+  await page.waitForTimeout(500);
+  assert.equal(await feedItems().filter({ hasText: "What I’m doing now" }).count(), 0, "no item for noise");
+  // A real edit posts one item describing the change.
+  fixtures.setNow(3);
+  await fetchNow({ full: 3, notModified: 1 });
+  await page.keyboard.press("Escape");
+  const change = item("The Left Hand of Darkness");
+  await change.waitFor();
+  assert.match(await change.innerText(), /2 lines added and 1 removed on What I’m doing now/);
+  assert.equal(await change.getByLabel("Page changed").count(), 1);
+  const hits = fixtures.hits.get("/now");
+  await change.getByRole("button", { name: "The Left Hand of Darkness", exact: true }).click();
+  const reading = change.getByRole("region", { name: "Reading The Left Hand of Darkness" });
+  await reading.getByText("Learning to bind books by hand.").first().waitFor();
+  await reading.getByText("Removed", { exact: true }).first().waitFor();
+  await reading.getByText(/The Dispossessed, for the second time/).first().waitFor();
+  assert.equal(fixtures.hits.get("/now"), hits, "reading a change never fetches the page as an article");
+  await shot("20-page-changed");
+
+  // An author: their latest three books on following, never the book about them.
+  await page.getByRole("button", { name: "Following" }).click();
+  await follow("Author", "Susanna Clarke", /Following Susanna Clarke/);
+  await page.getByText("3 new items in your feed.").first().waitFor();
+  await sources.getByRole("listitem", { name: "Susanna Clarke" }).locator('[data-health="ok"]').waitFor();
+  await shot("21-following-page-and-author");
+  await page.keyboard.press("Escape");
+  const book = item("The Lost Garden: A Novel");
+  await book.waitFor();
+  assert.equal(await book.getByLabel("New book").count(), 1);
+  await item("The Wood at Midwinter").waitFor();
+  await item("Piranesi").waitFor();
+  assert.equal(await item("Reading Susanna Clarke").count(), 0);
+  assert.equal(await item("Jonathan Strange & Mr Norrell").count(), 0);
+
+  // A book saved from the Feed becomes a clip, like any item.
+  await book.getByRole("button", { name: "Save" }).click();
+  await book.getByRole("button", { name: "Saved · Open" }).waitFor();
+  const clips = readdirSync(resolve(vault, "inspiration")).filter((f) => f.endsWith(".md"));
+  const saved = clips.map((f) => readFileSync(resolve(vault, "inspiration", f), "utf8")).find((c) => c.includes("/books/lost-garden"));
+  assert.ok(saved, "no clip for the saved book");
+  assert.match(saved, /^via: "?feed"?$/m);
+  assert.match(saved, /^title: "?The Lost Garden: A Novel"?$/m);
+  assert.match(saved, /^author: "?Susanna Clarke"?$/m);
+  assert.match(saved, /<!-- kintsugi:source -->[\s\S]*never the same twice/);
+  await shot("22-book-in-feed");
+
+  // Both kinds round-trip through OPML as Kintsugi link outlines.
+  const exported = resolve(config, "with-pages.opml");
+  await page.getByRole("button", { name: "Following" }).click();
+  await page.getByRole("button", { name: "Export OPML" }).click();
+  const prompt = page.locator("dialog[data-headless-dialog]");
+  await prompt.locator("input").fill(exported);
+  await prompt.locator("input").press("Enter");
+  await page.getByText(/Exported 8 subscriptions/).waitFor();
+  const opml = readFileSync(exported, "utf8");
+  assert.match(opml, /type="link"[^>]*url="http:\/\/127\.0\.0\.1:\d+\/now" kintsugiKind="page"/);
+  assert.match(opml, /type="link"[^>]*url="https:\/\/openlibrary\.org\/search\?author=Susanna\+Clarke&amp;sort=new" kintsugiKind="author"/);
+  await page.locator('input[type="file"]').setInputFiles(exported);
+  await page.getByText(/0 new, 8 already followed/).waitFor();
+  await page.keyboard.press("Escape");
+  const kinds = (db().prepare("SELECT kind FROM sources ORDER BY id").all() as { kind: string }[]).map((r) => r.kind);
+  assert.ok(kinds.includes("page") && kinds.includes("author"), kinds.join(","));
 });

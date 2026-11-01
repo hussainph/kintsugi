@@ -1,5 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowUpRight, BookmarkCheck, BookmarkPlus, EyeOff, Headphones, Heart, MessagesSquare, NotebookPen, Video } from "lucide-react";
+import { ArrowUpRight, BookmarkCheck, BookmarkPlus, BookOpen, EyeOff, FileDiff, Headphones, Heart, MessagesSquare, NotebookPen, Video } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -167,6 +167,8 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
           <p className="mb-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             {item.media === "video" && <Video className="size-3" aria-label="Video" />}
             {item.media === "audio" && <Headphones className="size-3" aria-label="Audio" />}
+            {item.media === "book" && <BookOpen className="size-3" aria-label="New book" />}
+            {item.sourceKind === "page" && <FileDiff className="size-3" aria-label="Page changed" />}
             <span className="truncate">{item.sourceTitle ?? "Feed"}</span>
             {item.author && item.author !== item.sourceTitle && <span className="truncate">· {item.author}</span>}
             <span aria-hidden>·</span>

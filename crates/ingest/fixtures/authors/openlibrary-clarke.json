@@ -1,0 +1,32 @@
+{
+  "numFound": 3,
+  "start": 0,
+  "docs": [
+    {
+      "key": "/works/OL40000001W",
+      "title": "The Lost Garden",
+      "author_name": ["Susanna Clarke"],
+      "first_publish_year": 2026,
+      "publisher": ["Bloomsbury Publishing"],
+      "isbn": ["1526600001", "9781526600001"],
+      "cover_i": 14800001,
+      "number_of_pages_median": 288
+    },
+    {
+      "key": "/works/OL20000002W",
+      "title": "Piranesi",
+      "author_name": ["Susanna Clarke"],
+      "first_publish_year": 2020,
+      "publisher": ["Bloomsbury"],
+      "cover_i": 10500002,
+      "first_sentence": ["When the Moon rose in the Third Northern Hall I went to the Ninth Vestibule."]
+    },
+    {
+      "key": "/works/OL10000003W",
+      "title": "The Ladies of Grace Adieu",
+      "subtitle": "and Other Stories",
+      "author_name": ["Susanna Clarke", "Charles Vess"],
+      "first_publish_year": 2006
+    }
+  ]
+}

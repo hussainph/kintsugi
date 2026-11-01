@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /** Times are Unix seconds. */
-export type SourceKind = "feed" | "hn" | "youtube" | "podcast" | "x";
+export type SourceKind = "feed" | "hn" | "youtube" | "podcast" | "x" | "page" | "author";
 
 export type Source = {
   id: number;
@@ -32,7 +32,8 @@ export type FeedItem = {
   author: string | null;
   summary: string | null;
   image: string | null;
-  media: "article" | "video" | "audio";
+  /** A watched page's change is an "article"; a followed author's release is a "book". */
+  media: "article" | "video" | "audio" | "book";
   publishedAt: number | null;
   fetchedAt: number;
   sortAt: number;
@@ -56,7 +57,11 @@ export type Subscribe =
   | { kind: "hn"; list: HnList; points?: number }
   | { kind: "youtube"; channel: string }
   | { kind: "podcast"; feedUrl: string; title?: string }
-  | { kind: "x"; account: string };
+  | { kind: "x"; account: string }
+  /** A page without a feed, watched for changes. */
+  | { kind: "page"; url: string }
+  /** An author whose new books arrive in the feed. */
+  | { kind: "author"; name: string };
 
 export const HN_LISTS = [
   ["frontpage", "Front page"],

@@ -21,8 +21,9 @@ use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 
-pub mod feed;
 pub mod api;
+pub mod authors;
+pub mod feed;
 mod markdown;
 pub mod media;
 pub mod reddit;
@@ -73,6 +74,8 @@ pub enum SourceType {
     Epub,
     /// A book's catalog record from Open Library (no text of the book).
     Book,
+    /// A new book from a followed author (Google Books or Open Library).
+    Author,
 }
 
 impl SourceType {
@@ -87,6 +90,7 @@ impl SourceType {
             SourceType::Pdf => "pdf",
             SourceType::Epub => "epub",
             SourceType::Book => "book",
+            SourceType::Author => "author",
         }
     }
 }
