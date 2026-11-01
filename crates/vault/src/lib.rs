@@ -10,10 +10,15 @@ mod clip_frontmatter;
 mod clips;
 mod quotes;
 mod references;
+mod relink;
 mod tags;
 pub use clips::*;
 pub use quotes::{QuoteAttribution, QuoteSource, leading_passage, quote_attribution};
 pub use tags::{doc_tags, normal_tag};
+pub use relink::{
+    LinkEdit, Relink, RelinkOutcome, RelinkPlan, RelinkResult, RelinkWrite, moved_path, relink_plan,
+    relink_write,
+};
 pub use references::{
     ReferenceDocument, ReferenceIndex, ReferenceLink, Wikilink, reference_index, wikilinks,
 };

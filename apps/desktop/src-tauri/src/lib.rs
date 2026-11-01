@@ -83,6 +83,8 @@ fn builder() -> tauri::Builder<Runtime> {
             vault::doc_create,
             vault::folder_create,
             vault::entry_rename,
+            vault::links_plan,
+            vault::links_write,
             vault::entry_trash,
             vault::clip_list,
             vault::clip_read,

@@ -108,7 +108,9 @@ basename like any document.
 - **Read-only:** the editor opens a mirror file read-only with a line saying
   where to edit it. `doc_write`, the phone's save, rename and new documents
   inside a mirror file are refused on the backend too (the marker decides,
-  so a folder name isn't trusted).
+  so a folder name isn't trusted). Updating links after a rename never
+  rewrites a mirror file either (see inspiration.md › Updating links on
+  rename).
 - **Pruning:** a mirror file whose post has gone is removed. Only files that
   carry the marker are ever rewritten or removed; a hand-written file in the
   same folder is left alone and reported.

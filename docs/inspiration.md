@@ -517,10 +517,40 @@ be dragged in as attributed blockquotes; documents drag in as references.
 The margin button remembers its visibility; on narrow windows it starts
 closed, and an empty margin takes no space.
 
-Renaming a document or folder refreshes resolution but does **not** rewrite
-existing links yet. Offering a reviewed link update on rename is follow-up
-work; unresolved links remain visible, never silently rebound to an
-arbitrary duplicate.
+### Updating links on rename
+
+Renaming a document or folder refreshes resolution, then quietly offers to
+rewrite the links that pointed at it, Obsidian-style: a toast asks
+"Update N links in M notes?" with **Update** and **Not now**. Nothing is
+rewritten without that click (KI-13).
+
+- **What changes:** only links that resolved to the old path, in the vault
+  as it was before the rename, and whose text no longer reaches the new one.
+  After a folder rename a bare `[[on-craft]]` still resolves and is left
+  alone; `[[posts/on-craft]]` becomes `[[essays/on-craft]]`. Each link keeps
+  its alias, heading, spacing and spelling style (bare name or vault path,
+  extension or not, a leading `./`); a bare name that would now be ambiguous
+  becomes the explicit path. Unresolved links stay as they are, never rebound
+  to an arbitrary duplicate.
+- **Where:** writing documents only, as in the reference index. The blog
+  mirror (the `mirror:` marker), clips, `inspiration/sources/*.txt`, hidden
+  folders and symlinks are never rewritten.
+- **How it writes:** other documents are written as they were read for the
+  prompt, each with the version-checked `kintsugi_vault::update` (KI-49):
+  one changed or removed since is left alone, and the result names it
+  ("Skipped drafts/x.md (changed since)"). The open document changes through
+  the editor, so it stays in step with its pending saves and keeps whatever
+  was typed while the prompt showed; ⌘Z there undoes it too.
+- **Undo:** the result's **Undo** puts every rewritten file back, again
+  version-checked: a note edited since the update is left alone and named.
+
+`links_plan(from, to, open)` returns `{ from, to, files, links }`, each file
+with its `path`, `version`, `before`/`after` text and the link `edits`
+(UTF-16 offsets into `before`); it writes nothing. `links_write(writes)` takes
+`{ path, text, base }` and answers per file `saved`, `conflict`, `gone` or
+`failed` (`crates/vault/src/relink.rs`). Renames happen in place from the
+sidebar; the planner itself takes any old and new path, so a move works the
+same way.
 
 ## Publishing
 
