@@ -11,10 +11,13 @@ import { frontmatter } from "@kintsugi/core/frontmatter";
 import { frontmatterLines, highlight, theme } from "./theme";
 import { commandExtensions, refreshCommands, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
+import { commentExtensions, refreshComments, type Comments } from "./comments";
 
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
 export { paragraphNear, paragraphRange } from "./references";
+export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPlace, Comments, CommentThread } from "./comments";
+export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -32,11 +35,13 @@ type Props = {
   readOnly?: boolean;
   /** The `/` menu's skills. Its Markdown blocks are always there. */
   commands?: Commands;
+  /** Kin's comment threads on this document's paragraphs (KI-38). */
+  comments?: Comments;
 };
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references, commands, readOnly = false }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, readOnly = false }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
@@ -46,6 +51,8 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
   referencesRef.current = references;
   const commandsRef = useRef(commands);
   commandsRef.current = commands;
+  const commentsRef = useRef(comments);
+  commentsRef.current = comments;
 
   const create = (docPath: string, doc: string) =>
     EditorState.create({
@@ -65,6 +72,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         EditorState.readOnly.of(readOnly),
         referenceExtensions(() => referencesRef.current && { ...referencesRef.current, currentPath: docPath }),
         commandExtensions(() => commandsRef.current),
+        commentExtensions(() => commentsRef.current && { ...commentsRef.current, currentPath: docPath }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged) return;
@@ -102,6 +110,12 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
     const view = viewRef.current;
     if (view) view.dispatch({ effects: refreshReferences.of(null) });
   }, [references?.sources, references?.search, viewRef]);
+
+  // New threads, replies and Kin's streaming text redraw without touching history.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch({ effects: refreshComments.of(null) });
+  }, [comments, viewRef]);
 
   // Skills load after the editor mounts; an open / menu picks them up.
   useEffect(() => {

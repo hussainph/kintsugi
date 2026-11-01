@@ -50,3 +50,5 @@
   .reference-margin { position: absolute; right: 0; top: 75px; bottom: 50px; padding-top: 16px; border-left: 1px solid var(--border); background: var(--background); box-shadow: -12px 0 24px color-mix(in srgb, var(--background) 90%, transparent); z-index: 9; }
 }
 @media (hover: none) { .reference-card-actions { opacity: 1; } }
+/* Kin's comment threads (KI-38): the placeholder avatar inside the editor's DOM. */
+.comment-kin-avatar { width: 14px; height: 14px; flex-shrink: 0; }

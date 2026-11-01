@@ -8,6 +8,7 @@ import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@kintsugi/ui/components/popover";
 import { Cancelled, Message, stream } from "@/lib/ai";
 import { discuss } from "@/lib/chat";
+import { beginComment, reviewDraft } from "@/comments/api";
 import { memory, type Skill } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
 import { modelFor } from "@/lib/models";
@@ -117,7 +118,11 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
     }
     if (a.id === "discuss") {
       onClose();
-      return discuss(chips);
+      return beginComment(view, from, to, "discuss");
+    }
+    if (a.id === "review") {
+      onClose();
+      return reviewDraft(view, path);
     }
     if (a.id === "disagrees") {
       onClose();

@@ -85,6 +85,15 @@ pub struct Entry {
     pub job: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usd: Option<f64>,
+    /// A paragraph comment thread's id (KI-38): the entry is a message in
+    /// that thread, about its document (`topic`). The chat doesn't answer
+    /// these; the thread's own turns do.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+    /// "Kin, review this draft" and Kin's note on it: answered by a review
+    /// turn, which leaves comment threads, not by the chat.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub review: bool,
 }
 
 /// What a new entry says; the log assigns `seq` and `at`.
@@ -98,6 +107,8 @@ pub struct Draft {
     pub error: Option<String>,
     pub job: Option<String>,
     pub usd: Option<f64>,
+    pub comment: Option<String>,
+    pub review: bool,
 }
 
 /// A topic, as inferred for one message.
@@ -266,6 +277,8 @@ impl Log {
             error: draft.error,
             job: draft.job,
             usd: draft.usd,
+            comment: draft.comment,
+            review: draft.review,
         };
         self.push(entry, topic)
     }
@@ -350,10 +363,63 @@ impl Log {
         Topic::general()
     }
 
-    /// Owner messages still waiting for Kin, oldest first.
+    /// Owner messages still waiting for the chat, oldest first. Comment
+    /// threads and reviews have turns of their own.
     pub fn pending(&self) -> Vec<Entry> {
         let through = self.meta.answered_through;
-        self.entries.iter().filter(|e| e.role == Role::Owner && e.seq > through).cloned().collect()
+        self.entries
+            .iter()
+            .filter(|e| e.role == Role::Owner && e.seq > through && e.comment.is_none() && !e.review)
+            .cloned()
+            .collect()
+    }
+
+    /// Appends an owner message to a comment thread, about `topic`'s document.
+    pub fn say_in(&mut self, comment: &str, text: &str, chips: Vec<Chip>, topic: &Topic) -> Result<Entry> {
+        let draft = Draft { text: text.trim().into(), chips, topic: topic.key.clone(), comment: Some(comment.into()), ..Draft::default() };
+        self.append_at(Role::Owner, draft, Some(topic), Local::now().fixed_offset())
+    }
+
+    /// Appends an owner message of another kind (a review request), not for the chat.
+    pub fn say_draft(&mut self, draft: Draft, topic: &Topic) -> Result<Entry> {
+        self.append_at(Role::Owner, draft, Some(topic), Local::now().fixed_offset())
+    }
+
+    /// Every entry in a comment thread, oldest first.
+    pub fn comment_entries(&self, comment: &str) -> Vec<Entry> {
+        self.entries.iter().filter(|e| e.comment.as_deref() == Some(comment)).cloned().collect()
+    }
+
+    /// His messages in a comment thread that no finished reply answers yet.
+    pub fn comment_pending(&self, comment: &str) -> Vec<Entry> {
+        let thread = self.comment_entries(comment);
+        let answered = thread
+            .iter()
+            .filter(|e| e.role == Role::Kin && !e.interrupted)
+            .flat_map(|e| e.answers.iter().copied().chain([e.seq]))
+            .max()
+            .unwrap_or(0);
+        thread.into_iter().filter(|e| e.role == Role::Owner && e.seq > answered).collect()
+    }
+
+    /// What the model sees of a comment thread: its answered exchanges (a
+    /// review's comment answers the review request).
+    pub fn comment_context(&self, comment: &str, max_pairs: usize) -> Vec<(String, String)> {
+        let mut pairs: Vec<(String, String)> = self
+            .entries
+            .iter()
+            .filter(|e| e.role == Role::Kin && e.comment.as_deref() == Some(comment))
+            .filter(|e| !e.interrupted && e.error.is_none() && !e.text.trim().is_empty())
+            .map(|reply| {
+                let said: Vec<&str> = reply.answers.iter().filter_map(|s| self.get(*s)).map(|e| e.text.as_str()).collect();
+                (said.join("\n\n"), reply.text.clone())
+            })
+            .filter(|(said, _)| !said.trim().is_empty())
+            .collect();
+        if pairs.len() > max_pairs {
+            pairs.drain(..pairs.len() - max_pairs);
+        }
+        pairs
     }
 
     pub fn mark_answered(&mut self, through: u64) {
@@ -406,7 +472,7 @@ impl Log {
         let mut pairs: Vec<(String, String)> = self
             .entries
             .iter()
-            .filter(|e| e.role == Role::Kin && e.topic == key && e.seq > through)
+            .filter(|e| e.role == Role::Kin && e.topic == key && e.seq > through && e.comment.is_none())
             .filter(|e| !e.interrupted && e.error.is_none() && !e.answers.is_empty() && !e.text.trim().is_empty())
             .map(|reply| {
                 let said: Vec<&str> = reply.answers.iter().filter_map(|s| self.get(*s)).map(|e| e.text.as_str()).collect();
@@ -491,7 +557,7 @@ impl Log {
             let to = (i + 4).min(self.entries.len());
             return self.entries[from..to]
                 .iter()
-                .map(|e| format!("#{} {} {}{}:\n{}\n", e.seq, &e.at[..e.at.len().min(16)], e.role.name(), about(&e.topic), e.text.trim()))
+                .map(|e| format!("#{} {} {}{}{}:\n{}\n", e.seq, &e.at[..e.at.len().min(16)], e.role.name(), about(&e.topic), in_comment(e), e.text.trim()))
                 .collect::<Vec<_>>()
                 .join("\n");
         }
@@ -512,6 +578,10 @@ impl Log {
     pub fn len(&self) -> usize {
         self.entries.len()
     }
+}
+
+fn in_comment(entry: &Entry) -> &'static str {
+    if entry.comment.is_some() { " in a comment thread on a paragraph" } else { "" }
 }
 
 fn about(topic: &str) -> String {

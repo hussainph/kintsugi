@@ -124,6 +124,12 @@ pub enum ChatEvent {
     /// A thread's summary changed.
     Thread { thread: Thread },
     Job { job: Job },
+    /// Kin started replying in a comment thread (`comment`), or reviewing
+    /// the document (`comment: None`). Its text streams as `Turn` events.
+    CommentStarted { turn: String, path: String, comment: Option<String> },
+    CommentEnded { turn: String, path: String, comment: Option<String> },
+    /// A document's comment threads changed (created, resolved, a review).
+    Comments { path: String },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -162,6 +168,7 @@ struct Inner<B: Brain> {
     live: Mutex<Live>,
     timing: Timing,
     turns: AtomicU64,
+    comments: Mutex<comments::Live>,
 }
 
 /// The live conversation. Cheap to clone.
@@ -200,6 +207,7 @@ impl<B: Brain> Engine<B> {
             live: Mutex::default(),
             timing,
             turns: AtomicU64::new(0),
+            comments: Mutex::default(),
         }));
         engine.kick_jobs();
         engine
@@ -787,6 +795,10 @@ pub fn kin_jobs(chat: State<Chat>) -> Result<Vec<Job>> {
 pub fn kin_job_cancel(chat: State<Chat>, id: String) -> Result<Option<Job>> {
     Ok(chat.engine()?.cancel_job(&id))
 }
+
+pub mod comments;
+pub(crate) use comments::{COMMENT_NOTE, REVIEW_BRIEF};
+
 
 #[cfg(test)]
 mod tests;

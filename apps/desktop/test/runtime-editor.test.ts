@@ -5,8 +5,8 @@
 //
 // Covers the / menu (blocks, and skills flagged `command` run as a reviewed
 // edit), @ (the same [[link]] as [[, and @Kin opening the chat with the
-// paragraph), ⌘K's non-prose actions (supporting clips, who disagrees,
-// discuss), and both pickers at phone width with touch. Everything lives in
+// paragraph; KI-38 made that a comment thread), ⌘K's non-prose actions
+// (supporting clips, who disagrees, discuss), and both pickers at phone width with touch. Everything lives in
 // a fresh scratch vault and config; screenshots go to .headless/<run>/shots/.
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -124,18 +124,21 @@ test("@ opens the [[ picker and writes the same [[link]] to disk", { timeout: 60
   assert.ok(!disk().includes("@golden"));
 });
 
-test("@Kin, first in the picker, opens Kin's chat with the paragraph attached", { timeout: 60_000 }, async () => {
+test("@Kin, first in the picker, opens a comment thread's composer on the paragraph (KI-38)", { timeout: 60_000 }, async () => {
   await page.keyboard.type(" and @");
   await picker().locator('.cm-reference-kin[aria-selected="true"]').waitFor();
   await shot("04-at-kin");
   await page.keyboard.press("Enter");
-  await kin().waitFor();
-  const chip = kin().getByLabel("Context").locator(`[data-chip^="paragraph:${DOC}:"]`);
-  await chip.waitFor();
-  assert.match((await chip.textContent()) ?? "", /See Golden joinery|See \[\[/);
-  await shot("05-at-kin-chat");
+  const composer = page.getByRole("textbox", { name: "Ask Kin about this paragraph" });
+  await composer.waitFor();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Ask Kin about this paragraph");
+  await page.locator(".cm-comment-active", { hasText: "See" }).first().waitFor();
+  await shot("05-at-kin-comment");
   await onDisk((t) => /See \[\[(inspiration\/)?golden-joinery\]\] and $/m.test(t), "@Kin takes itself out and writes nothing");
-  await closeKin();
+  // Escape before sending leaves no thread behind.
+  await page.keyboard.press("Escape");
+  await composer.waitFor({ state: "detached" });
+  assert.equal(await page.locator(".cm-comment-marker").count(), 0);
 });
 
 test("⌘K keeps its edits and adds Kin's actions: supporting clips", { timeout: 60_000 }, async () => {
@@ -166,15 +169,17 @@ test("⌘K › Who disagrees? asks Kin in the chat, with the paragraph", { timeo
   await closeKin();
 });
 
-test("⌘K › Discuss this paragraph opens the chat with it, unsent", { timeout: 60_000 }, async () => {
+test("⌘K › Discuss this paragraph opens a comment thread's composer on it, unsent", { timeout: 60_000 }, async () => {
   await line("Keep the seam.").click();
   await page.keyboard.press("Meta+k");
   await refine().getByRole("option", { name: /Discuss this paragraph/ }).click();
-  await kin().waitFor();
-  await kin().getByLabel("Context").locator(`[data-chip="paragraph:${DOC}:14-15"]`).waitFor();
-  assert.equal(await kin().getByRole("textbox", { name: "Message Kin" }).inputValue(), "");
+  const composer = page.getByRole("textbox", { name: "Ask Kin about this paragraph" });
+  await composer.waitFor();
+  assert.equal(await composer.inputValue(), "");
+  await page.locator(".cm-comment-active", { hasText: "Keep the seam." }).waitFor();
   await shot("09-discuss-paragraph");
-  await closeKin();
+  await page.keyboard.press("Escape");
+  await composer.waitFor({ state: "detached" });
 });
 
 test("⌘K › Ideas for this draft opens Ideas filtered to it", { timeout: 60_000 }, async () => {

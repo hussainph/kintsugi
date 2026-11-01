@@ -135,3 +135,13 @@
   --editor-faint: color-mix(in oklch, var(--muted-foreground) 65%, transparent);
   --editor-selection: color-mix(in oklch, var(--primary) 14%, transparent);
 }
+/* Kin gold (KI-23): reserved for what Kin produced. --kin for marks and
+   rules, --kin-ink for text that must read as Kin's. */
+:root {
+  --kin: oklch(0.66 0.125 76);
+  --kin-ink: oklch(0.5 0.1 68);
+}
+.dark {
+  --kin: oklch(0.79 0.12 84);
+  --kin-ink: oklch(0.83 0.11 85);
+}

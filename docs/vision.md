@@ -289,7 +289,7 @@ rather use it. Outside agents never add to Inspiration.
                     long clips' whole text for Kin
   .kintsugi/
     agent/          Kin's memory: USER.md, NOTES.md, skills/
-    comments/       Kin's comment threads on documents (direction)
+    comments/       Kin's comment threads on documents (KI-38; see docs/kin.md)
   …                 drafts, notes and posts, in folders, anywhere else
 ```
 

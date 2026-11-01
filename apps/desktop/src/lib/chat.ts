@@ -17,6 +17,10 @@ export type Entry = {
   error?: string;
   job?: string;
   usd?: number;
+  /** A message in a paragraph's comment thread (KI-38): the thread's id. */
+  comment?: string;
+  /** "Kin, review this draft" and Kin's note on it. */
+  review?: boolean;
 };
 
 /** Mirrors `history::Thread`: a view of the one log, with a running summary. */
@@ -66,7 +70,10 @@ export type ChatEvent =
   | { type: "turn"; turn: string; event: KinEvent }
   | { type: "turnEnded"; turn: string }
   | { type: "thread"; thread: Thread }
-  | { type: "job"; job: Job };
+  | { type: "job"; job: Job }
+  | { type: "commentStarted"; turn: string; path: string; comment: string | null }
+  | { type: "commentEnded"; turn: string; path: string; comment: string | null }
+  | { type: "comments"; path: string };
 
 export const chat = {
   /** Lands in the log at once; Kin answers once he pauses. */

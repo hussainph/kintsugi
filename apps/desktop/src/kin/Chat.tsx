@@ -52,11 +52,17 @@ function ChipView({ chip, onRemove }: { chip: Chip; onRemove?: () => void }) {
   );
 }
 
+/** A message from a paragraph's comment thread, which lives in this log too (KI-38). */
+function CommentTag() {
+  return <span className="block text-[10px] tracking-wide text-muted-foreground uppercase" data-comment-tag>Comment on a paragraph</span>;
+}
+
 function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
   const [expanded, setExpanded] = useState(false);
   if (entry.role === "owner") {
     return (
       <div className="flex flex-col items-end gap-1" data-entry={entry.seq} data-role="owner">
+        {entry.comment && <CommentTag />}
         <p className="max-w-[85%] rounded-2xl rounded-br-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap select-text">{entry.text}</p>
         {(entry.chips?.length || waiting) && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-1">
@@ -82,16 +88,19 @@ function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
     );
   }
   return (
-    <div className="flex gap-2" data-entry={entry.seq} data-role="kin">
+    <div className="flex gap-2" data-entry={entry.seq} data-role="kin" data-comment={entry.comment}>
       <KinAvatar className="mt-0.5 size-5 shrink-0" />
-      {entry.error ? (
-        <p className="text-sm text-destructive" role="alert">Kin couldn’t answer: {entry.error}</p>
-      ) : (
-        <p className="min-w-0 text-sm leading-relaxed whitespace-pre-wrap select-text">
-          {entry.text}
-          {entry.interrupted && <span className="ml-1 text-xs text-muted-foreground" data-interrupted>— interrupted</span>}
-        </p>
-      )}
+      <div className="min-w-0">
+        {entry.comment && <CommentTag />}
+        {entry.error ? (
+          <p className="text-sm text-destructive" role="alert">Kin couldn’t answer: {entry.error}</p>
+        ) : (
+          <p className="min-w-0 text-sm leading-relaxed whitespace-pre-wrap select-text">
+            {entry.text}
+            {entry.interrupted && <span className="ml-1 text-xs text-muted-foreground" data-interrupted>— interrupted</span>}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -165,7 +174,8 @@ export function KinChat() {
     const off = listen<ChatEvent>("kin:chat", ({ payload: event }) => {
       switch (event.type) {
         case "entry":
-          if (event.entry.role !== "owner" && !openRef.current) setUnread(true);
+          // Comment replies show in the margin, where he asked.
+          if (event.entry.role !== "owner" && !event.entry.comment && !openRef.current) setUnread(true);
           return void reload();
         case "turnStarted":
           setLive({ turn: event.turn, text: "", looking: [] });
