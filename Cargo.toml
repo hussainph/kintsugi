@@ -27,7 +27,6 @@ debug = false
 # With debug off, Cargo strips dependencies by default. Stripped proc-macro
 # dylibs fail to load on current macOS ("mis-aligned LINKEDIT string pool"),
 # so `tauri` can't find `tauri_macros` on a fresh build.
-strip = false
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
