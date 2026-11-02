@@ -19,6 +19,7 @@ ghostwrites: prose is his, apart from edits he explicitly asks for.
 - Product direction: `docs/vision.md`
 - Product and contracts: `README.md`, `docs/vision.md`, `docs/inspiration.md`, `docs/feed.md`, `docs/publishing.md`, `docs/export.md`
 - Phone app conventions: `apps/mobile/AGENTS.md`
+- Designs: the owner prototypes in **Paper**. When a ticket points at a Paper design, read it through the Paper MCP tools: `get_basic_info`, then `get_tree_summary`, `get_jsx` and `get_screenshot`. Those tools only work while Paper Desktop is open with the file. Don't edit his Paper files unless the ticket asks for it.
 
 ## UI copy and labels (owner rule, strict)
 
