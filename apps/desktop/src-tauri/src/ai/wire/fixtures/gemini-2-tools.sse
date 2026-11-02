@@ -1,0 +1,4 @@
+data: {"candidates": [{"content": {"parts": [{"text": "Two "}],"role": "model"},"index": 0}],"modelVersion": "gemini-2.5-flash"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "files."},{"functionCall": {"name": "read","args": {"path": "a.md"}}},{"functionCall": {"name": "read","args": {"path": "b.md"}}}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 100,"candidatesTokenCount": 10,"totalTokenCount": 110}}
+

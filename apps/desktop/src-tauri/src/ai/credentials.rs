@@ -75,8 +75,9 @@ impl Chain {
         })
     }
 
+    /// The first of the provider's environment keys that is set.
     fn env_key(&self, provider: &Provider) -> Option<String> {
-        provider.env_key.and_then(|k| (self.env)(k))
+        provider.env_keys.iter().find_map(|k| (self.env)(k))
     }
 
     fn lookups(&self, provider: &Provider) -> Result<[(Source, Lookup); 2]> {
@@ -264,6 +265,46 @@ mod tests {
         );
         assert_eq!(resolve("ollama").unwrap(), None);
         assert!(resolve("opencode-go").unwrap_err().contains("OpenCode"));
+    }
+
+    #[test]
+    fn every_provider_reads_pis_environment_keys() {
+        let f = fixture(
+            json!({}),
+            json!({}),
+            &[
+                ("GROQ_API_KEY", "gsk"),
+                ("MOONSHOT_API_KEY", "ms"),
+                ("GEMINI_API_KEY", "AIza"),
+                ("OPENCODE_API_KEY", "oc"),
+                ("AI_GATEWAY_API_KEY", "vg"),
+            ],
+        );
+        let c = &f.chain;
+        for id in [
+            "groq",
+            "moonshotai",
+            "moonshotai-cn",
+            "google",
+            "opencode",
+            "opencode-go",
+            "vercel-ai-gateway",
+        ] {
+            assert_eq!(status(c, id), ("api_key", Some(Source::Env)), "{id}");
+        }
+        assert_eq!(
+            block_on(c.resolve(provider("moonshotai-cn").unwrap())).unwrap(),
+            Some(Auth::ApiKey("ms".into()))
+        );
+        assert_eq!(status(c, "xai"), ("none", None));
+        // Every provider but the local one names at least one key.
+        for p in crate::ai::wire::PROVIDERS {
+            assert!(
+                p.keyless || !p.env_keys.is_empty() || p.id == "openai-codex",
+                "{}",
+                p.id
+            );
+        }
     }
 
     #[test]

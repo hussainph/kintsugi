@@ -58,6 +58,40 @@ export class Cancelled extends Error {
 
 export const providers = () => invoke<ProviderStatus[]>("ai_providers");
 
+/** Pi's thinking levels, weakest first. A `ModelRef`'s `reasoning` is one of them. */
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+/** US dollars per million tokens. */
+export type Rates = { input: number; output: number; cacheRead: number; cacheWrite: number };
+
+/** Mirrors `ai::models::ModelInfo` in src-tauri/src/ai/models.rs. */
+export type ModelInfo = {
+  id: string;
+  name: string;
+  /** The wire format (Pi's API id), e.g. `openai-completions`. */
+  api: string;
+  contextWindow: number;
+  maxOutput: number;
+  reasoning: boolean;
+  thinkingLevels: ThinkingLevel[];
+  tools: boolean;
+  images: boolean;
+  /** `tiers`: the rates for a whole request whose input is over `inputTokensAbove`. */
+  price: Rates & { tiers?: (Rates & { inputTokensAbove: number })[] };
+};
+
+/** Mirrors `ai::models::ProviderModels`. */
+export type ProviderModels = ProviderStatus & {
+  /** A request would find a credential now. */
+  usable: boolean;
+  /** Flat-rate or local: calls cost nothing in the ledger, whatever `price` says. */
+  subscription: boolean;
+  models: ModelInfo[];
+};
+
+/** The providers with a usable credential and their models; `all` lists every provider. */
+export const models = (all = false) => invoke<ProviderModels[]>("ai_models", { all });
+
 /** Streams one completion. `onText` gets the whole text so far on every
  *  delta; `done` resolves with the final text, or rejects with `Cancelled`. */
 export function stream(model: ModelRef, ask: Ask, onText: (text: string) => void) {

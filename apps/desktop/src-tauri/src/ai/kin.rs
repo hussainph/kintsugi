@@ -78,11 +78,11 @@ pub(crate) async fn connect(task: Task) -> Result<Connected> {
         .ok_or("No AI provider is set up. Run `pi`, log in or add an API key.")?;
     let provider = wire::provider(&model.provider).ok_or("unknown provider")?;
     let auth = resolve(provider).await?;
+    let endpoint = wire::Endpoint::new(provider, &model.model, auth);
     Ok(Connected::Remote(Remote {
         model,
-        provider,
-        base_url: provider.base_url.into(),
-        auth,
+        route: endpoint.route,
+        auth: endpoint.auth,
     }))
 }
 

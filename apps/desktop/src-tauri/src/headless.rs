@@ -1089,6 +1089,17 @@ mod tests {
                     .iter()
                     .all(|p| p["auth"] == "none")
             );
+            // The model list: nothing usable without credentials, and every
+            // provider with its catalog models when asked for all.
+            let models = call(&client, &bridge, "ai_models", json!({})).await;
+            assert_eq!(models["value"], json!([]), "{models}");
+            let all = call(&client, &bridge, "ai_models", json!({ "all": true })).await;
+            let all = all["value"].as_array().unwrap();
+            assert!(all.iter().all(|p| p["usable"] == false));
+            assert!(
+                all.iter()
+                    .any(|p| p["id"] == "groq" && !p["models"].as_array().unwrap().is_empty())
+            );
             // The REAL ai_stream handler deserializes Channel and streams its
             // disabled error. No provider, credentials or network call needed.
             let ai = call(&client, &bridge, "ai_stream", json!({"request":{"id":"test-ai","provider":"openai","model":"disabled","system":"","messages":[]}, "onEvent":"__CHANNEL__:99"})).await;

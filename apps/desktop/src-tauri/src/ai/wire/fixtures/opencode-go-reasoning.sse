@@ -1,0 +1,10 @@
+data: {"id":"oc-1","object":"chat.completion.chunk","model":"kimi-k3","choices":[{"index":0,"delta":{"role":"assistant","reasoning":"Short answer will do."},"finish_reason":null}]}
+
+data: {"id":"oc-1","choices":[{"index":0,"delta":{"content":"Kilns are in "},"finish_reason":null}]}
+
+data: {"id":"oc-1","choices":[{"index":0,"delta":{"content":"posts/kiln.md."},"finish_reason":"stop"}]}
+
+data: {"id":"oc-1","choices":[],"usage":{"prompt_tokens":300,"completion_tokens":25,"total_tokens":325,"cached_tokens":200}}
+
+data: [DONE]
+
