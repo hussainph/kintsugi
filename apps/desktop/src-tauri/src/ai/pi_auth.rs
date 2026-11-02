@@ -202,7 +202,22 @@ impl Store {
             Some(Kind::Oauth) if self.read_only => {
                 Err("Pi login expired; refresh it outside headless mode".into())
             }
-            Some(Kind::Oauth) => self.refresh(provider).await.map(Some),
+            Some(Kind::Oauth) => {
+                // Detached: a cancelled caller (a new keystroke aborts a
+                // completion) must not drop a refresh midway, after the
+                // server has rotated the refresh token but before the new
+                // one is written; that would log Pi out (Pi lets a started
+                // refresh finish, too).
+                let store = Store {
+                    path: self.path.clone(),
+                    read_only: self.read_only,
+                };
+                let provider = provider.to_string();
+                tokio::spawn(async move { store.refresh(&provider).await })
+                    .await
+                    .map_err(|_| "Pi login refresh stopped".to_string())?
+                    .map(Some)
+            }
             None => Err(format!("unrecognised credential for {provider}")),
         }
     }
@@ -210,6 +225,9 @@ impl Store {
     /// Refresh under Pi's lock, re-reading inside it: another process may
     /// already have refreshed, in which case its token is used as-is.
     async fn refresh(&self, provider: &str) -> Result<Auth> {
+        if self.read_only {
+            return Err("Pi login expired; refresh it outside headless mode".into());
+        }
         let store = Store {
             path: self.path.clone(),
             read_only: self.read_only,
@@ -422,7 +440,10 @@ async fn refresh_codex(current: &Value) -> Result<Value> {
     updated.insert("type".into(), "oauth".into());
     updated.insert("access".into(), access.into());
     updated.insert("refresh".into(), refresh.into());
-    updated.insert("expires".into(), (now_ms() + expires_in * 1000).into());
+    updated.insert(
+        "expires".into(),
+        (now_ms().saturating_add(expires_in.saturating_mul(1000))).into(),
+    );
     updated.insert("accountId".into(), account_id.into());
     Ok(Value::Object(updated))
 }
@@ -488,7 +509,7 @@ async fn refresh_chatgpt(current: &Value) -> Result<Value> {
         current,
         access,
         str_field(&json, "refresh_token"),
-        (now_ms() + expires_in * 1000).saturating_sub(3 * 60 * 1000),
+        (now_ms().saturating_add(expires_in.saturating_mul(1000))).saturating_sub(3 * 60 * 1000),
     );
     if let Some(scope) = str_field(&json, "scope") {
         updated["scopes"] = scope.split_whitespace().collect::<Vec<_>>().into();
@@ -519,7 +540,8 @@ async fn refresh_xai(current: &Value) -> Result<Value> {
         current,
         access,
         str_field(&json, "refresh_token"),
-        (now_ms() + expires_in * 1000).saturating_sub(MINIMUM_VALIDITY_MS),
+        (now_ms().saturating_add(expires_in.saturating_mul(1000)))
+            .saturating_sub(MINIMUM_VALIDITY_MS),
     ))
 }
 
@@ -552,7 +574,7 @@ async fn refresh_kimi(current: &Value) -> Result<Value> {
         current,
         access,
         Some(refresh),
-        now_ms() + expires_in * 1000,
+        now_ms().saturating_add(expires_in.saturating_mul(1000)),
     ))
 }
 
@@ -579,7 +601,9 @@ async fn refresh_copilot(current: &Value) -> Result<Value> {
         current,
         token,
         None,
-        (expires_at * 1000).saturating_sub(MINIMUM_VALIDITY_MS),
+        expires_at
+            .saturating_mul(1000)
+            .saturating_sub(MINIMUM_VALIDITY_MS),
     ))
 }
 

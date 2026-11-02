@@ -49,7 +49,11 @@ pub(super) fn request(
     if let Some(key) = token(auth) {
         builder = builder.header("x-goog-api-key", key);
     }
-    Ok((builder, Box::new(Decoder::default())))
+    let decoder = Decoder {
+        model: ex.model.to_string(),
+        ..Decoder::default()
+    };
+    Ok((builder, Box::new(decoder)))
 }
 
 /// A base URL with its own API version segment (`/v1`, `/v1beta1`).
@@ -265,6 +269,8 @@ fn name_of(ex: &Exchange, call_id: &str) -> String {
 /// Streams `GenerateContentResponse` chunks into a [`Reply`].
 #[derive(Default)]
 struct Decoder {
+    /// The model id, to know whether its call ids go back.
+    model: String,
     reply: Reply,
     calls: Vec<ToolCall>,
     /// The model's parts, consecutive text of one kind merged, as they go
@@ -330,8 +336,14 @@ impl Decode for Decoder {
                 let given = call["id"].as_str().filter(|id| !id.is_empty());
                 let id = match given {
                     Some(id) if !self.calls.iter().any(|c| c.id == id) => id.to_string(),
-                    _ => format!("{name}_{}", self.calls.len() + 1),
+                    _ => super::made_up_id(&name, self.calls.len() + 1),
                 };
+                // The part goes back as it came, but with the id the call's
+                // response will carry (Pi rebuilds it the same way).
+                let mut part = part.clone();
+                if given != Some(id.as_str()) && sends_ids(&self.model) {
+                    part["functionCall"]["id"] = json!(id);
+                }
                 self.calls.push(ToolCall {
                     id,
                     name,
@@ -341,7 +353,7 @@ impl Decode for Decoder {
                         call["args"].clone()
                     },
                 });
-                self.parts.push(part.clone());
+                self.parts.push(part);
             }
         }
         if let Some(reason) = candidate["finishReason"].as_str() {
@@ -372,7 +384,16 @@ impl Decode for Decoder {
         false
     }
 
-    fn finish(self: Box<Self>) -> Reply {
+    fn ended(&self) -> bool {
+        self.reply.stop_reason.is_some()
+    }
+
+    fn finish(self: Box<Self>) -> Result<Reply> {
+        if let Some(reason) = self.reply.stop_reason.as_deref()
+            && !matches!(reason, "stop" | "max_tokens")
+        {
+            super::refused(reason)?;
+        }
         let mut reply = self.reply;
         if self.signed && !self.parts.is_empty() {
             reply
@@ -383,7 +404,7 @@ impl Decode for Decoder {
             reply.stop_reason = Some("tool_calls".into());
         }
         reply.calls = self.calls;
-        reply
+        Ok(reply)
     }
 }
 

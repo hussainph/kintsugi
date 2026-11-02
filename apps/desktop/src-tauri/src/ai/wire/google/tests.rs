@@ -68,8 +68,8 @@ fn gemini_3_streams_thoughts_signed_parts_and_a_call() {
 fn gemini_2_calls_get_made_up_ids_that_are_never_sent() {
     let (reply, text) = decoded("gemini-2-tools.sse");
     assert_eq!(text, "Two files.");
-    let ids: Vec<_> = reply.calls.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(ids, ["read_1", "read_2"]);
+    let ids: Vec<_> = reply.calls.iter().map(|c| c.id.clone()).collect();
+    assert!(ids[0].starts_with("read_1_") && ids[1].starts_with("read_2_"));
     assert!(
         reply.reasoning.is_empty(),
         "nothing signed, nothing to replay"
@@ -81,7 +81,7 @@ fn gemini_2_calls_get_made_up_ids_that_are_never_sent() {
         calls: reply.calls,
     });
     items.push(Item::Results(vec![super::super::ToolResult {
-        call_id: "read_2".into(),
+        call_id: ids[1].clone(),
         content: "B".into(),
         is_error: true,
     }]));
@@ -151,4 +151,28 @@ fn errors_in_the_stream_are_reported() {
         decode_error(Box::new(Decoder::default()), stream),
         "Resource exhausted"
     );
+}
+
+#[test]
+fn a_gemini_3_call_without_an_id_goes_back_with_the_one_kin_gave_it() {
+    let stream = r#"data: {"candidates":[{"content":{"parts":[{"functionCall":{"name":"search","args":{}},"thoughtSignature":"Q2lR"}],"role":"model"},"finishReason":"STOP"}]}"#;
+    let decoder = Decoder {
+        model: "gemini-3.1-pro".into(),
+        ..Decoder::default()
+    };
+    let (reply, _) = decode(Box::new(decoder), stream);
+    let id = reply.calls[0].id.clone();
+    assert!(id.starts_with("search_1_"));
+    assert_eq!(
+        reply.reasoning[0]["parts"][0]["functionCall"]["id"],
+        json!(id)
+    );
+    // A safety stop is an error, not an empty answer.
+    let blocked = r#"data: {"candidates":[{"finishReason":"SAFETY"}]}"#;
+    let mut decoder: Box<dyn Decode> = Box::new(Decoder::default());
+    decoder
+        .feed(None, blocked.trim_start_matches("data: "))
+        .unwrap();
+    assert!(decoder.ended());
+    assert!(decoder.finish().unwrap_err().contains("SAFETY"));
 }

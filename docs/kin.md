@@ -27,7 +27,11 @@ starts or between streamed chunks. A rate limit (429), a server error (5xx),
 a lost connection or such a stall is tried again up to three times, waiting
 1, 2 then 4 s (or the provider's `Retry-After`, up to 20 s; a longer one
 fails the call), but only while no text has streamed: once the owner has
-seen part of a reply, a failure ends the step rather than repeating it.
+seen part of a reply, a failure ends the step rather than repeating it. A stream that
+ends before the wire's own end of a reply (a finish reason, a terminal
+event) is such a failure, never a short answer with half a tool call; a
+model that stops without answering (a refusal, a content filter, a Gemini
+safety stop) is an error.
 
 ## Providers and wire formats (KI-60)
 
@@ -66,13 +70,15 @@ and URL):
   (`reasoning_content`, `reasoning`, OpenRouter's `reasoning_details`) goes
   back on the step's assistant message; DeepSeek-style models get an empty
   `reasoning_content` on every other one. Mistral gets nine-character tool
-  call ids, named tool results and its thinking chunks.
+  call ids, named tool results and its thinking chunks. A server on this
+  Mac (Ollama and the like) gets `max_tokens` and nothing OpenAI-only.
 - **Responses and Codex.** `store: false`; reasoning comes back encrypted
   (`include: ["reasoning.encrypted_content"]`) and each step's `reasoning`
   items go back verbatim, before its function calls, on every later request
-  of the turn. Plain Responses sends the system prompt as a developer
-  message and `max_output_tokens`; Codex sends `instructions` and runs
-  tools one at a time. xAI always asks for encrypted reasoning.
+  of the turn; it's asked for whenever the model reasons, at any effort.
+  Plain Responses sends the system prompt as a developer message and
+  `max_output_tokens`; Codex sends `instructions` and runs tools one at a
+  time.
 - **Anthropic.** `x-api-key` (a bearer token for Copilot),
   `anthropic-version: 2023-06-01`, cache breakpoints on the system prompt
   and the newest block of Kin's agent calls, tool schemas trimmed to
@@ -80,7 +86,8 @@ and URL):
   (1,024 to 16,384 by level, added to `max_tokens`, with the
   interleaved-thinking beta) or adaptive with an effort on newer ones.
   Thinking blocks and their signatures go back in front of the step's text
-  and tool calls.
+  and tool calls. A Claude subscription token (`sk-ant-oat…`) given as a key
+  is refused.
 - **Gemini.** The key in `x-goog-api-key`, tools as JSON Schema
   (`parametersJsonSchema`, `const` written as `enum`), thinking as a level
   on Gemini 3 and later and a budget before. The model's parts, with their
