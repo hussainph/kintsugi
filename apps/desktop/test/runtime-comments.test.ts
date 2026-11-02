@@ -161,9 +161,9 @@ test("resolve hides the thread, Show resolved brings it back, and it reopens", {
 
 test("deleting the paragraph keeps the thread, detached, across a reload", { timeout: 90_000 }, async () => {
   await page.locator(".cm-comment-popover").waitFor({ state: "detached" });
-  await line("Every time.").click();
-  await page.keyboard.press("End");
-  await page.keyboard.press("Shift+Home");
+  // Triple-click selects the whole paragraph; End/Shift+Home only reach the
+  // visual line, and the paragraph wraps at the theme's editor size.
+  await line("Every time.").click({ clickCount: 3 });
   await page.keyboard.press("Backspace");
   await page.locator(".cm-comment-panel").getByText("1 detached").waitFor();
   const card = page.locator(".cm-comment-panel [data-comment-thread]");
