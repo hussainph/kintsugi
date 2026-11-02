@@ -73,11 +73,11 @@ export function ClipCard({ local, width, onPress }: { local: LocalClip; width: n
         )}
       </View>
       <View style={styles.label}>
-        <Text style={[styles.small, { color: theme.muted }]} numberOfLines={1}>
-          {clipSite(clip)}
-        </Text>
         <Text style={[styles.title, { color: theme.text }]} numberOfLines={2}>
           {title}
+        </Text>
+        <Text style={[styles.small, { color: theme.muted }]} numberOfLines={1}>
+          {clipSite(clip)}
         </Text>
       </View>
     </Pressable>

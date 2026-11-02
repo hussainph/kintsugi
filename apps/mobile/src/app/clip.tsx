@@ -79,11 +79,11 @@ export default function ClipScreen() {
         )}
 
         <View style={styles.heading}>
-          <Text style={[styles.small, { color: theme.muted }]}>
-            {[clipSite(clip), clip.author].filter(Boolean).join(' · ')}
-          </Text>
           <Text style={[styles.title, { color: theme.text }]} selectable>
             {clip.title || clipLabel(clip)}
+          </Text>
+          <Text style={[styles.small, { color: theme.muted }]}>
+            {[clipSite(clip), clip.author].filter(Boolean).join(' · ')}
           </Text>
         </View>
 

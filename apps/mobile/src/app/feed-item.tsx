@@ -83,11 +83,11 @@ export default function FeedItemScreen() {
         style={{ backgroundColor: theme.background }}
         contentContainerStyle={styles.content}
       >
-        <Text style={[styles.meta, { color: theme.muted }]}>
-          {[item.sourceTitle, item.author, ago(item.publishedAt ?? item.sortAt)].filter(Boolean).join(' · ')}
-        </Text>
         <Text style={[styles.title, { color: theme.text }]} accessibilityRole="header">
           {item.title || 'Untitled'}
+        </Text>
+        <Text style={[styles.meta, { color: theme.muted }]}>
+          {[item.sourceTitle, item.author, ago(item.publishedAt ?? item.sortAt)].filter(Boolean).join(' · ')}
         </Text>
 
         <View style={styles.actions}>

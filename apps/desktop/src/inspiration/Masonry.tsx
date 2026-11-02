@@ -81,8 +81,8 @@ function Card({ tile, onOpen, onFocus, onBlur }: { tile: Tile; onOpen: (path: st
         )}
       </div>
       <div className="space-y-1 px-1 pt-3">
-        <p className="truncate text-[11px] text-muted-foreground">{clipSite(clip)}</p>
         <p className="line-clamp-2 break-words text-[13px] leading-snug group-hover:underline decoration-foreground/20 underline-offset-4">{clip.title || (own ? own.split("\n")[0] : clipLabel(clip))}</p>
+        <p className="truncate text-[11px] text-muted-foreground">{clipSite(clip)}</p>
       </div>
     </button>
   );

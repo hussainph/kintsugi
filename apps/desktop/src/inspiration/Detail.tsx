@@ -135,8 +135,8 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
         {clip.image && <div className="flex min-h-48 items-start justify-center rounded-xl bg-muted/40 p-2"><ClipImage path={clip.path} image={clip.image} alt={clipLabel(clip)} className="max-h-[68vh] w-full rounded-lg object-contain" /></div>}
         <div className="min-w-0 space-y-8 select-text">
           <div className="space-y-3">
-            <p className="text-xs text-muted-foreground">{clipSite(clip)}{clip.author && (clip.kind === "book" || clip.kind === "document") && <><span className="px-1.5 opacity-40">·</span>{clip.author}</>} <span className="px-1.5 opacity-40">·</span> {clip.captured.slice(0, 10)}</p>
             <Input aria-label="Clip title" placeholder="Untitled" value={draft.title} onChange={(e) => edit("title", e.target.value)} onBlur={() => void save()} className="h-auto rounded-none border-0 px-0 py-1 text-xl! font-medium shadow-none focus-visible:ring-0" />
+            <p className="text-xs text-muted-foreground">{clipSite(clip)}{clip.author && (clip.kind === "book" || clip.kind === "document") && <><span className="px-1.5 opacity-40">·</span>{clip.author}</>} <span className="px-1.5 opacity-40">·</span> {clip.captured.slice(0, 10)}</p>
             {clip.summary && <p className="text-sm leading-relaxed text-muted-foreground">{clip.summary}</p>}
             {(fileLabel || source) && <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
               {fileLabel && <Button variant="outline" size="sm" onClick={() => clips.openFile(clip.path).catch((e) => toast.error(String(e)))} title={clip.file ?? undefined}>{fileLabel === "PDF" ? <FileText /> : <BookOpen />}Open {fileLabel}</Button>}

@@ -123,7 +123,7 @@ pub struct Topic {
 
 impl Topic {
     pub fn general() -> Self {
-        Topic { key: GENERAL.into(), kind: "general".into(), label: "Anything".into() }
+        Topic { key: GENERAL.into(), kind: "general".into(), label: "General".into() }
     }
 }
 

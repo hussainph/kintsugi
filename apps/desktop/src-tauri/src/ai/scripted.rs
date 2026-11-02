@@ -303,7 +303,7 @@ mod ideas {
         for (n, (i, j)) in pairs.into_iter().enumerate() {
             let (a, b) = (&reads[i], &reads[j]);
             let (kind, title, hunch) = if n == 0 {
-                ("connection", format!("{} and {} circle the same question", a.title, b.title), format!("There may be one piece here that {} sets up and {} answers.", a.title, b.title))
+                ("connection", format!("{} and {} ask the same question", a.title, b.title), format!("There may be one piece here that {} sets up and {} answers.", a.title, b.title))
             } else {
                 ("gap", format!("You keep returning to {} without writing it down", b.title.to_lowercase()), format!("A short post could say plainly what {} only hints at.", b.title))
             };
