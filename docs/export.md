@@ -15,7 +15,7 @@ and he posts it himself.
   the checks, a real preview, and one button: **Save PDF…**, **Copy text**
   or **Save HTML…**. Pending saves are flushed first.
 - Any document can be exported, drafts and blog mirrors included (a mirror
-  just can't be published again). Nothing is written into the vault.
+  can't be published again). Nothing is written into the vault.
 
 | Destination | Delivered as | Preview |
 | --- | --- | --- |
@@ -88,8 +88,8 @@ document's text and does what Publish does, minus the blog's specifics:
 
 **Adding one later.** A built-in destination is one entry and one render
 function. One that lives outside the app (Kin plugging into something like
-MCP, since every place he posts works differently) is the seam this leaves:
-a new `delivery` kind that hands the `Piece` (plain JSON by design) to a
+MCP, since every place he posts works differently) would use a new
+`delivery` kind that hands the `Piece` (plain JSON by design) to a
 tool and reports what it did. Settings already stores destination ids as an
 open list. Not built yet.
 
@@ -107,7 +107,7 @@ files, so a piece typesets the same in the app and in headless runs.
 
 - A4, justified and hyphenated, Libertinus Serif at 11.5 pt; title, date and
   (if published) its address; headings, numbered figures ("Fig. 1") scaled to
-  the measure, callouts, highlighted code, tables, gold links that stay live
+  the measure, callouts, highlighted code, tables, accent-coloured links that stay live
   PDF links, page numbers, the sources appendix and the statement after a
   rule.
 - Every word the writer typed enters Typst as a string literal (`#"…"`),
@@ -177,7 +177,7 @@ export does); the save panel is the in-page path prompt there.
 ## Not doing (yet)
 
 - Posting anywhere, or any social API.
-- Destinations added by Kin (the seam is above).
+- Destinations added by Kin (see Adding one later, above).
 - Page size, fonts or themes as settings (A4 and Libertinus for now).
 - Fetching remote images into a PDF.
 - Exporting from the phone.

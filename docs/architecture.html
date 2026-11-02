@@ -7,7 +7,7 @@
 <style>
   :root{
     --paper:#f7f4ee; --card:#fffdf9; --ink:#1c1b19; --mute:#6b665d; --line:#e4ddd0;
-    --gold:#b8862b; --gold-soft:#f3e7cc; --solid:#2f6b4a; --solid-soft:#e2efe6;
+    --accent:#b8862b; --accent-soft:#f3e7cc; --solid:#2f6b4a; --solid-soft:#e2efe6;
     --watch:#9a6a12; --watch-soft:#f6ebd2; --fix:#a3372b; --fix-soft:#f6e0dc;
     --call:#5b4bb0; --call-soft:#e8e4f7; --mono: ui-monospace, "SF Mono", Menlo, monospace;
   }
@@ -29,7 +29,7 @@
   .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
   @media (max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr} main,header.top,nav .in{padding-left:20px;padding-right:20px}}
   code,.mono{font-family:var(--mono);font-size:12.5px}
-  .tag{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:99px;vertical-align:1px}
+  .tag{display:inline-block;font-size:12px;font-weight:600;line-height:1.5;padding:1px 9px;border-radius:99px;vertical-align:1px}
   .solid{background:var(--solid-soft);color:var(--solid)} .watch{background:var(--watch-soft);color:var(--watch)}
   .fix{background:var(--fix-soft);color:var(--fix)} .call{background:var(--call-soft);color:var(--call)}
   .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;font-size:13px;color:var(--mute)}
@@ -42,17 +42,17 @@
   .step{position:relative;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px;font-size:13.5px}
   .step::before{counter-increment:s;content:counter(s);position:absolute;top:-10px;left:12px;background:var(--ink);color:#fff;font:600 11px/20px var(--mono);width:20px;text-align:center;border-radius:99px}
   .step b{display:block;margin-bottom:4px;font-size:14px}
-  .step .n{color:var(--gold);font-family:var(--mono);font-size:12px}
+  .step .n{color:var(--accent);font-family:var(--mono);font-size:12px}
   .stack{display:flex;flex-direction:column;gap:4px}
   .layer{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-radius:8px;font-size:13.5px}
   .layer small{color:var(--mute);font-size:12px}
-  .cached{background:var(--gold-soft);border:1px solid #e6d3a8} .fresh{background:#fff;border:1px dashed #cfc6b5}
+  .cached{background:var(--accent-soft);border:1px solid #e6d3a8} .fresh{background:#fff;border:1px dashed #cfc6b5}
   table{width:100%;border-collapse:collapse;font-size:13.5px}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-  th{font-size:12px;color:var(--mute);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+  th{font-size:13px;color:var(--ink);font-weight:600}
   .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
   .flow .node{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;min-width:120px;flex:1}
-  .flow .arr{align-self:center;color:var(--gold);padding:0 6px;font-size:18px}
+  .flow .arr{align-self:center;color:var(--accent);padding:0 6px;font-size:18px}
   .flow .node b{display:block;font-size:13.5px}
   .formula{font-family:var(--mono);font-size:13px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0;overflow-x:auto}
   .tree{font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre;overflow-x:auto;margin:0}
@@ -64,23 +64,23 @@
   details.d summary .t{flex:1;font-weight:600}
   details.d summary .rev{color:var(--mute);font-size:12px;white-space:nowrap}
   details.d .body{padding:0 16px 14px 16px;display:grid;grid-template-columns:120px 1fr;gap:4px 14px;font-size:13.5px}
-  details.d .body .k{color:var(--mute);font-size:12px;text-transform:uppercase;letter-spacing:.04em;padding-top:2px}
+  details.d .body .k{color:var(--mute)}
   details.d[open]{box-shadow:0 1px 0 var(--line)}
   .filters{display:flex;gap:8px;margin:0 0 12px;flex-wrap:wrap}
   .filters button{border:1px solid var(--line);background:#fff;border-radius:99px;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--ink)}
   .filters button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .group{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em;margin:18px 0 6px}
+  .group{font-size:15px;font-weight:600;color:var(--ink);margin:18px 0 6px}
   .q{border-left:3px solid var(--call);padding:12px 16px;background:var(--card);border-radius:0 10px 10px 0;margin-bottom:10px}
   .q b{display:block;margin-bottom:4px}
   .q .opts{color:var(--mute);font-size:13.5px}
-  .seam{height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);margin:36px 0 0;opacity:.5}
+  .divider{height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);margin:36px 0 0;opacity:.5}
   .foot{color:var(--mute);font-size:12.5px;margin-top:40px}
 </style>
 </head>
 <body>
 <header class="top">
   <h1>How Kintsugi is built</h1>
-  <p class="lede">The whole system on one page: what the parts are, how a turn, a capture, a search and a sync actually run, and every architectural decision made without asking you. Each decision carries my verdict and how hard it would be to undo. The decisions marked <span class="tag call">Your call</span> are the ones you should weigh in on.</p>
+  <p class="lede">This page covers the whole system: what the parts are, how a turn, a capture, a search and a sync run, and every architectural decision made without asking you. Each decision carries my verdict and how hard it would be to undo. The decisions marked <span class="tag call">Your call</span> are the ones you should weigh in on.</p>
   <div class="legend">
     <div><span class="tag solid">Solid</span>a good choice; keep it</div>
     <div><span class="tag watch">Watch</span>fine for now, with a known cost</div>
@@ -96,7 +96,7 @@
 
 <section id="map">
   <h2>System map</h2>
-  <p class="sub">A single Mac app does all the work. The phone is a client of the Mac. Your writing is plain files; everything else is derived and can be rebuilt. No cloud service of ours sits anywhere in this picture.</p>
+  <p class="sub">A single Mac app does all the work. The phone is a client of the Mac. Your writing is plain files; everything else is derived and can be rebuilt. None of it runs on a cloud service of ours.</p>
   <svg class="map" viewBox="0 0 1180 630" role="img" aria-label="System map">
     <defs>
       <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b8862b"/></marker>
@@ -163,10 +163,10 @@
       <text x="672" y="480" font-weight="600">Swift sidecars</text>
       <text x="672" y="500" fill="#6b665d">speech-to-text</text><text x="672" y="518" fill="#6b665d">PDF text, OCR</text><text x="672" y="536" fill="#6b665d">child processes</text>
     </g>
-    <text x="316" y="586" font-size="11.5" fill="#6b665d">Gold boxes = where your words and Kin live. Grey = supporting machinery.</text>
+    <text x="316" y="586" font-size="11.5" fill="#6b665d">Accent-coloured boxes: your writing and Kin. Grey boxes: supporting machinery.</text>
     <!-- Right side -->
     <rect x="920" y="40" width="240" height="150" rx="14" fill="#fff" stroke="#b8862b"/>
-    <text x="936" y="66" font-size="14" font-weight="600">Your vault · the truth</text>
+    <text x="936" y="66" font-size="14" font-weight="600">Your vault · source of truth</text>
     <text x="936" y="92" font-size="12.5" fill="#6b665d">Your writing as .md / .mdx files</text>
     <text x="936" y="112" font-size="12.5" fill="#6b665d">inspiration/  clips + sources</text>
     <text x="936" y="132" font-size="12.5" fill="#6b665d">.kintsugi/  Kin memory, comments</text>
@@ -208,7 +208,7 @@
   </div>
 </section>
 
-<div class="seam"></div>
+<div class="divider"></div>
 
 <section id="kin">
   <h2>Kin's harness</h2>
@@ -217,7 +217,7 @@
   <h3 style="margin-top:8px">One chat turn, start to finish</h3>
   <div class="steps" style="margin-top:16px">
     <div class="step"><b>You send</b>Saved to the log at once. The topic is inferred: first chip, else a named thread, else the last topic if under 30 min old. <span class="n">≤ 20 KB, ≤ 12 chips</span></div>
-    <div class="step"><b>Kin waits a beat</b>Bursts of messages merge into one turn. Typing interrupts Kin and pushes the turn back. <span class="n">1.2 s · 3.5 s after typing</span></div>
+    <div class="step"><b>Kin waits</b>Bursts of messages merge into one turn. Typing interrupts Kin and pushes the turn back. <span class="n">1.2 s · 3.5 s after typing</span></div>
     <div class="step"><b>Context is built</b>All waiting messages become one question, plus chips as paths (never pasted text), the thread summary and recent exchanges. <span class="n">summary + 6 exchanges</span></div>
     <div class="step"><b>The loop runs</b>Model → tool calls run one at a time → results go back. A fresh memory snapshot is taken every turn. <span class="n">≤ 24 steps · 4,096 tokens per step</span></div>
     <div class="step"><b>Saved and priced</b>Text streams to the window. The reply, its cost in $ and any interruption go in the log. Idle threads get summarized. <span class="n">summary after 120 s idle</span></div>
@@ -240,9 +240,9 @@
       <p style="font-size:12px;color:var(--mute);margin:8px 0 0">* until Kin edits its memory; the edit shows up from the next turn.</p>
     </div>
     <div class="card">
-      <h3>Kin's tools and the fences around them</h3>
+      <h3>Kin's tools and their limits</h3>
       <table>
-        <tr><th>Tool</th><th>Does</th><th>Fence</th></tr>
+        <tr><th>Tool</th><th>Does</th><th>Limits</th></tr>
         <tr><td><code>search</code></td><td>hybrid search over vault + Feed</td><td>snippets only, ≤ 30 results</td></tr>
         <tr><td><code>read</code></td><td>a note, a Feed item, or a spilled output</td><td>no hidden folders, no symlinks, no <code>..</code>; text files ≤ 2 MB; ≤ 1,000 lines</td></tr>
         <tr><td><code>list</code></td><td>a folder, with titles</td><td>skips hidden entries</td></tr>
@@ -257,7 +257,7 @@
   <div class="grid g3" style="margin-top:14px">
     <div class="card">
       <h3>Memory, Hermes-style</h3>
-      <p style="font-size:13.5px;margin:0">Two small files Kin edits itself, plus skills, all in <code>.kintsugi/agent/</code> in your vault, visible and editable under <i>About you</i>. Every change is journaled with undo. Your own edits made outside the app are picked up. No vector "memory store": Kin finds things with tools instead of remembering them.</p>
+      <p style="font-size:13.5px;margin:0">Two small files Kin edits itself, plus skills, all in <code>.kintsugi/agent/</code> in your vault, visible and editable under <i>About you</i>. Every change is journaled with undo. Your own edits made outside the app are picked up. There's no vector "memory store"; Kin finds things with tools instead of remembering them.</p>
     </div>
     <div class="card">
       <h3>Where a login comes from</h3>
@@ -270,7 +270,7 @@
   </div>
 </section>
 
-<div class="seam"></div>
+<div class="divider"></div>
 
 <section id="data">
   <h2>Capture, Feed, search</h2>
@@ -288,9 +288,9 @@
 
   <div class="grid g2">
     <div class="card">
-      <h3>"Picked for you": how ranking works</h3>
+      <h3>How "Picked for you" is ranked</h3>
       <p style="font-size:13.5px;margin:0 0 6px">What you do teaches it. Kin's own picks never do.</p>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px;font-size:12.5px"><span class="tag solid">save +4</span><span class="tag solid">note +3</span><span class="tag solid">like +2</span><span class="tag solid">discuss +1.5</span><span class="tag solid">open +1</span><span class="tag fix">not interested −6</span><span class="tag watch">ignored −0.3</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px;font-size:12.5px"><span class="tag solid">Save +4</span><span class="tag solid">Note +3</span><span class="tag solid">Like +2</span><span class="tag solid">Discuss +1.5</span><span class="tag solid">Open +1</span><span class="tag fix">Not interested −6</span><span class="tag watch">Ignored −0.3</span></div>
       <div class="formula">cold   = 0.45·freshness + 0.2·source prior + 0.35·closeness to your taste
 score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
       <p style="font-size:13.5px;margin:0">It blends three taste memories (90-day, 7-day and an "unwanted" one) with a small online model. It then picks 8 for diversity, with the same author ×0.7 and the same source ×0.85, and keeps 1 in 8 slots for exploration. The list is stable within a day, and a replay test must beat newest-first.</p>
@@ -302,12 +302,12 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
         <div class="node"><b>Meaning</b>model2vec, 256-dim, 30 MB model, cosine ≥ 0.3</div><div class="arr">→</div>
         <div class="node"><b>Fuse</b>Σ 1/(60+rank) over both lists</div>
       </div>
-      <p style="font-size:13.5px;margin:6px 0 0">The index re-syncs with the vault before every search. While the model is still loading, only word search runs. There's no vector database: comparing every chunk is fast enough at one person's scale.</p>
+      <p style="font-size:13.5px;margin:6px 0 0">The index re-syncs with the vault before every search. While the model is still loading, only word search runs. There's no vector database, because comparing every chunk is fast enough at one person's scale.</p>
     </div>
   </div>
 </section>
 
-<div class="seam"></div>
+<div class="divider"></div>
 
 <section id="disk">
   <h2>What Kintsugi writes</h2>
@@ -335,7 +335,7 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
   </div>
 </section>
 
-<div class="seam"></div>
+<div class="divider"></div>
 
 <section id="shell">
   <h2>Saving, the phone, and how tests work</h2>
@@ -357,7 +357,7 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
   </div>
 </section>
 
-<div class="seam"></div>
+<div class="divider"></div>
 
 <section id="decisions">
   <h2>Decision register</h2>
@@ -368,7 +368,7 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
   <div class="dec" id="dec"></div>
 </section>
 
-<div class="seam"></div>
+<div class="divider"></div>
 
 <section id="ask">
   <h2>Decisions you should weigh in on</h2>
@@ -414,12 +414,12 @@ const D = [
   "Easy"],
  ["call","Search","The embedding model downloads at first launch without asking",
   "Asking first, like the optional-tools manager does",
-  "Search should just work.",
+  "Search should work without setup.",
   "A 30 MB download from Hugging Face that the privacy statement doesn't mention. It's pinned and checksum-verified.",
   "Easy"],
  ["call","Kin","One conversation log for all vaults",
   "A log per vault (memory and Ideas are already per-vault)",
-  "\"One conversation, everywhere\" was the product decision.",
+  "The product decision was one conversation everywhere.",
   "If you ever open a second vault, Kin's history mixes the two.",
   "Easy"],
  ["call","Kin","Local models are excluded from Kin",
@@ -454,7 +454,7 @@ const D = [
   "Medium"],
  ["watch","Phone","The phone downloads the whole library every 30 s",
   "Sending only what changed since the last sync",
-  "Simplest correct offline copy.",
+  "It's the simplest correct offline copy.",
   "Fine now; gets heavier as the vault grows, especially over cellular.",
   "Easy"],
  ["watch","Phone","Tailscale plus one shared bearer token",
@@ -482,11 +482,11 @@ const D = [
   "Shares TypeScript (merge, API client, frontmatter) with the desktop.",
   "About 3,000 lines of Swift were still needed for the share extension. Expo breaks between SDK versions.",
   "Medium"],
- ["solid","Core","Plain files are the truth; databases hold only derived data",
+ ["solid","Core","Plain files are the source of truth; databases hold only derived data",
   "A database-first store",
   "Obsidian compatibility, the blog's MDX, phone sync, and you can delete any index and rebuild it.",
   "Needs the file watcher above to be fully safe.",
-  "Hard: it's the product's promise"],
+  "Hard: the product is built on it"],
  ["solid","Core","Tauri 2 instead of Electron",
   "Electron",
   "A substantial Rust backend (vault, ingest, search, rank, Kin, Typst) plus Apple-native helpers; a small app.",

@@ -77,7 +77,7 @@ The options:
 3. **A generated mirror (recommended, built).** Import writes each post as a
    plain file under `<vault>/hussain.ph/` (the site's host name), marked as
    a mirror, opened read-only, and **regenerated from the repository**.
-   Every existing consumer works unchanged, because these are just vault
+   Every existing consumer works unchanged, because these are ordinary vault
    documents, and there is still one source of truth: the repository.
    Edits flow one way only, from repo to mirror.
 
@@ -103,7 +103,7 @@ The body is the post's body, verbatim. `[[the-sixth-attempt]]` resolves by
 basename like any document.
 
 - **When:** when the vault opens (if a blog is configured), after every
-  publish, and from Settings. It's a few dozen small files, so it simply
+  publish, and from Settings. It's a few dozen small files, so it
   rewrites what changed.
 - **Read-only:** the editor opens a mirror file read-only with a line saying
   where to edit it. `doc_write`, the phone's save, rename and new documents
@@ -229,7 +229,7 @@ The dialog shows:
 
 - **Preview:** a rendering in the blog's terms (title, date, tags, minutes,
   figures with numbered captions, callouts, the appendix). It's an
-  approximation; the blog's `pnpm dev` is the real thing.
+  approximation; the blog's `pnpm dev` shows the actual page.
 - **File:** the exact file that will be written, plus the image copies, as
   repo paths.
 - **Checks:** errors (block writing), warnings (unpublished links, changed

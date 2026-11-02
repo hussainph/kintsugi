@@ -66,9 +66,8 @@ without a link (`apps/desktop/src-tauri/src/enrich/mod.rs`). Clips of X and Redd
 therefore go through the platform adapters, and a clip with a saved file
 (`file:` in its frontmatter) is captured from that file, not its link.
 
-The AI is not an extractor. Downstream consumers may use it to clean up
-or summarize an item (clip enrichment does), but every body comes from a
-deterministic extractor.
+Every body comes from a deterministic extractor. Downstream consumers may
+use the AI to clean up or summarize an item (clip enrichment does).
 
 ## Feeds
 
@@ -147,7 +146,8 @@ render.
 ### Watching a page
 
 `WebAdapter::poll` (`crates/ingest/src/web/watch.rs`) is "follow this page"
-change detection, with changedetection.io as a design reference only. No AI:
+change detection, with changedetection.io as a design reference only. It
+makes no AI calls.
 
 - **Request**: conditional (`If-None-Match` / `If-Modified-Since` from the
   cursor), with the web adapter's caps and deadline. A 304 returns no items
@@ -401,8 +401,8 @@ comment tree. Subreddits can't be followed (Reddit's RSS ends in November
   the Mac that's the web adapter with its hidden webview. The result keeps
   that page's extractor in `extras.extractor`, adds `fallback: "web"`, and is
   relabelled as the Reddit item (same `id` and `url`). The webview is
-  incognito, so it never uses the owner's Reddit login: it gets past bot
-  walls, not account walls. While Reddit is rate limiting, there is no
+  incognito, so it never uses the owner's Reddit login. It can get past bot
+  walls but not account walls. While Reddit is rate limiting, there is no
   fallback.
 
 ## PDFs
@@ -491,9 +491,9 @@ Researched 2026-11-01.
 downloaded and reuses the Swift-helper pattern the transcriber
 established, so a hostile PDF can only crash a child process. pdfium-render
 would add a native library to ship and sign and run untrusted parsing
-inside the app. Docling is the high-quality converter: on a two-column
-paper or a report with tables, PDFKit's text is in reading order per
-column at best and tables come out as runs of cells. MarkItDown was
+inside the app. Docling gives better output on a two-column paper or a
+report with tables, where PDFKit's text is in reading order per column at
+best and tables come out as runs of cells. MarkItDown was
 considered; for PDFs it wraps pdfminer.six, which gives plain text no
 better than PDFKit's. marker is not offered, because of its model licence.
 
@@ -577,15 +577,15 @@ stderr is discarded. Nothing leaves the Mac and no AI call is made, so it
 costs nothing against the AI budget. It is built and shipped like the PDF
 helper (`apps/desktop/src-tauri/build.rs`, `bundle.externalBin`).
 
-The item is plainly machine-made:
+The item says it is machine-made:
 
 ```markdown
 _Text recognised in the image on this Mac (machine-made, may contain errors):_
 
-Golden seams  
-\# Repair is the story
+Shopping list  
+\# 3 eggs and milk
 
-_What the image shows, as guessed on this Mac (machine-made):_ ceramic, bowl, gold leaf
+_What the image shows, as guessed on this Mac (machine-made):_ paper, handwriting, table
 ```
 
 - Recognised lines are Markdown-safe like post text, one per line (hard
@@ -595,8 +595,8 @@ _What the image shows, as guessed on this Mac (machine-made):_ ceramic, bowl, go
   `url`, no `media` (the clip already has its picture). `extras`:
   `extractor: vision`, `machine: true`, `width`, `height`, `labels`,
   `ocrLines`.
-- An AI description of the picture isn't made: it would need a vision
-  model call per image. If one is added, it goes through the AI cost cap
+- No AI description of the picture is made, because it would need a
+  vision model call per image. If one is added, it goes through the AI cost cap
   and is labelled machine-made the same way.
 
 ## Optional tools
@@ -676,11 +676,11 @@ timed segments as Markdown paragraphs, and each paragraph starts with a
 timestamp that links to that moment:
 
 ```markdown
-## The lacquer
+## Getting started
 
-[0:41](<https://www.youtube.com/watch?v=…&t=41s>) urushi lacquer takes weeks and gold & patience
+[0:41](<https://www.youtube.com/watch?v=…&t=41s>) the first draft takes weeks & a lot of rewriting
 
-[1:05](<https://pod.example/12.mp3#t=65>) **Ken:** Gold makes the crack visible.
+[1:05](<https://pod.example/12.mp3#t=65>) **Ken:** Most people skip the outline.
 ```
 
 - A paragraph breaks when the speaker or chapter changes, at a pause or
@@ -796,8 +796,8 @@ enrichment writes that URL into a podcast clip saved by its tracked link,
 and the clip's kind becomes `podcast`. `site` is the show.
 
 The Podcast Index API (`/episodes/byfeedurl`, which has a `transcripts`
-field) needs an API key and secret. It isn't used: the same transcript
-links are in the RSS feed the Feed already fetches.
+field) needs an API key and secret. It isn't used, because the same
+transcript links are in the RSS feed the Feed already fetches.
 
 ### On-device transcription: Apple SpeechAnalyzer
 
@@ -832,7 +832,7 @@ take the app down. Each run is limited to an hour.
 
 The research was done on 2026-11-01. Each source is linked below.
 
-| | Apple SpeechAnalyzer | Parakeet TDT 0.6B via FluidAudio | whisper.cpp via whisper-rs (large-v3-turbo) |
+| | Apple SpeechAnalyzer | Parakeet TDT 0.6B via FluidAudio | `whisper.cpp` via `whisper-rs` (large-v3-turbo) |
 | --- | --- | --- | --- |
 | Accuracy, same harness on a Mac (LibriSpeech clean / other WER) | 2.12 / 4.56 | v2: 2.01 / 3.40 | not in that study. Open ASR leaderboard average is 7.83 (Parakeet v2: 6.05) |
 | Long-form conversational speech (earnings22 WER, Argmax) | 14.0 | 11.7 | (whisper-small: 12.8) |
@@ -861,8 +861,8 @@ Sources:
 [Argmax: Apple and Argmax](https://www.argmaxinc.com/blog/apple-and-argmax),
 [MacStories: Apple's speech APIs vs Whisper](https://www.macstories.net/stories/hands-on-how-apples-new-speech-apis-outpace-whisper-for-lightning-fast-transcription/),
 [FluidAudio benchmarks](https://github.com/FluidInference/FluidAudio/blob/main/Documentation/Benchmarks.md),
-[whisper.cpp models](https://huggingface.co/ggerganov/whisper.cpp),
-[whisper-rs build requirements](https://codeberg.org/tazz4843/whisper-rs/raw/branch/master/BUILDING.md),
+[`whisper.cpp` models](https://huggingface.co/ggerganov/whisper.cpp),
+[`whisper-rs` build requirements](https://codeberg.org/tazz4843/whisper-rs/raw/branch/master/BUILDING.md),
 [WWDC25 session 277](https://developer.apple.com/videos/play/wwdc2025/277/).
 
 ## Testing
