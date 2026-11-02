@@ -219,7 +219,9 @@ pub struct Store {
 }
 
 fn date(at: &str) -> Option<NaiveDate> {
-    DateTime::parse_from_rfc3339(at).ok().map(|d| d.date_naive())
+    DateTime::parse_from_rfc3339(at)
+        .ok()
+        .map(|d| d.date_naive())
 }
 
 /// Whole local days between `created` and `now`.
@@ -245,22 +247,45 @@ impl Store {
             .and_then(|d| fs::read_to_string(d.join("ideas.json")).ok())
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
-        Store { dir, file, signals: Vec::new(), next: 0 }
+        Store {
+            dir,
+            file,
+            signals: Vec::new(),
+            next: 0,
+        }
     }
 
     fn save(&self) -> Result<()> {
         let Some(dir) = &self.dir else { return Ok(()) };
         fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-        write_atomic(&dir.join("ideas.json"), &serde_json::to_string_pretty(&self.file).map_err(|e| e.to_string())?)
+        write_atomic(
+            &dir.join("ideas.json"),
+            &serde_json::to_string_pretty(&self.file).map_err(|e| e.to_string())?,
+        )
     }
 
-    fn signal(&mut self, idea: &Idea, kind: SignalKind, detail: Option<String>, now: DateTime<FixedOffset>) {
-        let signal = Signal { at: now.to_rfc3339(), idea: idea.id.clone(), title: idea.content.title.clone(), kind, detail };
+    fn signal(
+        &mut self,
+        idea: &Idea,
+        kind: SignalKind,
+        detail: Option<String>,
+        now: DateTime<FixedOffset>,
+    ) {
+        let signal = Signal {
+            at: now.to_rfc3339(),
+            idea: idea.id.clone(),
+            title: idea.content.title.clone(),
+            kind,
+            detail,
+        };
         match &self.dir {
             Some(dir) => {
                 let _ = fs::create_dir_all(dir);
                 if let (Ok(mut f), Ok(line)) = (
-                    fs::OpenOptions::new().create(true).append(true).open(dir.join("signals.jsonl")),
+                    fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(dir.join("signals.jsonl")),
                     serde_json::to_string(&signal),
                 ) {
                     let _ = writeln!(f, "{line}");
@@ -293,7 +318,12 @@ impl Store {
     }
 
     /// New ideas from a helper job, in the order it gave them.
-    pub fn add(&mut self, job: &str, contents: Vec<Content>, now: DateTime<FixedOffset>) -> Result<Vec<Idea>> {
+    pub fn add(
+        &mut self,
+        job: &str,
+        contents: Vec<Content>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Vec<Idea>> {
         let stamp = now.format("%Y%m%d-%H%M%S").to_string();
         let mut added = Vec::new();
         for content in contents {
@@ -327,7 +357,12 @@ impl Store {
     }
 
     fn change(&mut self, id: &str, f: impl FnOnce(&mut Idea) -> Result<()>) -> Result<Idea> {
-        let idea = self.file.ideas.iter_mut().find(|i| i.id == id).ok_or("That idea is gone.")?;
+        let idea = self
+            .file
+            .ideas
+            .iter_mut()
+            .find(|i| i.id == id)
+            .ok_or("That idea is gone.")?;
         f(idea)?;
         let idea = idea.clone();
         self.save()?;
@@ -338,13 +373,19 @@ impl Store {
     /// "no"; unused ones past [`KEEP_DAYS`] are deleted.
     pub fn list(&mut self, now: DateTime<FixedOffset>) -> Vec<Listed> {
         let before = self.file.ideas.len();
-        self.file.ideas.retain(|i| i.adopted.is_some() || age(&i.created, now) < KEEP_DAYS);
+        self.file
+            .ideas
+            .retain(|i| i.adopted.is_some() || age(&i.created, now) < KEEP_DAYS);
         let mut changed = before != self.file.ideas.len();
         let newly: Vec<Idea> = self
             .file
             .ideas
             .iter_mut()
-            .filter(|i| !i.faded_noted && i.dismissed.is_none() && stage(i, age(&i.created, now)) == Stage::Faded)
+            .filter(|i| {
+                !i.faded_noted
+                    && i.dismissed.is_none()
+                    && stage(i, age(&i.created, now)) == Stage::Faded
+            })
             .map(|i| {
                 i.faded_noted = true;
                 i.clone()
@@ -363,30 +404,61 @@ impl Store {
             .iter()
             .map(|i| {
                 let age = age(&i.created, now);
-                Listed { stage: stage(i, age), age, idea: i.clone() }
+                Listed {
+                    stage: stage(i, age),
+                    age,
+                    idea: i.clone(),
+                }
             })
             .filter(|l| l.idea.adopted.is_some() || l.age < GONE_DAYS)
             .collect();
         // Newest batch first; within a batch, the helper's order.
-        out.sort_by(|a, b| b.idea.created.cmp(&a.idea.created).then_with(|| seq(&a.idea.id).cmp(&seq(&b.idea.id))));
+        out.sort_by(|a, b| {
+            b.idea
+                .created
+                .cmp(&a.idea.created)
+                .then_with(|| seq(&a.idea.id).cmp(&seq(&b.idea.id)))
+        });
         out
     }
 
     /// Titles offered lately, so a batch doesn't repeat them.
     pub fn recent(&self, days: i64, now: DateTime<FixedOffset>) -> Vec<&Idea> {
-        self.file.ideas.iter().filter(|i| age(&i.created, now) < days).collect()
+        self.file
+            .ideas
+            .iter()
+            .filter(|i| age(&i.created, now) < days)
+            .collect()
     }
 
-    pub fn dismiss(&mut self, id: &str, reasons: Vec<String>, now: DateTime<FixedOffset>) -> Result<Idea> {
-        let reasons: Vec<String> = reasons.into_iter().map(|r| r.trim().chars().take(200).collect::<String>()).filter(|r| !r.is_empty()).take(6).collect();
+    pub fn dismiss(
+        &mut self,
+        id: &str,
+        reasons: Vec<String>,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Idea> {
+        let reasons: Vec<String> = reasons
+            .into_iter()
+            .map(|r| r.trim().chars().take(200).collect::<String>())
+            .filter(|r| !r.is_empty())
+            .take(6)
+            .collect();
         let idea = self.change(id, |i| {
             if i.adopted.is_some() {
                 return Err("An adopted idea can't be dismissed.".into());
             }
-            i.dismissed = Some(Dismissal { at: now.to_rfc3339(), reasons: reasons.clone() });
+            i.dismissed = Some(Dismissal {
+                at: now.to_rfc3339(),
+                reasons: reasons.clone(),
+            });
             Ok(())
         })?;
-        self.signal(&idea, SignalKind::Dismissed, Some(reasons.join("; ")).filter(|r| !r.is_empty()), now);
+        self.signal(
+            &idea,
+            SignalKind::Dismissed,
+            Some(reasons.join("; ")).filter(|r| !r.is_empty()),
+            now,
+        );
         Ok(idea)
     }
 
@@ -400,15 +472,30 @@ impl Store {
     }
 
     /// "Not a reason" (or its undo) in Why this?.
-    pub fn set_reason(&mut self, id: &str, reason: &str, removed: bool, now: DateTime<FixedOffset>) -> Result<Idea> {
+    pub fn set_reason(
+        &mut self,
+        id: &str,
+        reason: &str,
+        removed: bool,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Idea> {
         let mut text = String::new();
         let idea = self.change(id, |i| {
-            let r = i.content.reasons.iter_mut().find(|r| r.id == reason).ok_or("No such reason.")?;
+            let r = i
+                .content
+                .reasons
+                .iter_mut()
+                .find(|r| r.id == reason)
+                .ok_or("No such reason.")?;
             r.removed = removed;
             text = r.text.clone();
             Ok(())
         })?;
-        let kind = if removed { SignalKind::ReasonRemoved } else { SignalKind::ReasonRestored };
+        let kind = if removed {
+            SignalKind::ReasonRemoved
+        } else {
+            SignalKind::ReasonRestored
+        };
         self.signal(&idea, kind, Some(text), now);
         Ok(idea)
     }
@@ -430,14 +517,28 @@ impl Store {
     }
 
     /// Refine's result replaces the idea; the earlier version is kept.
-    pub fn refined(&mut self, id: &str, mut content: Content, asked: &str, now: DateTime<FixedOffset>) -> Result<Idea> {
+    pub fn refined(
+        &mut self,
+        id: &str,
+        mut content: Content,
+        asked: &str,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Idea> {
         let idea = self.change(id, |i| {
             // Reasons he removed stay removed if Kin gives them again.
             for r in content.reasons.iter_mut() {
-                r.removed = i.content.reasons.iter().any(|old| old.removed && old.text.eq_ignore_ascii_case(&r.text));
+                r.removed = i
+                    .content
+                    .reasons
+                    .iter()
+                    .any(|old| old.removed && old.text.eq_ignore_ascii_case(&r.text));
             }
             let previous = std::mem::replace(&mut i.content, content);
-            i.versions.push(Version { content: previous, asked: asked.into(), at: now.to_rfc3339() });
+            i.versions.push(Version {
+                content: previous,
+                asked: asked.into(),
+                at: now.to_rfc3339(),
+            });
             i.refining = None;
             i.refine_error = None;
             Ok(())
@@ -456,9 +557,19 @@ impl Store {
         Ok(idea)
     }
 
-    pub fn adopted(&mut self, id: &str, path: &str, new: bool, now: DateTime<FixedOffset>) -> Result<Idea> {
+    pub fn adopted(
+        &mut self,
+        id: &str,
+        path: &str,
+        new: bool,
+        now: DateTime<FixedOffset>,
+    ) -> Result<Idea> {
         let idea = self.change(id, |i| {
-            i.adopted = Some(Adoption { path: path.into(), at: now.to_rfc3339(), new });
+            i.adopted = Some(Adoption {
+                path: path.into(),
+                at: now.to_rfc3339(),
+                new,
+            });
             i.dismissed = None;
             Ok(())
         })?;
@@ -475,5 +586,8 @@ impl Store {
 
 /// The counter at the end of an id, for ordering within a batch.
 fn seq(id: &str) -> u32 {
-    id.rsplit('-').next().and_then(|n| n.parse().ok()).unwrap_or(0)
+    id.rsplit('-')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0)
 }

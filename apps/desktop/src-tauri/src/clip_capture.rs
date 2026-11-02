@@ -1,12 +1,12 @@
 //! Delivery receipts belong to the app, not the vault's plain clip files.
 //! Both desktop and phone captures use this one lock and persisted journal.
 
+use crate::AppHandle;
 use kintsugi_vault as vault;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use crate::AppHandle;
 #[cfg(not(feature = "headless"))]
 use tauri::Manager;
 
@@ -86,7 +86,14 @@ pub fn decode_file(
     }
     // Only a bare name is kept; it names the clip and never becomes a path.
     let name = file_name
-        .map(|n| n.rsplit(['/', '\\']).next().unwrap_or_default().chars().take(255).collect::<String>())
+        .map(|n| {
+            n.rsplit(['/', '\\'])
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .take(255)
+                .collect::<String>()
+        })
         .filter(|n| !n.trim().is_empty());
     Ok(Some(vault::ClipFile { bytes, mime, name }))
 }
@@ -145,11 +152,16 @@ struct Receipt {
 
 pub fn index_path(app: &AppHandle) -> Result<PathBuf, String> {
     #[cfg(feature = "headless")]
-    { Ok(crate::config::directory(app)?.join("clip-capture-ids.json")) }
+    {
+        Ok(crate::config::directory(app)?.join("clip-capture-ids.json"))
+    }
     #[cfg(not(feature = "headless"))]
     {
         if crate::config::isolated_dev() {
-            return Ok(app.state::<crate::vault::Vault>().root()?.join(".kintsugi/clip-capture-ids.json"));
+            return Ok(app
+                .state::<crate::vault::Vault>()
+                .root()?
+                .join(".kintsugi/clip-capture-ids.json"));
         }
         Ok(crate::config::directory(app)?.join("clip-capture-ids.json"))
     }

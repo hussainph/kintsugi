@@ -52,7 +52,10 @@ pub struct Status {
 }
 
 impl Status {
-    const NONE: Status = Status { auth: "none", source: None };
+    const NONE: Status = Status {
+        auth: "none",
+        source: None,
+    };
 }
 
 /// The credential sources, in the order they're consulted.
@@ -77,7 +80,10 @@ impl Chain {
     }
 
     fn lookups(&self, provider: &Provider) -> Result<[(Source, Lookup); 2]> {
-        Ok([(Source::Opencode, self.opencode.lookup(provider)?), (Source::Pi, self.pi.lookup(provider)?)])
+        Ok([
+            (Source::Opencode, self.opencode.lookup(provider)?),
+            (Source::Pi, self.pi.lookup(provider)?),
+        ])
     }
 
     pub fn status(&self, provider: &Provider) -> Result<Status> {
@@ -90,19 +96,34 @@ impl Chain {
                 Kind::ApiKey => "api_key",
                 Kind::Oauth => "login",
             };
-            return Ok(Status { auth, source: Some(source) });
+            return Ok(Status {
+                auth,
+                source: Some(source),
+            });
         }
         if self.env_key(provider).is_some() {
-            return Ok(Status { auth: "api_key", source: Some(Source::Env) });
+            return Ok(Status {
+                auth: "api_key",
+                source: Some(Source::Env),
+            });
         }
         if provider.keyless {
-            return Ok(Status { auth: "local", source: Some(Source::Local) });
+            return Ok(Status {
+                auth: "local",
+                source: Some(Source::Local),
+            });
         }
         Ok(lookups
             .iter()
             .find_map(|(source, lookup)| match lookup {
-                Lookup::Unsupported => Some(Status { auth: "unsupported_login", source: Some(*source) }),
-                Lookup::Expired => Some(Status { auth: "expired_login", source: Some(*source) }),
+                Lookup::Unsupported => Some(Status {
+                    auth: "unsupported_login",
+                    source: Some(*source),
+                }),
+                Lookup::Expired => Some(Status {
+                    auth: "expired_login",
+                    source: Some(*source),
+                }),
                 _ => None,
             })
             .unwrap_or(Status::NONE))
@@ -166,7 +187,11 @@ mod tests {
 
     fn later() -> u64 {
         use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64 + 60 * 60 * 1000
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60 * 60 * 1000
     }
 
     /// Fixture stores only: never the owner's files or environment.
@@ -179,17 +204,27 @@ mod tests {
         let (oc, pi_dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
         std::fs::write(oc.path().join("auth.json"), opencode.to_string()).unwrap();
         std::fs::write(pi_dir.path().join("auth.json"), pi.to_string()).unwrap();
-        let env: HashMap<String, String> = env.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let env: HashMap<String, String> = env
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         let chain = Chain {
             opencode: opencode_auth::Store::new(oc.path()),
             pi: pi_auth::Store::new(pi_dir.path()),
             env: Box::new(move |k| env.get(k).cloned()),
         };
-        Fixture { _dirs: (oc, pi_dir), chain }
+        Fixture {
+            _dirs: (oc, pi_dir),
+            chain,
+        }
     }
 
     fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
     }
 
     fn status(chain: &Chain, id: &str) -> (&'static str, Option<Source>) {
@@ -202,7 +237,11 @@ mod tests {
         let f = fixture(
             json!({ "zai-coding-plan": { "type": "api", "key": "from-opencode" } }),
             json!({ "zai": { "type": "api_key", "key": "from-pi" }, "openrouter": { "type": "api_key", "key": "pi-or" } }),
-            &[("ZAI_API_KEY", "from-env"), ("OPENROUTER_API_KEY", "env-or"), ("OPENAI_API_KEY", "env-oa")],
+            &[
+                ("ZAI_API_KEY", "from-env"),
+                ("OPENROUTER_API_KEY", "env-or"),
+                ("OPENAI_API_KEY", "env-oa"),
+            ],
         );
         let c = &f.chain;
         assert_eq!(status(c, "zai"), ("api_key", Some(Source::Opencode)));
@@ -211,9 +250,18 @@ mod tests {
         assert_eq!(status(c, "ollama"), ("local", Some(Source::Local)));
         assert_eq!(status(c, "opencode-go"), ("none", None));
         let resolve = |id| block_on(c.resolve(provider(id).unwrap()));
-        assert_eq!(resolve("zai").unwrap(), Some(Auth::ApiKey("from-opencode".into())));
-        assert_eq!(resolve("openrouter").unwrap(), Some(Auth::ApiKey("pi-or".into())));
-        assert_eq!(resolve("openai").unwrap(), Some(Auth::ApiKey("env-oa".into())));
+        assert_eq!(
+            resolve("zai").unwrap(),
+            Some(Auth::ApiKey("from-opencode".into()))
+        );
+        assert_eq!(
+            resolve("openrouter").unwrap(),
+            Some(Auth::ApiKey("pi-or".into()))
+        );
+        assert_eq!(
+            resolve("openai").unwrap(),
+            Some(Auth::ApiKey("env-oa".into()))
+        );
         assert_eq!(resolve("ollama").unwrap(), None);
         assert!(resolve("opencode-go").unwrap_err().contains("OpenCode"));
     }
@@ -222,12 +270,18 @@ mod tests {
     fn a_claude_login_is_refused_unless_a_key_exists_further_down() {
         let claude = json!({ "anthropic": { "type": "oauth", "access": "a", "refresh": "r", "expires": later() } });
         let f = fixture(claude.clone(), json!({}), &[]);
-        assert_eq!(status(&f.chain, "anthropic"), ("unsupported_login", Some(Source::Opencode)));
+        assert_eq!(
+            status(&f.chain, "anthropic"),
+            ("unsupported_login", Some(Source::Opencode))
+        );
         let err = block_on(f.chain.resolve(provider("anthropic").unwrap())).unwrap_err();
         assert!(err.contains("only Anthropic API keys"), "{err}");
 
         let f = fixture(claude, json!({}), &[("ANTHROPIC_API_KEY", "sk-ant")]);
-        assert_eq!(status(&f.chain, "anthropic"), ("api_key", Some(Source::Env)));
+        assert_eq!(
+            status(&f.chain, "anthropic"),
+            ("api_key", Some(Source::Env))
+        );
         assert_eq!(
             block_on(f.chain.resolve(provider("anthropic").unwrap())).unwrap(),
             Some(Auth::ApiKey("sk-ant".into()))
@@ -236,18 +290,28 @@ mod tests {
 
     #[test]
     fn an_expired_opencode_login_falls_through_to_pi_or_says_to_open_opencode() {
-        let expired = json!({ "openai": { "type": "oauth", "access": "old", "refresh": "r", "expires": 1 } });
+        let expired =
+            json!({ "openai": { "type": "oauth", "access": "old", "refresh": "r", "expires": 1 } });
         let f = fixture(expired.clone(), json!({}), &[]);
-        assert_eq!(status(&f.chain, "openai-codex"), ("expired_login", Some(Source::Opencode)));
+        assert_eq!(
+            status(&f.chain, "openai-codex"),
+            ("expired_login", Some(Source::Opencode))
+        );
         let err = block_on(f.chain.resolve(provider("openai-codex").unwrap())).unwrap_err();
         assert!(err.contains("Open OpenCode once"), "{err}");
 
         let pi = json!({ "openai-codex": { "type": "oauth", "access": "pi", "refresh": "r", "expires": later(), "accountId": "acct" } });
         let f = fixture(expired, pi, &[]);
-        assert_eq!(status(&f.chain, "openai-codex"), ("login", Some(Source::Pi)));
+        assert_eq!(
+            status(&f.chain, "openai-codex"),
+            ("login", Some(Source::Pi))
+        );
         assert_eq!(
             block_on(f.chain.resolve(provider("openai-codex").unwrap())).unwrap(),
-            Some(Auth::Bearer { token: "pi".into(), account_id: Some("acct".into()) })
+            Some(Auth::Bearer {
+                token: "pi".into(),
+                account_id: Some("acct".into())
+            })
         );
     }
 

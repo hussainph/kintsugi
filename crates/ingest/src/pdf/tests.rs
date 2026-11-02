@@ -17,7 +17,11 @@ fn saved() -> PdfText {
 struct Saved;
 
 impl PdfReader for Saved {
-    fn read<'a>(&'a self, _: &'a Path, thumbnail: Option<&'a Path>) -> BoxFuture<'a, Result<PdfText>> {
+    fn read<'a>(
+        &'a self,
+        _: &'a Path,
+        thumbnail: Option<&'a Path>,
+    ) -> BoxFuture<'a, Result<PdfText>> {
         Box::pin(async move {
             if let Some(path) = thumbnail {
                 std::fs::write(path, b"\x89PNG\r\n\x1a\nfake").unwrap();
@@ -59,7 +63,12 @@ fn lines_become_headings_and_paragraphs_without_running_headers() {
 
 #[test]
 fn layout_joins_pages_mid_sentence_and_keeps_lists() {
-    let line = |text: &str, size: f64, y: f64| layout::Line { text: text.into(), size, y, ..Default::default() };
+    let line = |text: &str, size: f64, y: f64| layout::Line {
+        text: text.into(),
+        size,
+        y,
+        ..Default::default()
+    };
     let doc = PdfText {
         pages: vec![
             layout::PageText {
@@ -100,9 +109,15 @@ fn a_file_becomes_an_item_with_metadata_and_a_thumbnail() {
     assert_eq!(item.source, SourceType::Pdf);
     assert!(item.id.starts_with("pdf:sha256:") && item.id.len() == "pdf:sha256:".len() + 64);
     assert_eq!(item.url, None);
-    assert_eq!(item.title.as_deref(), Some("Kintsugi and the Art of Repair"));
+    assert_eq!(
+        item.title.as_deref(),
+        Some("Kintsugi and the Art of Repair")
+    );
     assert_eq!(item.author.as_deref(), Some("Ada Example"));
-    assert_eq!(item.description.as_deref(), Some("Mending pottery with gold"));
+    assert_eq!(
+        item.description.as_deref(),
+        Some("Mending pottery with gold")
+    );
     assert_eq!(item.published.as_deref(), Some("2024-05-01T10:00:00Z"));
     assert_eq!(item.body, EXPECTED);
     assert_eq!(item.extras["extractor"], "pdfkit");
@@ -120,16 +135,28 @@ fn files_that_are_not_pdfs_are_refused() {
     let fake = dir.path().join("fake.pdf");
     std::fs::write(&fake, "<html>not a pdf</html>").unwrap();
     let adapter = PdfAdapter::new(Some(Arc::new(Saved))).unwrap();
-    assert_eq!(run(adapter.capture(&Target::File(fake), CaptureOptions::default())), Err(Error::Unsupported));
+    assert_eq!(
+        run(adapter.capture(&Target::File(fake), CaptureOptions::default())),
+        Err(Error::Unsupported)
+    );
     let none = PdfAdapter::new(None).unwrap();
-    assert_eq!(run(none.capture(&Target::File(FIXTURE.into()), CaptureOptions::default())), Err(Error::Unsupported));
+    assert_eq!(
+        run(none.capture(&Target::File(FIXTURE.into()), CaptureOptions::default())),
+        Err(Error::Unsupported)
+    );
 }
 
 #[test]
 fn a_missing_or_failing_converter_falls_back_to_pdfkit() {
-    for (error, reason) in [(Error::ToolNeeded, "tool-not-installed"), (Error::TimedOut, "failed")] {
-        let adapter = PdfAdapter::new(Some(Arc::new(Saved))).unwrap().with_converter(Arc::new(Failing(error)));
-        let item = run(adapter.capture(&Target::File(FIXTURE.into()), CaptureOptions::default())).unwrap();
+    for (error, reason) in [
+        (Error::ToolNeeded, "tool-not-installed"),
+        (Error::TimedOut, "failed"),
+    ] {
+        let adapter = PdfAdapter::new(Some(Arc::new(Saved)))
+            .unwrap()
+            .with_converter(Arc::new(Failing(error)));
+        let item =
+            run(adapter.capture(&Target::File(FIXTURE.into()), CaptureOptions::default())).unwrap();
         assert_eq!(item.extras["extractor"], "pdfkit");
         assert_eq!(item.extras["converterReason"], reason);
         assert_eq!(item.body, EXPECTED);
@@ -150,7 +177,12 @@ fn links_to_pdfs_are_downloaded_and_read() {
     let pdf = std::fs::read(FIXTURE).unwrap();
     let server = Server::start(vec![
         ("/papers/repair.pdf", 200, "application/pdf", pdf),
-        ("/papers/fake.pdf", 200, "text/html", b"<html>login</html>".to_vec()),
+        (
+            "/papers/fake.pdf",
+            200,
+            "text/html",
+            b"<html>login</html>".to_vec(),
+        ),
     ]);
     let adapter = PdfAdapter::new(Some(Arc::new(Saved))).unwrap();
     let target = Target::url(&server.url("/papers/repair.pdf#page=2")).unwrap();
@@ -161,7 +193,10 @@ fn links_to_pdfs_are_downloaded_and_read() {
     assert_eq!(item.id, format!("pdf:{canonical}"));
     assert_eq!(item.body, EXPECTED);
     let fake = Target::url(&server.url("/papers/fake.pdf")).unwrap();
-    assert_eq!(run(adapter.capture(&fake, CaptureOptions::default())), Err(Error::Unavailable));
+    assert_eq!(
+        run(adapter.capture(&fake, CaptureOptions::default())),
+        Err(Error::Unavailable)
+    );
 
     for (url, expected) in [
         ("https://arxiv.org/pdf/2408.09869", true),
@@ -169,7 +204,11 @@ fn links_to_pdfs_are_downloaded_and_read() {
         ("https://example.org/a/paper", false),
         ("https://arxiv.org/abs/2408.09869", false),
     ] {
-        assert_eq!(pdf_url(&reqwest::Url::parse(url).unwrap()), expected, "{url}");
+        assert_eq!(
+            pdf_url(&reqwest::Url::parse(url).unwrap()),
+            expected,
+            "{url}"
+        );
     }
 }
 
@@ -195,7 +234,14 @@ fn docling_spec(runner: &'static ToolSpec) -> &'static ToolSpec {
             package: "docling[ocrmac]",
             version: "2.145.0",
             python: "3.12",
-            prepare: &["docling-tools", "models", "download", "-o", "{dir}/models", "layout"],
+            prepare: &[
+                "docling-tools",
+                "models",
+                "download",
+                "-o",
+                "{dir}/models",
+                "layout",
+            ],
         },
         assets: Box::leak(vec![(platform, "")].into_boxed_slice()),
         ..catalog::DOCLING
@@ -239,14 +285,34 @@ chmod +x "$UV_TOOL_BIN_DIR/docling-tools" "$UV_TOOL_BIN_DIR/docling""#,
     let entry = run(tools.ensure(spec)).unwrap();
     assert!(entry.ends_with("2.145.0/bin/docling"), "{entry:?}");
     let status = tools.status(spec);
-    assert!(status.supported && status.consented && status.installed.as_ref().unwrap().version == "2.145.0");
+    assert!(
+        status.supported
+            && status.consented
+            && status.installed.as_ref().unwrap().version == "2.145.0"
+    );
     let logged = std::fs::read_to_string(&log).unwrap();
-    assert!(logged.contains("uv tool install --python 3.12 docling[ocrmac]==2.145.0"), "{logged}");
-    assert!(logged.contains("no_config=1") && logged.contains("2.145.0/env"), "{logged}");
-    assert!(logged.contains("docling-tools models download -o ") && logged.contains("2.145.0/models layout"), "{logged}");
+    assert!(
+        logged.contains("uv tool install --python 3.12 docling[ocrmac]==2.145.0"),
+        "{logged}"
+    );
+    assert!(
+        logged.contains("no_config=1") && logged.contains("2.145.0/env"),
+        "{logged}"
+    );
+    assert!(
+        logged.contains("docling-tools models download -o ")
+            && logged.contains("2.145.0/models layout"),
+        "{logged}"
+    );
     // Installed once; ensure doesn't reinstall.
     run(tools.ensure(spec)).unwrap();
-    assert_eq!(std::fs::read_to_string(&log).unwrap().matches("tool install").count(), 1);
+    assert_eq!(
+        std::fs::read_to_string(&log)
+            .unwrap()
+            .matches("tool install")
+            .count(),
+        1
+    );
 
     struct Installed(Arc<crate::tools::Tools>, &'static ToolSpec);
     impl PdfConverter for Installed {
@@ -257,14 +323,27 @@ chmod +x "$UV_TOOL_BIN_DIR/docling-tools" "$UV_TOOL_BIN_DIR/docling""#,
             Box::pin(async move { Docling::new(self.0.clone()).run_with(self.1, pdf).await })
         }
     }
-    let adapter =
-        PdfAdapter::new(Some(Arc::new(Saved))).unwrap().with_converter(Arc::new(Installed(tools.clone(), spec)));
-    let item = run(adapter.capture(&Target::File(FIXTURE.into()), CaptureOptions::default())).unwrap();
+    let adapter = PdfAdapter::new(Some(Arc::new(Saved)))
+        .unwrap()
+        .with_converter(Arc::new(Installed(tools.clone(), spec)));
+    let item =
+        run(adapter.capture(&Target::File(FIXTURE.into()), CaptureOptions::default())).unwrap();
     assert_eq!(item.extras["extractor"], "docling");
-    assert_eq!(item.body, "## Docling heading\n\n| a | b |\n|---|---|\n| 1 | 2 |");
-    assert_eq!(item.title.as_deref(), Some("Kintsugi and the Art of Repair"));
+    assert_eq!(
+        item.body,
+        "## Docling heading\n\n| a | b |\n|---|---|\n| 1 | 2 |"
+    );
+    assert_eq!(
+        item.title.as_deref(),
+        Some("Kintsugi and the Art of Repair")
+    );
     let logged = std::fs::read_to_string(&log).unwrap();
-    assert!(logged.contains("--to md --image-export-mode placeholder --ocr-engine ocrmac --artifacts-path"), "{logged}");
+    assert!(
+        logged.contains(
+            "--to md --image-export-mode placeholder --ocr-engine ocrmac --artifacts-path"
+        ),
+        "{logged}"
+    );
     assert!(logged.contains("offline=1"), "{logged}");
 
     tools.remove(spec).unwrap();
@@ -275,7 +354,10 @@ chmod +x "$UV_TOOL_BIN_DIR/docling-tools" "$UV_TOOL_BIN_DIR/docling""#,
 fn docling_without_consent_asks_for_the_tool() {
     let dir = tempfile::tempdir().unwrap();
     let tools = Arc::new(crate::tools::Tools::new(dir.path().join("tools")).unwrap());
-    assert_eq!(run(Docling::new(tools).convert(Path::new(FIXTURE))), Err(Error::ToolNeeded));
+    assert_eq!(
+        run(Docling::new(tools).convert(Path::new(FIXTURE))),
+        Err(Error::ToolNeeded)
+    );
 }
 
 /// Compiles `swift/pdf.swift` and reads the fixture with real PDFKit. Skips
@@ -287,7 +369,11 @@ fn pdfkit_helper_reads_the_fixture() {
     }
     let dir = tempfile::tempdir().unwrap();
     let program = dir.path().join("kintsugi-pdf");
-    let target = if cfg!(target_arch = "aarch64") { "arm64-apple-macos13.0" } else { "x86_64-apple-macos13.0" };
+    let target = if cfg!(target_arch = "aarch64") {
+        "arm64-apple-macos13.0"
+    } else {
+        "x86_64-apple-macos13.0"
+    };
     let built = std::process::Command::new("xcrun")
         .args(["swiftc", "-O", "-parse-as-library", "-target", target])
         .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/swift/pdf.swift"))
@@ -302,14 +388,24 @@ fn pdfkit_helper_reads_the_fixture() {
         return;
     }
     let adapter = PdfAdapter::new(Some(Arc::new(PdfKitReader::new(&program)))).unwrap();
-    let item = run(adapter.capture(&Target::File(FIXTURE.into()), CaptureOptions { want_media: true })).unwrap();
+    let item = run(adapter.capture(
+        &Target::File(FIXTURE.into()),
+        CaptureOptions { want_media: true },
+    ))
+    .unwrap();
     assert_eq!(item.body, EXPECTED);
-    assert_eq!(item.title.as_deref(), Some("Kintsugi and the Art of Repair"));
+    assert_eq!(
+        item.title.as_deref(),
+        Some("Kintsugi and the Art of Repair")
+    );
     assert_eq!(item.primary_image().unwrap().mime, "image/png");
 
     let garbage = dir.path().join("garbage.pdf");
     std::fs::write(&garbage, "%PDF-1.4\nnot really").unwrap();
-    assert_eq!(run(adapter.capture(&Target::File(garbage), CaptureOptions::default())), Err(Error::Unavailable));
+    assert_eq!(
+        run(adapter.capture(&Target::File(garbage), CaptureOptions::default())),
+        Err(Error::Unavailable)
+    );
 }
 
 /// Downloads uv and Docling (about 1.5 GB, with Python and the layout and
@@ -327,14 +423,26 @@ fn live_docling() {
 }
 
 fn placed(text: &str, x: f64, width: f64, y: f64) -> layout::Line {
-    layout::Line { text: text.into(), size: 10.0, y, x: Some(x), width: Some(width), height: Some(10.0), ..Default::default() }
+    layout::Line {
+        text: text.into(),
+        size: 10.0,
+        y,
+        x: Some(x),
+        width: Some(width),
+        height: Some(10.0),
+        ..Default::default()
+    }
 }
 
 #[test]
 fn two_column_pages_are_read_one_column_after_the_other() {
     // PDFKit's order interleaves the columns, as it did on the Local-first
     // paper's first page: an author block beside the abstract.
-    let page = |page: usize, lines: Vec<layout::Line>| layout::PageText { page, width: Some(612.0), lines };
+    let page = |page: usize, lines: Vec<layout::Line>| layout::PageText {
+        page,
+        width: Some(612.0),
+        lines,
+    };
     let doc = PdfText {
         pages: vec![
             page(
@@ -347,13 +455,24 @@ fn two_column_pages_are_read_one_column_after_the_other() {
                     placed("and finishes it here.", 318.0, 240.0, 688.0),
                     placed("it ends here.", 54.0, 100.0, 676.0),
                     placed("A last right line.", 318.0, 100.0, 650.0),
-                    placed("Figure 1. A caption across the page, under both columns.", 54.0, 504.0, 600.0),
+                    placed(
+                        "Figure 1. A caption across the page, under both columns.",
+                        54.0,
+                        504.0,
+                        600.0,
+                    ),
                     placed("2.2 Your Work Is Not Trapped", 54.0, 200.0, 560.0),
                     placed("Below the figure, left.", 54.0, 240.0, 545.0),
                     placed("Below the figure, right.", 318.0, 240.0, 545.0),
                 ],
             ),
-            page(2, vec![placed("Running header for the paper", 150.0, 300.0, 760.0), placed("Page two text.", 54.0, 240.0, 700.0)]),
+            page(
+                2,
+                vec![
+                    placed("Running header for the paper", 150.0, 300.0, 760.0),
+                    placed("Page two text.", 54.0, 240.0, 700.0),
+                ],
+            ),
         ],
         ..Default::default()
     };
@@ -374,12 +493,29 @@ fn two_column_pages_are_read_one_column_after_the_other() {
 #[test]
 fn single_column_pages_keep_the_helper_order() {
     let lines = vec![
-        placed("A full-width line that spans the page from margin to margin.", 72.0, 468.0, 700.0),
+        placed(
+            "A full-width line that spans the page from margin to margin.",
+            72.0,
+            468.0,
+            700.0,
+        ),
         placed("short", 72.0, 40.0, 688.0),
-        placed("Another full-width line across the whole text block here.", 72.0, 468.0, 676.0),
+        placed(
+            "Another full-width line across the whole text block here.",
+            72.0,
+            468.0,
+            676.0,
+        ),
         placed("right", 400.0, 40.0, 664.0),
     ];
-    let doc = PdfText { pages: vec![layout::PageText { page: 1, width: Some(612.0), lines }], ..Default::default() };
+    let doc = PdfText {
+        pages: vec![layout::PageText {
+            page: 1,
+            width: Some(612.0),
+            lines,
+        }],
+        ..Default::default()
+    };
     assert_eq!(
         layout::markdown(&doc),
         "A full-width line that spans the page from margin to margin. short Another full-width line across the whole text block here. right"
@@ -388,15 +524,29 @@ fn single_column_pages_keep_the_helper_order() {
 
 #[test]
 fn numbered_section_lines_become_headings_and_sentences_do_not() {
-    let line = |text: &str, bold: bool, y: f64| layout::Line { text: text.into(), size: 10.0, bold, y, ..Default::default() };
+    let line = |text: &str, bold: bool, y: f64| layout::Line {
+        text: text.into(),
+        size: 10.0,
+        bold,
+        y,
+        ..Default::default()
+    };
     let doc = PdfText {
         pages: vec![layout::PageText {
             page: 1,
             width: None,
             lines: vec![
                 line("2 Motivation", true, 700.0),
-                line("Body text that runs on for a while and wraps.", false, 685.0),
-                line("2.1 No Spinners: Your Work at Your Fingertips", false, 660.0),
+                line(
+                    "Body text that runs on for a while and wraps.",
+                    false,
+                    685.0,
+                ),
+                line(
+                    "2.1 No Spinners: Your Work at Your Fingertips",
+                    false,
+                    660.0,
+                ),
                 line("2.1 percent of users noticed.", false, 645.0),
                 line("3.1 the lowercase rest", false, 630.0),
             ],

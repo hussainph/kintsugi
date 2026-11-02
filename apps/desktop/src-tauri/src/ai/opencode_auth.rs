@@ -58,7 +58,9 @@ const TOKEN_SHARING: &str = "chatgpt-token-sharing";
 /// OpenCode's data directory: `$XDG_DATA_HOME/opencode` (absolute paths
 /// only, per the XDG spec), else `~/.local/share/opencode`.
 pub fn data_dir() -> Result<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or("HOME is not set")?;
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or("HOME is not set")?;
     let base = match std::env::var_os("XDG_DATA_HOME").map(PathBuf::from) {
         Some(dir) if dir.is_absolute() => dir,
         _ => home.join(".local").join("share"),
@@ -92,7 +94,12 @@ enum Want {
 #[derive(Debug, Clone, PartialEq)]
 enum Cred {
     Key(String),
-    Oauth { access: String, expires: u64, account_id: Option<String>, method: Option<String> },
+    Oauth {
+        access: String,
+        expires: u64,
+        account_id: Option<String>,
+        method: Option<String>,
+    },
 }
 
 impl Cred {
@@ -106,7 +113,13 @@ impl Cred {
     /// Either store's JSON; anything else (`external`, `wellknown`, empty
     /// secrets) is no usable credential.
     fn parse(value: &Value) -> Option<Cred> {
-        let text = |key: &str| value.get(key)?.as_str().filter(|s| !s.is_empty()).map(String::from);
+        let text = |key: &str| {
+            value
+                .get(key)?
+                .as_str()
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+        };
         match value.get("type")?.as_str()? {
             "key" | "api" => text("key").map(Cred::Key),
             "oauth" => {
@@ -134,13 +147,19 @@ pub struct Store {
 
 impl Store {
     pub fn new(dir: &Path) -> Self {
-        Self { database: dir.join(DATABASE), legacy: dir.join(LEGACY_FILE) }
+        Self {
+            database: dir.join(DATABASE),
+            legacy: dir.join(LEGACY_FILE),
+        }
     }
 
     /// OpenCode's own rule: `$OPENCODE_DB` (absolute) or `<data>/opencode.db`.
     pub fn default_location() -> Result<Self> {
         let mut store = Self::new(&data_dir()?);
-        if let Some(db) = std::env::var_os("OPENCODE_DB").map(PathBuf::from).filter(|p| p.is_absolute()) {
+        if let Some(db) = std::env::var_os("OPENCODE_DB")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+        {
             store.database = db;
         }
         Ok(store)
@@ -160,15 +179,25 @@ impl Store {
         match serde_json::from_str(&text) {
             Ok(Value::Object(map)) => Ok(map
                 .into_iter()
-                .filter_map(|(id, v)| Some((id.trim_end_matches('/').to_string(), Cred::parse(&v)?)))
+                .filter_map(|(id, v)| {
+                    Some((id.trim_end_matches('/').to_string(), Cred::parse(&v)?))
+                })
                 .collect()),
-            _ => Err(format!("{} is not valid credentials JSON", self.legacy.display())),
+            _ => Err(format!(
+                "{} is not valid credentials JSON",
+                self.legacy.display()
+            )),
         }
     }
 
     fn read_database(&self) -> Result<HashMap<String, Cred>> {
         use rusqlite::{Connection, OpenFlags};
-        let fail = |_| format!("could not read OpenCode's credentials in {}", self.database.display());
+        let fail = |_| {
+            format!(
+                "could not read OpenCode's credentials in {}",
+                self.database.display()
+            )
+        };
         // Read-only: never creates, migrates or writes the database, and
         // creates no file beside it. OpenCode runs it in WAL mode. With no
         // `-wal` file every row is in the main file, which is then opened
@@ -181,19 +210,25 @@ impl Store {
             (false, _) => format!("{}?mode=ro&immutable=1", file_uri(&self.database)),
             (true, true) => format!("{}?mode=ro", file_uri(&self.database)),
             (true, false) => {
-                return Err("OpenCode's database is mid-write; open OpenCode once, then try again".into());
+                return Err(
+                    "OpenCode's database is mid-write; open OpenCode once, then try again".into(),
+                );
             }
         };
         let db = Connection::open_with_flags(
             uri,
-            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+            OpenFlags::SQLITE_OPEN_READ_ONLY
+                | OpenFlags::SQLITE_OPEN_URI
+                | OpenFlags::SQLITE_OPEN_NO_MUTEX,
         )
         .map_err(fail)?;
         db.busy_timeout(Duration::from_secs(2)).map_err(fail)?;
         let has_table: bool = db
-            .query_row("SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'credential'", [], |r| {
-                r.get::<_, i64>(0)
-            })
+            .query_row(
+                "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'credential'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
             .map(|n| n > 0)
             .map_err(fail)?;
         if !has_table {
@@ -209,11 +244,17 @@ impl Store {
         let mut creds = HashMap::new();
         let mut query = rows.query([]).map_err(fail)?;
         while let Some(row) = query.next().map_err(fail)? {
-            let (Ok(id), Ok(value)) = (row.get::<_, String>(0), row.get::<_, String>(1)) else { continue };
+            let (Ok(id), Ok(value)) = (row.get::<_, String>(0), row.get::<_, String>(1)) else {
+                continue;
+            };
             if creds.contains_key(&id) {
                 continue;
             }
-            if let Some(cred) = serde_json::from_str(&value).ok().as_ref().and_then(Cred::parse) {
+            if let Some(cred) = serde_json::from_str(&value)
+                .ok()
+                .as_ref()
+                .and_then(Cred::parse)
+            {
                 creds.insert(id, cred);
             }
         }
@@ -241,7 +282,9 @@ impl Store {
             Some(Cred::Key(_)) => Lookup::Usable(Kind::ApiKey),
             // A Claude subscription login: Kintsugi only uses Anthropic API keys.
             Some(Cred::Oauth { .. }) if provider.wire == Wire::Anthropic => Lookup::Unsupported,
-            Some(Cred::Oauth { method, .. }) if provider.wire == Wire::Codex && method.as_deref() == Some(TOKEN_SHARING) => {
+            Some(Cred::Oauth { method, .. })
+                if provider.wire == Wire::Codex && method.as_deref() == Some(TOKEN_SHARING) =>
+            {
                 Lookup::Unsupported
             }
             Some(Cred::Oauth { expires, .. }) if fresh(expires) => Lookup::Usable(Kind::Oauth),
@@ -256,12 +299,17 @@ impl Store {
         }
         Ok(self.find(provider.id)?.map(|cred| match cred {
             Cred::Key(key) => Auth::ApiKey(key),
-            Cred::Oauth { access, account_id, .. } => {
+            Cred::Oauth {
+                access, account_id, ..
+            } => {
                 let account_id = match provider.wire {
                     Wire::Codex => account_id.or_else(|| codex_account_id(&access)),
                     _ => None,
                 };
-                Auth::Bearer { token: access, account_id }
+                Auth::Bearer {
+                    token: access,
+                    account_id,
+                }
             }
         }))
     }
@@ -278,7 +326,9 @@ fn file_uri(path: &Path) -> String {
     let mut uri = String::from("file:");
     for b in path.to_string_lossy().bytes() {
         match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => uri.push(b as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => {
+                uri.push(b as char)
+            }
             _ => uri.push_str(&format!("%{b:02X}")),
         }
     }
@@ -286,7 +336,10 @@ fn file_uri(path: &Path) -> String {
 }
 
 fn fresh(expires: u64) -> bool {
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
     now + MINIMUM_VALIDITY_MS < expires
 }
 
@@ -297,7 +350,11 @@ pub(crate) mod tests {
     use serde_json::json;
 
     pub(crate) fn later() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64 + 60 * 60 * 1000
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+            + 60 * 60 * 1000
     }
 
     /// A fixture of OpenCode 2's database: the `credential` table as
@@ -344,7 +401,12 @@ pub(crate) mod tests {
         let mut files: Vec<_> = fs::read_dir(dir)
             .unwrap()
             .map(|e| e.unwrap())
-            .map(|e| (e.file_name().to_string_lossy().into_owned(), hash(fs::read(e.path()).unwrap())))
+            .map(|e| {
+                (
+                    e.file_name().to_string_lossy().into_owned(),
+                    hash(fs::read(e.path()).unwrap()),
+                )
+            })
             .collect();
         files.sort();
         files
@@ -353,22 +415,66 @@ pub(crate) mod tests {
     #[test]
     fn reads_opencode_2s_database_read_only() {
         let dir = tempfile::tempdir().unwrap();
-        write_database(dir.path(), &[
-            ("openai", None, 1, json!({ "type": "oauth", "methodID": "chatgpt-browser", "refresh": "r", "access": "a",
-                "expires": later(), "metadata": { "accountID": "acct" } })),
-            ("opencode-go", None, 1, json!({ "type": "key", "key": "go" })),
-            ("zai-coding-plan", None, 1, json!({ "type": "key", "key": "zk" })),
-            ("anthropic", None, 1, json!({ "type": "oauth", "methodID": "oauth", "refresh": "r", "access": "a", "expires": later() })),
-            ("azure", None, 1, json!({ "type": "external", "methodID": "cli" })),
-            // A stale legacy file is ignored once there's a database.
-        ]);
-        fs::write(dir.path().join(LEGACY_FILE), json!({ "opencode": { "type": "api", "key": "stale" } }).to_string()).unwrap();
+        write_database(
+            dir.path(),
+            &[
+                (
+                    "openai",
+                    None,
+                    1,
+                    json!({ "type": "oauth", "methodID": "chatgpt-browser", "refresh": "r", "access": "a",
+                "expires": later(), "metadata": { "accountID": "acct" } }),
+                ),
+                (
+                    "opencode-go",
+                    None,
+                    1,
+                    json!({ "type": "key", "key": "go" }),
+                ),
+                (
+                    "zai-coding-plan",
+                    None,
+                    1,
+                    json!({ "type": "key", "key": "zk" }),
+                ),
+                (
+                    "anthropic",
+                    None,
+                    1,
+                    json!({ "type": "oauth", "methodID": "oauth", "refresh": "r", "access": "a", "expires": later() }),
+                ),
+                (
+                    "azure",
+                    None,
+                    1,
+                    json!({ "type": "external", "methodID": "cli" }),
+                ),
+                // A stale legacy file is ignored once there's a database.
+            ],
+        );
+        fs::write(
+            dir.path().join(LEGACY_FILE),
+            json!({ "opencode": { "type": "api", "key": "stale" } }).to_string(),
+        )
+        .unwrap();
         let before = snapshot(dir.path());
         let store = Store::new(dir.path());
 
-        assert_eq!(store.auth(p("openai-codex")).unwrap(), Some(Auth::Bearer { token: "a".into(), account_id: Some("acct".into()) }));
-        assert_eq!(store.auth(p("opencode-go")).unwrap(), Some(Auth::ApiKey("go".into())));
-        assert_eq!(store.auth(p("zai")).unwrap(), Some(Auth::ApiKey("zk".into())));
+        assert_eq!(
+            store.auth(p("openai-codex")).unwrap(),
+            Some(Auth::Bearer {
+                token: "a".into(),
+                account_id: Some("acct".into())
+            })
+        );
+        assert_eq!(
+            store.auth(p("opencode-go")).unwrap(),
+            Some(Auth::ApiKey("go".into()))
+        );
+        assert_eq!(
+            store.auth(p("zai")).unwrap(),
+            Some(Auth::ApiKey("zk".into()))
+        );
         assert_eq!(store.lookup(p("anthropic")).unwrap(), Lookup::Unsupported);
         assert_eq!(store.lookup(p("opencode")).unwrap(), Lookup::Missing);
         assert_eq!(store.lookup(p("openai")).unwrap(), Lookup::Missing);
@@ -384,7 +490,9 @@ pub(crate) mod tests {
         // OpenCode running: its connection holds the WAL open, with a row
         // not yet checkpointed into the main file.
         let opencode = rusqlite::Connection::open(dir.path().join(DATABASE)).unwrap();
-        opencode.execute_batch("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;").unwrap();
+        opencode
+            .execute_batch("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0;")
+            .unwrap();
         opencode
             .execute(
                 "INSERT INTO credential (id, integration_id, label, value, time_created, time_updated) VALUES ('c', 'opencode-go', 'x', ?1, 1, 1)",
@@ -393,48 +501,88 @@ pub(crate) mod tests {
             .unwrap();
         assert!(dir.path().join("opencode.db-wal").exists());
         let names = |d: &Path| snapshot(d).into_iter().map(|(n, _)| n).collect::<Vec<_>>();
-        let (main_before, names_before) = (fs::read(dir.path().join(DATABASE)).unwrap(), names(dir.path()));
-        assert_eq!(Store::new(dir.path()).auth(p("opencode-go")).unwrap(), Some(Auth::ApiKey("in-wal".into())));
+        let (main_before, names_before) = (
+            fs::read(dir.path().join(DATABASE)).unwrap(),
+            names(dir.path()),
+        );
+        assert_eq!(
+            Store::new(dir.path()).auth(p("opencode-go")).unwrap(),
+            Some(Auth::ApiKey("in-wal".into()))
+        );
         assert_eq!(fs::read(dir.path().join(DATABASE)).unwrap(), main_before);
         assert_eq!(names(dir.path()), names_before);
     }
 
     #[test]
     fn database_paths_become_escaped_uris() {
-        assert_eq!(file_uri(Path::new("/a b/c?d#e.db")), "file:/a%20b/c%3Fd%23e.db");
+        assert_eq!(
+            file_uri(Path::new("/a b/c?d#e.db")),
+            "file:/a%20b/c%3Fd%23e.db"
+        );
     }
 
     #[test]
     fn the_active_login_wins_else_the_newest() {
         let dir = tempfile::tempdir().unwrap();
-        write_database(dir.path(), &[
-            ("opencode", None, 1, json!({ "type": "key", "key": "old" })),
-            ("opencode", None, 5, json!({ "type": "key", "key": "new" })),
-            ("opencode-go", Some(true), 1, json!({ "type": "key", "key": "chosen" })),
-            ("opencode-go", Some(false), 9, json!({ "type": "key", "key": "other" })),
-        ]);
+        write_database(
+            dir.path(),
+            &[
+                ("opencode", None, 1, json!({ "type": "key", "key": "old" })),
+                ("opencode", None, 5, json!({ "type": "key", "key": "new" })),
+                (
+                    "opencode-go",
+                    Some(true),
+                    1,
+                    json!({ "type": "key", "key": "chosen" }),
+                ),
+                (
+                    "opencode-go",
+                    Some(false),
+                    9,
+                    json!({ "type": "key", "key": "other" }),
+                ),
+            ],
+        );
         let store = Store::new(dir.path());
-        assert_eq!(store.auth(p("opencode")).unwrap(), Some(Auth::ApiKey("new".into())));
-        assert_eq!(store.auth(p("opencode-go")).unwrap(), Some(Auth::ApiKey("chosen".into())));
+        assert_eq!(
+            store.auth(p("opencode")).unwrap(),
+            Some(Auth::ApiKey("new".into()))
+        );
+        assert_eq!(
+            store.auth(p("opencode-go")).unwrap(),
+            Some(Auth::ApiKey("chosen".into()))
+        );
     }
 
     #[test]
     fn chatgpt_token_sharing_is_not_a_codex_login() {
         let dir = tempfile::tempdir().unwrap();
-        write_database(dir.path(), &[(
-            "openai",
-            None,
-            1,
-            json!({ "type": "oauth", "methodID": "chatgpt-token-sharing", "refresh": "r", "access": "a", "expires": later() }),
-        )]);
-        assert_eq!(Store::new(dir.path()).lookup(p("openai-codex")).unwrap(), Lookup::Unsupported);
+        write_database(
+            dir.path(),
+            &[(
+                "openai",
+                None,
+                1,
+                json!({ "type": "oauth", "methodID": "chatgpt-token-sharing", "refresh": "r", "access": "a", "expires": later() }),
+            )],
+        );
+        assert_eq!(
+            Store::new(dir.path()).lookup(p("openai-codex")).unwrap(),
+            Lookup::Unsupported
+        );
     }
 
     #[test]
     fn a_database_without_the_table_holds_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        rusqlite::Connection::open(dir.path().join(DATABASE)).unwrap().execute_batch("CREATE TABLE kv (key TEXT)").unwrap();
-        assert_eq!(Store::new(dir.path()).lookup(p("opencode")).unwrap(), Lookup::Missing);
+        rusqlite::Connection::open(dir.path().join(DATABASE))
+            .unwrap()
+            .execute_batch("CREATE TABLE kv (key TEXT)")
+            .unwrap();
+        assert_eq!(
+            Store::new(dir.path()).lookup(p("opencode")).unwrap(),
+            Lookup::Missing
+        );
     }
 
     #[test]
@@ -452,7 +600,13 @@ pub(crate) mod tests {
         let key = |id| store.auth(p(id)).unwrap();
 
         assert_eq!(key("anthropic"), Some(Auth::ApiKey("ak".into())));
-        assert_eq!(key("openai-codex"), Some(Auth::Bearer { token: "a".into(), account_id: Some("acct".into()) }));
+        assert_eq!(
+            key("openai-codex"),
+            Some(Auth::Bearer {
+                token: "a".into(),
+                account_id: Some("acct".into())
+            })
+        );
         // A ChatGPT login is not an OpenAI API key.
         assert_eq!(key("openai"), None);
         assert_eq!(store.lookup(p("openai")).unwrap(), Lookup::Missing);
@@ -461,33 +615,48 @@ pub(crate) mod tests {
         assert_eq!(key("opencode"), Some(Auth::ApiKey("zen".into())));
         assert_eq!(key("opencode-go"), Some(Auth::ApiKey("go".into())));
         assert_eq!(key("ollama"), None);
-        assert_eq!(store.lookup(p("opencode-go")).unwrap(), Lookup::Usable(Kind::ApiKey));
-        assert_eq!(store.lookup(p("openai-codex")).unwrap(), Lookup::Usable(Kind::Oauth));
+        assert_eq!(
+            store.lookup(p("opencode-go")).unwrap(),
+            Lookup::Usable(Kind::ApiKey)
+        );
+        assert_eq!(
+            store.lookup(p("openai-codex")).unwrap(),
+            Lookup::Usable(Kind::Oauth)
+        );
         assert_eq!(snapshot(dir.path()), before);
     }
 
     #[test]
     fn an_openai_api_key_is_openai_and_not_codex() {
         let (_dir, store) = legacy_store(json!({ "openai": { "type": "api", "key": "sk" } }));
-        assert_eq!(store.auth(p("openai")).unwrap(), Some(Auth::ApiKey("sk".into())));
+        assert_eq!(
+            store.auth(p("openai")).unwrap(),
+            Some(Auth::ApiKey("sk".into()))
+        );
         assert_eq!(store.lookup(p("openai-codex")).unwrap(), Lookup::Missing);
     }
 
     #[test]
     fn a_plain_zai_key_is_used_when_there_is_no_coding_plan() {
         let (_dir, store) = legacy_store(json!({ "zai": { "type": "api", "key": "plain" } }));
-        assert_eq!(store.auth(p("zai")).unwrap(), Some(Auth::ApiKey("plain".into())));
+        assert_eq!(
+            store.auth(p("zai")).unwrap(),
+            Some(Auth::ApiKey("plain".into()))
+        );
     }
 
     #[test]
     fn an_expired_login_is_reported_and_never_refreshed() {
         let dir = tempfile::tempdir().unwrap();
-        write_database(dir.path(), &[(
-            "openai",
-            None,
-            1,
-            json!({ "type": "oauth", "methodID": "chatgpt-browser", "refresh": "unused", "access": "old", "expires": 1 }),
-        )]);
+        write_database(
+            dir.path(),
+            &[(
+                "openai",
+                None,
+                1,
+                json!({ "type": "oauth", "methodID": "chatgpt-browser", "refresh": "unused", "access": "old", "expires": 1 }),
+            )],
+        );
         let before = snapshot(dir.path());
         let store = Store::new(dir.path());
         assert_eq!(store.lookup(p("openai-codex")).unwrap(), Lookup::Expired);
@@ -503,14 +672,19 @@ pub(crate) mod tests {
         let (_dir, store) = legacy_store(json!({
             "openai": { "type": "oauth", "access": format!("h.{payload}.s"), "refresh": "r", "expires": later() }
         }));
-        let Some(Auth::Bearer { account_id, .. }) = store.auth(p("openai-codex")).unwrap() else { panic!() };
+        let Some(Auth::Bearer { account_id, .. }) = store.auth(p("openai-codex")).unwrap() else {
+            panic!()
+        };
         assert_eq!(account_id.as_deref(), Some("from-jwt"));
     }
 
     #[test]
     fn missing_stores_and_empty_keys_hold_nothing() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(Store::new(dir.path()).lookup(p("opencode")).unwrap(), Lookup::Missing);
+        assert_eq!(
+            Store::new(dir.path()).lookup(p("opencode")).unwrap(),
+            Lookup::Missing
+        );
         let (_dir, store) = legacy_store(json!({ "opencode": { "type": "api", "key": "" } }));
         assert_eq!(store.lookup(p("opencode")).unwrap(), Lookup::Missing);
     }
@@ -524,6 +698,9 @@ pub(crate) mod tests {
 
         fs::write(dir.path().join(DATABASE), "not a database oc_sk_secret").unwrap();
         let err = Store::new(dir.path()).lookup(p("opencode")).unwrap_err();
-        assert!(err.contains("opencode.db") && !err.contains("oc_sk"), "{err}");
+        assert!(
+            err.contains("opencode.db") && !err.contains("oc_sk"),
+            "{err}"
+        );
     }
 }

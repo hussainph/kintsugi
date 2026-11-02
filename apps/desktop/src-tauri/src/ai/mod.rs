@@ -36,10 +36,10 @@ pub(crate) mod tools;
 mod wire;
 
 pub use chat::Chat;
+pub use kin::Kin;
 /// OpenCode's data folder (its credentials live there), for path guards.
 #[cfg(feature = "headless")]
 pub(crate) use opencode_auth::data_dir as opencode_data_dir;
-pub use kin::Kin;
 
 use crate::AppHandle;
 use credentials::{Chain, Source};
@@ -84,7 +84,10 @@ pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
     #[cfg(feature = "headless")]
     if crate::headless::kin_mock() && !crate::headless::ai_enabled() {
         if let Some(edit) = preferences(Task::Edit).first() {
-            statuses.iter_mut().filter(|p| p.id == edit.provider).for_each(|p| p.auth = "mock");
+            statuses
+                .iter_mut()
+                .filter(|p| p.id == edit.provider)
+                .for_each(|p| p.auth = "mock");
         }
     }
     Ok(statuses)
@@ -93,14 +96,27 @@ pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
 fn statuses() -> Result<Vec<ProviderStatus>> {
     #[cfg(feature = "headless")]
     if !crate::headless::ai_enabled() {
-        return Ok(PROVIDERS.iter().map(|p| ProviderStatus { id: p.id, name: p.name, auth: "none", source: None }).collect());
+        return Ok(PROVIDERS
+            .iter()
+            .map(|p| ProviderStatus {
+                id: p.id,
+                name: p.name,
+                auth: "none",
+                source: None,
+            })
+            .collect());
     }
     let chain = Chain::default_location()?;
     PROVIDERS
         .iter()
         .map(|p| {
             let status = chain.status(p)?;
-            Ok(ProviderStatus { id: p.id, name: p.name, auth: status.auth, source: status.source })
+            Ok(ProviderStatus {
+                id: p.id,
+                name: p.name,
+                auth: status.auth,
+                source: status.source,
+            })
         })
         .collect()
 }
@@ -123,7 +139,13 @@ pub enum Task {
 }
 
 impl Task {
-    pub const ALL: [Task; 5] = [Task::Edit, Task::Complete, Task::Chat, Task::Ideas, Task::Triage];
+    pub const ALL: [Task; 5] = [
+        Task::Edit,
+        Task::Complete,
+        Task::Chat,
+        Task::Ideas,
+        Task::Triage,
+    ];
     /// Tasks whose model the owner picks in Settings.
     pub const KIN: [Task; 3] = [Task::Chat, Task::Ideas, Task::Triage];
 
@@ -165,7 +187,9 @@ const PREFERENCES_JSON: &str = include_str!("../../../src/lib/models.json");
 
 fn preferences(task: Task) -> &'static [ModelRef] {
     static PARSED: OnceLock<Preferences> = OnceLock::new();
-    let parsed = PARSED.get_or_init(|| serde_json::from_str(PREFERENCES_JSON).expect("src/lib/models.json is valid"));
+    let parsed = PARSED.get_or_init(|| {
+        serde_json::from_str(PREFERENCES_JSON).expect("src/lib/models.json is valid")
+    });
     match task {
         Task::Edit => &parsed.edit,
         Task::Complete => &parsed.complete,
@@ -178,11 +202,16 @@ fn preferences(task: Task) -> &'static [ModelRef] {
 /// Mirrors `usable` in src/lib/models.ts: local servers are never picked
 /// automatically, and a login Kintsugi can't use doesn't count.
 fn usable(auth: &str) -> bool {
-    !matches!(auth, "none" | "unsupported_login" | "expired_login" | "local")
+    !matches!(
+        auth,
+        "none" | "unsupported_login" | "expired_login" | "local"
+    )
 }
 
 fn ready(m: &ModelRef, statuses: &[ProviderStatus]) -> bool {
-    statuses.iter().any(|s| s.id == m.provider && usable(s.auth))
+    statuses
+        .iter()
+        .any(|s| s.id == m.provider && usable(s.auth))
 }
 
 /// The first preferred model whose provider is usable, as `modelFor` does.
@@ -192,7 +221,11 @@ fn model_for(task: Task, statuses: &[ProviderStatus]) -> Option<&'static ModelRe
 
 /// The owner's choice for a task when its provider is usable, else the
 /// first usable preference.
-fn chosen_model(task: Task, statuses: &[ProviderStatus], settings: &cost::Settings) -> Option<ModelRef> {
+fn chosen_model(
+    task: Task,
+    statuses: &[ProviderStatus],
+    settings: &cost::Settings,
+) -> Option<ModelRef> {
     settings
         .models
         .get(task.id())
@@ -254,7 +287,9 @@ pub enum AiError {
 impl AiError {
     pub fn message(self) -> &'static str {
         match self {
-            AiError::NotConfigured => "No AI provider is set up. Log in with OpenCode (or Pi), or add an API key.",
+            AiError::NotConfigured => {
+                "No AI provider is set up. Log in with OpenCode (or Pi), or add an API key."
+            }
             AiError::Request => "The AI provider request failed.",
             AiError::TimedOut => "The AI provider took too long to answer.",
             AiError::PromptTooLong => "The AI prompt was too long.",
@@ -298,7 +333,9 @@ pub async fn complete(task: Task, ask: &Ask) -> std::result::Result<String, AiEr
         cache_key: None,
     };
     let run = async {
-        let auth = resolve(provider).await.map_err(|_| AiError::NotConfigured)?;
+        let auth = resolve(provider)
+            .await
+            .map_err(|_| AiError::NotConfigured)?;
         let overflow = AtomicBool::new(false);
         let mut length = 0;
         let streaming = wire::send(wire::Endpoint::new(provider, auth), &exchange, |delta| {
@@ -318,12 +355,17 @@ pub async fn complete(task: Task, ask: &Ask) -> std::result::Result<String, AiEr
         }
         Ok(reply.text)
     };
-    tokio::time::timeout(ask.timeout, run).await.map_err(|_| AiError::TimedOut)?
+    tokio::time::timeout(ask.timeout, run)
+        .await
+        .map_err(|_| AiError::TimedOut)?
 }
 
 /// Polls `future` until it finishes or `overflow` is set, which drops it
 /// and so closes the connection.
-async fn until_overflow<F: std::future::Future>(future: F, overflow: &AtomicBool) -> Option<F::Output> {
+async fn until_overflow<F: std::future::Future>(
+    future: F,
+    overflow: &AtomicBool,
+) -> Option<F::Output> {
     let mut future = std::pin::pin!(future);
     let over = || overflow.load(Ordering::Relaxed);
     std::future::poll_fn(|cx| {
@@ -347,8 +389,14 @@ fn truncated(reason: &str) -> bool {
 
 /// Starts a streamed completion; events arrive on `on_event`. Returns at once.
 #[tauri::command]
-pub fn ai_stream(app: AppHandle, ai: State<Ai>, request: Request, on_event: Channel<Event>) -> Result<()> {
-    let provider = wire::provider(&request.provider).ok_or_else(|| format!("unknown provider {}", request.provider))?;
+pub fn ai_stream(
+    app: AppHandle,
+    ai: State<Ai>,
+    request: Request,
+    on_event: Channel<Event>,
+) -> Result<()> {
+    let provider = wire::provider(&request.provider)
+        .ok_or_else(|| format!("unknown provider {}", request.provider))?;
     let id = request.id.clone();
     #[cfg(feature = "headless")]
     if crate::headless::kin_mock() && !crate::headless::ai_enabled() {
@@ -358,7 +406,9 @@ pub fn ai_stream(app: AppHandle, ai: State<Ai>, request: Request, on_event: Chan
                 tokio::time::sleep(Duration::from_millis(40)).await;
                 let _ = on_event.send(Event::Delta { text: word.into() });
             }
-            let _ = on_event.send(Event::Done { stop_reason: Some("mock".into()) });
+            let _ = on_event.send(Event::Done {
+                stop_reason: Some("mock".into()),
+            });
             app.state::<Ai>().0.lock().unwrap().remove(&id);
         });
         if let Some(previous) = ai.0.lock().unwrap().insert(request.id.clone(), task) {
@@ -376,8 +426,16 @@ pub fn ai_stream(app: AppHandle, ai: State<Ai>, request: Request, on_event: Chan
                 })
                 .await?;
                 // The owner asked for this one, so the cap never blocks it.
-                let task = request.task.as_deref().and_then(Task::from_id).unwrap_or(Task::Edit);
-                let model = ModelRef { provider: provider.id.into(), model: request.model.clone(), reasoning: None };
+                let task = request
+                    .task
+                    .as_deref()
+                    .and_then(Task::from_id)
+                    .unwrap_or(Task::Edit);
+                let model = ModelRef {
+                    provider: provider.id.into(),
+                    model: request.model.clone(),
+                    reasoning: None,
+                };
                 meter().record(task, &model, &reply.usage);
                 Ok::<_, String>(())
             }
@@ -414,7 +472,12 @@ mod tests {
     use super::*;
 
     fn status(id: &'static str, auth: &'static str) -> ProviderStatus {
-        ProviderStatus { id, name: id, auth, source: None }
+        ProviderStatus {
+            id,
+            name: id,
+            auth,
+            source: None,
+        }
     }
 
     #[test]
@@ -422,7 +485,11 @@ mod tests {
         for task in [Task::Edit, Task::Complete] {
             assert!(!preferences(task).is_empty());
             for m in preferences(task) {
-                assert!(wire::provider(&m.provider).is_some(), "unknown provider {}", m.provider);
+                assert!(
+                    wire::provider(&m.provider).is_some(),
+                    "unknown provider {}",
+                    m.provider
+                );
             }
         }
     }
@@ -443,13 +510,19 @@ mod tests {
 
     #[test]
     fn errors_are_fixed_messages() {
-        assert_eq!(AiError::Request.to_string(), "The AI provider request failed.");
+        assert_eq!(
+            AiError::Request.to_string(),
+            "The AI provider request failed."
+        );
         assert_eq!(format!("{:?}", AiError::TimedOut), "TimedOut");
     }
 
     #[test]
     fn until_overflow_drops_the_future_once_flagged() {
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let overflow = AtomicBool::new(false);
         let finished = runtime.block_on(until_overflow(async { 7 }, &overflow));
         assert_eq!(finished, Some(7));
@@ -492,16 +565,23 @@ mod live {
             reasoning: reasoning.map(String::from),
             task: None,
         };
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let mut text = String::new();
         let mut done = None;
         runtime
             .block_on(async {
                 let auth = resolve(provider).await?;
-                wire::stream(wire::Endpoint::new(provider, auth), &request, |event| match event {
-                    Event::Delta { text: t } => text.push_str(&t),
-                    other => done = Some(other),
-                })
+                wire::stream(
+                    wire::Endpoint::new(provider, auth),
+                    &request,
+                    |event| match event {
+                        Event::Delta { text: t } => text.push_str(&t),
+                        other => done = Some(other),
+                    },
+                )
                 .await
             })
             .unwrap();
@@ -532,7 +612,10 @@ mod live {
             max_response_bytes: 1000,
             timeout: Duration::from_secs(60),
         };
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let text = runtime.block_on(complete(Task::Edit, &ask)).unwrap();
         println!("{text:?}");
         assert!(text.to_lowercase().contains("ok"));
@@ -543,10 +626,15 @@ mod live {
     #[test]
     #[ignore]
     fn live_request() {
-        let path = std::env::var("KINTSUGI_REQUEST").expect("set KINTSUGI_REQUEST to a request JSON file");
-        let request: Request = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let path =
+            std::env::var("KINTSUGI_REQUEST").expect("set KINTSUGI_REQUEST to a request JSON file");
+        let request: Request =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         let provider = wire::provider(&request.provider).unwrap();
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let mut text = String::new();
         runtime
             .block_on(async {

@@ -844,14 +844,28 @@ mod tests {
             ),
         );
         put(root, "notes/repair.md", "Repair body");
-        put(root, "drafts/unfinished.md", "---\nideas:\n  - id: x\n    clips:\n      - \"[[notes/repair]]\"\n");
+        put(
+            root,
+            "drafts/unfinished.md",
+            "---\nideas:\n  - id: x\n    clips:\n      - \"[[notes/repair]]\"\n",
+        );
         let index = reference_index(root).unwrap();
-        let edges: Vec<(&str, Option<&str>)> = index.links.iter().map(|l| (l.source.as_str(), l.resolved.as_deref())).collect();
+        let edges: Vec<(&str, Option<&str>)> = index
+            .links
+            .iter()
+            .map(|l| (l.source.as_str(), l.resolved.as_deref()))
+            .collect();
         assert_eq!(
             edges,
-            [("drafts/what-repair-costs.mdx", Some(path.as_str())), ("drafts/what-repair-costs.mdx", Some("notes/repair.md"))]
+            [
+                ("drafts/what-repair-costs.mdx", Some(path.as_str())),
+                ("drafts/what-repair-costs.mdx", Some("notes/repair.md"))
+            ]
         );
-        assert!(index.documents.iter().all(|d| !d.text.contains("ideas:")), "frontmatter stays out of the body");
+        assert!(
+            index.documents.iter().all(|d| !d.text.contains("ideas:")),
+            "frontmatter stays out of the body"
+        );
     }
 
     #[test]

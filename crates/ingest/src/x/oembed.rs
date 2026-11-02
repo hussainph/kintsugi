@@ -18,7 +18,10 @@ struct Embed {
 pub(crate) async fn post(client: &ApiClient, base: &Url, url: &Url, id: &str) -> Result<Post> {
     let mut endpoint = base.join("oembed").map_err(|_| Error::InvalidUrl)?;
     // Always ask about the canonical x.com form: mirrors aren't X's to embed.
-    let handle = url.path_segments().and_then(|mut s| s.next()).filter(|h| super::valid_handle(h) && *h != "i");
+    let handle = url
+        .path_segments()
+        .and_then(|mut s| s.next())
+        .filter(|h| super::valid_handle(h) && *h != "i");
     let canonical = format!("https://x.com/{}/status/{id}", handle.unwrap_or("i"));
     endpoint
         .query_pairs_mut()
@@ -37,7 +40,16 @@ pub(crate) async fn post(client: &ApiClient, base: &Url, url: &Url, id: &str) ->
     if text.is_empty() {
         return Err(Error::Unavailable);
     }
-    Ok(Post { id: id.to_string(), author: Author { name: embed.author_name, handle, avatar: None }, text, ..Post::default() })
+    Ok(Post {
+        id: id.to_string(),
+        author: Author {
+            name: embed.author_name,
+            handle,
+            avatar: None,
+        },
+        text,
+        ..Post::default()
+    })
 }
 
 /// The embed's `<blockquote><p>` holds the post; the rest is a byline. Text
@@ -61,6 +73,9 @@ mod tests {
     #[test]
     fn only_the_post_paragraphs_are_kept() {
         let html = r#"<blockquote class="twitter-tweet"><p lang="en">Line one<br>line two <a href="https://t.co/x">pic.twitter.com/x</a></p>&mdash; Writer (@writer) <a href="https://twitter.com/writer/status/1">May 1</a></blockquote><script>evil()</script>"#;
-        assert_eq!(super::post_text(html), "Line one\nline two pic.twitter.com/x");
+        assert_eq!(
+            super::post_text(html),
+            "Line one\nline two pic.twitter.com/x"
+        );
     }
 }

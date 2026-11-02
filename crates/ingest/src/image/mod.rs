@@ -20,7 +20,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Images the reader accepts, by extension (the clip's media formats).
-pub const IMAGE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif"];
+pub const IMAGE_EXTENSIONS: &[&str] =
+    &["jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "avif"];
 /// Labels below this confidence are left out.
 const MIN_LABEL_CONFIDENCE: f64 = 0.2;
 const MAX_LABELS: usize = 8;
@@ -59,7 +60,10 @@ pub struct VisionReader {
 
 impl VisionReader {
     pub fn new(program: impl Into<PathBuf>) -> Self {
-        Self { program: program.into(), timeout: Duration::from_secs(60) }
+        Self {
+            program: program.into(),
+            timeout: Duration::from_secs(60),
+        }
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -102,8 +106,12 @@ impl ImageAdapter {
         if !labels.is_empty() {
             extras.insert("labels".into(), json!(labels));
         }
-        let lines: Vec<String> =
-            read.lines.iter().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|l| !l.is_empty()).collect();
+        let lines: Vec<String> = read
+            .lines
+            .iter()
+            .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+            .filter(|l| !l.is_empty())
+            .collect();
         if !lines.is_empty() {
             extras.insert("ocrLines".into(), json!(lines.len()));
         }
@@ -150,8 +158,11 @@ pub fn is_image_path(path: &Path) -> bool {
 }
 
 fn labels(read: &ImageText) -> Vec<String> {
-    let mut labels: Vec<&Label> =
-        read.labels.iter().filter(|l| l.confidence >= MIN_LABEL_CONFIDENCE && l.confidence.is_finite()).collect();
+    let mut labels: Vec<&Label> = read
+        .labels
+        .iter()
+        .filter(|l| l.confidence >= MIN_LABEL_CONFIDENCE && l.confidence.is_finite())
+        .collect();
     labels.sort_by(|a, b| b.confidence.total_cmp(&a.confidence));
     let mut out: Vec<String> = Vec::new();
     for label in labels {
@@ -170,7 +181,10 @@ fn labels(read: &ImageText) -> Vec<String> {
 fn body(lines: &[String], labels: &[String]) -> String {
     let mut blocks = Vec::new();
     if !lines.is_empty() {
-        blocks.push("_Text recognised in the image on this Mac (machine-made, may contain errors):_".to_string());
+        blocks.push(
+            "_Text recognised in the image on this Mac (machine-made, may contain errors):_"
+                .to_string(),
+        );
         let mut text = String::new();
         for line in lines {
             if text.chars().count() + line.chars().count() > MAX_TEXT_CHARS {
@@ -185,7 +199,10 @@ fn body(lines: &[String], labels: &[String]) -> String {
         blocks.push(text::plain(&text).replace('\n', "  \n"));
     }
     if !labels.is_empty() {
-        blocks.push(format!("_What the image shows, as guessed on this Mac (machine-made):_ {}", labels.join(", ")));
+        blocks.push(format!(
+            "_What the image shows, as guessed on this Mac (machine-made):_ {}",
+            labels.join(", ")
+        ));
     }
     blocks.join("\n\n")
 }

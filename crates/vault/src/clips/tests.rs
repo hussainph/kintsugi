@@ -34,7 +34,10 @@ fn receipt_reservation_happens_before_media_and_markdown_are_written() {
     assert_eq!(error, "could not persist receipt");
     assert!(clip_list(root).unwrap().is_empty());
     assert!(!root.join("inspiration/media").exists());
-    assert_eq!(clip_create(root, &capture).unwrap(), "inspiration/a-note.md");
+    assert_eq!(
+        clip_create(root, &capture).unwrap(),
+        "inspiration/a-note.md"
+    );
 }
 
 #[test]
@@ -130,14 +133,23 @@ fn guesses_hosts_without_matching_lookalike_domains() {
         ("https://notyoutube.com/watch?v=1", ClipKind::Link),
         ("https://youtube.com.evil.test/", ClipKind::Link),
         ("https://x.com@unrelated.test/", ClipKind::Link),
-        ("https://podcasts.apple.com/us/podcast/buzzcast/id1?i=2", ClipKind::Podcast),
+        (
+            "https://podcasts.apple.com/us/podcast/buzzcast/id1?i=2",
+            ClipKind::Podcast,
+        ),
         ("https://overcast.fm/+AbCdE", ClipKind::Podcast),
         (
             "https://op3.dev/e/https://dts.podtrac.com/redirect.mp3/www.buzzsprout.com/231452/episodes/1-idea.mp3",
             ClipKind::Podcast,
         ),
-        ("https://media.example.com/episode.M4A?x=1", ClipKind::Podcast),
-        ("https://www.inkandswitch.com/local-first/static/local-first.pdf", ClipKind::Document),
+        (
+            "https://media.example.com/episode.M4A?x=1",
+            ClipKind::Podcast,
+        ),
+        (
+            "https://www.inkandswitch.com/local-first/static/local-first.pdf",
+            ClipKind::Document,
+        ),
         ("https://example.org/notes.pdf.html", ClipKind::Link),
     ] {
         assert_eq!(clip_guess_kind(Some(url), None, false), kind, "{url}");
@@ -328,14 +340,31 @@ fn source_updates_are_bounded_and_can_be_cleared() {
     assert!(excerpt.ends_with(
         "\n\n_Excerpt: the first 19,800 of 25,000 characters. The whole text is in inspiration/sources/my-note.txt._"
     ));
-    assert_eq!(clip.summary.full_source.as_deref(), Some("sources/my-note.txt"));
+    assert_eq!(
+        clip.summary.full_source.as_deref(),
+        Some("sources/my-note.txt")
+    );
     let sidecar = root.join("inspiration/sources/my-note.txt");
-    assert_eq!(fs::read_to_string(&sidecar).unwrap(), format!("{}\n", "金".repeat(25_000)));
-    assert_eq!(clip_full_source(root, &path).unwrap().unwrap(), format!("{}\n", "金".repeat(25_000)));
+    assert_eq!(
+        fs::read_to_string(&sidecar).unwrap(),
+        format!("{}\n", "金".repeat(25_000))
+    );
+    assert_eq!(
+        clip_full_source(root, &path).unwrap().unwrap(),
+        format!("{}\n", "金".repeat(25_000))
+    );
     assert!(clip.has_source);
     assert_eq!(clip.text, "My note");
     // A note edit leaves the source and its sidecar alone.
-    let clip = clip_update(root, &path, &ClipUpdate { note: Some("New note".into()), ..Default::default() }).unwrap();
+    let clip = clip_update(
+        root,
+        &path,
+        &ClipUpdate {
+            note: Some("New note".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(clip.source.as_deref(), Some(excerpt.as_str()));
     assert!(sidecar.exists());
     let clip = clip_update(
@@ -359,17 +388,48 @@ fn source_updates_are_bounded_and_can_be_cleared() {
 fn a_long_transcript_says_how_far_its_excerpt_goes() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    let path = clip_create(root, &ClipCapture { url: Some("https://www.youtube.com/watch?v=abc".into()), ..capture("") }).unwrap();
+    let path = clip_create(
+        root,
+        &ClipCapture {
+            url: Some("https://www.youtube.com/watch?v=abc".into()),
+            ..capture("")
+        },
+    )
+    .unwrap();
     let transcript: Vec<String> = (0..600)
-        .map(|i| format!("[{}:{:02}](<https://www.youtube.com/watch?v=abc&t={}s>) {}", i * 10 / 60, i * 10 % 60, i * 10, "words ".repeat(12)))
+        .map(|i| {
+            format!(
+                "[{}:{:02}](<https://www.youtube.com/watch?v=abc&t={}s>) {}",
+                i * 10 / 60,
+                i * 10 % 60,
+                i * 10,
+                "words ".repeat(12)
+            )
+        })
         .collect();
     let transcript = transcript.join("\n\n");
-    let clip = clip_update(root, &path, &ClipUpdate { source: Some(transcript.clone()), ..Default::default() }).unwrap();
+    let clip = clip_update(
+        root,
+        &path,
+        &ClipUpdate {
+            source: Some(transcript.clone()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let excerpt = clip.source.unwrap();
     let note = excerpt.rsplit_once("\n\n").unwrap().1;
     assert!(note.starts_with("_Excerpt: up to "), "{note}");
-    assert!(note.ends_with(" of 99:50. The whole transcript is in inspiration/sources/www-youtube-com-watch.txt._"), "{note}");
-    assert_eq!(clip_full_source(root, &path).unwrap().unwrap().trim_end(), transcript.trim_end());
+    assert!(
+        note.ends_with(
+            " of 99:50. The whole transcript is in inspiration/sources/www-youtube-com-watch.txt._"
+        ),
+        "{note}"
+    );
+    assert_eq!(
+        clip_full_source(root, &path).unwrap().unwrap().trim_end(),
+        transcript.trim_end()
+    );
     // Trash takes the sidecar along.
     let mut trashed = Vec::new();
     clip_trash(root, &path, |targets| {
@@ -377,10 +437,22 @@ fn a_long_transcript_says_how_far_its_excerpt_goes() {
         Ok(())
     })
     .unwrap();
-    assert!(trashed.iter().any(|p| p.ends_with("inspiration/sources/www-youtube-com-watch.txt")), "{trashed:?}");
+    assert!(
+        trashed
+            .iter()
+            .any(|p| p.ends_with("inspiration/sources/www-youtube-com-watch.txt")),
+        "{trashed:?}"
+    );
     // An orphaned sidecar's name isn't reused by a later capture.
     fs::remove_file(root.join(&path)).unwrap();
-    let again = clip_create(root, &ClipCapture { url: Some("https://www.youtube.com/watch?v=abc".into()), ..capture("") }).unwrap();
+    let again = clip_create(
+        root,
+        &ClipCapture {
+            url: Some("https://www.youtube.com/watch?v=abc".into()),
+            ..capture("")
+        },
+    )
+    .unwrap();
     assert_eq!(again, "inspiration/www-youtube-com-watch-2.md");
 }
 
@@ -397,14 +469,26 @@ fn hand_edited_sidecar_paths_are_ignored() {
     let clip = clip_read(root, "inspiration/x.md").unwrap();
     assert_eq!(clip.summary.full_source, None);
     assert_eq!(clip.summary.quote_link, None);
-    assert_eq!(clip_full_source(root, "inspiration/x.md").unwrap().as_deref(), Some("Short."));
+    assert_eq!(
+        clip_full_source(root, "inspiration/x.md")
+            .unwrap()
+            .as_deref(),
+        Some("Short.")
+    );
 }
 
 #[test]
 fn quote_attribution_is_stored_in_frontmatter() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    let path = clip_create(root, &ClipCapture { url: Some("https://news.ycombinator.com/item?id=1".into()), ..capture("A reply") }).unwrap();
+    let path = clip_create(
+        root,
+        &ClipCapture {
+            url: Some("https://news.ycombinator.com/item?id=1".into()),
+            ..capture("A reply")
+        },
+    )
+    .unwrap();
     let patch = ClipUpdate {
         quote_by: Some("josephg".into()),
         quote_link: Some("https://news.ycombinator.com/item?id=2".into()),
@@ -412,12 +496,28 @@ fn quote_attribution_is_stored_in_frontmatter() {
     };
     let clip = clip_update(root, &path, &patch).unwrap();
     assert_eq!(clip.summary.quote_by.as_deref(), Some("josephg"));
-    assert_eq!(clip.summary.quote_link.as_deref(), Some("https://news.ycombinator.com/item?id=2"));
+    assert_eq!(
+        clip.summary.quote_link.as_deref(),
+        Some("https://news.ycombinator.com/item?id=2")
+    );
     assert_eq!(clip.text, "> A reply");
-    let bad = ClipUpdate { quote_link: Some("javascript:alert(1)".into()), ..Default::default() };
+    let bad = ClipUpdate {
+        quote_link: Some("javascript:alert(1)".into()),
+        ..Default::default()
+    };
     assert!(clip_update(root, &path, &bad).is_err());
-    let page = ClipUpdate { quote_link: Some("files/x.pdf#page=3".into()), ..Default::default() };
-    assert_eq!(clip_update(root, &path, &page).unwrap().summary.quote_link.as_deref(), Some("files/x.pdf#page=3"));
+    let page = ClipUpdate {
+        quote_link: Some("files/x.pdf#page=3".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        clip_update(root, &path, &page)
+            .unwrap()
+            .summary
+            .quote_link
+            .as_deref(),
+        Some("files/x.pdf#page=3")
+    );
 }
 
 #[test]
@@ -430,8 +530,14 @@ fn image_only_captures_are_named_for_when_they_arrived() {
         image_type: Some("image/png".into()),
         ..capture("")
     };
-    assert_eq!(clip_create(root, &image).unwrap(), "inspiration/image-2026-10-29-14-05.md");
-    assert_eq!(clip_create(root, &image).unwrap(), "inspiration/image-2026-10-29-14-05-2.md");
+    assert_eq!(
+        clip_create(root, &image).unwrap(),
+        "inspiration/image-2026-10-29-14-05.md"
+    );
+    assert_eq!(
+        clip_create(root, &image).unwrap(),
+        "inspiration/image-2026-10-29-14-05-2.md"
+    );
 }
 
 #[test]
@@ -967,7 +1073,11 @@ fn pdf_bytes() -> Vec<u8> {
 fn file_capture(bytes: Vec<u8>, mime: &str, name: Option<&str>) -> ClipCapture {
     ClipCapture {
         text: None,
-        file: Some(ClipFile { bytes, mime: mime.into(), name: name.map(Into::into) }),
+        file: Some(ClipFile {
+            bytes,
+            mime: mime.into(),
+            name: name.map(Into::into),
+        }),
         ..capture("unused")
     }
 }
@@ -976,26 +1086,57 @@ fn file_capture(bytes: Vec<u8>, mime: &str, name: Option<&str>) -> ClipCapture {
 fn pdfs_and_epubs_are_saved_beside_the_clip_and_named_from_the_file() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    let path = clip_create(root, &file_capture(pdf_bytes(), "application/pdf", Some("Golden_Seam-draft.v2.pdf"))).unwrap();
+    let path = clip_create(
+        root,
+        &file_capture(
+            pdf_bytes(),
+            "application/pdf",
+            Some("Golden_Seam-draft.v2.pdf"),
+        ),
+    )
+    .unwrap();
     assert_eq!(path, "inspiration/golden-seam-draft-v2.md");
     let clip = clip_read(root, &path).unwrap();
     assert_eq!(clip.summary.kind, ClipKind::Document);
     assert_eq!(clip.summary.title, None);
-    assert_eq!(clip.summary.file.as_deref(), Some("files/golden-seam-draft-v2.pdf"));
+    assert_eq!(
+        clip.summary.file.as_deref(),
+        Some("files/golden-seam-draft-v2.pdf")
+    );
     let saved = clip_file_path(root, &path, "files/golden-seam-draft-v2.pdf").unwrap();
     assert_eq!(fs::read(&saved).unwrap(), pdf_bytes());
     let json = serde_json::to_value(&clip.summary).unwrap();
     assert_eq!(json["file"], "files/golden-seam-draft-v2.pdf");
 
     // A second capture with the same name never overwrites the file.
-    let again = clip_create(root, &file_capture(pdf_bytes(), "application/pdf", Some("Golden_Seam-draft.v2.pdf"))).unwrap();
+    let again = clip_create(
+        root,
+        &file_capture(
+            pdf_bytes(),
+            "application/pdf",
+            Some("Golden_Seam-draft.v2.pdf"),
+        ),
+    )
+    .unwrap();
     assert_eq!(again, "inspiration/golden-seam-draft-v2-2.md");
     // An orphan file reserves its name too.
     fs::write(root.join("inspiration/files/orphan.pdf"), b"x").unwrap();
-    let orphan = clip_create(root, &file_capture(pdf_bytes(), "application/pdf", Some("orphan.pdf"))).unwrap();
+    let orphan = clip_create(
+        root,
+        &file_capture(pdf_bytes(), "application/pdf", Some("orphan.pdf")),
+    )
+    .unwrap();
     assert_eq!(orphan, "inspiration/orphan-2.md");
 
-    let epub = clip_create(root, &file_capture(b"PK\x03\x04mimetypeapplication/epub+zip".to_vec(), "application/epub+zip", None)).unwrap();
+    let epub = clip_create(
+        root,
+        &file_capture(
+            b"PK\x03\x04mimetypeapplication/epub+zip".to_vec(),
+            "application/epub+zip",
+            None,
+        ),
+    )
+    .unwrap();
     assert_eq!(epub, "inspiration/document.md");
     let clip = clip_read(root, &epub).unwrap();
     assert_eq!(clip.summary.kind, ClipKind::Book);
@@ -1016,26 +1157,64 @@ fn files_must_be_what_they_claim_and_within_the_cap() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     for (bytes, mime, error) in [
-        (b"<html>".to_vec(), "application/pdf", "clip file does not match its type"),
-        (pdf_bytes(), "application/epub+zip", "clip file does not match its type"),
+        (
+            b"<html>".to_vec(),
+            "application/pdf",
+            "clip file does not match its type",
+        ),
+        (
+            pdf_bytes(),
+            "application/epub+zip",
+            "clip file does not match its type",
+        ),
         (pdf_bytes(), "text/html", "unsupported clip file type"),
-        (Vec::new(), "application/pdf", "clip files must be between 1 byte and 50 MiB"),
-        (vec![b'%'; MAX_CLIP_FILE_BYTES + 1], "application/pdf", "clip files must be between 1 byte and 50 MiB"),
+        (
+            Vec::new(),
+            "application/pdf",
+            "clip files must be between 1 byte and 50 MiB",
+        ),
+        (
+            vec![b'%'; MAX_CLIP_FILE_BYTES + 1],
+            "application/pdf",
+            "clip files must be between 1 byte and 50 MiB",
+        ),
     ] {
-        assert_eq!(clip_create(root, &file_capture(bytes, mime, Some("x.pdf"))).unwrap_err(), error);
+        assert_eq!(
+            clip_create(root, &file_capture(bytes, mime, Some("x.pdf"))).unwrap_err(),
+            error
+        );
     }
     assert!(!root.join("inspiration/files").exists());
     // Hand-edited paths outside files/<stem> are refused.
     let path = clip_create(root, &capture("A note")).unwrap();
-    for file in ["files/other.pdf", "../secret.pdf", "files/a-note.exe", "media/a-note.pdf"] {
+    for file in [
+        "files/other.pdf",
+        "../secret.pdf",
+        "files/a-note.exe",
+        "media/a-note.pdf",
+    ] {
         assert!(clip_file_path(root, &path, file).is_err(), "{file}");
     }
 }
 
 #[test]
 fn open_library_links_are_books() {
-    assert_eq!(clip_guess_kind(Some("https://openlibrary.org/isbn/9780140328721"), None, false), ClipKind::Book);
-    assert_eq!(clip_guess_kind(Some("https://openlibrary.org.evil.test/works/OL1W"), None, false), ClipKind::Link);
+    assert_eq!(
+        clip_guess_kind(
+            Some("https://openlibrary.org/isbn/9780140328721"),
+            None,
+            false
+        ),
+        ClipKind::Book
+    );
+    assert_eq!(
+        clip_guess_kind(
+            Some("https://openlibrary.org.evil.test/works/OL1W"),
+            None,
+            false
+        ),
+        ClipKind::Link
+    );
 }
 
 #[test]
@@ -1043,25 +1222,40 @@ fn note_edits_are_version_checked_and_keep_the_source() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let path = clip_create(root, &capture("First thought")).unwrap();
-    clip_update(root, &path, &ClipUpdate { source: Some("Readable source".into()), ..Default::default() }).unwrap();
+    clip_update(
+        root,
+        &path,
+        &ClipUpdate {
+            source: Some("Readable source".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     let read = clip_read(root, &path).unwrap();
     let base = crate::version(&read.text);
 
-    let NoteWrite::Saved(saved) = clip_update_note(root, &path, "Second thought\n", Some(&base)).unwrap() else {
+    let NoteWrite::Saved(saved) =
+        clip_update_note(root, &path, "Second thought\n", Some(&base)).unwrap()
+    else {
         panic!("expected a save");
     };
     assert_eq!(saved.text, "Second thought");
     assert_eq!(saved.source.as_deref(), Some("Readable source"));
 
     // The phone's base is now stale: nothing is written, and it gets the Mac's copy.
-    let NoteWrite::Conflict(current) = clip_update_note(root, &path, "Offline thought", Some(&base)).unwrap() else {
+    let NoteWrite::Conflict(current) =
+        clip_update_note(root, &path, "Offline thought", Some(&base)).unwrap()
+    else {
         panic!("expected a conflict");
     };
     assert_eq!(current.text, "Second thought");
     assert_eq!(clip_read(root, &path).unwrap().text, "Second thought");
 
     // Saving the text that is already there is a no-op save, whatever the base.
-    assert!(matches!(clip_update_note(root, &path, "Second thought", None).unwrap(), NoteWrite::Saved(_)));
+    assert!(matches!(
+        clip_update_note(root, &path, "Second thought", None).unwrap(),
+        NoteWrite::Saved(_)
+    ));
     let listed = clip_list_with_text(root).unwrap();
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].text, "Second thought");

@@ -30,7 +30,9 @@ pub struct Kin(Mutex<HashMap<String, Cancel>>);
 /// so it never touches the real app's data.
 pub(crate) fn data_dir(app: &AppHandle) -> Option<PathBuf> {
     #[cfg(not(feature = "headless"))]
-    if crate::config::isolated_dev() && std::env::var_os("KINTSUGI_CONFIG_DIR").is_none_or(|p| p.is_empty()) {
+    if crate::config::isolated_dev()
+        && std::env::var_os("KINTSUGI_CONFIG_DIR").is_none_or(|p| p.is_empty())
+    {
         return None;
     }
     crate::config::directory(app).ok().map(|d| d.join("kin"))
@@ -53,7 +55,11 @@ impl agent::Model for Connected {
         }
     }
 
-    async fn send(&self, ex: &wire::Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> Result<wire::Reply> {
+    async fn send(
+        &self,
+        ex: &wire::Exchange<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<wire::Reply> {
         match self {
             Connected::Remote(r) => r.send(ex, on_text).await,
             #[cfg(feature = "headless")]
@@ -72,7 +78,12 @@ pub(crate) async fn connect(task: Task) -> Result<Connected> {
         .ok_or("No AI provider is set up. Run `pi`, log in or add an API key.")?;
     let provider = wire::provider(&model.provider).ok_or("unknown provider")?;
     let auth = resolve(provider).await?;
-    Ok(Connected::Remote(Remote { model, provider, base_url: provider.base_url.into(), auth }))
+    Ok(Connected::Remote(Remote {
+        model,
+        provider,
+        base_url: provider.base_url.into(),
+        auth,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -101,13 +112,20 @@ fn yes() -> bool {
 fn kin_task(id: Option<&str>) -> Result<Task> {
     match id {
         None => Ok(Task::Chat),
-        Some(id) => Task::from_id(id).filter(|t| Task::KIN.contains(t)).ok_or_else(|| format!("unknown Kin task {id}")),
+        Some(id) => Task::from_id(id)
+            .filter(|t| Task::KIN.contains(t))
+            .ok_or_else(|| format!("unknown Kin task {id}")),
     }
 }
 
 /// Starts a turn; events arrive on `on_event`, ending in `done` or `error`.
 #[tauri::command]
-pub fn kin_turn(app: AppHandle, kin: State<Kin>, turn: TurnRequest, on_event: Channel<KinEvent>) -> Result<()> {
+pub fn kin_turn(
+    app: AppHandle,
+    kin: State<Kin>,
+    turn: TurnRequest,
+    on_event: Channel<KinEvent>,
+) -> Result<()> {
     let task = kin_task(turn.task.as_deref())?;
     if turn.question.trim().is_empty() {
         return Err("Ask Kin something.".into());
@@ -116,7 +134,12 @@ pub fn kin_turn(app: AppHandle, kin: State<Kin>, turn: TurnRequest, on_event: Ch
         return Err("That question is too long.".into());
     }
     let cancel = Cancel::default();
-    if let Some(previous) = kin.0.lock().unwrap().insert(turn.id.clone(), cancel.clone()) {
+    if let Some(previous) = kin
+        .0
+        .lock()
+        .unwrap()
+        .insert(turn.id.clone(), cancel.clone())
+    {
         previous.cancel();
     }
     async_runtime::spawn(async move {
@@ -139,7 +162,13 @@ pub fn kin_turn(app: AppHandle, kin: State<Kin>, turn: TurnRequest, on_event: Ch
 
 /// Sets up the model, tools and memory, then runs the loop. Errors before the
 /// loop starts are returned; the loop reports its own.
-async fn start(app: &AppHandle, turn: TurnRequest, task: Task, cancel: &Cancel, emit: &mut (dyn FnMut(KinEvent) + Send)) -> Result<()> {
+async fn start(
+    app: &AppHandle,
+    turn: TurnRequest,
+    task: Task,
+    cancel: &Cancel,
+    emit: &mut (dyn FnMut(KinEvent) + Send),
+) -> Result<()> {
     let root = crate::vault::current(app)?;
     let meter = meter();
     if turn.background && meter.allows(true).is_err() {
@@ -150,8 +179,14 @@ async fn start(app: &AppHandle, turn: TurnRequest, task: Task, cancel: &Cancel, 
     let store = super::about::store(app, &root)?;
     let memory = store.snapshot();
     store.loaded(&memory);
-    let access = Access { store, source: Source::chat(&turn.id, &turn.question), remember: turn.remember };
-    let tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?.with_memory(access).with_searcher(crate::search::searcher(app))
+    let access = Access {
+        store,
+        source: Source::chat(&turn.id, &turn.question),
+        remember: turn.remember,
+    };
+    let tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?
+        .with_memory(access)
+        .with_searcher(crate::search::searcher(app))
         .with_feed(crate::feed::kin_hook(app));
     let request = agent::Turn {
         task,
@@ -164,7 +199,13 @@ async fn start(app: &AppHandle, turn: TurnRequest, task: Task, cancel: &Cancel, 
         recap: None,
     };
     // The loop emits its own error event; don't send a second one.
-    let harness = agent::Harness { tools: &tools, meter, memory: &memory, cancel, limits: Limits::default() };
+    let harness = agent::Harness {
+        tools: &tools,
+        meter,
+        memory: &memory,
+        cancel,
+        limits: Limits::default(),
+    };
     let _ = agent::run(&remote, &harness, &request, emit).await;
     Ok(())
 }
@@ -224,16 +265,30 @@ fn view(settings: &Settings) -> Result<SettingsView> {
         .into_iter()
         .map(|task| {
             let mut options: Vec<ModelRef> = preferences(task).to_vec();
-            options.extend(all.iter().filter(|m| !options.contains(m)).cloned().collect::<Vec<_>>());
+            options.extend(
+                all.iter()
+                    .filter(|m| !options.contains(m))
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            );
             TaskModels {
                 task: task.id(),
                 chosen: settings.models.get(task.id()).cloned(),
                 resolved: chosen_model(task, &statuses, settings),
-                options: options.into_iter().map(|m| ModelOption { usable: ready(&m, &statuses), model: m }).collect(),
+                options: options
+                    .into_iter()
+                    .map(|m| ModelOption {
+                        usable: ready(&m, &statuses),
+                        model: m,
+                    })
+                    .collect(),
             }
         })
         .collect();
-    Ok(SettingsView { cap_usd: settings.monthly_cap_usd, tasks })
+    Ok(SettingsView {
+        cap_usd: settings.monthly_cap_usd,
+        tasks,
+    })
 }
 
 #[tauri::command]
@@ -290,7 +345,8 @@ mod tests {
         .unwrap();
         assert_eq!(turn.context[0].path, "posts/a.md");
         assert!(!turn.background && turn.task.is_none() && turn.remember);
-        let forgetful: TurnRequest = serde_json::from_str(r#"{"id":"b","question":"Hm","remember":false}"#).unwrap();
+        let forgetful: TurnRequest =
+            serde_json::from_str(r#"{"id":"b","question":"Hm","remember":false}"#).unwrap();
         assert!(!forgetful.remember);
     }
 }

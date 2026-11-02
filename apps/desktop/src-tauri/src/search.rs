@@ -47,7 +47,9 @@ fn data_dir(app: &AppHandle) -> Option<PathBuf> {
 
 /// Each vault has its own scope in the one index, keyed by its canonical path.
 fn scope(root: &Path) -> Result<(PathBuf, String)> {
-    let root = root.canonicalize().map_err(|_| "could not open the vault for search")?;
+    let root = root
+        .canonicalize()
+        .map_err(|_| "could not open the vault for search")?;
     let key = root.to_string_lossy().into_owned();
     Ok((root, key))
 }
@@ -100,13 +102,19 @@ pub struct Vectors {
 impl Search {
     pub fn vectors(&self, app: &AppHandle, root: Option<&Path>) -> Option<Vectors> {
         self.with(app, |index| {
-            let Some(embedder) = index.embedder() else { return Ok(None) };
+            let Some(embedder) = index.embedder() else {
+                return Ok(None);
+            };
             let mut vault = Default::default();
             if let Some((root, key)) = root.and_then(|r| scope(r).ok()) {
                 search::vault::sync(index, &key, &root)?;
                 vault = index.doc_vectors(&key)?;
             }
-            Ok(Some(Vectors { feed: index.doc_vectors(FEED_SCOPE)?, vault, embedder }))
+            Ok(Some(Vectors {
+                feed: index.doc_vectors(FEED_SCOPE)?,
+                vault,
+                embedder,
+            }))
         })
         .ok()
         .flatten()
@@ -123,11 +131,17 @@ pub fn init(app: &AppHandle) {
     let Some(dir) = data_dir(app) else { return };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let client = match reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).build() {
+        let client = match reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+        {
             Ok(client) => client,
             Err(_) => return,
         };
-        let model = match search::POTION_BASE_8M.ensure(&dir.join("models"), &client).await {
+        let model = match search::POTION_BASE_8M
+            .ensure(&dir.join("models"), &client)
+            .await
+        {
             Ok(model) => Arc::new(model),
             Err(error) => {
                 eprintln!("search: words only ({error})");
@@ -140,7 +154,10 @@ pub fn init(app: &AppHandle) {
                 return;
             }
             // In batches, so searches can run between them.
-            while state.with(&app, |index| index.embed_missing(512)).is_ok_and(|n| n > 0) {}
+            while state
+                .with(&app, |index| index.embed_missing(512))
+                .is_ok_and(|n| n > 0)
+            {}
         })
         .await;
     });
@@ -197,7 +214,8 @@ impl Search {
                 }
             }
             self.0.refreshing.store(false, Ordering::SeqCst);
-            if self.0.vault_dirty.load(Ordering::SeqCst) || self.0.feed_dirty.load(Ordering::SeqCst) {
+            if self.0.vault_dirty.load(Ordering::SeqCst) || self.0.feed_dirty.load(Ordering::SeqCst)
+            {
                 self.clone().refresh(&app);
             }
         });

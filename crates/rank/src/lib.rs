@@ -23,8 +23,8 @@ pub mod text;
 pub mod vector;
 
 pub use ranker::{
-    Change, Clip, DAY_MS, Effect, Event, Explained, HOUR_MS, Item, KIN_SURFACE, Media, Pick, PickOptions, Profile, Ranker, Reason,
-    Source, TopicWeight, World, effective, needs_rebuild,
+    Change, Clip, DAY_MS, Effect, Event, Explained, HOUR_MS, Item, KIN_SURFACE, Media, Pick,
+    PickOptions, Profile, Ranker, Reason, Source, TopicWeight, World, effective, needs_rebuild,
 };
 
 #[cfg(test)]

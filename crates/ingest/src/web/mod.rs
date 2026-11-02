@@ -19,8 +19,8 @@ pub mod render;
 pub mod watch;
 
 use crate::{
-    Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType, Target, markdown,
-    media::image_mime,
+    Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result,
+    SourceType, Target, markdown, media::image_mime,
 };
 use futures_util::StreamExt;
 use reqwest::{Client, Url};
@@ -93,7 +93,11 @@ impl WebAdapter {
             }))
             .build()
             .map_err(|_| Error::Setup)?;
-        Ok(Self { client, limits, renderer: None })
+        Ok(Self {
+            client,
+            limits,
+            renderer: None,
+        })
     }
 
     /// Enables the JavaScript fallback. Without one (headless runs, tests),
@@ -108,9 +112,10 @@ impl WebAdapter {
             return Err(Error::InvalidUrl);
         }
         let deadline = Instant::now() + self.limits.deadline;
-        let mut draft = tokio::time::timeout_at(deadline, self.read_static(url, options.want_media))
-            .await
-            .map_err(|_| Error::TimedOut)??;
+        let mut draft =
+            tokio::time::timeout_at(deadline, self.read_static(url, options.want_media))
+                .await
+                .map_err(|_| Error::TimedOut)??;
         if self.should_render(&draft) {
             self.render_into(&mut draft, deadline).await;
         }
@@ -123,24 +128,38 @@ impl WebAdapter {
         {
             // Best effort: a slow thumbnail can exhaust the budget, but
             // never discards the page already collected.
-            if let Ok(Ok(body)) = tokio::time::timeout_at(deadline, self.get(image_url, self.limits.image_bytes)).await
+            if let Ok(Ok(body)) =
+                tokio::time::timeout_at(deadline, self.get(image_url, self.limits.image_bytes))
+                    .await
                 && let Some(mime) = image_mime(&body.bytes)
             {
-                draft.image = Some(MediaData { bytes: body.bytes, mime: mime.into() });
+                draft.image = Some(MediaData {
+                    bytes: body.bytes,
+                    mime: mime.into(),
+                });
             }
         }
         Ok(draft.into_item())
     }
 
     async fn read_static(&self, url: &Url, want_media: bool) -> Result<Draft> {
-        let page = self.download(url.clone(), self.limits.html_bytes, Some(self.limits.image_bytes)).await;
+        let page = self
+            .download(
+                url.clone(),
+                self.limits.html_bytes,
+                Some(self.limits.image_bytes),
+            )
+            .await;
         let mut draft = Draft::new(url.clone());
         match &page {
             Ok(body) if is_html(body) => {
                 draft.final_url = body.url.clone();
                 draft.html = true;
                 draft.useful = true;
-                draft.apply(extract::page(&String::from_utf8_lossy(&body.bytes), &body.url));
+                draft.apply(extract::page(
+                    &String::from_utf8_lossy(&body.bytes),
+                    &body.url,
+                ));
             }
             // A directly shared image URL need not pretend to be an HTML page.
             Ok(body) => {
@@ -151,7 +170,10 @@ impl WebAdapter {
                     draft.extractor = "image";
                     draft.image_url = Some(body.url.clone());
                     if want_media {
-                        draft.image = Some(MediaData { bytes: body.bytes.clone(), mime: mime.into() });
+                        draft.image = Some(MediaData {
+                            bytes: body.bytes.clone(),
+                            mime: mime.into(),
+                        });
                     }
                 }
             }
@@ -159,8 +181,11 @@ impl WebAdapter {
             Err(Fail::Other(_)) => {}
         }
         // Short links may only reveal their platform after the redirect.
-        let endpoint =
-            oembed::endpoint(url).or_else(|| page.as_ref().ok().and_then(|body| oembed::endpoint(&body.url)));
+        let endpoint = oembed::endpoint(url).or_else(|| {
+            page.as_ref()
+                .ok()
+                .and_then(|body| oembed::endpoint(&body.url))
+        });
         if let Some(endpoint) = endpoint {
             draft.oembed_host = true;
             if let Ok(body) = self.get(endpoint, self.limits.oembed_bytes).await
@@ -187,27 +212,45 @@ impl WebAdapter {
     }
 
     async fn render_into(&self, draft: &mut Draft, deadline: Instant) {
-        let Some(renderer) = &self.renderer else { return };
-        let budget = deadline.saturating_duration_since(Instant::now()).min(self.limits.render_timeout);
+        let Some(renderer) = &self.renderer else {
+            return;
+        };
+        let budget = deadline
+            .saturating_duration_since(Instant::now())
+            .min(self.limits.render_timeout);
         let render_deadline = Instant::now() + budget;
         let target = draft.final_url.clone();
-        if let Ok(Ok(rendered)) = tokio::time::timeout_at(render_deadline, renderer.render(&target, budget)).await {
+        if let Ok(Ok(rendered)) =
+            tokio::time::timeout_at(render_deadline, renderer.render(&target, budget)).await
+        {
             draft.merge_rendered(rendered, &target);
         }
     }
 
     async fn get(&self, url: Url, limit: usize) -> Result<Body> {
-        self.download(url, limit, None).await.map_err(|fail| match fail {
-            Fail::Status => Error::Unavailable,
-            Fail::Other(error) => error,
-        })
+        self.download(url, limit, None)
+            .await
+            .map_err(|fail| match fail {
+                Fail::Status => Error::Unavailable,
+                Fail::Other(error) => error,
+            })
     }
 
-    async fn download(&self, url: Url, limit: usize, image_limit: Option<usize>) -> std::result::Result<Body, Fail> {
+    async fn download(
+        &self,
+        url: Url,
+        limit: usize,
+        image_limit: Option<usize>,
+    ) -> std::result::Result<Body, Fail> {
         if !allowed_url(&url) {
             return Err(Fail::Other(Error::InvalidUrl));
         }
-        let response = self.client.get(url).send().await.map_err(|_| Fail::Other(Error::Unavailable))?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| Fail::Other(Error::Unavailable))?;
         if !response.status().is_success() {
             return Err(Fail::Status);
         }
@@ -218,7 +261,11 @@ impl WebAdapter {
             .and_then(|v| v.to_str().ok())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let limit = if mime.starts_with("image/") { image_limit.unwrap_or(limit) } else { limit };
+        let limit = if mime.starts_with("image/") {
+            image_limit.unwrap_or(limit)
+        } else {
+            limit
+        };
         if response.content_length().is_some_and(|n| n > limit as u64) {
             return Err(Fail::Other(Error::TooLarge));
         }
@@ -244,7 +291,11 @@ impl Adapter for WebAdapter {
         matches!(target, Target::Url(url) if allowed_url(url))
     }
 
-    fn capture<'a>(&'a self, target: &'a Target, options: CaptureOptions) -> BoxFuture<'a, Result<Item>> {
+    fn capture<'a>(
+        &'a self,
+        target: &'a Target,
+        options: CaptureOptions,
+    ) -> BoxFuture<'a, Result<Item>> {
         Box::pin(async move {
             match target {
                 Target::Url(url) => self.fetch(url, options).await,
@@ -254,7 +305,10 @@ impl Adapter for WebAdapter {
     }
 
     /// "Follow this page": change detection (see [`watch`]).
-    fn poll<'a>(&'a self, subscription: &'a crate::Subscription) -> BoxFuture<'a, Result<crate::Polled>> {
+    fn poll<'a>(
+        &'a self,
+        subscription: &'a crate::Subscription,
+    ) -> BoxFuture<'a, Result<crate::Polled>> {
         Box::pin(watch::poll(self, subscription))
     }
 }
@@ -344,9 +398,15 @@ impl Draft {
         fill(&mut self.published, rendered.published);
         fill(&mut self.lang, rendered.language);
         if self.image_url.is_none() {
-            self.image_url = rendered.image.and_then(|s| base.join(&s).ok()).filter(allowed_url);
+            self.image_url = rendered
+                .image
+                .and_then(|s| base.join(&s).ok())
+                .filter(allowed_url);
         }
-        let body = rendered.content.map(|md| markdown::body(&md, crate::FULL_CHARS)).unwrap_or_default();
+        let body = rendered
+            .content
+            .map(|md| markdown::body(&md, crate::FULL_CHARS))
+            .unwrap_or_default();
         if body.chars().count() > self.body.chars().count() {
             self.body = body;
             self.extractor = "defuddle";
@@ -367,7 +427,11 @@ impl Draft {
             extras.insert("modified".to_string(), Value::from(modified));
         }
         let media = if self.image_url.is_some() || self.image.is_some() {
-            vec![Media { kind: MediaKind::Image, url: self.image_url.map(String::from), data: self.image }]
+            vec![Media {
+                kind: MediaKind::Image,
+                url: self.image_url.map(String::from),
+                data: self.image,
+            }]
         } else {
             vec![]
         };
@@ -403,7 +467,10 @@ pub fn allowed_url(url: &Url) -> bool {
 }
 
 pub(crate) fn web_url(raw: &str) -> Result<Url> {
-    Url::parse(raw).ok().filter(allowed_url).ok_or(Error::InvalidUrl)
+    Url::parse(raw)
+        .ok()
+        .filter(allowed_url)
+        .ok_or(Error::InvalidUrl)
 }
 
 /// The canonical form used for item ids: no fragment, no tracking parameters.
@@ -415,7 +482,10 @@ pub fn canonical_url(url: &Url) -> Url {
         .filter(|(key, _)| {
             let key = key.to_ascii_lowercase();
             !(key.starts_with("utm_")
-                || matches!(key.as_str(), "fbclid" | "gclid" | "mc_cid" | "mc_eid" | "igshid" | "ref_src"))
+                || matches!(
+                    key.as_str(),
+                    "fbclid" | "gclid" | "mc_cid" | "mc_eid" | "igshid" | "ref_src"
+                ))
         })
         .map(|(k, v)| (k.into_owned(), v.into_owned()))
         .collect();

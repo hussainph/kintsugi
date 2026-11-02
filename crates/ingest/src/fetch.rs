@@ -41,7 +41,12 @@ impl Fetcher {
         if !allowed_url(url) {
             return Err(Error::InvalidUrl);
         }
-        let response = self.client.get(url.clone()).send().await.map_err(|_| Error::Unavailable)?;
+        let response = self
+            .client
+            .get(url.clone())
+            .send()
+            .await
+            .map_err(|_| Error::Unavailable)?;
         if !response.status().is_success() {
             return Err(Error::Unavailable);
         }

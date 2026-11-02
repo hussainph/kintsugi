@@ -17,8 +17,7 @@ impl Server {
     pub fn start(routes: Vec<(&str, u16, &str, Vec<u8>)>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        let routes: HashMap<String, (u16, String, Vec<u8>)> =
-            routes
+        let routes: HashMap<String, (u16, String, Vec<u8>)> = routes
             .into_iter()
             .map(|(p, s, t, b)| {
                 let b = match String::from_utf8(b) {
@@ -44,8 +43,11 @@ impl Server {
                 let text = String::from_utf8_lossy(&request);
                 let path = text.split_whitespace().nth(1).unwrap_or("").to_string();
                 *counter.lock().unwrap().entry(path.clone()).or_insert(0) += 1;
-                let (status, mime, body) =
-                    routes.get(&path).cloned().unwrap_or((404, "text/plain".into(), b"not found".to_vec()));
+                let (status, mime, body) = routes.get(&path).cloned().unwrap_or((
+                    404,
+                    "text/plain".into(),
+                    b"not found".to_vec(),
+                ));
                 let _ = write!(
                     stream,
                     "HTTP/1.1 {status} X\r\nContent-Type: {mime}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -67,5 +69,9 @@ impl Server {
 }
 
 pub fn run<T>(f: impl std::future::Future<Output = T>) -> T {
-    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(f)
 }

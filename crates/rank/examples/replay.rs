@@ -11,8 +11,16 @@ use kintsugi_rank::{DAY_MS, Event, Item, Media, Source, World, replay, synthetic
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().collect();
-    let k = args.iter().position(|a| a == "--k").and_then(|i| args.get(i + 1)?.parse().ok()).unwrap_or(5);
-    let (world, events) = match args.iter().position(|a| a == "--db").and_then(|i| args.get(i + 1)) {
+    let k = args
+        .iter()
+        .position(|a| a == "--k")
+        .and_then(|i| args.get(i + 1)?.parse().ok())
+        .unwrap_or(5);
+    let (world, events) = match args
+        .iter()
+        .position(|a| a == "--db")
+        .and_then(|i| args.get(i + 1))
+    {
         Some(path) => load(path)?,
         None => {
             let start = 1_700_000_000_000 / DAY_MS * DAY_MS;
@@ -26,11 +34,23 @@ fn main() -> Result<(), String> {
 
 fn load(path: &str) -> Result<(World, Vec<Event>), String> {
     use rusqlite::{Connection, OpenFlags};
-    let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())?;
+    let db = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| e.to_string())?;
     let err = |e: rusqlite::Error| e.to_string();
     let mut world = World::default();
-    let mut statement = db.prepare("SELECT id, COALESCE(title, url), added_at FROM sources").map_err(err)?;
-    for row in statement.query_map([], |r| Ok(Source { id: r.get(0)?, title: r.get(1)?, added: r.get(2)? })).map_err(err)? {
+    let mut statement = db
+        .prepare("SELECT id, COALESCE(title, url), added_at FROM sources")
+        .map_err(err)?;
+    for row in statement
+        .query_map([], |r| {
+            Ok(Source {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                added: r.get(2)?,
+            })
+        })
+        .map_err(err)?
+    {
         let source = row.map_err(err)?;
         world.sources.insert(source.id, source);
     }
@@ -59,7 +79,9 @@ fn load(path: &str) -> Result<(World, Vec<Event>), String> {
         let item = row.map_err(err)?;
         world.items.insert(item.id, item);
     }
-    let mut statement = db.prepare("SELECT id, at, kind, item_id, source_id, surface, data FROM events ORDER BY id").map_err(err)?;
+    let mut statement = db
+        .prepare("SELECT id, at, kind, item_id, source_id, surface, data FROM events ORDER BY id")
+        .map_err(err)?;
     let events = statement
         .query_map([], |r| {
             let data: Option<String> = r.get(6)?;

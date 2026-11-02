@@ -24,7 +24,9 @@ const MODULE_EXTENSIONS: [&str; 7] = ["", ".astro", ".jsx", ".tsx", ".ts", ".js"
 
 /// Does this folder look like the blog? Answers with its canonical path.
 pub fn checked_repo(path: &Path) -> Result<PathBuf> {
-    let path = path.canonicalize().map_err(|e| format!("{}: {e}", path.display()))?;
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
     if !path.join("src/content.config.ts").is_file() || !path.join("src/content/writing").is_dir() {
         return Err(format!(
             "{} doesn't look like the blog: it needs src/content.config.ts and src/content/writing/",
@@ -46,7 +48,11 @@ fn unquote(value: &str) -> String {
     for q in ['"', '\''] {
         if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
             let inner = &v[1..v.len() - 1];
-            return if q == '"' { inner.replace("\\\"", "\"") } else { inner.replace("''", "'") };
+            return if q == '"' {
+                inner.replace("\\\"", "\"")
+            } else {
+                inner.replace("''", "'")
+            };
         }
     }
     v.to_string()
@@ -56,7 +62,10 @@ fn unquote(value: &str) -> String {
 pub fn split(text: &str) -> (Front, &str) {
     let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut front = Front::default();
-    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else {
+    let Some(rest) = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))
+    else {
         return (front, text);
     };
     let mut offset = text.len() - rest.len();
@@ -70,7 +79,11 @@ pub fn split(text: &str) -> (Front, &str) {
         }
         if let (Some(key), Some(item)) = (&list, line.trim_start().strip_prefix("- ")) {
             if line.starts_with(char::is_whitespace) || line.starts_with('-') {
-                front.lists.entry(key.clone()).or_default().push(unquote(item));
+                front
+                    .lists
+                    .entry(key.clone())
+                    .or_default()
+                    .push(unquote(item));
                 continue;
             }
         }
@@ -78,12 +91,18 @@ pub fn split(text: &str) -> (Front, &str) {
         if line.starts_with(char::is_whitespace) {
             continue;
         }
-        let Some((key, value)) = line.split_once(':') else { continue };
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
         let (key, value) = (key.trim().to_string(), value.trim());
         if value.is_empty() {
             list = Some(key);
         } else if let Some(inner) = value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
-            let items = inner.split(',').map(unquote).filter(|s| !s.is_empty()).collect();
+            let items = inner
+                .split(',')
+                .map(unquote)
+                .filter(|s| !s.is_empty())
+                .collect();
             front.lists.insert(key, items);
         } else {
             front.scalars.insert(key, unquote(value));
@@ -103,7 +122,9 @@ pub fn is_mirror(text: &str) -> bool {
 
 /// Refuses to change a mirror file through the ordinary writing commands.
 pub fn refuse_mirror(root: &Path, rel: &str) -> Result<()> {
-    let Ok(path) = vault::resolve(root, rel) else { return Ok(()) };
+    let Ok(path) = vault::resolve(root, rel) else {
+        return Ok(());
+    };
     match fs::read_to_string(path) {
         Ok(text) if is_mirror(&text) => Err(format!(
             "{rel} mirrors a post on the blog; edit it in the blog repository and import again"
@@ -114,8 +135,17 @@ pub fn refuse_mirror(root: &Path, rel: &str) -> Result<()> {
 
 /// The site's host name: the mirror's folder in the vault.
 pub fn host(site: &str) -> String {
-    let host = site.split("://").nth(1).unwrap_or(site).split(['/', ':']).next().unwrap_or("");
-    let safe: String = host.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-')).collect();
+    let host = site
+        .split("://")
+        .nth(1)
+        .unwrap_or(site)
+        .split(['/', ':'])
+        .next()
+        .unwrap_or("");
+    let safe: String = host
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        .collect();
     let safe = safe.trim_matches('.').to_string();
     if safe.is_empty() { "blog".into() } else { safe }
 }
@@ -143,9 +173,19 @@ pub fn dated(name: &str) -> Option<(String, String, String)> {
         return None;
     }
     let (date, slug) = (stem.get(..10)?, stem.get(11..)?);
-    let digits = date.bytes().enumerate().all(|(i, b)| if i == 4 || i == 7 { b == b'-' } else { b.is_ascii_digit() });
-    let slug_ok = !slug.is_empty() && slug.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-    (digits && stem.as_bytes()[10] == b'-' && slug_ok).then(|| (date.into(), slug.into(), ext.into()))
+    let digits = date.bytes().enumerate().all(|(i, b)| {
+        if i == 4 || i == 7 {
+            b == b'-'
+        } else {
+            b.is_ascii_digit()
+        }
+    });
+    let slug_ok = !slug.is_empty()
+        && slug
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    (digits && stem.as_bytes()[10] == b'-' && slug_ok)
+        .then(|| (date.into(), slug.into(), ext.into()))
 }
 
 /// Is this a post file Kintsugi may write? Answers with (kind, id).
@@ -157,7 +197,11 @@ pub fn post_file(file: &str) -> Option<(&'static str, String)> {
 }
 
 pub fn url(site: &str, kind: &str, slug: &str) -> String {
-    let route = COLLECTIONS.iter().find(|(_, k, _)| *k == kind).map(|c| c.2).unwrap_or("essays");
+    let route = COLLECTIONS
+        .iter()
+        .find(|(_, k, _)| *k == kind)
+        .map(|c| c.2)
+        .unwrap_or("essays");
     format!("{}/{route}/{slug}/", site.trim_end_matches('/'))
 }
 
@@ -166,14 +210,20 @@ pub fn url(site: &str, kind: &str, slug: &str) -> String {
 pub fn posts(repo: &Path, site: &str) -> Result<Vec<Post>> {
     let mut posts = Vec::new();
     for (folder, kind, _) in COLLECTIONS {
-        let Ok(entries) = fs::read_dir(repo.join(folder)) else { continue };
+        let Ok(entries) = fs::read_dir(repo.join(folder)) else {
+            continue;
+        };
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().into_owned();
-            let Some((date, slug, ext)) = dated(&name) else { continue };
+            let Some((date, slug, ext)) = dated(&name) else {
+                continue;
+            };
             if !entry.file_type().is_ok_and(|t| t.is_file()) {
                 continue;
             }
-            let Ok(text) = fs::read_to_string(entry.path()) else { continue };
+            let Ok(text) = fs::read_to_string(entry.path()) else {
+                continue;
+            };
             let (mut front, body) = split(&text);
             posts.push(Post {
                 kind,
@@ -197,15 +247,31 @@ fn short(body: &str) -> String {
     let line = body
         .lines()
         .map(str::trim)
-        .find(|l| !l.is_empty() && !l.starts_with("import ") && !l.starts_with("export ") && !l.starts_with('<'))
+        .find(|l| {
+            !l.is_empty()
+                && !l.starts_with("import ")
+                && !l.starts_with("export ")
+                && !l.starts_with('<')
+        })
         .unwrap_or("Note");
-    let plain: String = line.trim_start_matches(['#', '>', '-', '*', ' ']).replace(['*', '_', '`'], "");
-    let sentence = plain.find(['.', '!', '?']).map(|i| &plain[..i]).unwrap_or(&plain);
+    let plain: String = line
+        .trim_start_matches(['#', '>', '-', '*', ' '])
+        .replace(['*', '_', '`'], "");
+    let sentence = plain
+        .find(['.', '!', '?'])
+        .map(|i| &plain[..i])
+        .unwrap_or(&plain);
     if sentence.chars().count() <= 60 {
         return sentence.trim().to_string();
     }
     let cut: String = sentence.chars().take(60).collect();
-    format!("{}…", cut.rsplit_once(' ').map(|(a, _)| a).unwrap_or(&cut).trim_end_matches([',', ';', ':']))
+    format!(
+        "{}…",
+        cut.rsplit_once(' ')
+            .map(|(a, _)| a)
+            .unwrap_or(&cut)
+            .trim_end_matches([',', ';', ':'])
+    )
 }
 
 fn yaml_string(value: &str) -> String {
@@ -216,7 +282,12 @@ fn yaml_string(value: &str) -> String {
 /// post's own body, verbatim.
 pub fn mirror_text(post: &Post, host: &str) -> String {
     let title = post.title.clone().unwrap_or_else(|| short(&post.body));
-    let tags = post.tags.iter().map(|t| yaml_string(t)).collect::<Vec<_>>().join(", ");
+    let tags = post
+        .tags
+        .iter()
+        .map(|t| yaml_string(t))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!(
         "---\ntitle: {}\nstatus: published\ntags: [{tags}]\ndate: {}\nurl: {}\npost: {}\nmirror: {host}\n---\n\n{}",
         yaml_string(&title),
@@ -228,7 +299,11 @@ pub fn mirror_text(post: &Post, host: &str) -> String {
 }
 
 pub fn mirror_path(post: &Post, host: &str) -> String {
-    let route = COLLECTIONS.iter().find(|(_, k, _)| *k == post.kind).map(|c| c.2).unwrap_or("essays");
+    let route = COLLECTIONS
+        .iter()
+        .find(|(_, k, _)| *k == post.kind)
+        .map(|c| c.2)
+        .unwrap_or("essays");
     format!("{host}/{route}/{}.{}", post.slug, post.ext)
 }
 
@@ -257,9 +332,15 @@ pub fn linked(root: &Path) -> Result<Vec<Linked>> {
     flatten(vault::tree(root)?, &mut paths);
     let mut out = Vec::new();
     for path in paths {
-        let Ok(text) = fs::read_to_string(root.join(&path)) else { continue };
+        let Ok(text) = fs::read_to_string(root.join(&path)) else {
+            continue;
+        };
         let (mut front, _) = split(&text);
-        if let Some(url) = front.scalars.remove("url").filter(|u| u.starts_with("http")) {
+        if let Some(url) = front
+            .scalars
+            .remove("url")
+            .filter(|u| u.starts_with("http"))
+        {
             out.push(Linked {
                 path,
                 url,
@@ -297,14 +378,20 @@ pub fn import(root: &Path, repo: &Path, site: &str, sourced: Option<&str>) -> Re
     let mut claimed: HashSet<String> = sourced.map(String::from).into_iter().collect();
     let mut existing = Vec::new();
     for path in &paths {
-        let Ok(text) = fs::read_to_string(root.join(path)) else { continue };
+        let Ok(text) = fs::read_to_string(root.join(path)) else {
+            continue;
+        };
         if is_mirror(&text) {
             existing.push(path.clone());
         } else if let Some(post) = field(&text, "post") {
             claimed.insert(post);
         }
     }
-    let mut report = ImportReport { folder: host.clone(), posts: posts.len(), ..Default::default() };
+    let mut report = ImportReport {
+        folder: host.clone(),
+        posts: posts.len(),
+        ..Default::default()
+    };
     let mut keep = HashSet::new();
     for post in &posts {
         if claimed.contains(&post.file) {
@@ -363,17 +450,23 @@ fn regular_file(path: &Path) -> bool {
 
 /// Every image file in the vault by file name, for `![[name.png]]` embeds.
 fn images_by_name(root: &Path, dir: &Path, out: &mut HashMap<String, Vec<String>>) {
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        let Ok(kind) = entry.file_type() else { continue };
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
         if name.starts_with('.') || kind.is_symlink() {
             continue;
         }
         if kind.is_dir() {
             images_by_name(root, &entry.path(), out);
         } else if kind.is_file() && is_image(&entry.path()) {
-            out.entry(name).or_default().push(vault::relative(root, &entry.path()));
+            out.entry(name)
+                .or_default()
+                .push(vault::relative(root, &entry.path()));
         }
     }
 }
@@ -384,9 +477,10 @@ pub fn resolve_images(root: &Path, refs: &[ImageRef]) -> BTreeMap<String, Option
     let mut by_name: Option<HashMap<String, Vec<String>>> = None;
     refs.iter()
         .map(|r| {
-            let found = r.candidates.iter().find(|c| {
-                vault::resolve(root, c).is_ok_and(|p| regular_file(&p) && is_image(&p))
-            });
+            let found = r
+                .candidates
+                .iter()
+                .find(|c| vault::resolve(root, c).is_ok_and(|p| regular_file(&p) && is_image(&p)));
             let found = found.cloned().or_else(|| {
                 if !r.embed {
                     return None;
@@ -420,7 +514,9 @@ pub fn resolve_imports(repo: &Path, imports: &[String]) -> BTreeMap<String, bool
         .iter()
         .map(|spec| {
             let found = safe_relative(spec).is_ok()
-                && MODULE_EXTENSIONS.iter().any(|ext| regular_file(&repo.join(format!("{spec}{ext}"))));
+                && MODULE_EXTENSIONS
+                    .iter()
+                    .any(|ext| regular_file(&repo.join(format!("{spec}{ext}"))));
             (spec.clone(), found)
         })
         .collect()
@@ -471,14 +567,18 @@ pub fn write_post(
     let (_, id) = post_file(file).ok_or_else(|| format!("not a blog post file: {file}"))?;
     let target = inside(repo, file)?;
     if target.exists() && !owned {
-        return Err(format!("{file} already exists and wasn't published from this document"));
+        return Err(format!(
+            "{file} already exists and wasn't published from this document"
+        ));
     }
     let folder = format!("{IMAGE_FOLDER}/{id}");
     let mut names = HashSet::new();
     for image in images {
         let name = image.to.strip_prefix(&format!("{folder}/")).unwrap_or("");
         let ok_name = !name.is_empty()
-            && name.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'.'))
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'-' | b'.'))
             && !name.starts_with('.')
             && is_image(Path::new(name));
         if !ok_name {
@@ -531,8 +631,16 @@ mod tests {
         fs::create_dir_all(p.join("src/content/writing")).unwrap();
         fs::create_dir_all(p.join("src/content/notes")).unwrap();
         fs::create_dir_all(p.join("src/components")).unwrap();
-        fs::write(p.join("src/content.config.ts"), "export const collections = {};").unwrap();
-        fs::write(p.join("src/components/Demo.jsx"), "export default () => null;").unwrap();
+        fs::write(
+            p.join("src/content.config.ts"),
+            "export const collections = {};",
+        )
+        .unwrap();
+        fs::write(
+            p.join("src/components/Demo.jsx"),
+            "export default () => null;",
+        )
+        .unwrap();
         fs::write(
             p.join("src/content/writing/2026-09-16-the-sixth-attempt.md"),
             "---\ntitle: The sixth attempt\ntags: [writing, design]\n---\n\nI have built five portfolio websites.\n",
@@ -545,7 +653,9 @@ mod tests {
 
     #[test]
     fn reads_frontmatter_scalars_and_lists() {
-        let (front, body) = split("---\ntitle: \"A \\\"b\\\"\"\ntags: [a, 'b c']\nlist:\n  - x\n  - y\nstatus: complete\n---\n\nBody\n");
+        let (front, body) = split(
+            "---\ntitle: \"A \\\"b\\\"\"\ntags: [a, 'b c']\nlist:\n  - x\n  - y\nstatus: complete\n---\n\nBody\n",
+        );
         assert_eq!(front.scalars["title"], "A \"b\"");
         assert_eq!(front.lists["tags"], ["a", "b c"]);
         assert_eq!(front.lists["list"], ["x", "y"]);
@@ -562,13 +672,19 @@ mod tests {
         assert!(checked_repo(&dir.path().join("src")).is_err());
         let posts = posts(dir.path(), "https://hussain.ph").unwrap();
         assert_eq!(posts.len(), 2);
-        assert_eq!(posts[0].file, "src/content/writing/2026-09-16-the-sixth-attempt.md");
+        assert_eq!(
+            posts[0].file,
+            "src/content/writing/2026-09-16-the-sixth-attempt.md"
+        );
         assert_eq!(posts[0].url, "https://hussain.ph/essays/the-sixth-attempt/");
         assert_eq!(posts[0].tags, ["writing", "design"]);
         assert_eq!(posts[1].kind, "note");
         assert_eq!(posts[1].tags, ["writing"]);
         assert_eq!(host("https://hussain.ph/"), "hussain.ph");
-        assert_eq!(post_file("src/content/notes/2026-01-02-x.mdx"), Some(("note", "2026-01-02-x".into())));
+        assert_eq!(
+            post_file("src/content/notes/2026-01-02-x.mdx"),
+            Some(("note", "2026-01-02-x".into()))
+        );
         assert_eq!(post_file("src/content/other/2026-01-02-x.md"), None);
         assert_eq!(post_file("src/content/writing/../2026-01-02-x.md"), None);
     }
@@ -599,10 +715,17 @@ mod tests {
         fs::remove_file(root.join("posts/friction.md")).unwrap();
         import(root, dir.path(), "https://hussain.ph", None).unwrap();
         let note = fs::read_to_string(root.join("hussain.ph/notes/friction.md")).unwrap();
-        assert!(note.contains("title: \"The distance between a thought and publishing it\""), "{note}");
+        assert!(
+            note.contains("title: \"The distance between a thought and publishing it\""),
+            "{note}"
+        );
 
         // A post removed from the blog loses its mirror; other files stay.
-        fs::remove_file(dir.path().join("src/content/writing/2026-09-16-the-sixth-attempt.md")).unwrap();
+        fs::remove_file(
+            dir.path()
+                .join("src/content/writing/2026-09-16-the-sixth-attempt.md"),
+        )
+        .unwrap();
         let pruned = import(root, dir.path(), "https://hussain.ph", None).unwrap();
         assert_eq!(pruned.removed, ["hussain.ph/essays/the-sixth-attempt.md"]);
         assert!(root.join("hussain.ph/notes-mine.md").exists());
@@ -623,22 +746,68 @@ mod tests {
         fs::write(root.join("media/notes.txt"), b"text").unwrap();
 
         let refs = vec![
-            ImageRef { key: "md:../media/Bowl.PNG".into(), embed: false, candidates: vec!["media/Bowl.PNG".into()], name: "Bowl.PNG".into() },
-            ImageRef { key: "embed:Bowl.PNG".into(), embed: true, candidates: vec!["posts/Bowl.PNG".into()], name: "Bowl.PNG".into() },
-            ImageRef { key: "md:notes.txt".into(), embed: false, candidates: vec!["media/notes.txt".into()], name: "notes.txt".into() },
+            ImageRef {
+                key: "md:../media/Bowl.PNG".into(),
+                embed: false,
+                candidates: vec!["media/Bowl.PNG".into()],
+                name: "Bowl.PNG".into(),
+            },
+            ImageRef {
+                key: "embed:Bowl.PNG".into(),
+                embed: true,
+                candidates: vec!["posts/Bowl.PNG".into()],
+                name: "Bowl.PNG".into(),
+            },
+            ImageRef {
+                key: "md:notes.txt".into(),
+                embed: false,
+                candidates: vec!["media/notes.txt".into()],
+                name: "notes.txt".into(),
+            },
         ];
         let found = resolve_images(root, &refs);
-        assert_eq!(found["md:../media/Bowl.PNG"].as_deref(), Some("media/Bowl.PNG"));
+        assert_eq!(
+            found["md:../media/Bowl.PNG"].as_deref(),
+            Some("media/Bowl.PNG")
+        );
         assert_eq!(found["embed:Bowl.PNG"].as_deref(), Some("media/Bowl.PNG"));
         assert_eq!(found["md:notes.txt"], None);
-        let imports = resolve_imports(&repo, &["src/components/Demo".into(), "src/components/Nope".into(), "../etc/passwd".into()]);
-        assert_eq!(imports.values().copied().collect::<Vec<_>>(), [false, true, false]);
+        let imports = resolve_imports(
+            &repo,
+            &[
+                "src/components/Demo".into(),
+                "src/components/Nope".into(),
+                "../etc/passwd".into(),
+            ],
+        );
+        assert_eq!(
+            imports.values().copied().collect::<Vec<_>>(),
+            [false, true, false]
+        );
 
         let file = "src/content/writing/2026-11-02-on-craft.md";
-        let images = [CopyImage { from: "media/Bowl.PNG".into(), to: "public/posts/2026-11-02-on-craft/bowl.png".into() }];
-        let written = write_post(root, &repo, file, None, "---\ntitle: x\n---\n\nBody\n", &images, false).unwrap();
-        assert_eq!(written.written, ["public/posts/2026-11-02-on-craft/bowl.png", file]);
-        assert_eq!(fs::read(repo.join("public/posts/2026-11-02-on-craft/bowl.png")).unwrap(), b"png");
+        let images = [CopyImage {
+            from: "media/Bowl.PNG".into(),
+            to: "public/posts/2026-11-02-on-craft/bowl.png".into(),
+        }];
+        let written = write_post(
+            root,
+            &repo,
+            file,
+            None,
+            "---\ntitle: x\n---\n\nBody\n",
+            &images,
+            false,
+        )
+        .unwrap();
+        assert_eq!(
+            written.written,
+            ["public/posts/2026-11-02-on-craft/bowl.png", file]
+        );
+        assert_eq!(
+            fs::read(repo.join("public/posts/2026-11-02-on-craft/bowl.png")).unwrap(),
+            b"png"
+        );
 
         // Not owned: never replaced. Owned: replaced, stale images removed.
         assert!(write_post(root, &repo, file, None, "other", &[], false).is_err());
@@ -653,12 +822,25 @@ mod tests {
         assert!(!repo.join(file).exists());
 
         // Paths outside the collections or the post's image folder are refused.
-        for bad in ["src/pages/index.md", "src/content/writing/../../x.md", "src/content/writing/2026-11-02-x.txt"] {
-            assert!(write_post(root, &repo, bad, None, "x", &[], true).is_err(), "{bad}");
+        for bad in [
+            "src/pages/index.md",
+            "src/content/writing/../../x.md",
+            "src/content/writing/2026-11-02-x.txt",
+        ] {
+            assert!(
+                write_post(root, &repo, bad, None, "x", &[], true).is_err(),
+                "{bad}"
+            );
         }
-        let elsewhere = [CopyImage { from: "media/Bowl.PNG".into(), to: "public/world/bowl.png".into() }];
+        let elsewhere = [CopyImage {
+            from: "media/Bowl.PNG".into(),
+            to: "public/world/bowl.png".into(),
+        }];
         assert!(write_post(root, &repo, mdx, None, "x", &elsewhere, true).is_err());
-        let escape = [CopyImage { from: "../outside.png".into(), to: "public/posts/2026-11-02-on-craft/x.png".into() }];
+        let escape = [CopyImage {
+            from: "../outside.png".into(),
+            to: "public/posts/2026-11-02-on-craft/x.png".into(),
+        }];
         assert!(write_post(root, &repo, mdx, None, "x", &escape, true).is_err());
     }
 }

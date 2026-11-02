@@ -59,8 +59,20 @@ fn shape(single: bool) -> String {
         "reasons": [{ "text": "why this is worth his time", "profileLine": "an About Hussain line, verbatim, or omit" }],
         "about": ["vault paths of documents this idea is about"]
     });
-    let body = if single { serde_json::to_string_pretty(&idea) } else { serde_json::to_string_pretty(&json!([idea])) };
-    format!("{FORMAT}{}:\n<ideas>\n{}\n</ideas>", if single { " (one idea, not a list)" } else { " (a list)" }, body.unwrap_or_default())
+    let body = if single {
+        serde_json::to_string_pretty(&idea)
+    } else {
+        serde_json::to_string_pretty(&json!([idea]))
+    };
+    format!(
+        "{FORMAT}{}:\n<ideas>\n{}\n</ideas>",
+        if single {
+            " (one idea, not a list)"
+        } else {
+            " (a list)"
+        },
+        body.unwrap_or_default()
+    )
 }
 
 fn signal_line(s: &Signal) -> Option<String> {
@@ -69,12 +81,20 @@ fn signal_line(s: &Signal) -> Option<String> {
             Some(why) => format!("dismissed (\"{why}\")"),
             None => "dismissed".into(),
         },
-        SignalKind::ReasonRemoved => format!("said \"{}\" was not a reason", s.detail.as_deref().unwrap_or_default()),
+        SignalKind::ReasonRemoved => format!(
+            "said \"{}\" was not a reason",
+            s.detail.as_deref().unwrap_or_default()
+        ),
         SignalKind::Adopted => "adopted it into a draft".into(),
         SignalKind::Discussed => "discussed it with you".into(),
-        SignalKind::Refined => format!("asked you to refine it: \"{}\"", s.detail.as_deref().unwrap_or_default()),
+        SignalKind::Refined => format!(
+            "asked you to refine it: \"{}\"",
+            s.detail.as_deref().unwrap_or_default()
+        ),
         SignalKind::Faded => "ignored it for a week (a weak no)".into(),
-        SignalKind::Undismissed | SignalKind::ReasonRestored | SignalKind::RefineUndone => return None,
+        SignalKind::Undismissed | SignalKind::ReasonRestored | SignalKind::RefineUndone => {
+            return None;
+        }
     };
     Some(format!("- \"{}\": {what}", s.title))
 }
@@ -92,7 +112,13 @@ fn feed_lines(feed: &[FeedSignal]) -> String {
             if let Some(note) = &f.note {
                 acts.push(format!("noted \"{}\"", note.replace(['\n', '\r'], " ")));
             }
-            format!("- {} \"{}\" ({}): {}", f.id, f.title, f.source, acts.join(", "))
+            format!(
+                "- {} \"{}\" ({}): {}",
+                f.id,
+                f.title,
+                f.source,
+                acts.join(", ")
+            )
         })
         .collect::<Vec<_>>()
         .join("\n")
@@ -110,12 +136,26 @@ pub fn batch(ask: &Ask, recent: &[&Idea], signals: &[Signal], feed: &[FeedSignal
             "\n\nThis time, every idea is about one document: {path}. Read it first; find what in his other writing and his collection bears on it. Put {path} in each idea's about list."
         ));
     }
-    if let Some(focus) = ask.focus.as_deref().map(str::trim).filter(|f| !f.is_empty()) {
-        out.push_str(&format!("\n\nHe asked for ideas about: {}", focus.replace(['\n', '\r'], " ")));
+    if let Some(focus) = ask
+        .focus
+        .as_deref()
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+    {
+        out.push_str(&format!(
+            "\n\nHe asked for ideas about: {}",
+            focus.replace(['\n', '\r'], " ")
+        ));
     }
     if !recent.is_empty() {
         out.push_str("\n\nAlready offered lately (don't repeat these or near-copies):\n");
-        out.push_str(&recent.iter().map(|i| format!("- {}", i.content.title)).collect::<Vec<_>>().join("\n"));
+        out.push_str(
+            &recent
+                .iter()
+                .map(|i| format!("- {}", i.content.title))
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
     }
     let lines: Vec<String> = signals.iter().filter_map(signal_line).collect();
     if !lines.is_empty() {
@@ -145,7 +185,13 @@ pub fn refine(idea: &Idea, asked: &str) -> String {
         "reasons": idea.content.reasons.iter().filter(|r| !r.removed).map(|r| json!({ "text": r.text, "profileLine": r.profile_line })).collect::<Vec<_>>(),
         "about": idea.content.about,
     });
-    let removed: Vec<&str> = idea.content.reasons.iter().filter(|r| r.removed).map(|r| r.text.as_str()).collect();
+    let removed: Vec<&str> = idea
+        .content
+        .reasons
+        .iter()
+        .filter(|r| r.removed)
+        .map(|r| r.text.as_str())
+        .collect();
     let mut out = format!(
         "Refine one of the ideas you offered Hussain. He asked: \"{}\"\n\nRework it to answer him: look again with your tools if it helps, \
          and change the title, observations, hunch, quotes and reasons as needed. It stays an idea, not prose.\n\n{RULES}\n\n{CURRENT}\n{}\n",
@@ -153,7 +199,10 @@ pub fn refine(idea: &Idea, asked: &str) -> String {
         serde_json::to_string_pretty(&current).unwrap_or_default()
     );
     if !removed.is_empty() {
-        out.push_str(&format!("\nHe said these are not reasons; don't use them: {}\n", removed.join("; ")));
+        out.push_str(&format!(
+            "\nHe said these are not reasons; don't use them: {}\n",
+            removed.join("; ")
+        ));
     }
     out.push('\n');
     out.push_str(&shape(true));

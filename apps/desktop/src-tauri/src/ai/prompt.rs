@@ -78,8 +78,17 @@ pub fn system(memory: &Memory) -> String {
         base
     });
     let mut out = base.clone();
-    for (title, file, entries) in [("About Hussain", File::User, &memory.about), ("Your notes", File::Notes, &memory.notes)] {
-        let _ = write!(out, "\n## {title} ({}, {} of {} characters)\n", file.name(), memory::size(entries), file.cap());
+    for (title, file, entries) in [
+        ("About Hussain", File::User, &memory.about),
+        ("Your notes", File::Notes, &memory.notes),
+    ] {
+        let _ = write!(
+            out,
+            "\n## {title} ({}, {} of {} characters)\n",
+            file.name(),
+            memory::size(entries),
+            file.cap()
+        );
         if entries.is_empty() {
             out.push_str("(empty)\n");
         }
@@ -116,7 +125,13 @@ pub struct Chip {
 /// The newest user message: the question, then the dynamic context.
 /// `remember` is false when the conversation is marked "don't remember this";
 /// `recap` is the running summary of the conversation this turn belongs to.
-pub fn user_message(question: &str, chips: &[Chip], today: &str, remember: bool, recap: Option<&str>) -> String {
+pub fn user_message(
+    question: &str,
+    chips: &[Chip],
+    today: &str,
+    remember: bool,
+    recap: Option<&str>,
+) -> String {
     let mut out = question.trim().to_string();
     let _ = write!(out, "\n\n<context>\nToday is {today}.");
     if !remember {
@@ -126,7 +141,11 @@ pub fn user_message(question: &str, chips: &[Chip], today: &str, remember: bool,
         out.push_str("\nOn screen (read these if they matter):");
         for chip in chips {
             // A feed chip carries the item's id; Kin reads it as feed:<id>.
-            let path = if chip.kind == "feed" && !chip.path.starts_with("feed:") { format!("feed:{}", chip.path) } else { chip.path.clone() };
+            let path = if chip.kind == "feed" && !chip.path.starts_with("feed:") {
+                format!("feed:{}", chip.path)
+            } else {
+                chip.path.clone()
+            };
             let _ = write!(out, "\n- {} {path}", chip.kind);
             if let Some([from, to]) = chip.lines {
                 let _ = write!(out, " lines {from}-{to}");
@@ -137,7 +156,10 @@ pub fn user_message(question: &str, chips: &[Chip], today: &str, remember: bool,
         }
     }
     if let Some(recap) = recap.map(str::trim).filter(|r| !r.is_empty()) {
-        let _ = write!(out, "\nEarlier in this conversation (your summary; search history for details):\n{recap}");
+        let _ = write!(
+            out,
+            "\nEarlier in this conversation (your summary; search history for details):\n{recap}"
+        );
     }
     out.push_str("\n</context>");
     out
@@ -163,8 +185,16 @@ mod tests {
             about: vec!["Likes essays.".into(), "Dislikes listicles.".into()],
             notes: vec![],
             skills: vec![
-                SkillLine { name: "steelman".into(), description: "Argue the strongest version.".into(), command: true },
-                SkillLine { name: "triage".into(), description: "Rank the feed.".into(), command: false },
+                SkillLine {
+                    name: "steelman".into(),
+                    description: "Argue the strongest version.".into(),
+                    command: true,
+                },
+                SkillLine {
+                    name: "triage".into(),
+                    description: "Rank the feed.".into(),
+                    command: false,
+                },
             ],
         }
     }
@@ -187,10 +217,26 @@ mod tests {
     #[test]
     fn dynamic_context_goes_last() {
         let chips = [
-            Chip { kind: "clip".into(), path: "inspiration/a.md".into(), label: Some("A\nclip".into()), lines: None },
-            Chip { kind: "paragraph".into(), path: "drafts/b.md".into(), label: None, lines: Some([4, 6]) },
+            Chip {
+                kind: "clip".into(),
+                path: "inspiration/a.md".into(),
+                label: Some("A\nclip".into()),
+                lines: None,
+            },
+            Chip {
+                kind: "paragraph".into(),
+                path: "drafts/b.md".into(),
+                label: None,
+                lines: Some([4, 6]),
+            },
         ];
-        let message = user_message(" Why? ", &chips, "2026-11-02", true, Some(" We discussed kilns. "));
+        let message = user_message(
+            " Why? ",
+            &chips,
+            "2026-11-02",
+            true,
+            Some(" We discussed kilns. "),
+        );
         assert_eq!(
             message,
             "Why?\n\n<context>\nToday is 2026-11-02.\nOn screen (read these if they matter):\n- clip inspiration/a.md (A clip)\n- paragraph drafts/b.md lines 4-6\nEarlier in this conversation (your summary; search history for details):\nWe discussed kilns.\n</context>"

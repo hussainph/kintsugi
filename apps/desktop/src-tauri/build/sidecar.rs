@@ -21,7 +21,9 @@ pub fn fresh(out: &Path, source: &Path) -> bool {
 pub fn is_stub(path: &Path) -> bool {
     use std::io::Read;
     let mut head = [0u8; STUB_HEADER.len()];
-    std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut head)).is_ok_and(|()| head == STUB_HEADER)
+    std::fs::File::open(path)
+        .and_then(|mut f| f.read_exact(&mut head))
+        .is_ok_and(|()| head == STUB_HEADER)
 }
 
 #[cfg(test)]

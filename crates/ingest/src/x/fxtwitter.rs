@@ -21,7 +21,10 @@ impl FxTwitter {
     }
 
     async fn status(&self, kind: &str, id: &str) -> Result<StatusResponse> {
-        let url = self.base.join(&format!("2/{kind}/{id}")).map_err(|_| Error::InvalidUrl)?;
+        let url = self
+            .base
+            .join(&format!("2/{kind}/{id}"))
+            .map_err(|_| Error::InvalidUrl)?;
         let body = self.client.get(url).await?;
         serde_json::from_slice(&body.bytes).map_err(|_| Error::Unavailable)
     }
@@ -44,7 +47,11 @@ impl XApi for FxTwitter {
                 Some(thread) if !thread.is_empty() => thread,
                 _ => response.status.into_iter().collect(),
             };
-            let posts: Vec<Post> = thread.into_iter().map(Post::from).filter(|p| !p.id.is_empty()).collect();
+            let posts: Vec<Post> = thread
+                .into_iter()
+                .map(Post::from)
+                .filter(|p| !p.id.is_empty())
+                .collect();
             if posts.is_empty() {
                 return Err(Error::Unavailable);
             }
@@ -54,10 +61,19 @@ impl XApi for FxTwitter {
 
     fn timeline<'a>(&'a self, handle: &'a str) -> BoxFuture<'a, Result<Vec<Post>>> {
         Box::pin(async move {
-            let url = self.base.join(&format!("2/profile/{handle}/statuses")).map_err(|_| Error::InvalidUrl)?;
+            let url = self
+                .base
+                .join(&format!("2/profile/{handle}/statuses"))
+                .map_err(|_| Error::InvalidUrl)?;
             let body = self.client.get(url).await?;
-            let page: ProfileResponse = serde_json::from_slice(&body.bytes).map_err(|_| Error::Unavailable)?;
-            Ok(page.results.into_iter().map(Post::from).filter(|p| !p.id.is_empty()).collect())
+            let page: ProfileResponse =
+                serde_json::from_slice(&body.bytes).map_err(|_| Error::Unavailable)?;
+            Ok(page
+                .results
+                .into_iter()
+                .map(Post::from)
+                .filter(|p| !p.id.is_empty())
+                .collect())
         })
     }
 }
@@ -155,10 +171,18 @@ struct FxReply {
 impl From<FxStatus> for Post {
     fn from(s: FxStatus) -> Self {
         let media = s.media.unwrap_or_default();
-        let items = if media.all.is_empty() { media.photos.into_iter().chain(media.videos).collect() } else { media.all };
+        let items = if media.all.is_empty() {
+            media.photos.into_iter().chain(media.videos).collect()
+        } else {
+            media.all
+        };
         Post {
             id: s.id,
-            author: Author { name: s.author.name, handle: s.author.screen_name, avatar: s.author.avatar_url },
+            author: Author {
+                name: s.author.name,
+                handle: s.author.screen_name,
+                avatar: s.author.avatar_url,
+            },
             text: s.text,
             created: s.created_timestamp.and_then(rfc3339),
             lang: s.lang,
@@ -172,12 +196,25 @@ impl From<FxStatus> for Post {
                     image: c.image.and_then(|i| i.url),
                 })
             }),
-            article: s.article.map(|a| Article { id: a.id, title: a.title, preview: a.preview_text }),
-            replying_to: s
-                .replying_to
-                .and_then(|r| Some(ReplyTo { id: r.status?, handle: r.screen_name })),
+            article: s.article.map(|a| Article {
+                id: a.id,
+                title: a.title,
+                preview: a.preview_text,
+            }),
+            replying_to: s.replying_to.and_then(|r| {
+                Some(ReplyTo {
+                    id: r.status?,
+                    handle: r.screen_name,
+                })
+            }),
             reposted_by: s.reposted_by.map(|a| a.screen_name),
-            stats: Stats { likes: s.likes, reposts: s.reposts, replies: s.replies, quotes: s.quotes, views: s.views },
+            stats: Stats {
+                likes: s.likes,
+                reposts: s.reposts,
+                replies: s.replies,
+                quotes: s.quotes,
+                views: s.views,
+            },
         }
     }
 }
@@ -189,9 +226,15 @@ fn media_item(m: FxMediaItem) -> Option<PostMedia> {
         "gif" | "animated_gif" => PostMediaKind::Gif,
         _ => return None,
     };
-    Some(PostMedia { kind, url: m.url, preview: m.thumbnail_url, alt: m.alt_text })
+    Some(PostMedia {
+        kind,
+        url: m.url,
+        preview: m.thumbnail_url,
+        alt: m.alt_text,
+    })
 }
 
 pub(crate) fn rfc3339(seconds: i64) -> Option<String> {
-    chrono::DateTime::from_timestamp(seconds, 0).map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+    chrono::DateTime::from_timestamp(seconds, 0)
+        .map(|t| t.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
 }

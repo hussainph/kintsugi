@@ -16,7 +16,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::VecDeque;
 use std::future::Future;
 use std::path::PathBuf;
@@ -25,28 +25,62 @@ use std::pin::Pin;
 /// One request for the app.
 pub enum Op {
     /// The newest-first list (`feed_items`).
-    Feed { offset: i64, limit: i64 },
+    Feed {
+        offset: i64,
+        limit: i64,
+    },
     /// Picked for you (`feed_picked`).
     Picked,
     /// Reading an item: logs an `open` and fetches the full text if needed.
-    FeedRead { id: i64, place: Place },
-    FeedAct { id: i64, action: Action, place: Place },
+    FeedRead {
+        id: i64,
+        place: Place,
+    },
+    FeedAct {
+        id: i64,
+        action: Action,
+        place: Place,
+    },
     /// A note, checked against the version of the note it started from.
-    FeedNote { id: i64, note: String, base: Option<String>, place: Place },
-    FeedSave { id: i64, place: Place },
+    FeedNote {
+        id: i64,
+        note: String,
+        base: Option<String>,
+        place: Place,
+    },
+    FeedSave {
+        id: i64,
+        place: Place,
+    },
     FeedImpressions(Vec<Impression>),
     /// What a like changed in Picked for you.
-    FeedEffect { id: i64 },
+    FeedEffect {
+        id: i64,
+    },
     Ideas,
     /// "Ask for more": a few ideas on demand.
     IdeasMore,
     /// A new draft from the idea. An idea already adopted answers with its draft.
-    IdeaAdopt { id: String, title: Option<String> },
-    IdeaDismiss { id: String, undo: bool },
-    IdeaDiscussed { id: String },
+    IdeaAdopt {
+        id: String,
+        title: Option<String>,
+    },
+    IdeaDismiss {
+        id: String,
+        undo: bool,
+    },
+    IdeaDiscussed {
+        id: String,
+    },
     /// The one conversation, newest last.
-    Kin { before: Option<u64>, limit: usize },
-    KinSend { text: String, chips: Vec<Chip> },
+    Kin {
+        before: Option<u64>,
+        limit: usize,
+    },
+    KinSend {
+        text: String,
+        chips: Vec<Chip>,
+    },
     KinStop,
     KinJobs,
 }
@@ -83,7 +117,11 @@ pub trait Sections: Send + Sync {
 const NO_SECTIONS: &str = "The Feed, Ideas and Kin need Kintsugi running on your Mac.";
 
 async fn ask(ctx: &Ctx, op: Op) -> Result<Value, Error> {
-    let sections = ctx.host.sections.clone().ok_or_else(|| Error(StatusCode::SERVICE_UNAVAILABLE, NO_SECTIONS.into()))?;
+    let sections = ctx
+        .host
+        .sections
+        .clone()
+        .ok_or_else(|| Error(StatusCode::SERVICE_UNAVAILABLE, NO_SECTIONS.into()))?;
     sections.call(op).await.map_err(|fail| match fail {
         Fail::Invalid(message) => Error(StatusCode::BAD_REQUEST, message),
         Fail::Unavailable(message) => Error(StatusCode::SERVICE_UNAVAILABLE, message),
@@ -94,11 +132,14 @@ async fn ask(ctx: &Ctx, op: Op) -> Result<Value, Error> {
 
 /// A body parsed without echoing what was sent (it can carry private words).
 fn body<T>(body: Result<Json<T>, JsonRejection>) -> Result<T, Error> {
-    body.map(|Json(b)| b).map_err(|e| Error(e.status(), "Invalid request JSON.".into()))
+    body.map(|Json(b)| b)
+        .map_err(|e| Error(e.status(), "Invalid request JSON.".into()))
 }
 
 fn query<T>(query: Result<Query<T>, QueryRejection>) -> Result<T, Error> {
-    query.map(|Query(q)| q).map_err(|_| Error(StatusCode::BAD_REQUEST, "Invalid query.".into()))
+    query
+        .map(|Query(q)| q)
+        .map_err(|_| Error(StatusCode::BAD_REQUEST, "Invalid query.".into()))
 }
 
 pub(super) fn routes() -> Router<Ctx> {
@@ -133,7 +174,10 @@ struct PageQuery {
 
 async fn feed(State(ctx): State<Ctx>, q: Result<Query<PageQuery>, QueryRejection>) -> Reply {
     let q = query(q)?;
-    let op = Op::Feed { offset: q.offset.unwrap_or(0).max(0), limit: q.limit.unwrap_or(40).clamp(1, 100) };
+    let op = Op::Feed {
+        offset: q.offset.unwrap_or(0).max(0),
+        limit: q.limit.unwrap_or(40).clamp(1, 100),
+    };
     Ok(Json(ask(&ctx, op).await?))
 }
 
@@ -150,7 +194,16 @@ struct ItemBody {
 
 async fn feed_read(State(ctx): State<Ctx>, b: Result<Json<ItemBody>, JsonRejection>) -> Reply {
     let b = body(b)?;
-    Ok(Json(ask(&ctx, Op::FeedRead { id: b.id, place: b.place.unwrap_or_default() }).await?))
+    Ok(Json(
+        ask(
+            &ctx,
+            Op::FeedRead {
+                id: b.id,
+                place: b.place.unwrap_or_default(),
+            },
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -163,7 +216,17 @@ struct ActBody {
 
 async fn feed_act(State(ctx): State<Ctx>, b: Result<Json<ActBody>, JsonRejection>) -> Reply {
     let b = body(b)?;
-    Ok(Json(ask(&ctx, Op::FeedAct { id: b.id, action: b.action, place: b.place.unwrap_or_default() }).await?))
+    Ok(Json(
+        ask(
+            &ctx,
+            Op::FeedAct {
+                id: b.id,
+                action: b.action,
+                place: b.place.unwrap_or_default(),
+            },
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -179,21 +242,44 @@ struct NoteBody {
 
 /// `{ result: "saved", version, item }`, or 409 with
 /// `{ result: "conflict", current: { text, version }, item }`.
-async fn feed_note(State(ctx): State<Ctx>, b: Result<Json<NoteBody>, JsonRejection>) -> Result<Response, Error> {
+async fn feed_note(
+    State(ctx): State<Ctx>,
+    b: Result<Json<NoteBody>, JsonRejection>,
+) -> Result<Response, Error> {
     let b = body(b)?;
-    let sections = ctx.host.sections.clone().ok_or_else(|| Error(StatusCode::SERVICE_UNAVAILABLE, NO_SECTIONS.into()))?;
-    let op = Op::FeedNote { id: b.id, note: b.note, base: b.base, place: b.place.unwrap_or_default() };
+    let sections = ctx
+        .host
+        .sections
+        .clone()
+        .ok_or_else(|| Error(StatusCode::SERVICE_UNAVAILABLE, NO_SECTIONS.into()))?;
+    let op = Op::FeedNote {
+        id: b.id,
+        note: b.note,
+        base: b.base,
+        place: b.place.unwrap_or_default(),
+    };
     Ok(match sections.call(op).await {
         Ok(saved) => (StatusCode::OK, Json(saved)).into_response(),
         Err(Fail::Conflict(current)) => (StatusCode::CONFLICT, Json(current)).into_response(),
         Err(Fail::Invalid(message)) => return Err(Error(StatusCode::BAD_REQUEST, message)),
-        Err(Fail::Unavailable(message)) => return Err(Error(StatusCode::SERVICE_UNAVAILABLE, message)),
+        Err(Fail::Unavailable(message)) => {
+            return Err(Error(StatusCode::SERVICE_UNAVAILABLE, message));
+        }
     })
 }
 
 async fn feed_save(State(ctx): State<Ctx>, b: Result<Json<ItemBody>, JsonRejection>) -> Reply {
     let b = body(b)?;
-    Ok(Json(ask(&ctx, Op::FeedSave { id: b.id, place: b.place.unwrap_or_default() }).await?))
+    Ok(Json(
+        ask(
+            &ctx,
+            Op::FeedSave {
+                id: b.id,
+                place: b.place.unwrap_or_default(),
+            },
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -201,10 +287,16 @@ struct ImpressionsBody {
     impressions: Vec<Impression>,
 }
 
-async fn feed_impressions(State(ctx): State<Ctx>, b: Result<Json<ImpressionsBody>, JsonRejection>) -> Reply {
+async fn feed_impressions(
+    State(ctx): State<Ctx>,
+    b: Result<Json<ImpressionsBody>, JsonRejection>,
+) -> Reply {
     let b = body(b)?;
     if b.impressions.len() > 500 {
-        return Err(Error(StatusCode::BAD_REQUEST, "Too many impressions at once.".into()));
+        return Err(Error(
+            StatusCode::BAD_REQUEST,
+            "Too many impressions at once.".into(),
+        ));
     }
     Ok(Json(ask(&ctx, Op::FeedImpressions(b.impressions)).await?))
 }
@@ -237,7 +329,16 @@ struct AdoptBody {
 
 async fn idea_adopt(State(ctx): State<Ctx>, b: Result<Json<AdoptBody>, JsonRejection>) -> Reply {
     let b = body(b)?;
-    Ok(Json(ask(&ctx, Op::IdeaAdopt { id: b.id, title: b.title }).await?))
+    Ok(Json(
+        ask(
+            &ctx,
+            Op::IdeaAdopt {
+                id: b.id,
+                title: b.title,
+            },
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -247,9 +348,21 @@ struct DismissBody {
     undo: bool,
 }
 
-async fn idea_dismiss(State(ctx): State<Ctx>, b: Result<Json<DismissBody>, JsonRejection>) -> Reply {
+async fn idea_dismiss(
+    State(ctx): State<Ctx>,
+    b: Result<Json<DismissBody>, JsonRejection>,
+) -> Reply {
     let b = body(b)?;
-    Ok(Json(ask(&ctx, Op::IdeaDismiss { id: b.id, undo: b.undo }).await?))
+    Ok(Json(
+        ask(
+            &ctx,
+            Op::IdeaDismiss {
+                id: b.id,
+                undo: b.undo,
+            },
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -274,7 +387,16 @@ struct LogQuery {
 /// threads, the messages still waiting and whether Kin is answering.
 async fn kin(State(ctx): State<Ctx>, q: Result<Query<LogQuery>, QueryRejection>) -> Reply {
     let q = query(q)?;
-    Ok(Json(ask(&ctx, Op::Kin { before: q.before, limit: q.limit.unwrap_or(100).clamp(1, 500) }).await?))
+    Ok(Json(
+        ask(
+            &ctx,
+            Op::Kin {
+                before: q.before,
+                limit: q.limit.unwrap_or(100).clamp(1, 500),
+            },
+        )
+        .await?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -308,7 +430,10 @@ impl Receipts {
     }
 
     fn seq(&self, id: &str) -> Option<u64> {
-        self.sent.iter().find(|(sent, _)| sent == id).map(|(_, seq)| *seq)
+        self.sent
+            .iter()
+            .find(|(sent, _)| sent == id)
+            .map(|(_, seq)| *seq)
     }
 
     fn record(&mut self, id: String, seq: u64) {
@@ -337,17 +462,36 @@ const PHONE_CHIPS: [&str; 4] = ["doc", "clip", "feed", "idea"];
 async fn kin_send(State(ctx): State<Ctx>, b: Result<Json<SendBody>, JsonRejection>) -> Reply {
     let b = body(b)?;
     if !valid_id(&b.id) {
-        return Err(Error(StatusCode::BAD_REQUEST, "A message id is required.".into()));
+        return Err(Error(
+            StatusCode::BAD_REQUEST,
+            "A message id is required.".into(),
+        ));
     }
-    if b.chips.len() > 12 || b.chips.iter().any(|c| !PHONE_CHIPS.contains(&c.kind.as_str()) || c.path.len() > 1024 || c.label.as_ref().is_some_and(|l| l.len() > MAX_CHIP_LABEL)) {
-        return Err(Error(StatusCode::BAD_REQUEST, "The phone can attach documents, clips, feed items and ideas.".into()));
+    if b.chips.len() > 12
+        || b.chips.iter().any(|c| {
+            !PHONE_CHIPS.contains(&c.kind.as_str())
+                || c.path.len() > 1024
+                || c.label.as_ref().is_some_and(|l| l.len() > MAX_CHIP_LABEL)
+        })
+    {
+        return Err(Error(
+            StatusCode::BAD_REQUEST,
+            "The phone can attach documents, clips, feed items and ideas.".into(),
+        ));
     }
     // One send at a time, so a retry racing the original still lands once.
     let mut receipts = ctx.kin_sent.lock().await;
     if let Some(seq) = receipts.seq(&b.id) {
         return Ok(Json(json!({ "seq": seq, "duplicate": true })));
     }
-    let entry = ask(&ctx, Op::KinSend { text: b.text, chips: b.chips }).await?;
+    let entry = ask(
+        &ctx,
+        Op::KinSend {
+            text: b.text,
+            chips: b.chips,
+        },
+    )
+    .await?;
     if let Some(seq) = entry.get("seq").and_then(Value::as_u64) {
         receipts.record(b.id, seq);
     }
@@ -364,7 +508,7 @@ async fn kin_jobs(State(ctx): State<Ctx>) -> Reply {
 
 #[cfg(test)]
 mod tests {
-    use super::super::server::tests::{with_sections, TOKEN};
+    use super::super::server::tests::{TOKEN, with_sections};
     use super::*;
     use std::sync::{Arc, Mutex};
 
@@ -378,29 +522,66 @@ mod tests {
     impl Sections for Fake {
         fn call(&self, op: Op) -> Pending {
             let (name, answer): (String, Outcome) = match op {
-                Op::Feed { offset, limit } => (format!("feed {offset} {limit}"), Ok(json!({ "items": [], "total": 0 }))),
+                Op::Feed { offset, limit } => (
+                    format!("feed {offset} {limit}"),
+                    Ok(json!({ "items": [], "total": 0 })),
+                ),
                 Op::Picked => ("picked".into(), Ok(json!({ "picks": [] }))),
-                Op::FeedRead { id, place } => (format!("read {id} {:?} {:?}", place.surface, place.position), Ok(json!({ "text": null }))),
-                Op::FeedAct { id, action, place } => (format!("act {id} {action:?} {:?}", place.surface), Ok(json!({ "id": id }))),
+                Op::FeedRead { id, place } => (
+                    format!("read {id} {:?} {:?}", place.surface, place.position),
+                    Ok(json!({ "text": null })),
+                ),
+                Op::FeedAct { id, action, place } => (
+                    format!("act {id} {action:?} {:?}", place.surface),
+                    Ok(json!({ "id": id })),
+                ),
                 Op::FeedNote { id, note, base, .. } => match base.as_deref() {
-                    Some("stale") => (format!("note {id}"), Err(Fail::Conflict(json!({ "result": "conflict", "current": { "text": "mac", "version": "v2" } })))),
-                    _ => (format!("note {id} {note}"), Ok(json!({ "result": "saved", "version": "v3" }))),
+                    Some("stale") => (
+                        format!("note {id}"),
+                        Err(Fail::Conflict(
+                            json!({ "result": "conflict", "current": { "text": "mac", "version": "v2" } }),
+                        )),
+                    ),
+                    _ => (
+                        format!("note {id} {note}"),
+                        Ok(json!({ "result": "saved", "version": "v3" })),
+                    ),
                 },
-                Op::FeedSave { id, .. } => (format!("save {id}"), Ok(json!({ "savedPath": "inspiration/x.md" }))),
+                Op::FeedSave { id, .. } => (
+                    format!("save {id}"),
+                    Ok(json!({ "savedPath": "inspiration/x.md" })),
+                ),
                 Op::FeedImpressions(list) => (format!("impressions {}", list.len()), Ok(json!({}))),
                 Op::FeedEffect { id } => (format!("effect {id}"), Ok(json!({ "changes": [] }))),
                 Op::Ideas => ("ideas".into(), Ok(json!({ "ideas": [] }))),
-                Op::IdeasMore => ("more".into(), Err(Fail::Invalid("Kin is already finding ideas.".into()))),
-                Op::IdeaAdopt { id, title } => (format!("adopt {id} {title:?}"), Ok(json!({ "path": "drafts/x.mdx" }))),
-                Op::IdeaDismiss { id, undo } => (format!("dismiss {id} {undo}"), Ok(json!({ "ideas": [] }))),
+                Op::IdeasMore => (
+                    "more".into(),
+                    Err(Fail::Invalid("Kin is already finding ideas.".into())),
+                ),
+                Op::IdeaAdopt { id, title } => (
+                    format!("adopt {id} {title:?}"),
+                    Ok(json!({ "path": "drafts/x.mdx" })),
+                ),
+                Op::IdeaDismiss { id, undo } => {
+                    (format!("dismiss {id} {undo}"), Ok(json!({ "ideas": [] })))
+                }
                 Op::IdeaDiscussed { id } => (format!("discussed {id}"), Ok(json!({}))),
-                Op::Kin { before, limit } => (format!("kin {before:?} {limit}"), Ok(json!({ "entries": [] }))),
+                Op::Kin { before, limit } => (
+                    format!("kin {before:?} {limit}"),
+                    Ok(json!({ "entries": [] })),
+                ),
                 Op::KinSend { text, chips } => {
                     let mut sends = self.sends.lock().unwrap();
                     *sends += 1;
-                    (format!("send {text} {}", chips.len()), Ok(json!({ "seq": *sends, "text": text })))
+                    (
+                        format!("send {text} {}", chips.len()),
+                        Ok(json!({ "seq": *sends, "text": text })),
+                    )
                 }
-                Op::KinStop => ("stop".into(), Err(Fail::Unavailable("Kin isn't ready yet.".into()))),
+                Op::KinStop => (
+                    "stop".into(),
+                    Err(Fail::Unavailable("Kin isn't ready yet.".into())),
+                ),
                 Op::KinJobs => ("jobs".into(), Ok(json!([]))),
             };
             self.asked.lock().unwrap().push(name);
@@ -413,32 +594,120 @@ mod tests {
         let fake = Arc::new(Fake::default());
         with_sections(Some(fake.clone()), None, async |base, http, _, _, _| {
             let get = |path: &str| http.get(format!("{base}{path}")).bearer_auth(TOKEN).send();
-            let post = |path: &str, body: Value| http.post(format!("{base}{path}")).bearer_auth(TOKEN).json(&body).send();
-            assert_eq!(get("/v1/feed?offset=-3&limit=1000").await.unwrap().status(), 200);
+            let post = |path: &str, body: Value| {
+                http.post(format!("{base}{path}"))
+                    .bearer_auth(TOKEN)
+                    .json(&body)
+                    .send()
+            };
+            assert_eq!(
+                get("/v1/feed?offset=-3&limit=1000").await.unwrap().status(),
+                200
+            );
             assert_eq!(get("/v1/feed/picked").await.unwrap().status(), 200);
             let place = json!({ "surface": "picked", "position": 2 });
-            assert_eq!(post("/v1/feed/read", json!({ "id": 4, "place": place })).await.unwrap().status(), 200);
-            assert_eq!(post("/v1/feed/act", json!({ "id": 4, "action": "notInterested", "place": place })).await.unwrap().status(), 200);
+            assert_eq!(
+                post("/v1/feed/read", json!({ "id": 4, "place": place }))
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
+            assert_eq!(
+                post(
+                    "/v1/feed/act",
+                    json!({ "id": 4, "action": "notInterested", "place": place })
+                )
+                .await
+                .unwrap()
+                .status(),
+                200
+            );
             // An action the Mac doesn't know is refused before it is asked.
-            assert_eq!(post("/v1/feed/act", json!({ "id": 4, "action": "delete" })).await.unwrap().status(), 422);
-            let saved = http.put(format!("{base}/v1/feed/note")).bearer_auth(TOKEN).json(&json!({ "id": 4, "note": "mine", "base": "v1" })).send().await.unwrap();
+            assert_eq!(
+                post("/v1/feed/act", json!({ "id": 4, "action": "delete" }))
+                    .await
+                    .unwrap()
+                    .status(),
+                422
+            );
+            let saved = http
+                .put(format!("{base}/v1/feed/note"))
+                .bearer_auth(TOKEN)
+                .json(&json!({ "id": 4, "note": "mine", "base": "v1" }))
+                .send()
+                .await
+                .unwrap();
             assert_eq!(saved.status(), 200);
-            let stale = http.put(format!("{base}/v1/feed/note")).bearer_auth(TOKEN).json(&json!({ "id": 4, "note": "mine", "base": "stale" })).send().await.unwrap();
+            let stale = http
+                .put(format!("{base}/v1/feed/note"))
+                .bearer_auth(TOKEN)
+                .json(&json!({ "id": 4, "note": "mine", "base": "stale" }))
+                .send()
+                .await
+                .unwrap();
             assert_eq!(stale.status(), 409);
-            assert_eq!(stale.json::<Value>().await.unwrap()["current"]["text"], "mac");
-            assert_eq!(post("/v1/feed/save", json!({ "id": 4 })).await.unwrap().status(), 200);
-            let many: Vec<Value> = (0..501).map(|i| json!({ "id": i, "position": i, "surface": "newest" })).collect();
-            assert_eq!(post("/v1/feed/impressions", json!({ "impressions": many })).await.unwrap().status(), 400);
-            assert_eq!(post("/v1/feed/impressions", json!({ "impressions": [{ "id": 4, "position": 0, "surface": "newest" }] })).await.unwrap().status(), 200);
+            assert_eq!(
+                stale.json::<Value>().await.unwrap()["current"]["text"],
+                "mac"
+            );
+            assert_eq!(
+                post("/v1/feed/save", json!({ "id": 4 }))
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
+            let many: Vec<Value> = (0..501)
+                .map(|i| json!({ "id": i, "position": i, "surface": "newest" }))
+                .collect();
+            assert_eq!(
+                post("/v1/feed/impressions", json!({ "impressions": many }))
+                    .await
+                    .unwrap()
+                    .status(),
+                400
+            );
+            assert_eq!(
+                post(
+                    "/v1/feed/impressions",
+                    json!({ "impressions": [{ "id": 4, "position": 0, "surface": "newest" }] })
+                )
+                .await
+                .unwrap()
+                .status(),
+                200
+            );
             assert_eq!(get("/v1/feed/effect?id=4").await.unwrap().status(), 200);
             assert_eq!(get("/v1/feed/effect?id=four").await.unwrap().status(), 400);
             assert_eq!(get("/v1/ideas").await.unwrap().status(), 200);
             let busy = post("/v1/ideas/more", json!({})).await.unwrap();
             assert_eq!(busy.status(), 400);
-            assert_eq!(busy.json::<Value>().await.unwrap()["error"], "Kin is already finding ideas.");
-            assert_eq!(post("/v1/ideas/adopt", json!({ "id": "idea-1" })).await.unwrap().status(), 200);
-            assert_eq!(post("/v1/ideas/dismiss", json!({ "id": "idea-1", "undo": true })).await.unwrap().status(), 200);
-            assert_eq!(post("/v1/ideas/discussed", json!({ "id": "idea-1" })).await.unwrap().status(), 200);
+            assert_eq!(
+                busy.json::<Value>().await.unwrap()["error"],
+                "Kin is already finding ideas."
+            );
+            assert_eq!(
+                post("/v1/ideas/adopt", json!({ "id": "idea-1" }))
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
+            assert_eq!(
+                post("/v1/ideas/dismiss", json!({ "id": "idea-1", "undo": true }))
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
+            assert_eq!(
+                post("/v1/ideas/discussed", json!({ "id": "idea-1" }))
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
             assert_eq!(get("/v1/kin?before=9").await.unwrap().status(), 200);
             assert_eq!(post("/v1/kin/stop", json!({})).await.unwrap().status(), 503);
             assert_eq!(get("/v1/kin/jobs").await.unwrap().status(), 200);
@@ -446,9 +715,23 @@ mod tests {
         assert_eq!(
             *fake.asked.lock().unwrap(),
             [
-                "feed 0 100", "picked", "read 4 Some(\"picked\") Some(2)", "act 4 NotInterested Some(\"picked\")",
-                "note 4 mine", "note 4", "save 4", "impressions 1", "effect 4", "ideas", "more",
-                "adopt idea-1 None", "dismiss idea-1 true", "discussed idea-1", "kin Some(9) 100", "stop", "jobs",
+                "feed 0 100",
+                "picked",
+                "read 4 Some(\"picked\") Some(2)",
+                "act 4 NotInterested Some(\"picked\")",
+                "note 4 mine",
+                "note 4",
+                "save 4",
+                "impressions 1",
+                "effect 4",
+                "ideas",
+                "more",
+                "adopt idea-1 None",
+                "dismiss idea-1 true",
+                "discussed idea-1",
+                "kin Some(9) 100",
+                "stop",
+                "jobs",
             ]
         );
     }
@@ -461,28 +744,56 @@ mod tests {
         let message = json!({ "id": "6d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "text": "Is this any good?", "chips": [{ "kind": "clip", "path": "inspiration/a.md", "label": "A" }] });
         for _ in 0..2 {
             let message = message.clone();
-            with_sections(Some(fake.clone()), Some(ids.clone()), async move |base, http, _, _, _| {
-                let send = || http.post(format!("{base}/v1/kin")).bearer_auth(TOKEN).json(&message).send();
-                let (a, b) = futures_util::future::join(send(), send()).await;
-                let (a, b): (Value, Value) = (a.unwrap().json().await.unwrap(), b.unwrap().json().await.unwrap());
-                let first = if a["duplicate"] == false { &a } else { &b };
-                let second = if a["duplicate"] == false { &b } else { &a };
-                // After the restart both are duplicates of the first run's send.
-                assert!(first["duplicate"] == true || first["entry"]["seq"] == 1);
-                assert_eq!(second["duplicate"], true);
-                assert_eq!(second["seq"], 1);
-            });
+            with_sections(
+                Some(fake.clone()),
+                Some(ids.clone()),
+                async move |base, http, _, _, _| {
+                    let send = || {
+                        http.post(format!("{base}/v1/kin"))
+                            .bearer_auth(TOKEN)
+                            .json(&message)
+                            .send()
+                    };
+                    let (a, b) = futures_util::future::join(send(), send()).await;
+                    let (a, b): (Value, Value) = (
+                        a.unwrap().json().await.unwrap(),
+                        b.unwrap().json().await.unwrap(),
+                    );
+                    let first = if a["duplicate"] == false { &a } else { &b };
+                    let second = if a["duplicate"] == false { &b } else { &a };
+                    // After the restart both are duplicates of the first run's send.
+                    assert!(first["duplicate"] == true || first["entry"]["seq"] == 1);
+                    assert_eq!(second["duplicate"], true);
+                    assert_eq!(second["seq"], 1);
+                },
+            );
         }
-        assert_eq!(*fake.sends.lock().unwrap(), 1, "the message reached Kin more than once");
+        assert_eq!(
+            *fake.sends.lock().unwrap(),
+            1,
+            "the message reached Kin more than once"
+        );
         for (body, status) in [
             (json!({ "text": "no id" }), 422),
             (json!({ "id": "short", "text": "hi" }), 400),
             (json!({ "id": "../../etc/passwd-0000", "text": "hi" }), 400),
-            (json!({ "id": "7d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "text": "hi", "chips": [{ "kind": "paragraph", "path": "a.md" }] }), 400),
-            (json!({ "id": "7d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "text": "PRIVATE-WORDS", "chips": "nope" }), 422),
+            (
+                json!({ "id": "7d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "text": "hi", "chips": [{ "kind": "paragraph", "path": "a.md" }] }),
+                400,
+            ),
+            (
+                json!({ "id": "7d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "text": "PRIVATE-WORDS", "chips": "nope" }),
+                422,
+            ),
         ] {
             with_sections(Some(fake.clone()), None, async |base, http, _, _, _| {
-                let response = http.post(format!("{base}/v1/kin")).bearer_auth(TOKEN).json(&body).send().await.unwrap();
+                let response = http
+                    .post(format!("{base}/v1/kin"))
+                    .bearer_auth(TOKEN)
+                    .json(&body)
+                    .send()
+                    .await
+                    .unwrap();
                 assert_eq!(response.status(), status, "{body}");
                 assert!(!response.text().await.unwrap().contains("PRIVATE-WORDS"));
             });
@@ -493,14 +804,48 @@ mod tests {
     #[test]
     fn without_the_app_the_sections_say_they_need_the_mac_and_all_need_pairing() {
         with_sections(None, None, async |base, http, _, _, _| {
-            for path in ["/v1/feed", "/v1/feed/picked", "/v1/ideas", "/v1/kin", "/v1/kin/jobs"] {
-                let response = http.get(format!("{base}{path}")).bearer_auth(TOKEN).send().await.unwrap();
+            for path in [
+                "/v1/feed",
+                "/v1/feed/picked",
+                "/v1/ideas",
+                "/v1/kin",
+                "/v1/kin/jobs",
+            ] {
+                let response = http
+                    .get(format!("{base}{path}"))
+                    .bearer_auth(TOKEN)
+                    .send()
+                    .await
+                    .unwrap();
                 assert_eq!(response.status(), 503, "{path}");
-                assert_eq!(response.json::<Value>().await.unwrap()["error"], NO_SECTIONS);
-                assert_eq!(http.get(format!("{base}{path}")).send().await.unwrap().status(), 401, "{path}");
+                assert_eq!(
+                    response.json::<Value>().await.unwrap()["error"],
+                    NO_SECTIONS
+                );
+                assert_eq!(
+                    http.get(format!("{base}{path}"))
+                        .send()
+                        .await
+                        .unwrap()
+                        .status(),
+                    401,
+                    "{path}"
+                );
             }
-            for path in ["/v1/feed/act", "/v1/feed/save", "/v1/ideas/adopt", "/v1/kin", "/v1/kin/stop"] {
-                let response = http.post(format!("{base}{path}")).bearer_auth("WRONG").json(&json!({})).send().await.unwrap();
+            for path in [
+                "/v1/feed/act",
+                "/v1/feed/save",
+                "/v1/ideas/adopt",
+                "/v1/kin",
+                "/v1/kin/stop",
+            ] {
+                let response = http
+                    .post(format!("{base}{path}"))
+                    .bearer_auth("WRONG")
+                    .json(&json!({}))
+                    .send()
+                    .await
+                    .unwrap();
                 assert_eq!(response.status(), 401, "{path}");
             }
         });

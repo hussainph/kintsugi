@@ -1,11 +1,11 @@
 //! One task owns all enrichment. Captures wake it; periodic scans also pick up
 //! clips written by other apps without requiring a filesystem watcher.
 
-use crate::AppHandle;
 use super::{
     storage::{Clip, Store, Update, VaultStore},
     think,
 };
+use crate::AppHandle;
 use kintsugi_ingest::{CaptureOptions, Engine as Ingest, Item, SourceType, Target};
 use std::{future::Future, path::Path, time::Duration};
 use tauri::{Listener, Manager};
@@ -53,7 +53,10 @@ pub fn start(app: &AppHandle) {
                     &engine,
                     &root,
                     &BACKOFF,
-                    || app.state::<crate::vault::Vault>().root().ok().as_deref() == Some(root.as_path()),
+                    || {
+                        app.state::<crate::vault::Vault>().root().ok().as_deref()
+                            == Some(root.as_path())
+                    },
                     |path| crate::vault::clips_changed(&app, path),
                 )
                 .await
@@ -69,7 +72,12 @@ pub fn start(app: &AppHandle) {
 }
 
 trait Engine {
-    fn enrich(&self, root: &Path, clip: &Clip, existing_tags: Vec<String>) -> impl Future<Output = Result<Update>> + Send;
+    fn enrich(
+        &self,
+        root: &Path,
+        clip: &Clip,
+        existing_tags: Vec<String>,
+    ) -> impl Future<Output = Result<Update>> + Send;
 }
 
 /// Enrichment is one consumer of the ingest engine: the clip's URL becomes a
@@ -90,7 +98,8 @@ impl Enricher {
                 .map_err(|_| kintsugi_ingest::Error::Unavailable),
             (None, Some(url), _) => Target::url(url),
             (None, None, Some(image)) => {
-                let Ok(image) = kintsugi_vault::clip_media_path(root, &clip.summary.path, image) else {
+                let Ok(image) = kintsugi_vault::clip_media_path(root, &clip.summary.path, image)
+                else {
                     return Ok(Page::default());
                 };
                 let target = Target::File(image);
@@ -99,7 +108,12 @@ impl Enricher {
                 }
                 // Reading a picture is a bonus: a failure leaves the clip
                 // to be organized from what it has.
-                return Ok(self.0.capture(&target, options).await.map(Page::from).unwrap_or_default());
+                return Ok(self
+                    .0
+                    .capture(&target, options)
+                    .await
+                    .map(Page::from)
+                    .unwrap_or_default());
             }
             (None, None, None) => return Ok(Page::default()),
         };
@@ -154,7 +168,10 @@ impl From<Item> for Page {
     fn from(mut item: Item) -> Self {
         Page {
             kind: source_kind(item.source),
-            url: item.url.take().filter(|_| item.source == SourceType::Podcast),
+            url: item
+                .url
+                .take()
+                .filter(|_| item.source == SourceType::Podcast),
             image: item.media.first_mut().and_then(|m| m.data.take()),
             title: item.title,
             site: item.site,
@@ -169,7 +186,10 @@ impl From<Item> for Page {
 /// Bare URLs still retry; without any source, the model would only be guessing.
 fn source_or_shared(clip: &Clip, fetched: Result<Page>) -> Result<Page> {
     match fetched {
-        Err(_) if !clip.text.trim().is_empty() || clip.source.as_deref().is_some_and(|s| !s.trim().is_empty()) => {
+        Err(_)
+            if !clip.text.trim().is_empty()
+                || clip.source.as_deref().is_some_and(|s| !s.trim().is_empty()) =>
+        {
             Ok(Page::default())
         }
         other => other,
@@ -188,11 +208,18 @@ async fn build_update(clip: &Clip, page: Page, existing_tags: Vec<String>) -> Re
             .or_else(|| page.title.clone()),
         kind: kind_name(baseline.kind).into(),
         own_text: clip.text.clone(),
-        source_text: if page.source_text.is_empty() { known_source.clone() } else { page.source_text.clone() },
+        source_text: if page.source_text.is_empty() {
+            known_source.clone()
+        } else {
+            page.source_text.clone()
+        },
         metadata: [
             ("page title", page.title.clone()),
             ("site", page.site.clone().or_else(|| baseline.site.clone())),
-            ("author", page.author.clone().or_else(|| baseline.author.clone())),
+            (
+                "author",
+                page.author.clone().or_else(|| baseline.author.clone()),
+            ),
             ("description", page.description),
             ("url", baseline.url.clone()),
         ]
@@ -203,9 +230,20 @@ async fn build_update(clip: &Clip, page: Page, existing_tags: Vec<String>) -> Re
     };
     let thought = think::think(&input).await.map_err(|e| e.to_string())?;
     let kind = page.kind.map(String::from).unwrap_or(thought.kind);
-    let url = page.url.filter(|u| baseline.url.as_deref() != Some(u.as_str()));
-    let source = if page.source_text.is_empty() { &known_source } else { &page.source_text };
-    let quote = quote(clip, source, url.as_deref().or(baseline.url.as_deref()), &kind);
+    let url = page
+        .url
+        .filter(|u| baseline.url.as_deref() != Some(u.as_str()));
+    let source = if page.source_text.is_empty() {
+        &known_source
+    } else {
+        &page.source_text
+    };
+    let quote = quote(
+        clip,
+        source,
+        url.as_deref().or(baseline.url.as_deref()),
+        &kind,
+    );
     Ok(Update {
         title: page.title.or(thought.title),
         summary: thought.summary,
@@ -224,8 +262,15 @@ async fn build_update(clip: &Clip, page: Page, existing_tags: Vec<String>) -> Re
 /// Who said the clip's shared passage and where it is, from the source's
 /// comment headings, timestamps, page markers or (for articles) a text
 /// fragment.
-fn quote(clip: &Clip, source: &str, url: Option<&str>, kind: &str) -> kintsugi_vault::QuoteAttribution {
-    let Some(passage) = kintsugi_vault::leading_passage(&clip.text) else { return Default::default() };
+fn quote(
+    clip: &Clip,
+    source: &str,
+    url: Option<&str>,
+    kind: &str,
+) -> kintsugi_vault::QuoteAttribution {
+    let Some(passage) = kintsugi_vault::leading_passage(&clip.text) else {
+        return Default::default();
+    };
     let source = kintsugi_vault::QuoteSource {
         text: source,
         url,
@@ -275,7 +320,13 @@ async fn drain<S: Store, E: Engine>(
 
 /// Delays are injected so retry behavior is tested without sleeping. Errors
 /// originate in bounded fetch/think/storage APIs, never raw provider responses.
-async fn process<S: Store, E: Engine>(store: &S, engine: &E, root: &Path, clip: &Clip, delays: &[Duration]) -> Result<()> {
+async fn process<S: Store, E: Engine>(
+    store: &S,
+    engine: &E,
+    root: &Path,
+    clip: &Clip,
+    delays: &[Duration],
+) -> Result<()> {
     let mut last_error = "could not enrich clip".to_string();
     for attempt in 0..=delays.len() {
         let result = async {
@@ -402,7 +453,8 @@ mod tests {
             .unwrap();
             stream.write_all(body).unwrap();
         });
-        let enricher = Enricher(Ingest::new().with(kintsugi_ingest::web::WebAdapter::new().unwrap()));
+        let enricher =
+            Enricher(Ingest::new().with(kintsugi_ingest::web::WebAdapter::new().unwrap()));
         let mut link = clip();
         link.summary.url = Some(url);
         // A clip that already has its image never downloads another.
@@ -439,14 +491,19 @@ mod tests {
                 title: None,
                 image: None,
                 image_type: None,
-                file: Some(kintsugi_vault::ClipFile { bytes: epub, mime: "application/epub+zip".into(), name: Some("repair.epub".into()) }),
+                file: Some(kintsugi_vault::ClipFile {
+                    bytes: epub,
+                    mime: "application/epub+zip".into(),
+                    name: Some("repair.epub".into()),
+                }),
                 captured_at: "2026-10-29T14:05".into(),
                 via: kintsugi_vault::ClipVia::Mac,
             },
         )
         .unwrap();
         let clip = kintsugi_vault::clip_read(root, &path).unwrap();
-        let enricher = Enricher(Ingest::new().with(kintsugi_ingest::epub::EpubAdapter::new().unwrap()));
+        let enricher =
+            Enricher(Ingest::new().with(kintsugi_ingest::epub::EpubAdapter::new().unwrap()));
         let page = futures_block(enricher.page(root, &clip)).unwrap();
         assert_eq!(page.title.as_deref(), Some("The Golden Seam"));
         assert_eq!(page.author.as_deref(), Some("Ada Example, Ben Sample"));
@@ -455,7 +512,10 @@ mod tests {
         // A hand-edited file path outside the clip's own is refused.
         let mut moved = clip.clone();
         moved.summary.file = Some("files/elsewhere.epub".into());
-        assert_eq!(futures_block(enricher.page(root, &moved)).unwrap_err(), "could not fetch source page");
+        assert_eq!(
+            futures_block(enricher.page(root, &moved)).unwrap_err(),
+            "could not fetch source page"
+        );
     }
 
     #[test]
@@ -471,27 +531,54 @@ mod tests {
                 .unwrap();
             stream.write_all(body).unwrap();
         });
-        let limits = kintsugi_ingest::api::ApiLimits { min_interval: Duration::ZERO, ..Default::default() };
-        let hn = kintsugi_ingest::hn::HackerNewsAdapter::with_endpoint(kintsugi_ingest::Url::parse(&base).unwrap(), limits).unwrap();
+        let limits = kintsugi_ingest::api::ApiLimits {
+            min_interval: Duration::ZERO,
+            ..Default::default()
+        };
+        let hn = kintsugi_ingest::hn::HackerNewsAdapter::with_endpoint(
+            kintsugi_ingest::Url::parse(&base).unwrap(),
+            limits,
+        )
+        .unwrap();
         let enricher = Enricher(Ingest::new().with(hn));
         let mut shared = clip();
         shared.summary.url = Some("https://news.ycombinator.com/item?id=19804478".into());
         shared.text = "> Thanks, Joseph!\n\nHe built the thing.".into();
         let page = futures_block(enricher.page(Path::new("/nonexistent"), &shared)).unwrap();
         server.join().unwrap();
-        assert_eq!(page.title.as_deref(), Some("Local-first software: You own your data, in spite of the cloud"));
+        assert_eq!(
+            page.title.as_deref(),
+            Some("Local-first software: You own your data, in spite of the cloud")
+        );
         assert_eq!(page.kind, None);
-        let quote = quote(&shared, &page.source_text, shared.summary.url.as_deref(), "link");
+        let quote = quote(
+            &shared,
+            &page.source_text,
+            shared.summary.url.as_deref(),
+            "link",
+        );
         assert_eq!(quote.by.as_deref(), Some("pvh"));
-        assert_eq!(quote.link.as_deref(), Some("https://news.ycombinator.com/item?id=19805123"));
+        assert_eq!(
+            quote.link.as_deref(),
+            Some("https://news.ycombinator.com/item?id=19805123")
+        );
     }
 
     struct Ocr;
 
     impl kintsugi_ingest::image::ImageReader for Ocr {
-        fn read<'a>(&'a self, _: &'a Path) -> kintsugi_ingest::BoxFuture<'a, kintsugi_ingest::Result<kintsugi_ingest::image::ImageText>> {
+        fn read<'a>(
+            &'a self,
+            _: &'a Path,
+        ) -> kintsugi_ingest::BoxFuture<
+            'a,
+            kintsugi_ingest::Result<kintsugi_ingest::image::ImageText>,
+        > {
             Box::pin(async {
-                Ok(kintsugi_ingest::image::ImageText { lines: vec!["Golden seams".into()], ..Default::default() })
+                Ok(kintsugi_ingest::image::ImageText {
+                    lines: vec!["Golden seams".into()],
+                    ..Default::default()
+                })
             })
         }
     }
@@ -517,9 +604,17 @@ mod tests {
         .unwrap();
         assert_eq!(path, "inspiration/image-2026-10-31-10-15.md");
         let clip = kintsugi_vault::clip_read(root, &path).unwrap();
-        let reading = Enricher(Ingest::new().with(kintsugi_ingest::image::ImageAdapter::new(std::sync::Arc::new(Ocr))));
+        let reading = Enricher(
+            Ingest::new().with(kintsugi_ingest::image::ImageAdapter::new(
+                std::sync::Arc::new(Ocr),
+            )),
+        );
         let page = futures_block(reading.page(root, &clip)).unwrap();
-        assert!(page.source_text.contains("machine-made") && page.source_text.contains("Golden seams"), "{}", page.source_text);
+        assert!(
+            page.source_text.contains("machine-made") && page.source_text.contains("Golden seams"),
+            "{}",
+            page.source_text
+        );
         assert_eq!(page.kind, Some("image"));
         // Without the helper (headless, or an old build), nothing is read and nothing fails.
         let page = futures_block(Enricher(Ingest::new()).page(root, &clip)).unwrap();
@@ -545,12 +640,26 @@ mod tests {
             body: String::new(),
             extras: Default::default(),
         };
-        assert_eq!(Page::from(podcast.clone()).url.as_deref(), Some("https://media.example.com/idea.mp3"));
-        assert_eq!(Page::from(Item { source: SourceType::Web, ..podcast }).url, None);
+        assert_eq!(
+            Page::from(podcast.clone()).url.as_deref(),
+            Some("https://media.example.com/idea.mp3")
+        );
+        assert_eq!(
+            Page::from(Item {
+                source: SourceType::Web,
+                ..podcast
+            })
+            .url,
+            None
+        );
     }
 
     fn futures_block<T>(f: impl Future<Output = T>) -> T {
-        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
     }
 
     #[test]
@@ -569,16 +678,24 @@ mod tests {
         struct Serial(Mutex<Vec<String>>);
         impl Engine for Serial {
             async fn enrich(&self, root: &Path, clip: &Clip, tags: Vec<String>) -> Result<Update> {
-                self.0.lock().unwrap().push(format!("start {}", clip.summary.path));
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(format!("start {}", clip.summary.path));
                 tokio::task::yield_now().await;
-                self.0.lock().unwrap().push(format!("end {}", clip.summary.path));
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(format!("end {}", clip.summary.path));
                 Flaky(Mutex::new(0)).enrich(root, clip, tags).await
             }
         }
         run(async {
             let store = Memory::default();
             let engine = Serial(Mutex::new(vec![]));
-            drain(&store, &engine, Path::new("."), &[], || true, |_| {}).await.unwrap();
+            drain(&store, &engine, Path::new("."), &[], || true, |_| {})
+                .await
+                .unwrap();
             assert_eq!(
                 *engine.0.lock().unwrap(),
                 [
@@ -597,9 +714,16 @@ mod tests {
             let store = Memory::default();
             let engine = Flaky(Mutex::new(0));
             let current = std::cell::Cell::new(true);
-            drain(&store, &engine, Path::new("."), &[], || current.get(), |_| current.set(false))
-                .await
-                .unwrap();
+            drain(
+                &store,
+                &engine,
+                Path::new("."),
+                &[],
+                || current.get(),
+                |_| current.set(false),
+            )
+            .await
+            .unwrap();
             assert_eq!(*store.applied.lock().unwrap(), ["inspiration/note.md"]);
         });
     }
@@ -609,9 +733,15 @@ mod tests {
         run(async {
             let store = Memory::default();
             let engine = Flaky(Mutex::new(2));
-            process(&store, &engine, Path::new("."), &clip(), &[Duration::ZERO; 2])
-                .await
-                .unwrap();
+            process(
+                &store,
+                &engine,
+                Path::new("."),
+                &clip(),
+                &[Duration::ZERO; 2],
+            )
+            .await
+            .unwrap();
             assert_eq!(*store.applied.lock().unwrap(), ["inspiration/note.md"]);
             assert!(store.failed.lock().unwrap().is_empty());
         });
@@ -622,9 +752,15 @@ mod tests {
         run(async {
             let store = Memory::default();
             let engine = Flaky(Mutex::new(10));
-            process(&store, &engine, Path::new("."), &clip(), &[Duration::ZERO; 2])
-                .await
-                .unwrap();
+            process(
+                &store,
+                &engine,
+                Path::new("."),
+                &clip(),
+                &[Duration::ZERO; 2],
+            )
+            .await
+            .unwrap();
             assert!(store.applied.lock().unwrap().is_empty());
             assert_eq!(*store.failed.lock().unwrap(), ["page fetch timed out"]);
             assert_eq!(*engine.0.lock().unwrap(), 7);

@@ -12,11 +12,21 @@ pub fn feed_links(html: &str, base: &Url) -> Vec<Url> {
     let doc = Document::from(html);
     let mut found = Vec::new();
     for link in doc.select(r#"link[rel~="alternate"][href]"#).iter() {
-        let kind = link.attr("type").map(|t| t.to_ascii_lowercase()).unwrap_or_default();
-        if !(kind.contains("rss") || kind.contains("atom") || kind.contains("feed+json") || kind == "application/json") {
+        let kind = link
+            .attr("type")
+            .map(|t| t.to_ascii_lowercase())
+            .unwrap_or_default();
+        if !(kind.contains("rss")
+            || kind.contains("atom")
+            || kind.contains("feed+json")
+            || kind == "application/json")
+        {
             continue;
         }
-        if let Some(url) = link.attr("href").and_then(|h| base.join(&h).ok()).filter(allowed_url)
+        if let Some(url) = link
+            .attr("href")
+            .and_then(|h| base.join(&h).ok())
+            .filter(allowed_url)
             && !found.contains(&url)
         {
             found.push(url);
@@ -26,15 +36,26 @@ pub fn feed_links(html: &str, base: &Url) -> Vec<Url> {
 }
 
 fn is_channel_id(value: &str) -> bool {
-    value.len() == 24 && value.starts_with("UC") && value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    value.len() == 24
+        && value.starts_with("UC")
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// The channel ID in a YouTube channel page: its canonical link or metadata,
 /// or the page data.
 pub fn channel_id(html: &str) -> Option<String> {
     let doc = Document::from(html);
-    for element in doc.select(r#"link[rel="canonical"], meta[itemprop="channelId"], meta[itemprop="identifier"]"#).iter() {
-        let value = element.attr("href").or_else(|| element.attr("content")).map(|v| v.to_string()).unwrap_or_default();
+    for element in doc
+        .select(r#"link[rel="canonical"], meta[itemprop="channelId"], meta[itemprop="identifier"]"#)
+        .iter()
+    {
+        let value = element
+            .attr("href")
+            .or_else(|| element.attr("content"))
+            .map(|v| v.to_string())
+            .unwrap_or_default();
         let id = value.rsplit('/').next().unwrap_or_default();
         if is_channel_id(id) {
             return Some(id.to_string());

@@ -20,8 +20,8 @@ use crate::transcribe::Transcriber;
 use crate::transcript::{self, Parsed};
 use crate::web::{allowed_url, canonical_url};
 use crate::{
-    Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType, Target, markdown,
-    media::image_mime,
+    Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result,
+    SourceType, Target, markdown, media::image_mime,
 };
 use reqwest::Url;
 use serde_json::Value;
@@ -96,7 +96,11 @@ pub struct PodcastAdapter {
 
 impl PodcastAdapter {
     pub fn new() -> Result<Self> {
-        Ok(Self { fetcher: Fetcher::new()?, transcriber: None, limits: Limits::default() })
+        Ok(Self {
+            fetcher: Fetcher::new()?,
+            transcriber: None,
+            limits: Limits::default(),
+        })
     }
 
     /// Enables on-device transcription for episodes without a publisher
@@ -113,22 +117,38 @@ impl PodcastAdapter {
 
     /// Fetches the show's feed and captures the episode with this GUID (or,
     /// without one, the newest episode).
-    pub async fn capture_from_feed(&self, feed_url: &Url, guid: Option<&str>, options: CaptureOptions) -> Result<Item> {
-        let feed = tokio::time::timeout(self.limits.fetch_timeout, self.fetcher.bytes(feed_url, self.limits.feed_bytes))
-            .await
-            .map_err(|_| Error::TimedOut)??;
+    pub async fn capture_from_feed(
+        &self,
+        feed_url: &Url,
+        guid: Option<&str>,
+        options: CaptureOptions,
+    ) -> Result<Item> {
+        let feed = tokio::time::timeout(
+            self.limits.fetch_timeout,
+            self.fetcher.bytes(feed_url, self.limits.feed_bytes),
+        )
+        .await
+        .map_err(|_| Error::TimedOut)??;
         let mut list = episodes(&String::from_utf8_lossy(&feed.bytes), feed_url);
         let index = match guid {
-            Some(guid) => list.iter().position(|e| e.guid.as_deref() == Some(guid)).ok_or(Error::Unavailable)?,
+            Some(guid) => list
+                .iter()
+                .position(|e| e.guid.as_deref() == Some(guid))
+                .ok_or(Error::Unavailable)?,
             None if !list.is_empty() => 0,
             None => return Err(Error::Unavailable),
         };
-        self.capture_episode(&list.swap_remove(index), options).await
+        self.capture_episode(&list.swap_remove(index), options)
+            .await
     }
 
     /// Captures one episode: publisher transcript, then on-device
     /// transcription, then show notes.
-    pub async fn capture_episode(&self, episode: &Episode, options: CaptureOptions) -> Result<Item> {
+    pub async fn capture_episode(
+        &self,
+        episode: &Episode,
+        options: CaptureOptions,
+    ) -> Result<Item> {
         let mut extras = BTreeMap::new();
         extras.insert("extractor".to_string(), Value::from("podcast"));
         // Downloads go through the enclosure as published; everything written
@@ -158,7 +178,10 @@ impl PodcastAdapter {
         if body.is_none()
             && let (Some(transcriber), Some(enclosure)) = (&self.transcriber, enclosure)
         {
-            match self.transcribe(transcriber.as_ref(), enclosure, episode.language.as_deref()).await {
+            match self
+                .transcribe(transcriber.as_ref(), enclosure, episode.language.as_deref())
+                .await
+            {
                 Ok(segments) if !segments.is_empty() => {
                     let (md, cut) = transcript::to_markdown(&segments, &[], &link);
                     extras.insert("transcript".into(), Value::from("on-device"));
@@ -181,7 +204,11 @@ impl PodcastAdapter {
             None => {
                 extras.insert("transcript".into(), Value::from("unavailable"));
                 extras.insert("transcriptReason".into(), Value::from(reason));
-                episode.notes.as_deref().map(notes_markdown).unwrap_or_default()
+                episode
+                    .notes
+                    .as_deref()
+                    .map(notes_markdown)
+                    .unwrap_or_default()
             }
         };
         if let Some(duration) = episode.duration {
@@ -190,7 +217,11 @@ impl PodcastAdapter {
         if let Some(audio) = audio {
             extras.insert("audioUrl".into(), Value::from(audio.as_str()));
         }
-        if let Some(lang) = episode.language.as_deref().and_then(|l| markdown::field(l, 40)) {
+        if let Some(lang) = episode
+            .language
+            .as_deref()
+            .and_then(|l| markdown::field(l, 40))
+        {
             extras.insert("lang".into(), Value::from(lang));
         }
 
@@ -198,29 +229,65 @@ impl PodcastAdapter {
         if let Some(image) = episode.image.as_ref().filter(|u| allowed_url(u)) {
             let mut data = None;
             if options.want_media
-                && let Ok(Ok(fetched)) =
-                    tokio::time::timeout(Duration::from_secs(15), self.fetcher.bytes(image, self.limits.image_bytes)).await
+                && let Ok(Ok(fetched)) = tokio::time::timeout(
+                    Duration::from_secs(15),
+                    self.fetcher.bytes(image, self.limits.image_bytes),
+                )
+                .await
                 && let Some(mime) = image_mime(&fetched.bytes)
             {
-                data = Some(MediaData { bytes: fetched.bytes, mime: mime.into() });
+                data = Some(MediaData {
+                    bytes: fetched.bytes,
+                    mime: mime.into(),
+                });
             }
-            media.push(Media { kind: MediaKind::Image, url: Some(image.to_string()), data });
+            media.push(Media {
+                kind: MediaKind::Image,
+                url: Some(image.to_string()),
+                data,
+            });
         }
 
-        let page = episode.link.as_ref().filter(|u| allowed_url(u)).map(canonical_url);
+        let page = episode
+            .link
+            .as_ref()
+            .filter(|u| allowed_url(u))
+            .map(canonical_url);
         let key = match (&episode.feed_url, &episode.guid) {
             (Some(feed), Some(guid)) => format!("{feed}#{guid}"),
-            _ => page.as_ref().or(audio).map(|u| u.to_string()).ok_or(Error::Unavailable)?,
+            _ => page
+                .as_ref()
+                .or(audio)
+                .map(|u| u.to_string())
+                .ok_or(Error::Unavailable)?,
         };
         Ok(Item {
             source: SourceType::Podcast,
             id: format!("podcast:{key}"),
-            url: page.map(String::from).or_else(|| audio.map(|a| a.to_string())),
-            title: episode.title.as_deref().and_then(|t| markdown::field(t, 500)),
-            author: episode.author.as_deref().and_then(|a| markdown::field(a, 200)),
-            site: episode.show.as_deref().and_then(|s| markdown::field(s, 200)),
-            description: episode.notes.as_deref().map(notes_text).and_then(|t| markdown::field(&t, 2000)),
-            published: episode.published.as_deref().and_then(|p| markdown::field(p, 64)),
+            url: page
+                .map(String::from)
+                .or_else(|| audio.map(|a| a.to_string())),
+            title: episode
+                .title
+                .as_deref()
+                .and_then(|t| markdown::field(t, 500)),
+            author: episode
+                .author
+                .as_deref()
+                .and_then(|a| markdown::field(a, 200)),
+            site: episode
+                .show
+                .as_deref()
+                .and_then(|s| markdown::field(s, 200)),
+            description: episode
+                .notes
+                .as_deref()
+                .map(notes_text)
+                .and_then(|t| markdown::field(&t, 2000)),
+            published: episode
+                .published
+                .as_deref()
+                .and_then(|p| markdown::field(p, 64)),
             captured: crate::now(),
             media,
             body,
@@ -240,18 +307,38 @@ impl PodcastAdapter {
                 "text/html" => 3,
                 _ => 4,
             };
-            let lang = |l: &Option<String>| l.as_deref().map(|l| l.split(['-', '_']).next().unwrap_or("").to_ascii_lowercase());
-            let other_language = lang(&t.language).is_some() && lang(&t.language) != lang(&episode.language);
+            let lang = |l: &Option<String>| {
+                l.as_deref().map(|l| {
+                    l.split(['-', '_'])
+                        .next()
+                        .unwrap_or("")
+                        .to_ascii_lowercase()
+                })
+            };
+            let other_language =
+                lang(&t.language).is_some() && lang(&t.language) != lang(&episode.language);
             (other_language, format)
         };
-        let mut links: Vec<&TranscriptLink> = episode.transcripts.iter().filter(|t| allowed_url(&t.url)).collect();
+        let mut links: Vec<&TranscriptLink> = episode
+            .transcripts
+            .iter()
+            .filter(|t| allowed_url(&t.url))
+            .collect();
         links.sort_by_key(|t| rank(t));
         for link in links.into_iter().take(3) {
-            let fetched =
-                tokio::time::timeout(self.limits.fetch_timeout, self.fetcher.bytes(&link.url, self.limits.transcript_bytes)).await;
+            let fetched = tokio::time::timeout(
+                self.limits.fetch_timeout,
+                self.fetcher.bytes(&link.url, self.limits.transcript_bytes),
+            )
+            .await;
             let Ok(Ok(fetched)) = fetched else { continue };
-            let mime = if link.mime.is_empty() { fetched.mime.clone() } else { link.mime.clone() };
-            if let Some(parsed) = transcript::parse(&String::from_utf8_lossy(&fetched.bytes), &mime) {
+            let mime = if link.mime.is_empty() {
+                fetched.mime.clone()
+            } else {
+                link.mime.clone()
+            };
+            if let Some(parsed) = transcript::parse(&String::from_utf8_lossy(&fetched.bytes), &mime)
+            {
                 return Some((parsed, mime));
             }
         }
@@ -264,7 +351,10 @@ impl PodcastAdapter {
         audio: &Url,
         language: Option<&str>,
     ) -> Result<Vec<transcript::Segment>> {
-        let work = tempfile::Builder::new().prefix("kintsugi-podcast-").tempdir().map_err(|_| Error::Setup)?;
+        let work = tempfile::Builder::new()
+            .prefix("kintsugi-podcast-")
+            .tempdir()
+            .map_err(|_| Error::Setup)?;
         // Keep the extension: AVAudioFile and other decoders sniff by it.
         let ext = audio
             .path_segments()
@@ -274,9 +364,12 @@ impl PodcastAdapter {
             .filter(|ext| AUDIO_EXTENSIONS.contains(&ext.as_str()))
             .unwrap_or_else(|| "mp3".into());
         let path = work.path().join(format!("episode.{ext}"));
-        tokio::time::timeout(self.limits.audio_timeout, self.fetcher.to_file(audio, self.limits.audio_bytes, &path))
-            .await
-            .map_err(|_| Error::TimedOut)??;
+        tokio::time::timeout(
+            self.limits.audio_timeout,
+            self.fetcher.to_file(audio, self.limits.audio_bytes, &path),
+        )
+        .await
+        .map_err(|_| Error::TimedOut)??;
         transcriber.transcribe(&path, language).await
     }
 }
@@ -292,14 +385,28 @@ impl Adapter for PodcastAdapter {
         matches!(target, Target::Url(url) if allowed_url(url) && is_audio_url(url))
     }
 
-    fn capture<'a>(&'a self, target: &'a Target, options: CaptureOptions) -> BoxFuture<'a, Result<Item>> {
+    fn capture<'a>(
+        &'a self,
+        target: &'a Target,
+        options: CaptureOptions,
+    ) -> BoxFuture<'a, Result<Item>> {
         Box::pin(async move {
-            let Target::Url(url) = target else { return Err(Error::Unsupported) };
+            let Target::Url(url) = target else {
+                return Err(Error::Unsupported);
+            };
             let title = url
                 .path_segments()
                 .and_then(|mut s| s.next_back())
-                .map(|name| name.rsplit_once('.').map_or(name, |(stem, _)| stem).replace(['-', '_'], " "));
-            let episode = Episode { audio_url: Some(url.clone()), title, ..Episode::default() };
+                .map(|name| {
+                    name.rsplit_once('.')
+                        .map_or(name, |(stem, _)| stem)
+                        .replace(['-', '_'], " ")
+                });
+            let episode = Episode {
+                audio_url: Some(url.clone()),
+                title,
+                ..Episode::default()
+            };
             self.capture_episode(&episode, options).await
         })
     }
@@ -370,16 +477,24 @@ fn strip_tracker(url: &Url) -> Option<Url> {
     let rest = rest.trim_start_matches('/');
     let target = if rest.starts_with("http://") || rest.starts_with("https://") {
         rest.to_string()
-    } else if let Some(stripped) = rest.strip_prefix("https:/").or_else(|| rest.strip_prefix("http:/")) {
+    } else if let Some(stripped) = rest
+        .strip_prefix("https:/")
+        .or_else(|| rest.strip_prefix("http:/"))
+    {
         // A proxy that collapsed the scheme's `//`.
         format!("https://{stripped}")
     } else {
         format!("https://{rest}")
     };
-    Url::parse(&target).ok().filter(allowed_url).filter(|u| u.host_str().is_some_and(|h| h.contains('.')))
+    Url::parse(&target)
+        .ok()
+        .filter(allowed_url)
+        .filter(|u| u.host_str().is_some_and(|h| h.contains('.')))
 }
 
-const AUDIO_EXTENSIONS: &[&str] = &["mp3", "m4a", "aac", "wav", "aiff", "aif", "flac", "ogg", "opus", "caf"];
+const AUDIO_EXTENSIONS: &[&str] = &[
+    "mp3", "m4a", "aac", "wav", "aiff", "aif", "flac", "ogg", "opus", "caf",
+];
 
 fn is_audio_url(url: &Url) -> bool {
     url.path_segments()
@@ -399,7 +514,11 @@ fn notes_markdown(notes: &str) -> String {
     if notes.contains('<') {
         let doc = dom_query::Document::from(notes);
         let body = doc.select("body");
-        let md = body.nodes().first().map(|root| root.md(Some(&["script", "style"]))).unwrap_or_default();
+        let md = body
+            .nodes()
+            .first()
+            .map(|root| root.md(Some(&["script", "style"])))
+            .unwrap_or_default();
         markdown::body(&md, crate::BODY_CHARS)
     } else {
         markdown::body(notes, crate::BODY_CHARS)
@@ -422,20 +541,40 @@ pub fn episodes(xml: &str, feed_url: &Url) -> Vec<Episode> {
     const ITUNES: &str = "http://www.itunes.com/dtds/podcast-1.0.dtd";
     const PODCAST: &str = "https://podcastindex.org/namespace/1.0";
     const CONTENT: &str = "http://purl.org/rss/1.0/modules/content/";
-    let options = roxmltree::ParsingOptions { allow_dtd: false, ..Default::default() };
-    let Ok(doc) = roxmltree::Document::parse_with_options(xml, options) else { return vec![] };
-    let Some(channel) = doc.descendants().find(|n| n.has_tag_name("channel")) else { return vec![] };
-    fn child<'a, 'i>(node: roxmltree::Node<'a, 'i>, ns: Option<&str>, name: &str) -> Option<roxmltree::Node<'a, 'i>> {
-        node.children().find(|c| c.tag_name().name() == name && c.tag_name().namespace() == ns)
+    let options = roxmltree::ParsingOptions {
+        allow_dtd: false,
+        ..Default::default()
+    };
+    let Ok(doc) = roxmltree::Document::parse_with_options(xml, options) else {
+        return vec![];
+    };
+    let Some(channel) = doc.descendants().find(|n| n.has_tag_name("channel")) else {
+        return vec![];
+    };
+    fn child<'a, 'i>(
+        node: roxmltree::Node<'a, 'i>,
+        ns: Option<&str>,
+        name: &str,
+    ) -> Option<roxmltree::Node<'a, 'i>> {
+        node.children()
+            .find(|c| c.tag_name().name() == name && c.tag_name().namespace() == ns)
     }
     fn text(node: roxmltree::Node, ns: Option<&str>, name: &str) -> Option<String> {
-        child(node, ns, name).and_then(|c| c.text()).map(str::trim).filter(|t| !t.is_empty()).map(String::from)
+        child(node, ns, name)
+            .and_then(|c| c.text())
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(String::from)
     }
     let resolve = |raw: &str| feed_url.join(raw.trim()).ok().filter(allowed_url);
     let image = |node: roxmltree::Node| {
         child(node, Some(ITUNES), "image")
             .and_then(|i| i.attribute("href"))
-            .or_else(|| child(node, None, "image").and_then(|i| child(i, None, "url")).and_then(|u| u.text()))
+            .or_else(|| {
+                child(node, None, "image")
+                    .and_then(|i| child(i, None, "url"))
+                    .and_then(|u| u.text())
+            })
             .and_then(resolve)
     };
     let show = text(channel, None, "title");
@@ -449,11 +588,17 @@ pub fn episodes(xml: &str, feed_url: &Url) -> Vec<Episode> {
             let enclosure = child(item, None, "enclosure");
             let transcripts = item
                 .children()
-                .filter(|c| c.tag_name().name() == "transcript" && c.tag_name().namespace() == Some(PODCAST))
+                .filter(|c| {
+                    c.tag_name().name() == "transcript" && c.tag_name().namespace() == Some(PODCAST)
+                })
                 .filter_map(|t| {
                     Some(TranscriptLink {
                         url: resolve(t.attribute("url")?)?,
-                        mime: t.attribute("type").unwrap_or("").trim().to_ascii_lowercase(),
+                        mime: t
+                            .attribute("type")
+                            .unwrap_or("")
+                            .trim()
+                            .to_ascii_lowercase(),
                         language: t.attribute("language").map(String::from),
                         rel: t.attribute("rel").map(String::from),
                     })

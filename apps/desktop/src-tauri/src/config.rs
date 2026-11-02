@@ -1,11 +1,11 @@
 //! Kintsugi's settings: `config.json` in the app's config folder.
 
+use crate::AppHandle;
 use kintsugi_vault::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use crate::AppHandle;
 #[cfg(not(feature = "headless"))]
 use tauri::Manager;
 
@@ -46,7 +46,10 @@ pub fn isolated_dev() -> bool {
 /// owner's real app config. KI-7's isolated vault logic below remains shared.
 pub fn directory(app: &AppHandle) -> Result<PathBuf> {
     #[cfg(feature = "headless")]
-    { let _ = app; crate::headless::config_directory() }
+    {
+        let _ = app;
+        crate::headless::config_directory()
+    }
     #[cfg(not(feature = "headless"))]
     {
         #[cfg(debug_assertions)]
@@ -63,7 +66,10 @@ fn path(app: &AppHandle) -> Result<PathBuf> {
 
 pub fn load(app: &AppHandle) -> Config {
     if let Some(vault) = dev_vault() {
-        return Config { vault: Some(vault), ..Config::default() };
+        return Config {
+            vault: Some(vault),
+            ..Config::default()
+        };
     }
     path(app)
         .ok()
@@ -81,6 +87,9 @@ pub fn update(app: &AppHandle, change: impl FnOnce(&mut Config)) -> Result<Confi
     }
     let path = path(app)?;
     fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    write_atomic(&path, &serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?)?;
+    write_atomic(
+        &path,
+        &serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?,
+    )?;
     Ok(config)
 }

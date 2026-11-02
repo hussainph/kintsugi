@@ -14,14 +14,14 @@ mod relink;
 mod tags;
 pub use clips::*;
 pub use quotes::{QuoteAttribution, QuoteSource, leading_passage, quote_attribution};
-pub use tags::{doc_tags, normal_tag};
-pub use relink::{
-    LinkEdit, Relink, RelinkOutcome, RelinkPlan, RelinkResult, RelinkWrite, moved_path, relink_plan,
-    relink_write,
-};
 pub use references::{
     ReferenceDocument, ReferenceIndex, ReferenceLink, Wikilink, reference_index, wikilinks,
 };
+pub use relink::{
+    LinkEdit, Relink, RelinkOutcome, RelinkPlan, RelinkResult, RelinkWrite, moved_path,
+    relink_plan, relink_write,
+};
+pub use tags::{doc_tags, normal_tag};
 
 const DOC_EXTENSIONS: [&str; 2] = ["md", "mdx"];
 
@@ -62,9 +62,13 @@ pub struct Versioned {
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(tag = "result", rename_all = "lowercase")]
 pub enum Write {
-    Saved { version: String },
+    Saved {
+        version: String,
+    },
     /// Someone else saved since `base`; nothing was written.
-    Conflict { current: Versioned },
+    Conflict {
+        current: Versioned,
+    },
     /// The document was deleted or moved since `base`; nothing was written.
     /// Only [`update`] answers this: [`write`] creates missing documents.
     Gone,
@@ -74,9 +78,9 @@ pub enum Write {
 /// be told rather than silently overwrite newer text. FNV-1a: stable across
 /// builds and platforms, which `std`'s hasher doesn't promise.
 pub fn version(text: &str) -> String {
-    let hash = text
-        .bytes()
-        .fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+    let hash = text.bytes().fold(0xcbf29ce484222325u64, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x100000001b3)
+    });
     format!("{hash:016x}")
 }
 
@@ -193,14 +197,22 @@ pub fn slugify(title: &str) -> String {
     if slug.is_empty() {
         "untitled".into()
     } else {
-        slug.chars().take(72).collect::<String>().trim_end_matches('-').into()
+        slug.chars()
+            .take(72)
+            .collect::<String>()
+            .trim_end_matches('-')
+            .into()
     }
 }
 
 /// `dir/stem.ext`, or `dir/stem-2.ext`, `-3`… if that is taken.
 fn unique(dir: &Path, stem: &str, ext: Option<&str>) -> PathBuf {
     let name = |n: u32| {
-        let stem = if n == 1 { stem.to_string() } else { format!("{stem}-{n}") };
+        let stem = if n == 1 {
+            stem.to_string()
+        } else {
+            format!("{stem}-{n}")
+        };
         match ext {
             Some(ext) => format!("{stem}.{ext}"),
             None => stem,
@@ -240,7 +252,9 @@ fn write_bytes(path: &Path, contents: &[u8], replace: bool) -> Result<()> {
     let mut tmp = builder.tempfile_in(parent).map_err(err)?;
     tmp.write_all(contents).map_err(err)?;
     if let Ok(metadata) = fs::metadata(path) {
-        tmp.as_file().set_permissions(metadata.permissions()).map_err(err)?;
+        tmp.as_file()
+            .set_permissions(metadata.permissions())
+            .map_err(err)?;
     }
     tmp.as_file().sync_all().map_err(err)?;
     if replace {
@@ -253,7 +267,10 @@ fn write_bytes(path: &Path, contents: &[u8], replace: bool) -> Result<()> {
 
 pub fn read(root: &Path, path: &str) -> Result<Versioned> {
     let text = fs::read_to_string(resolve(root, path)?).map_err(err)?;
-    Ok(Versioned { version: version(&text), text })
+    Ok(Versioned {
+        version: version(&text),
+        text,
+    })
 }
 
 /// Saves `text`. With a `base` version, only if the document is still at it.
@@ -265,11 +282,18 @@ pub fn write(root: &Path, path: &str, text: &str, base: Option<&str>) -> Result<
     match fs::read_to_string(&target) {
         // Already saved: a retry after a lost reply, or the same edit made on
         // both devices. Nothing to write and nothing to conflict with.
-        Ok(current) if current == text => return Ok(Write::Saved { version: version(text) }),
+        Ok(current) if current == text => {
+            return Ok(Write::Saved {
+                version: version(text),
+            });
+        }
         Ok(current) => {
             if base.is_some_and(|base| version(&current) != base) {
                 return Ok(Write::Conflict {
-                    current: Versioned { version: version(&current), text: current },
+                    current: Versioned {
+                        version: version(&current),
+                        text: current,
+                    },
                 });
             }
         }
@@ -284,7 +308,9 @@ pub fn write(root: &Path, path: &str, text: &str, base: Option<&str>) -> Result<
         }
     }
     write_atomic(&target, text)?;
-    Ok(Write::Saved { version: version(text) })
+    Ok(Write::Saved {
+        version: version(text),
+    })
 }
 
 /// Saves `text` over a document the writer already has open at `base`.
@@ -320,7 +346,11 @@ pub fn library(root: &Path) -> Result<Vec<Document>> {
                 Entry::Doc { path, .. } => {
                     // A file removed mid-walk is simply not in this copy.
                     if let Ok(Versioned { text, version }) = read(root, &path) {
-                        out.push(Document { path, text, version });
+                        out.push(Document {
+                            path,
+                            text,
+                            version,
+                        });
                     }
                 }
             }
@@ -339,7 +369,10 @@ fn quoted(value: &str) -> String {
 /// Creates a draft in `dir` named after `title`; returns its path.
 pub fn create_doc(root: &Path, dir: &str, title: &str) -> Result<String> {
     let path = unique(&resolve(root, dir)?, &slugify(title), Some("mdx"));
-    write_atomic(&path, &format!("---\ntitle: {}\nstatus: draft\n---\n\n", quoted(title)))?;
+    write_atomic(
+        &path,
+        &format!("---\ntitle: {}\nstatus: draft\n---\n\n", quoted(title)),
+    )?;
     Ok(relative(root, &path))
 }
 
@@ -427,16 +460,23 @@ mod tests {
         let ordinary = dir.path().join("ordinary.md");
         fs::write(&ordinary, "ordinary").unwrap();
         write_atomic(&path, "first").unwrap();
-        assert_eq!(fs::metadata(&path).unwrap().permissions().mode(), fs::metadata(&ordinary).unwrap().permissions().mode());
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode(),
+            fs::metadata(&ordinary).unwrap().permissions().mode()
+        );
         fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
         write_atomic(&path, "second").unwrap();
-        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o640);
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
         assert_eq!(fs::read_to_string(path).unwrap(), "second");
     }
 
     #[test]
     fn reads_title_and_status() {
-        let text = "---\ntitle: \"On repair\"\nstatus: complete\ntags:\n  - status: nested\n---\n\nBody";
+        let text =
+            "---\ntitle: \"On repair\"\nstatus: complete\ntags:\n  - status: nested\n---\n\nBody";
         assert_eq!(
             front_matter(text),
             (Some("On repair".into()), Some("complete".into()))
@@ -457,7 +497,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         fs::create_dir_all(root.join("essays")).unwrap();
-        fs::write(root.join("b.md"), "---\nstatus: draft\ntags:\n  - Essay\n  - craft\n---\n").unwrap();
+        fs::write(
+            root.join("b.md"),
+            "---\nstatus: draft\ntags:\n  - Essay\n  - craft\n---\n",
+        )
+        .unwrap();
         fs::write(root.join("essays/a.mdx"), "hi").unwrap();
         fs::write(root.join("notes.txt"), "skip").unwrap();
         fs::write(root.join(".hidden.md"), "skip").unwrap();
@@ -494,7 +538,8 @@ mod tests {
         let path = create_doc(root, "", "Repair").unwrap();
         let first = read(root, &path).unwrap();
 
-        let Write::Saved { version: second } = write(root, &path, "from the mac", Some(&first.version)).unwrap()
+        let Write::Saved { version: second } =
+            write(root, &path, "from the mac", Some(&first.version)).unwrap()
         else {
             panic!("expected a save")
         };
@@ -502,7 +547,10 @@ mod tests {
         assert_eq!(
             write(root, &path, "from the phone", Some(&first.version)).unwrap(),
             Write::Conflict {
-                current: Versioned { text: "from the mac".into(), version: second.clone() }
+                current: Versioned {
+                    text: "from the mac".into(),
+                    version: second.clone()
+                }
             }
         );
         assert_eq!(read(root, &path).unwrap().text, "from the mac");
@@ -521,7 +569,10 @@ mod tests {
         assert_eq!(
             update(root, &path, "from kintsugi", &opened.version).unwrap(),
             Write::Conflict {
-                current: Versioned { text: "from another editor".into(), version: version("from another editor") }
+                current: Versioned {
+                    text: "from another editor".into(),
+                    version: version("from another editor")
+                }
             }
         );
         assert_eq!(read(root, &path).unwrap().text, "from another editor");
@@ -530,12 +581,23 @@ mod tests {
         let current = version("from another editor");
         assert_eq!(
             update(root, &path, "from kintsugi", &current).unwrap(),
-            Write::Saved { version: version("from kintsugi") }
+            Write::Saved {
+                version: version("from kintsugi")
+            }
         );
 
         // Deleted or renamed elsewhere: the save is refused, not written back.
         fs::rename(root.join(&path), root.join("renamed.mdx")).unwrap();
-        assert_eq!(update(root, &path, "typed after the rename", &version("from kintsugi")).unwrap(), Write::Gone);
+        assert_eq!(
+            update(
+                root,
+                &path,
+                "typed after the rename",
+                &version("from kintsugi")
+            )
+            .unwrap(),
+            Write::Gone
+        );
         assert!(!root.join(&path).exists());
         // Even with the empty version a new phone note would send.
         assert_eq!(update(root, &path, "x", &version("")).unwrap(), Write::Gone);
@@ -561,7 +623,9 @@ mod tests {
         // A retry whose first reply was lost still carries the old base.
         assert_eq!(
             write(root, &path, "edited", Some(&first.version)).unwrap(),
-            Write::Saved { version: version("edited") }
+            Write::Saved {
+                version: version("edited")
+            }
         );
     }
 
@@ -571,10 +635,21 @@ mod tests {
         let root = dir.path();
         let empty = version("");
         assert_eq!(
-            write(root, "inbox/offline-note.mdx", "written on a plane", Some(&empty)).unwrap(),
-            Write::Saved { version: version("written on a plane") }
+            write(
+                root,
+                "inbox/offline-note.mdx",
+                "written on a plane",
+                Some(&empty)
+            )
+            .unwrap(),
+            Write::Saved {
+                version: version("written on a plane")
+            }
         );
-        assert_eq!(read(root, "inbox/offline-note.mdx").unwrap().text, "written on a plane");
+        assert_eq!(
+            read(root, "inbox/offline-note.mdx").unwrap().text,
+            "written on a plane"
+        );
         // Someone else took the name meanwhile: their text is not replaced.
         assert!(matches!(
             write(root, "inbox/offline-note.mdx", "another note", Some(&empty)).unwrap(),
@@ -597,8 +672,16 @@ mod tests {
         assert_eq!(
             library(root).unwrap(),
             vec![
-                Document { path: "essays/a.mdx".into(), text: "alpha".into(), version: version("alpha") },
-                Document { path: "b.md".into(), text: "beta".into(), version: version("beta") },
+                Document {
+                    path: "essays/a.mdx".into(),
+                    text: "alpha".into(),
+                    version: version("alpha")
+                },
+                Document {
+                    path: "b.md".into(),
+                    text: "beta".into(),
+                    version: version("beta")
+                },
             ]
         );
     }
@@ -607,18 +690,34 @@ mod tests {
     fn captures_land_in_the_inbox_titled_by_their_first_line() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
-        let path = capture(root, "  # Gold seams\nshow where the AI touched a draft\n", "2026-10-29T09:14").unwrap();
+        let path = capture(
+            root,
+            "  # Gold seams\nshow where the AI touched a draft\n",
+            "2026-10-29T09:14",
+        )
+        .unwrap();
         assert_eq!(path, "inbox/gold-seams.mdx");
         assert_eq!(
             read(root, &path).unwrap().text,
             "---\ntitle: \"Gold seams\"\nstatus: draft\ncaptured: \"2026-10-29T09:14\"\n---\n\n# Gold seams\nshow where the AI touched a draft\n"
         );
-        assert_eq!(capture(root, "Gold seams", "").unwrap(), "inbox/gold-seams-2.mdx");
+        assert_eq!(
+            capture(root, "Gold seams", "").unwrap(),
+            "inbox/gold-seams-2.mdx"
+        );
         assert!(capture(root, "   ", "").is_err());
 
         let long = "a sentence that keeps going well past the point where a title would be useful";
-        assert_eq!(capture_title(long), "a sentence that keeps going well past the point where a…");
+        assert_eq!(
+            capture_title(long),
+            "a sentence that keeps going well past the point where a…"
+        );
         assert_eq!(capture_title("say \"hi\""), "say \"hi\"");
-        assert_eq!(front_matter(&read(root, "inbox/gold-seams-2.mdx").unwrap().text).0.as_deref(), Some("Gold seams"));
+        assert_eq!(
+            front_matter(&read(root, "inbox/gold-seams-2.mdx").unwrap().text)
+                .0
+                .as_deref(),
+            Some("Gold seams")
+        );
     }
 }

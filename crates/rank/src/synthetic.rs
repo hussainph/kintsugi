@@ -9,14 +9,88 @@ use crate::rng::Rng;
 use crate::text;
 
 const TOPICS: [(&str, [&str; 8], f64); 6] = [
-    ("pottery", ["kiln", "glaze", "clay", "ceramic", "pottery", "porcelain", "firing", "stoneware"], 0.9),
-    ("writing", ["essay", "prose", "draft", "writing", "sentence", "paragraph", "revision", "editor"], 0.8),
-    ("tools", ["software", "interface", "keyboard", "notebook", "workflow", "terminal", "plugin", "shortcut"], 0.45),
-    ("finance", ["stocks", "market", "earnings", "trading", "investor", "dividend", "portfolio", "bonds"], 0.12),
-    ("gadgets", ["phone", "battery", "camera", "unboxing", "laptop", "charger", "headset", "tablet"], 0.08),
-    ("football", ["football", "league", "striker", "transfer", "goalkeeper", "stadium", "derby", "fixture"], 0.02),
+    (
+        "pottery",
+        [
+            "kiln",
+            "glaze",
+            "clay",
+            "ceramic",
+            "pottery",
+            "porcelain",
+            "firing",
+            "stoneware",
+        ],
+        0.9,
+    ),
+    (
+        "writing",
+        [
+            "essay",
+            "prose",
+            "draft",
+            "writing",
+            "sentence",
+            "paragraph",
+            "revision",
+            "editor",
+        ],
+        0.8,
+    ),
+    (
+        "tools",
+        [
+            "software",
+            "interface",
+            "keyboard",
+            "notebook",
+            "workflow",
+            "terminal",
+            "plugin",
+            "shortcut",
+        ],
+        0.45,
+    ),
+    (
+        "finance",
+        [
+            "stocks",
+            "market",
+            "earnings",
+            "trading",
+            "investor",
+            "dividend",
+            "portfolio",
+            "bonds",
+        ],
+        0.12,
+    ),
+    (
+        "gadgets",
+        [
+            "phone", "battery", "camera", "unboxing", "laptop", "charger", "headset", "tablet",
+        ],
+        0.08,
+    ),
+    (
+        "football",
+        [
+            "football",
+            "league",
+            "striker",
+            "transfer",
+            "goalkeeper",
+            "stadium",
+            "derby",
+            "fixture",
+        ],
+        0.02,
+    ),
 ];
-const FILLER: [&str; 10] = ["notes", "story", "guide", "weekly", "report", "journal", "letter", "digest", "dispatch", "review"];
+const FILLER: [&str; 10] = [
+    "notes", "story", "guide", "weekly", "report", "journal", "letter", "digest", "dispatch",
+    "review",
+];
 /// Each source's topic mix (indices into TOPICS, with weights).
 const SOURCES: [(&str, [(usize, f64); 2]); 6] = [
     ("Studio Notes", [(0, 0.7), (4, 0.3)]),
@@ -35,7 +109,9 @@ pub struct Fixture {
 }
 
 fn words(rng: &mut Rng, vocab: &[&str; 8], n: usize) -> Vec<String> {
-    (0..n).map(|_| vocab[rng.below(vocab.len())].to_string()).collect()
+    (0..n)
+        .map(|_| vocab[rng.below(vocab.len())].to_string())
+        .collect()
 }
 
 /// `days` of history from `start_ms` (a day boundary), seeded.
@@ -44,7 +120,14 @@ pub fn fixture(seed: u64, days: i64, start_ms: i64) -> Fixture {
     let mut world = World::default();
     for (i, (title, _)) in SOURCES.iter().enumerate() {
         let id = i as i64 + 1;
-        world.sources.insert(id, Source { id, title: title.to_string(), added: (start_ms - 60 * DAY_MS) / 1000 });
+        world.sources.insert(
+            id,
+            Source {
+                id,
+                title: title.to_string(),
+                added: (start_ms - 60 * DAY_MS) / 1000,
+            },
+        );
     }
     // What he kept before the Feed: a few pottery and writing clips.
     for (n, topic) in [0usize, 0, 1].iter().enumerate() {
@@ -65,7 +148,15 @@ pub fn fixture(seed: u64, days: i64, start_ms: i64) -> Fixture {
     let mut events = Vec::new();
     let mut next_event = 1;
     let mut push = |events: &mut Vec<Event>, at: i64, kind: &str, item: i64, source: i64| {
-        events.push(Event { id: next_event, at, kind: kind.into(), item: Some(item), source: Some(source), surface: Some("newest".into()), data: None });
+        events.push(Event {
+            id: next_event,
+            at,
+            kind: kind.into(),
+            item: Some(item),
+            source: Some(source),
+            surface: Some("newest".into()),
+            data: None,
+        });
         next_event += 1;
     };
     let mut next_item = 1;
@@ -75,7 +166,11 @@ pub fn fixture(seed: u64, days: i64, start_ms: i64) -> Fixture {
         for (s, (_, mix)) in SOURCES.iter().enumerate() {
             let source = s as i64 + 1;
             for _ in 0..(1 + rng.below(3)) {
-                let topic = if rng.uniform() < mix[0].1 { mix[0].0 } else { mix[1].0 };
+                let topic = if rng.uniform() < mix[0].1 {
+                    mix[0].0
+                } else {
+                    mix[1].0
+                };
                 let (name, vocab, taste) = &TOPICS[topic];
                 let published = day_start + (rng.uniform() * 18.0 * HOUR_MS as f64) as i64;
                 let mut title_words = words(&mut rng, vocab, 2);
@@ -95,7 +190,11 @@ pub fn fixture(seed: u64, days: i64, start_ms: i64) -> Fixture {
                         title: title.clone(),
                         url: Some(format!("https://example.com/{id}")),
                         topics: text::topics(&title, &body, &[]),
-                        media: if topic == 4 { Media::Video } else { Media::Article },
+                        media: if topic == 4 {
+                            Media::Video
+                        } else {
+                            Media::Article
+                        },
                         published: published / 1000,
                         length: body.len() * (5 + rng.below(20)),
                         vector: text::hashed(&title, &body),
@@ -109,7 +208,13 @@ pub fn fixture(seed: u64, days: i64, start_ms: i64) -> Fixture {
         let evening = day_start + 20 * HOUR_MS;
         today.sort_by_key(|(id, ..)| std::cmp::Reverse((world.items[id].published, *id)));
         for (position, (id, source, ..)) in today.iter().enumerate() {
-            push(&mut events, evening + position as i64, "impression", *id, *source);
+            push(
+                &mut events,
+                evening + position as i64,
+                "impression",
+                *id,
+                *source,
+            );
         }
         for (n, (id, source, taste, topic)) in today.iter().enumerate() {
             let at = evening + HOUR_MS / 2 + n as i64 * 1000;
@@ -126,5 +231,9 @@ pub fn fixture(seed: u64, days: i64, start_ms: i64) -> Fixture {
             }
         }
     }
-    Fixture { world, events, end: start_ms + days * DAY_MS }
+    Fixture {
+        world,
+        events,
+        end: start_ms + days * DAY_MS,
+    }
 }

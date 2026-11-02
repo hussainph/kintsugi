@@ -105,7 +105,10 @@ pub async fn tools_update(app: AppHandle, id: String) -> Result<Vec<ToolStatus>>
     let tools = manager(&app)?;
     for spec in with_companions(spec(&id)?) {
         if tools.status(spec).kind == "download" && tools.consented(spec) {
-            tools.update_if_stale(spec, Duration::ZERO).await.map_err(|e| e.to_string())?;
+            tools
+                .update_if_stale(spec, Duration::ZERO)
+                .await
+                .map_err(|e| e.to_string())?;
         }
     }
     Ok(list(&tools))

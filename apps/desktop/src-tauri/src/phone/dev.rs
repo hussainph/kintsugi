@@ -54,7 +54,9 @@ fn phone_dev_server() {
     println!("feed: {added} sample items; Kin: mock");
     let host = super::host(app.handle()).unwrap();
     tauri::async_runtime::block_on(async move {
-        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port)).await.unwrap();
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+            .await
+            .unwrap();
         println!("kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A{port}&token={TOKEN}");
         axum::serve(listener, router(host, TOKEN)).await.unwrap();
     });
@@ -75,7 +77,12 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
             .env("KINTSUGI_PHONE_TEST_CHILD", "1")
             .output()
             .unwrap();
-        assert!(result.status.success(), "{}\n{}", String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
+        assert!(
+            result.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&result.stdout),
+            String::from_utf8_lossy(&result.stderr)
+        );
         return;
     }
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -112,7 +119,10 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
             }
         };
         let send = |method: reqwest::Method, path: &str, body: serde_json::Value| {
-            http.request(method, format!("{base}{path}")).bearer_auth(TOKEN).json(&body).send()
+            http.request(method, format!("{base}{path}"))
+                .bearer_auth(TOKEN)
+                .json(&body)
+                .send()
         };
         let post = |path: &str, body: serde_json::Value| send(reqwest::Method::POST, path, body);
 
@@ -126,20 +136,45 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
         assert!(!picked["picks"].as_array().unwrap().is_empty());
 
         let place = serde_json::json!({ "surface": "newest", "position": 0 });
-        let read: serde_json::Value = post("/v1/feed/read", serde_json::json!({ "id": id, "place": place })).await.unwrap().json().await.unwrap();
+        let read: serde_json::Value = post(
+            "/v1/feed/read",
+            serde_json::json!({ "id": id, "place": place }),
+        )
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
         assert!(read["text"].as_str().unwrap().contains("kintsugi"));
-        let liked: serde_json::Value = post("/v1/feed/act", serde_json::json!({ "id": id, "action": "like", "place": place })).await.unwrap().json().await.unwrap();
+        let liked: serde_json::Value = post(
+            "/v1/feed/act",
+            serde_json::json!({ "id": id, "action": "like", "place": place }),
+        )
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
         assert_eq!(liked["liked"], true);
         let effect = get(&format!("/v1/feed/effect?id={id}")).await;
         assert!(effect["changes"].is_array());
 
         // A note, version-checked: a stale base is a conflict, not a write.
         let empty = kintsugi_vault::version("");
-        let note = |text: &str, base: &str| send(reqwest::Method::PUT, "/v1/feed/note", serde_json::json!({ "id": id, "note": text, "base": base, "place": place }));
+        let note = |text: &str, base: &str| {
+            send(
+                reqwest::Method::PUT,
+                "/v1/feed/note",
+                serde_json::json!({ "id": id, "note": text, "base": base, "place": place }),
+            )
+        };
         let saved = note("Seams as a method", &empty).await.unwrap();
         assert_eq!(saved.status(), 200);
         let saved: serde_json::Value = saved.json().await.unwrap();
-        assert_eq!(saved["version"], kintsugi_vault::version("Seams as a method"));
+        assert_eq!(
+            saved["version"],
+            kintsugi_vault::version("Seams as a method")
+        );
         let stale = note("An offline note", &empty).await.unwrap();
         assert_eq!(stale.status(), 409);
         let stale: serde_json::Value = stale.json().await.unwrap();
@@ -147,24 +182,62 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
 
         // Save: into Inspiration with the note, once even if sent twice.
         for _ in 0..2 {
-            let saved: serde_json::Value = post("/v1/feed/save", serde_json::json!({ "id": id, "place": place })).await.unwrap().json().await.unwrap();
-            assert_eq!(saved["savedPath"], "inspiration/mending-as-a-design-method.md");
+            let saved: serde_json::Value = post(
+                "/v1/feed/save",
+                serde_json::json!({ "id": id, "place": place }),
+            )
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+            assert_eq!(
+                saved["savedPath"],
+                "inspiration/mending-as-a-design-method.md"
+            );
         }
-        let clip = std::fs::read_to_string(vault.join("inspiration/mending-as-a-design-method.md")).unwrap();
+        let clip = std::fs::read_to_string(vault.join("inspiration/mending-as-a-design-method.md"))
+            .unwrap();
         assert!(clip.contains("Seams as a method"));
-        assert_eq!(std::fs::read_dir(vault.join("inspiration")).unwrap().filter(|e| e.as_ref().unwrap().path().extension().is_some_and(|x| x == "md")).count(), 1);
+        assert_eq!(
+            std::fs::read_dir(vault.join("inspiration"))
+                .unwrap()
+                .filter(|e| e
+                    .as_ref()
+                    .unwrap()
+                    .path()
+                    .extension()
+                    .is_some_and(|x| x == "md"))
+                .count(),
+            1
+        );
 
         let other = page["items"][1]["id"].as_i64().unwrap();
-        let hidden = post("/v1/feed/act", serde_json::json!({ "id": other, "action": "notInterested" })).await.unwrap();
+        let hidden = post(
+            "/v1/feed/act",
+            serde_json::json!({ "id": other, "action": "notInterested" }),
+        )
+        .await
+        .unwrap();
         assert_eq!(hidden.status(), 200);
         assert_eq!(get("/v1/feed").await["total"], 7);
         let impressions = post("/v1/feed/impressions", serde_json::json!({ "impressions": [{ "id": id, "position": 0, "surface": "picked" }] })).await.unwrap();
         assert_eq!(impressions.status(), 200);
-        let unknown = post("/v1/feed/act", serde_json::json!({ "id": 99_999, "action": "like" })).await.unwrap();
+        let unknown = post(
+            "/v1/feed/act",
+            serde_json::json!({ "id": 99_999, "action": "like" }),
+        )
+        .await
+        .unwrap();
         assert_eq!(unknown.status(), 400);
 
         // Ideas: "Ask for more" runs the mock helper on the Mac.
-        let asked: serde_json::Value = post("/v1/ideas/more", serde_json::json!({})).await.unwrap().json().await.unwrap();
+        let asked: serde_json::Value = post("/v1/ideas/more", serde_json::json!({}))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         assert!(asked["job"].is_object(), "{asked}");
         let mut view = serde_json::Value::Null;
         for _ in 0..240 {
@@ -185,11 +258,27 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
         let draft = std::fs::read_to_string(vault.join(&path)).unwrap();
         assert!(draft.contains(&format!("id: {idea}")));
         let again: serde_json::Value = adopt().await.unwrap().json().await.unwrap();
-        assert_eq!(again["path"], path.as_str(), "a retried Adopt made a second draft");
+        assert_eq!(
+            again["path"],
+            path.as_str(),
+            "a retried Adopt made a second draft"
+        );
         if let Some(second) = ideas.get(1) {
             let id = second["id"].as_str().unwrap();
-            let dismissed: serde_json::Value = post("/v1/ideas/dismiss", serde_json::json!({ "id": id })).await.unwrap().json().await.unwrap();
-            let listed = dismissed["ideas"].as_array().unwrap().iter().find(|i| i["id"] == id).unwrap().clone();
+            let dismissed: serde_json::Value =
+                post("/v1/ideas/dismiss", serde_json::json!({ "id": id }))
+                    .await
+                    .unwrap()
+                    .json()
+                    .await
+                    .unwrap();
+            let listed = dismissed["ideas"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|i| i["id"] == id)
+                .unwrap()
+                .clone();
             assert!(listed["dismissed"].is_object());
         }
 
@@ -199,25 +288,60 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
             "text": "What does this say about repair?",
             "chips": [{ "kind": "feed", "path": id.to_string(), "label": "Mending as a design method" }]
         });
-        let sent: serde_json::Value = post("/v1/kin", message.clone()).await.unwrap().json().await.unwrap();
+        let sent: serde_json::Value = post("/v1/kin", message.clone())
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         assert_eq!(sent["duplicate"], false);
         let seq = sent["entry"]["seq"].as_u64().unwrap();
-        let again: serde_json::Value = post("/v1/kin", message).await.unwrap().json().await.unwrap();
+        let again: serde_json::Value = post("/v1/kin", message)
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
         assert_eq!(again, serde_json::json!({ "seq": seq, "duplicate": true }));
         let mut log = serde_json::Value::Null;
         for _ in 0..240 {
             log = get("/v1/kin").await;
-            let answered = log["entries"].as_array().unwrap().iter().any(|e| e["role"] == "kin" && e["answers"].as_array().is_some_and(|a| a.contains(&seq.into())));
+            let answered = log["entries"].as_array().unwrap().iter().any(|e| {
+                e["role"] == "kin"
+                    && e["answers"]
+                        .as_array()
+                        .is_some_and(|a| a.contains(&seq.into()))
+            });
             if answered && log["running"].is_null() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         }
-        let owners = log["entries"].as_array().unwrap().iter().filter(|e| e["role"] == "owner" && e["text"] == "What does this say about repair?").count();
+        let owners = log["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|e| e["role"] == "owner" && e["text"] == "What does this say about repair?")
+            .count();
         assert_eq!(owners, 1, "{log}");
-        assert!(log["entries"].as_array().unwrap().iter().any(|e| e["role"] == "kin" && e["answers"].as_array().is_some_and(|a| a.contains(&seq.into()))), "{log}");
+        assert!(
+            log["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["role"] == "kin"
+                    && e["answers"]
+                        .as_array()
+                        .is_some_and(|a| a.contains(&seq.into()))),
+            "{log}"
+        );
         let jobs = get("/v1/kin/jobs").await;
-        assert!(jobs.as_array().unwrap().iter().any(|j| j["kind"] == "ideas"));
+        assert!(
+            jobs.as_array()
+                .unwrap()
+                .iter()
+                .any(|j| j["kind"] == "ideas")
+        );
         let bad_chip = post("/v1/kin", serde_json::json!({ "id": "22222222-2222-4333-8444-555555555555", "text": "hi", "chips": [{ "kind": "paragraph", "path": "x.md" }] })).await.unwrap();
         assert_eq!(bad_chip.status(), 400);
     });

@@ -21,7 +21,11 @@ pub(crate) fn route(target: &str, status: u16, body: impl Into<Vec<u8>>) -> Rout
         429 => "Too Many Requests",
         _ => "Status",
     };
-    Route { target: target.into(), head: format!("HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\n"), body: body.into() }
+    Route {
+        target: target.into(),
+        head: format!("HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\n"),
+        body: body.into(),
+    }
 }
 
 impl Route {
@@ -67,17 +71,38 @@ pub(crate) fn serve_with(routes: impl FnOnce(&str) -> Vec<Route>) -> Server {
             let line = request.lines().next().unwrap_or_default().to_string();
             let agent = request
                 .lines()
-                .find_map(|l| l.to_ascii_lowercase().strip_prefix("user-agent: ").map(str::to_string))
+                .find_map(|l| {
+                    l.to_ascii_lowercase()
+                        .strip_prefix("user-agent: ")
+                        .map(str::to_string)
+                })
                 .unwrap_or_default();
             log.lock().unwrap().push((line.clone(), agent));
-            assert!(line.starts_with(&format!("GET {}", route.target)), "expected {} got {line}", route.target);
-            let _ = write!(stream, "{}Content-Length: {}\r\nConnection: close\r\n\r\n", route.head, route.body.len());
+            assert!(
+                line.starts_with(&format!("GET {}", route.target)),
+                "expected {} got {line}",
+                route.target
+            );
+            let _ = write!(
+                stream,
+                "{}Content-Length: {}\r\nConnection: close\r\n\r\n",
+                route.head,
+                route.body.len()
+            );
             let _ = stream.write_all(&route.body);
         }
     });
-    Server { base, seen, thread: Some(thread) }
+    Server {
+        base,
+        seen,
+        thread: Some(thread),
+    }
 }
 
 pub(crate) fn run<T>(f: impl std::future::Future<Output = T>) -> T {
-    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(f)
 }

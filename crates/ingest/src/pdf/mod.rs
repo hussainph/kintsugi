@@ -18,8 +18,8 @@ pub mod layout;
 use crate::fetch::Fetcher;
 use crate::tools::{ToolError, Tools, catalog};
 use crate::{
-    Adapter, BoxFuture, FULL_CHARS, CaptureOptions, Error, Item, Media, MediaData, MediaKind, Result, SourceType,
-    Target, markdown, media,
+    Adapter, BoxFuture, CaptureOptions, Error, FULL_CHARS, Item, Media, MediaData, MediaKind,
+    Result, SourceType, Target, markdown, media,
 };
 pub use layout::PdfText;
 use serde_json::{Value, json};
@@ -39,7 +39,11 @@ const HELPER_CHARS: usize = 400_000;
 
 /// Reads a PDF's text, metadata and (optionally) a page-one thumbnail.
 pub trait PdfReader: Send + Sync {
-    fn read<'a>(&'a self, pdf: &'a Path, thumbnail: Option<&'a Path>) -> BoxFuture<'a, Result<PdfText>>;
+    fn read<'a>(
+        &'a self,
+        pdf: &'a Path,
+        thumbnail: Option<&'a Path>,
+    ) -> BoxFuture<'a, Result<PdfText>>;
 }
 
 /// Apple PDFKit through the `kintsugi-pdf` helper.
@@ -50,7 +54,10 @@ pub struct PdfKitReader {
 
 impl PdfKitReader {
     pub fn new(program: impl Into<PathBuf>) -> Self {
-        Self { program: program.into(), timeout: Duration::from_secs(60) }
+        Self {
+            program: program.into(),
+            timeout: Duration::from_secs(60),
+        }
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -60,7 +67,10 @@ impl PdfKitReader {
 
     async fn run(&self, pdf: &Path, thumbnail: Option<&Path>) -> Result<PdfText> {
         let mut command = tokio::process::Command::new(&self.program);
-        command.arg(pdf).arg("--max-chars").arg(HELPER_CHARS.to_string());
+        command
+            .arg(pdf)
+            .arg("--max-chars")
+            .arg(HELPER_CHARS.to_string());
         if let Some(thumbnail) = thumbnail {
             command.arg("--thumbnail").arg(thumbnail);
         }
@@ -70,7 +80,11 @@ impl PdfKitReader {
 }
 
 impl PdfReader for PdfKitReader {
-    fn read<'a>(&'a self, pdf: &'a Path, thumbnail: Option<&'a Path>) -> BoxFuture<'a, Result<PdfText>> {
+    fn read<'a>(
+        &'a self,
+        pdf: &'a Path,
+        thumbnail: Option<&'a Path>,
+    ) -> BoxFuture<'a, Result<PdfText>> {
         Box::pin(self.run(pdf, thumbnail))
     }
 }
@@ -78,17 +92,31 @@ impl PdfReader for PdfKitReader {
 /// Runs a helper with no stdin, discarded stderr (it can carry document
 /// text) and a time limit; returns at most `limit` bytes of stdout. Exit 3
 /// is "unsupported here".
-pub(crate) async fn run_helper(mut command: tokio::process::Command, timeout: Duration, limit: u64) -> Result<Vec<u8>> {
-    command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true);
+pub(crate) async fn run_helper(
+    mut command: tokio::process::Command,
+    timeout: Duration,
+    limit: u64,
+) -> Result<Vec<u8>> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
     let mut child = command.spawn().map_err(|_| Error::Unavailable)?;
     let mut stdout = child.stdout.take().ok_or(Error::Unavailable)?;
     let work = async {
         let mut out = Vec::new();
-        (&mut stdout).take(limit).read_to_end(&mut out).await.map_err(|_| Error::Unavailable)?;
+        (&mut stdout)
+            .take(limit)
+            .read_to_end(&mut out)
+            .await
+            .map_err(|_| Error::Unavailable)?;
         let status = child.wait().await.map_err(|_| Error::Unavailable)?;
         Ok::<_, Error>((status, out))
     };
-    let (status, out) = tokio::time::timeout(timeout, work).await.map_err(|_| Error::TimedOut)??;
+    let (status, out) = tokio::time::timeout(timeout, work)
+        .await
+        .map_err(|_| Error::TimedOut)??;
     match status.code() {
         Some(0) => Ok(out),
         Some(3) => Err(Error::Unsupported),
@@ -113,7 +141,10 @@ pub struct Docling {
 
 impl Docling {
     pub fn new(tools: Arc<Tools>) -> Self {
-        Self { tools, timeout: Duration::from_secs(10 * 60) }
+        Self {
+            tools,
+            timeout: Duration::from_secs(10 * 60),
+        }
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
@@ -125,22 +156,38 @@ impl Docling {
         self.run_with(&catalog::DOCLING, pdf).await
     }
 
-    pub(crate) async fn run_with(&self, spec: &crate::tools::ToolSpec, pdf: &Path) -> Result<String> {
+    pub(crate) async fn run_with(
+        &self,
+        spec: &crate::tools::ToolSpec,
+        pdf: &Path,
+    ) -> Result<String> {
         let program = self.tools.ensure(spec).await.map_err(|e| match e {
             ToolError::NeedsConsent => Error::ToolNeeded,
             ToolError::UnsupportedPlatform => Error::Unsupported,
             _ => Error::Unavailable,
         })?;
         // `<version>/bin/docling` → `<version>/models`.
-        let version_dir = program.parent().and_then(Path::parent).ok_or(Error::Unavailable)?;
+        let version_dir = program
+            .parent()
+            .and_then(Path::parent)
+            .ok_or(Error::Unavailable)?;
         let work = tempfile::tempdir().map_err(|_| Error::Setup)?;
         let input = work.path().join("document.pdf");
-        tokio::fs::copy(pdf, &input).await.map_err(|_| Error::Setup)?;
+        tokio::fs::copy(pdf, &input)
+            .await
+            .map_err(|_| Error::Setup)?;
         let output = work.path().join("out");
         let mut command = tokio::process::Command::new(&program);
         command
             .arg(&input)
-            .args(["--to", "md", "--image-export-mode", "placeholder", "--ocr-engine", "ocrmac"])
+            .args([
+                "--to",
+                "md",
+                "--image-export-mode",
+                "placeholder",
+                "--ocr-engine",
+                "ocrmac",
+            ])
             .arg("--artifacts-path")
             .arg(version_dir.join("models"))
             .arg("--output")
@@ -149,11 +196,20 @@ impl Docling {
             .env("HF_HOME", version_dir.join("hf"))
             .current_dir(work.path());
         run_helper(command, self.timeout, 1024).await?;
-        let file = tokio::fs::File::open(output.join("document.md")).await.map_err(|_| Error::Unavailable)?;
+        let file = tokio::fs::File::open(output.join("document.md"))
+            .await
+            .map_err(|_| Error::Unavailable)?;
         let mut bytes = Vec::new();
-        file.take(8 * 1024 * 1024).read_to_end(&mut bytes).await.map_err(|_| Error::Unavailable)?;
+        file.take(8 * 1024 * 1024)
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|_| Error::Unavailable)?;
         let text = String::from_utf8_lossy(&bytes);
-        Ok(text.lines().filter(|l| l.trim() != "<!-- image -->").collect::<Vec<_>>().join("\n"))
+        Ok(text
+            .lines()
+            .filter(|l| l.trim() != "<!-- image -->")
+            .collect::<Vec<_>>()
+            .join("\n"))
     }
 }
 
@@ -177,7 +233,11 @@ pub struct PdfAdapter {
 
 impl PdfAdapter {
     pub fn new(reader: Option<Arc<dyn PdfReader>>) -> Result<Self> {
-        Ok(Self { reader, converter: None, fetcher: Fetcher::new()? })
+        Ok(Self {
+            reader,
+            converter: None,
+            fetcher: Fetcher::new()?,
+        })
     }
 
     pub fn with_converter(mut self, converter: Arc<dyn PdfConverter>) -> Self {
@@ -186,7 +246,12 @@ impl PdfAdapter {
     }
 
     /// Reads one PDF already on disk. `url` is where it came from, if anywhere.
-    pub async fn capture_file(&self, pdf: &Path, url: Option<&reqwest::Url>, options: CaptureOptions) -> Result<Item> {
+    pub async fn capture_file(
+        &self,
+        pdf: &Path,
+        url: Option<&reqwest::Url>,
+        options: CaptureOptions,
+    ) -> Result<Item> {
         let head = read_head(pdf).await?;
         if !is_pdf(&head) {
             return Err(Error::Unsupported);
@@ -207,7 +272,12 @@ impl PdfAdapter {
             Some(Err(error)) if !matches!(converted, Some((_, Ok(_)))) => return Err(error),
             _ => None,
         };
-        let Some(text) = text.or_else(|| converted.as_ref().filter(|(_, r)| r.is_ok()).map(|_| PdfText::default())) else {
+        let Some(text) = text.or_else(|| {
+            converted
+                .as_ref()
+                .filter(|(_, r)| r.is_ok())
+                .map(|_| PdfText::default())
+        }) else {
             return Err(Error::Unsupported);
         };
 
@@ -240,7 +310,10 @@ impl PdfAdapter {
             extras.insert("locked".into(), json!(true));
         }
         if body.is_empty() {
-            extras.insert("textReason".into(), json!(if text.locked { "locked" } else { "no-text" }));
+            extras.insert(
+                "textReason".into(),
+                json!(if text.locked { "locked" } else { "no-text" }),
+            );
         }
 
         let mut media = Vec::new();
@@ -248,7 +321,14 @@ impl PdfAdapter {
             && let Ok(bytes) = tokio::fs::read(path).await
             && let Some(mime) = media::image_mime(&bytes)
         {
-            media.push(Media { kind: MediaKind::Image, url: None, data: Some(MediaData { bytes, mime: mime.into() }) });
+            media.push(Media {
+                kind: MediaKind::Image,
+                url: None,
+                data: Some(MediaData {
+                    bytes,
+                    mime: mime.into(),
+                }),
+            });
         }
         let canonical = url.map(crate::web::canonical_url);
         let id = match &canonical {
@@ -262,7 +342,10 @@ impl PdfAdapter {
             title: title(&text, &body),
             author: text.author.as_deref().and_then(|a| markdown::field(a, 300)),
             site: None,
-            description: text.subject.as_deref().and_then(|s| markdown::field(s, 600)),
+            description: text
+                .subject
+                .as_deref()
+                .and_then(|s| markdown::field(s, 600)),
             published: text.created.clone(),
             captured: crate::now(),
             media,
@@ -274,9 +357,12 @@ impl PdfAdapter {
     async fn capture_url(&self, url: &reqwest::Url, options: CaptureOptions) -> Result<Item> {
         let work = tempfile::tempdir().map_err(|_| Error::Setup)?;
         let path = work.path().join("download.pdf");
-        tokio::time::timeout(Duration::from_secs(120), self.fetcher.to_file(url, MAX_PDF_BYTES, &path))
-            .await
-            .map_err(|_| Error::TimedOut)??;
+        tokio::time::timeout(
+            Duration::from_secs(120),
+            self.fetcher.to_file(url, MAX_PDF_BYTES, &path),
+        )
+        .await
+        .map_err(|_| Error::TimedOut)??;
         if !is_pdf(&read_head(&path).await?) {
             return Err(Error::Unavailable);
         }
@@ -296,7 +382,11 @@ impl Adapter for PdfAdapter {
         }
     }
 
-    fn capture<'a>(&'a self, target: &'a Target, options: CaptureOptions) -> BoxFuture<'a, Result<Item>> {
+    fn capture<'a>(
+        &'a self,
+        target: &'a Target,
+        options: CaptureOptions,
+    ) -> BoxFuture<'a, Result<Item>> {
         Box::pin(async move {
             match target {
                 Target::File(path) => self.capture_file(path, None, options).await,
@@ -313,11 +403,15 @@ pub fn pdf_url(url: &reqwest::Url) -> bool {
     }
     let path = url.path().to_ascii_lowercase();
     path.ends_with(".pdf")
-        || (matches!(url.host_str(), Some("arxiv.org" | "www.arxiv.org" | "export.arxiv.org")) && path.starts_with("/pdf/"))
+        || (matches!(
+            url.host_str(),
+            Some("arxiv.org" | "www.arxiv.org" | "export.arxiv.org")
+        ) && path.starts_with("/pdf/"))
 }
 
 pub(crate) fn has_extension(path: &Path, extension: &str) -> bool {
-    path.extension().is_some_and(|e| e.eq_ignore_ascii_case(extension))
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case(extension))
 }
 
 /// PDF readers accept the header anywhere in the first kilobyte.
@@ -326,18 +420,28 @@ fn is_pdf(head: &[u8]) -> bool {
 }
 
 async fn read_head(path: &Path) -> Result<Vec<u8>> {
-    let file = tokio::fs::File::open(path).await.map_err(|_| Error::Unavailable)?;
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| Error::Unavailable)?;
     let mut head = Vec::new();
-    file.take(1024).read_to_end(&mut head).await.map_err(|_| Error::Unavailable)?;
+    file.take(1024)
+        .read_to_end(&mut head)
+        .await
+        .map_err(|_| Error::Unavailable)?;
     Ok(head)
 }
 
 pub(crate) async fn file_sha256(path: &Path) -> Result<String> {
-    let mut file = tokio::fs::File::open(path).await.map_err(|_| Error::Unavailable)?;
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|_| Error::Unavailable)?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; 64 * 1024];
     loop {
-        let n = file.read(&mut buffer).await.map_err(|_| Error::Unavailable)?;
+        let n = file
+            .read(&mut buffer)
+            .await
+            .map_err(|_| Error::Unavailable)?;
         if n == 0 {
             break;
         }
@@ -349,17 +453,21 @@ pub(crate) async fn file_sha256(path: &Path) -> Result<String> {
 /// The declared title, unless it is a word processor's leftover ("Microsoft
 /// Word - draft.docx", "untitled"); else the first heading of the body.
 fn title(text: &PdfText, body: &str) -> Option<String> {
-    let declared = text.title.as_deref().and_then(|t| markdown::field(t, 300)).filter(|t| {
-        let lower = t.to_lowercase();
-        !(lower.starts_with("microsoft word")
-            || lower.starts_with("untitled")
-            || lower.ends_with(".doc")
-            || lower.ends_with(".docx")
-            || lower.ends_with(".pdf")
-            || lower.ends_with(".indd")
-            || lower.ends_with(".tex")
-            || lower.chars().filter(|c| c.is_alphabetic()).count() < 2)
-    });
+    let declared = text
+        .title
+        .as_deref()
+        .and_then(|t| markdown::field(t, 300))
+        .filter(|t| {
+            let lower = t.to_lowercase();
+            !(lower.starts_with("microsoft word")
+                || lower.starts_with("untitled")
+                || lower.ends_with(".doc")
+                || lower.ends_with(".docx")
+                || lower.ends_with(".pdf")
+                || lower.ends_with(".indd")
+                || lower.ends_with(".tex")
+                || lower.chars().filter(|c| c.is_alphabetic()).count() < 2)
+        });
     declared.or_else(|| {
         body.lines()
             .find_map(|l| l.strip_prefix("## ").or_else(|| l.strip_prefix("# ")))

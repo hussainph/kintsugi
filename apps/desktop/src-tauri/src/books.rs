@@ -17,7 +17,9 @@ pub async fn book_search(query: String) -> Result<Vec<BookHit>, String> {
     }
     let books = BOOKS.get().ok_or("could not start book search")?;
     books.search(&query, 12).await.map_err(|e| match e {
-        kintsugi_ingest::Error::RateLimited => "Open Library is busy; try again in a minute.".into(),
+        kintsugi_ingest::Error::RateLimited => {
+            "Open Library is busy; try again in a minute.".into()
+        }
         kintsugi_ingest::Error::TimedOut | kintsugi_ingest::Error::Unavailable => {
             "Couldn't reach Open Library. Check the connection and try again.".into()
         }

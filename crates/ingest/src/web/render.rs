@@ -73,7 +73,10 @@ impl Rendered {
             published: field(self.published, 100),
             image: field(self.image, 2000),
             language: field(self.language, 40),
-            content: self.content.map(|c| markdown::body(&c, FULL_CHARS)).filter(|c| !c.is_empty()),
+            content: self
+                .content
+                .map(|c| markdown::body(&c, FULL_CHARS))
+                .filter(|c| !c.is_empty()),
         }
     }
 }
@@ -110,8 +113,7 @@ pub const QUIET_SCRIPT: &str = r#"(function () {
 
 /// Evaluates to the page's visible text length; renderers poll it until it
 /// stops changing.
-pub const SETTLE_SCRIPT: &str =
-    "(function () { try { return document.body ? document.body.innerText.length : 0; } catch (e) { return 0; } })()";
+pub const SETTLE_SCRIPT: &str = "(function () { try { return document.body ? document.body.innerText.length : 0; } catch (e) { return 0; } })()";
 
 /// The Defuddle bundle plus a wrapper that evaluates to a JSON string of
 /// [`Rendered`] (or `null`). The bundle's UMD header sees local `module` and

@@ -32,7 +32,8 @@ const IMAGE_FORMATS: &[(&str, &str)] = &[
     ("image/avif", "avif"),
 ];
 
-const FILE_FORMATS: &[(&str, &str)] = &[("application/pdf", "pdf"), ("application/epub+zip", "epub")];
+const FILE_FORMATS: &[(&str, &str)] =
+    &[("application/pdf", "pdf"), ("application/epub+zip", "epub")];
 
 // Capture names are selected together; unrelated clips can still be edited
 // independently. Weak entries keep the per-path lock table bounded.
@@ -315,8 +316,14 @@ pub fn clip_guess_kind(url: Option<&str>, text: Option<&str>, has_image: bool) -
             return ClipKind::Podcast;
         }
     }
-    if let Some(path) = url.and_then(|s| source_url(s).ok()).map(|u| u.path().to_ascii_lowercase()) {
-        if AUDIO_EXTENSIONS.iter().any(|ext| path.ends_with(&format!(".{ext}"))) {
+    if let Some(path) = url
+        .and_then(|s| source_url(s).ok())
+        .map(|u| u.path().to_ascii_lowercase())
+    {
+        if AUDIO_EXTENSIONS
+            .iter()
+            .any(|ext| path.ends_with(&format!(".{ext}")))
+        {
             return ClipKind::Podcast;
         }
         if path.ends_with(".pdf") {
@@ -410,7 +417,9 @@ fn summary(fm: &Frontmatter<'_>, path: &str) -> Result<ClipSummary> {
         file_relative(path, file)?;
     }
     // A hand-edited sidecar path is ignored rather than followed.
-    let full_source = fm.scalar("full_source").filter(|f| source_relative(path, f).is_ok());
+    let full_source = fm
+        .scalar("full_source")
+        .filter(|f| source_relative(path, f).is_ok());
     Ok(ClipSummary {
         path: path.into(),
         kind: enum_field(fm, "kind")?.ok_or("clip is missing kind")?,
@@ -511,7 +520,10 @@ pub fn clip_read(root: &Path, path: &str) -> Result<Clip> {
 /// Newest first, with stable path ordering for equal capture times. A malformed
 /// file edited outside Kintsugi must not hide the rest of the library.
 pub fn clip_list(root: &Path) -> Result<Vec<ClipSummary>> {
-    Ok(clip_list_with_text(root)?.into_iter().map(|clip| clip.summary).collect())
+    Ok(clip_list_with_text(root)?
+        .into_iter()
+        .map(|clip| clip.summary)
+        .collect())
 }
 
 /// Every clip with its own text, in [`clip_list`] order: the phone's offline
@@ -606,7 +618,9 @@ fn file_extension(bytes: &[u8], mime: &str) -> Result<&'static str> {
     // The bytes must be what the type says: readers accept a PDF header
     // anywhere in the first kilobyte; an EPUB is a zip.
     let valid = match ext {
-        "pdf" => bytes[..bytes.len().min(1024)].windows(5).any(|w| w == b"%PDF-"),
+        "pdf" => bytes[..bytes.len().min(1024)]
+            .windows(5)
+            .any(|w| w == b"%PDF-"),
         _ => bytes.starts_with(b"PK\x03\x04"),
     };
     if !valid {
@@ -624,7 +638,9 @@ fn file_relative(path: &str, file: &str) -> Result<PathBuf> {
         .extension()
         .and_then(|s| s.to_str())
         .ok_or("invalid clip file path")?;
-    if !FILE_FORMATS.iter().any(|(_, allowed)| *allowed == ext) || file != format!("files/{stem}.{ext}") {
+    if !FILE_FORMATS.iter().any(|(_, allowed)| *allowed == ext)
+        || file != format!("files/{stem}.{ext}")
+    {
         return Err("invalid clip file path".into());
     }
     Ok(Path::new(INSPIRATION).join(file))
@@ -660,7 +676,9 @@ pub fn clip_full_source(root: &Path, path: &str) -> Result<Option<String>> {
     {
         return Ok(Some(text));
     }
-    Ok(clip.source.map(|source| strip_excerpt_note(&source).to_string()))
+    Ok(clip
+        .source
+        .map(|source| strip_excerpt_note(&source).to_string()))
 }
 
 /// Resolves a clip's saved PDF or EPUB, with the same containment checks as
@@ -717,16 +735,18 @@ fn unique_clip(dir: &Path, stem: &str, reserved: &[String]) -> Result<PathBuf> {
             format!("{stem}-{n}")
         };
         let path = dir.join(format!("{name}.md"));
-        if reserved.iter().any(|p| p == &format!("{INSPIRATION}/{name}.md")) {
+        if reserved
+            .iter()
+            .any(|p| p == &format!("{INSPIRATION}/{name}.md"))
+        {
             continue;
         }
-        let media_taken = IMAGE_FORMATS
-            .iter()
-            .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("media/{name}.{ext}"))).is_ok())
-            || FILE_FORMATS
-                .iter()
-                .any(|(_, ext)| fs::symlink_metadata(dir.join(format!("files/{name}.{ext}"))).is_ok())
-            || fs::symlink_metadata(dir.join(format!("sources/{name}.txt"))).is_ok();
+        let media_taken =
+            IMAGE_FORMATS.iter().any(|(_, ext)| {
+                fs::symlink_metadata(dir.join(format!("media/{name}.{ext}"))).is_ok()
+            }) || FILE_FORMATS.iter().any(|(_, ext)| {
+                fs::symlink_metadata(dir.join(format!("files/{name}.{ext}"))).is_ok()
+            }) || fs::symlink_metadata(dir.join(format!("sources/{name}.txt"))).is_ok();
         match fs::symlink_metadata(&path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound && !media_taken => return Ok(path),
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
@@ -751,19 +771,30 @@ fn excerpt(source: &str, path: &str) -> String {
     }
     // Leave room for the closing line.
     let limit = MAX_SOURCE_CHARS - 200;
-    let cut = source.char_indices().nth(limit).map_or(source.len(), |(i, _)| i);
+    let cut = source
+        .char_indices()
+        .nth(limit)
+        .map_or(source.len(), |(i, _)| i);
     let head = &source[..cut];
-    let floor = head.char_indices().nth(limit - limit / 10).map_or(0, |(i, _)| i);
+    let floor = head
+        .char_indices()
+        .nth(limit - limit / 10)
+        .map_or(0, |(i, _)| i);
     let end = head
         .rfind("\n\n")
         .filter(|&i| i >= floor)
         .or_else(|| head.rfind('\n').filter(|&i| i >= floor))
         .unwrap_or(cut);
     let kept = head[..end].trim_end();
-    let stem = Path::new(path).file_stem().and_then(|s| s.to_str()).unwrap_or_default();
+    let stem = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default();
     let whole = format!("{INSPIRATION}/sources/{stem}.txt");
     let note = match (last_timestamp(kept), last_timestamp(source)) {
-        (Some(at), Some(of)) => format!("{EXCERPT_NOTE}up to {at} of {of}. The whole transcript is in {whole}._"),
+        (Some(at), Some(of)) => {
+            format!("{EXCERPT_NOTE}up to {at} of {of}. The whole transcript is in {whole}._")
+        }
         _ => format!(
             "{EXCERPT_NOTE}the first {} of {} characters. The whole text is in {whole}._",
             thousands(kept.chars().count()),
@@ -785,7 +816,10 @@ fn strip_excerpt_note(source: &str) -> &str {
 fn last_timestamp(text: &str) -> Option<&str> {
     text.lines().rev().find_map(|line| {
         let label = line.strip_prefix('[')?.split_once("](<")?.0;
-        (!label.is_empty() && label.contains(':') && label.chars().all(|c| c.is_ascii_digit() || c == ':')).then_some(label)
+        (!label.is_empty()
+            && label.contains(':')
+            && label.chars().all(|c| c.is_ascii_digit() || c == ':'))
+        .then_some(label)
     })
 }
 
@@ -875,18 +909,16 @@ pub fn clip_create_with_receipt(
         .or(fallback.as_deref())
         .map(str::to_string)
         .unwrap_or_else(|| {
-            text.or(note)
-                .map(capture_title)
-                .unwrap_or_else(|| {
-                    if capture.file.is_some() {
-                        "document".into()
-                    } else {
-                        // An image alone: name it for when it arrived, which
-                        // is something to find it by (`image-2026-10-31-1015`).
-                        // Enrichment titles it from what the picture shows.
-                        format!("image {}", capture.captured_at.replace(['T', ':'], " "))
-                    }
-                })
+            text.or(note).map(capture_title).unwrap_or_else(|| {
+                if capture.file.is_some() {
+                    "document".into()
+                } else {
+                    // An image alone: name it for when it arrived, which
+                    // is something to find it by (`image-2026-10-31-1015`).
+                    // Enrichment titles it from what the picture shows.
+                    format!("image {}", capture.captured_at.replace(['T', ':'], " "))
+                }
+            })
         });
     let dir = contained(root, Path::new(INSPIRATION))?;
     fs::create_dir_all(&dir).map_err(|_| "could not create inspiration folder")?;
@@ -895,7 +927,11 @@ pub fn clip_create_with_receipt(
     let _guard = lock.lock().map_err(|_| "clip storage unavailable")?;
     let target = clip_path(root, &path)?;
     let mut fm = Frontmatter::empty();
-    let kind = match capture.file.as_ref().map(|f| f.mime.trim().to_ascii_lowercase()) {
+    let kind = match capture
+        .file
+        .as_ref()
+        .map(|f| f.mime.trim().to_ascii_lowercase())
+    {
         Some(mime) if mime == "application/epub+zip" => ClipKind::Book,
         Some(_) => ClipKind::Document,
         None => clip_guess_kind(url, text, capture.image.is_some()),
@@ -991,7 +1027,12 @@ pub enum NoteWrite {
 /// (`base` is [`crate::version`] of [`Clip::text`]), so an edit made offline on
 /// the phone never silently overwrites one made on the Mac meanwhile. `None`
 /// overwrites on purpose. The check and the write share the clip's lock.
-pub fn clip_update_note(root: &Path, path: &str, note: &str, base: Option<&str>) -> Result<NoteWrite> {
+pub fn clip_update_note(
+    root: &Path,
+    path: &str,
+    note: &str,
+    base: Option<&str>,
+) -> Result<NoteWrite> {
     let lock = clip_lock(root, path)?;
     let _guard = lock.lock().map_err(|_| "clip storage unavailable")?;
     let current = clip_read(root, path)?;
@@ -1001,7 +1042,10 @@ pub fn clip_update_note(root: &Path, path: &str, note: &str, base: Option<&str>)
     if current.text == note.trim_matches(['\r', '\n']) {
         return Ok(NoteWrite::Saved(current));
     }
-    let patch = ClipUpdate { note: Some(note.to_string()), ..Default::default() };
+    let patch = ClipUpdate {
+        note: Some(note.to_string()),
+        ..Default::default()
+    };
     update(root, path, &patch).map(NoteWrite::Saved)
 }
 
@@ -1081,7 +1125,10 @@ fn update(root: &Path, path: &str, patch: &ClipUpdate) -> Result<Clip> {
         let source = source.trim_matches(['\r', '\n']);
         let relative = format!(
             "sources/{}.txt",
-            Path::new(path).file_stem().and_then(|s| s.to_str()).ok_or("not a clip path")?
+            Path::new(path)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .ok_or("not a clip path")?
         );
         let sidecar = clip_source_path(root, path, &relative)?;
         if source.chars().count() > MAX_SOURCE_CHARS {
@@ -1091,7 +1138,8 @@ fn update(root: &Path, path: &str, patch: &ClipUpdate) -> Result<Clip> {
             fs::create_dir_all(sidecar.parent().ok_or("not a source path")?)
                 .map_err(|_| "could not create clip sources folder")?;
             let whole: String = source.chars().take(MAX_FULL_SOURCE_CHARS).collect();
-            write_atomic(&sidecar, &format!("{whole}\n")).map_err(|_| "could not save clip source")?;
+            write_atomic(&sidecar, &format!("{whole}\n"))
+                .map_err(|_| "could not save clip source")?;
             fm.set("full_source", Some(Value::Scalar(relative)));
         } else {
             if fm.scalar("full_source").is_some() {

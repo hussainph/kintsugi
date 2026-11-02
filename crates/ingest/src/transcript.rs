@@ -39,7 +39,12 @@ pub enum Parsed {
 
 /// Parses a transcript by MIME type, sniffing when the type is unhelpful.
 pub fn parse(text: &str, mime: &str) -> Option<Parsed> {
-    let mime = mime.split(';').next().unwrap_or("").trim().to_ascii_lowercase();
+    let mime = mime
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
     let trimmed = text.trim_start_matches('\u{feff}').trim_start();
     let timed = match mime.as_str() {
         "application/json" | "application/x-podcast-transcript+json" => parse_json(trimmed),
@@ -64,7 +69,9 @@ pub fn parse_cues(text: &str) -> Vec<Segment> {
     for block in text.split("\n\n") {
         let mut lines = block.lines().skip_while(|l| !l.contains("-->"));
         let Some(timing) = lines.next() else { continue };
-        let Some((start, end)) = cue_times(timing) else { continue };
+        let Some((start, end)) = cue_times(timing) else {
+            continue;
+        };
         let mut current = Vec::new();
         for raw in lines {
             let (speaker, line) = clean_cue_line(raw);
@@ -75,10 +82,18 @@ pub fn parse_cues(text: &str) -> Vec<Segment> {
                 if let Some(seg) = segments.iter_mut().rev().take(4).find(|s| s.text == line) {
                     seg.end = seg.end.max(end);
                 }
-            } else if let Some(last) = segments.last_mut().filter(|s| s.text == line && start - s.end < 0.5) {
+            } else if let Some(last) = segments
+                .last_mut()
+                .filter(|s| s.text == line && start - s.end < 0.5)
+            {
                 last.end = last.end.max(end);
             } else {
-                segments.push(Segment { start, end, text: line.clone(), speaker });
+                segments.push(Segment {
+                    start,
+                    end,
+                    text: line.clone(),
+                    speaker,
+                });
             }
             current.push(line);
         }
@@ -125,14 +140,22 @@ fn clean_cue_line(line: &str) -> (Option<String>, String) {
             break;
         };
         let tag = &rest[open + 1..open + close];
-        if let Some(name) = tag.strip_prefix("v ").or_else(|| tag.strip_prefix("v.").and_then(|t| t.split_once(' ').map(|x| x.1)))
-        {
+        if let Some(name) = tag.strip_prefix("v ").or_else(|| {
+            tag.strip_prefix("v.")
+                .and_then(|t| t.split_once(' ').map(|x| x.1))
+        }) {
             speaker = markdown::field(name, 80);
         }
         rest = &rest[open + close + 1..];
     }
     out.push_str(rest);
-    (speaker, decode_entities(&out).split_whitespace().collect::<Vec<_>>().join(" "))
+    (
+        speaker,
+        decode_entities(&out)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 fn decode_entities(s: &str) -> String {
@@ -165,16 +188,25 @@ pub fn parse_json(text: &str) -> Vec<Segment> {
         end_time: Option<f64>,
         body: Option<String>,
     }
-    let Ok(file) = serde_json::from_str::<File>(text) else { return vec![] };
+    let Ok(file) = serde_json::from_str::<File>(text) else {
+        return vec![];
+    };
     file.segments
         .into_iter()
         .filter_map(|value| serde_json::from_value::<Raw>(value).ok())
         .filter_map(|raw| {
             let start = raw.start_time.filter(|t| t.is_finite() && *t >= 0.0)?;
-            let text = raw.body.as_deref().map(|b| b.split_whitespace().collect::<Vec<_>>().join(" "))?;
+            let text = raw
+                .body
+                .as_deref()
+                .map(|b| b.split_whitespace().collect::<Vec<_>>().join(" "))?;
             (!text.is_empty()).then(|| Segment {
                 start,
-                end: raw.end_time.filter(|t| t.is_finite()).unwrap_or(start).max(start),
+                end: raw
+                    .end_time
+                    .filter(|t| t.is_finite())
+                    .unwrap_or(start)
+                    .max(start),
                 text,
                 speaker: raw.speaker.as_deref().and_then(|s| markdown::field(s, 80)),
             })
@@ -185,7 +217,10 @@ pub fn parse_json(text: &str) -> Vec<Segment> {
 fn untimed_html(html: &str) -> Option<Parsed> {
     let doc = dom_query::Document::from(html);
     let body = doc.select("body");
-    let md = body.nodes().first().map(|root| root.md(Some(&["script", "style", "nav", "header", "footer"])))?;
+    let md = body
+        .nodes()
+        .first()
+        .map(|root| root.md(Some(&["script", "style", "nav", "header", "footer"])))?;
     let md = markdown::body(&md, TRANSCRIPT_CHARS);
     (!md.trim().is_empty()).then_some(Parsed::Untimed(md))
 }
@@ -200,7 +235,11 @@ fn untimed_text(text: &str) -> Option<Parsed> {
 pub fn timestamp(seconds: f64) -> String {
     let total = seconds.max(0.0) as u64;
     let (h, m, s) = (total / 3600, total / 60 % 60, total % 60);
-    if h > 0 { format!("{h}:{m:02}:{s:02}") } else { format!("{m}:{s:02}") }
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
 }
 
 /// Transcript text is untrusted: keep it from forming links, HTML or
@@ -221,7 +260,11 @@ fn escape(text: &str) -> String {
 /// text). A paragraph breaks at a new speaker or chapter, after a pause
 /// once it is half a minute long, or at a minute regardless. Chapters
 /// become `##` headings. Returns the body and whether it was cut.
-pub fn to_markdown(segments: &[Segment], chapters: &[Chapter], link: &dyn Fn(u64) -> Option<String>) -> (String, bool) {
+pub fn to_markdown(
+    segments: &[Segment],
+    chapters: &[Chapter],
+    link: &dyn Fn(u64) -> Option<String>,
+) -> (String, bool) {
     let mut out = String::new();
     let mut chapters = chapters.iter().peekable();
     let mut i = 0;
@@ -301,7 +344,10 @@ mod tests {
         assert_eq!(segments[2].start, 3723.0);
         let vtt = "WEBVTT\n\nNOTE skip me --> not a cue? no\n\n00:01.000 --> 00:02.000\n<v Ana Lopez>Hi there</v>\n";
         let segments = parse_cues(vtt);
-        assert_eq!(segments.last().unwrap().speaker.as_deref(), Some("Ana Lopez"));
+        assert_eq!(
+            segments.last().unwrap().speaker.as_deref(),
+            Some("Ana Lopez")
+        );
         assert_eq!(segments.last().unwrap().text, "Hi there");
     }
 
@@ -312,9 +358,13 @@ mod tests {
             {"speaker":"Host","startTime":1.0,"endTime":1.4,"body":"back."},
             {"startTime":"bad","body":"skipped"},
             {"speaker":"Guest","startTime":2.0,"endTime":3.0,"body":"Thanks"}]}"#;
-        let Some(Parsed::Timed(segments)) = parse(json, "application/json") else { panic!() };
+        let Some(Parsed::Timed(segments)) = parse(json, "application/json") else {
+            panic!()
+        };
         assert_eq!(segments.len(), 3);
-        let (md, cut) = to_markdown(&segments, &[], &|t| Some(format!("https://e.org/a.mp3#t={t}")));
+        let (md, cut) = to_markdown(&segments, &[], &|t| {
+            Some(format!("https://e.org/a.mp3#t={t}"))
+        });
         assert!(!cut);
         assert_eq!(
             md,
@@ -324,10 +374,28 @@ mod tests {
 
     #[test]
     fn paragraphs_break_at_pauses_minutes_and_chapters() {
-        let seg = |start: f64, text: &str| Segment { start, end: start + 2.0, text: text.into(), speaker: None };
-        let segments: Vec<_> = (0..40).map(|i| seg(i as f64 * 2.0, if i % 10 == 9 { "end." } else { "word" })).collect();
-        let chapters = [Chapter { start: 0.0, title: "Intro".into() }, Chapter { start: 70.0, title: "Part [2]".into() }];
-        let (md, _) = to_markdown(&segments, &chapters, &|t| Some(format!("https://youtu.be/x?t={t}")));
+        let seg = |start: f64, text: &str| Segment {
+            start,
+            end: start + 2.0,
+            text: text.into(),
+            speaker: None,
+        };
+        let segments: Vec<_> = (0..40)
+            .map(|i| seg(i as f64 * 2.0, if i % 10 == 9 { "end." } else { "word" }))
+            .collect();
+        let chapters = [
+            Chapter {
+                start: 0.0,
+                title: "Intro".into(),
+            },
+            Chapter {
+                start: 70.0,
+                title: "Part [2]".into(),
+            },
+        ];
+        let (md, _) = to_markdown(&segments, &chapters, &|t| {
+            Some(format!("https://youtu.be/x?t={t}"))
+        });
         let paragraphs: Vec<_> = md.split("\n\n").collect();
         assert_eq!(paragraphs[0], "## Intro");
         assert!(paragraphs[1].starts_with("[0:00](<https://youtu.be/x?t=0>) word word"));
@@ -338,22 +406,37 @@ mod tests {
 
     #[test]
     fn untrusted_text_cannot_form_links_and_untimed_formats_pass_through() {
-        let segments = [Segment { start: 3725.0, end: 3726.0, text: "[click](javascript:x) <b>".into(), speaker: None }];
+        let segments = [Segment {
+            start: 3725.0,
+            end: 3726.0,
+            text: "[click](javascript:x) <b>".into(),
+            speaker: None,
+        }];
         let (md, _) = to_markdown(&segments, &[], &|_| None);
         assert_eq!(md, r"**1:02:05** \[click\](javascript:x) \<b\>");
-        let Some(Parsed::Untimed(html)) = parse("<html><body><p>Hello <b>there</b></p><script>x</script></body></html>", "text/html")
-        else {
+        let Some(Parsed::Untimed(html)) = parse(
+            "<html><body><p>Hello <b>there</b></p><script>x</script></body></html>",
+            "text/html",
+        ) else {
             panic!()
         };
         assert_eq!(html, "Hello **there**");
-        assert_eq!(parse("Just words", "text/plain"), Some(Parsed::Untimed("Just words".into())));
+        assert_eq!(
+            parse("Just words", "text/plain"),
+            Some(Parsed::Untimed("Just words".into()))
+        );
         assert_eq!(parse("", "text/vtt"), None);
     }
 
     #[test]
     fn long_transcripts_are_cut_at_a_paragraph() {
         let segments: Vec<_> = (0..20_000)
-            .map(|i| Segment { start: i as f64 * 10.0, end: i as f64 * 10.0 + 9.0, text: "a".repeat(30) + ".", speaker: None })
+            .map(|i| Segment {
+                start: i as f64 * 10.0,
+                end: i as f64 * 10.0 + 9.0,
+                text: "a".repeat(30) + ".",
+                speaker: None,
+            })
             .collect();
         let (md, cut) = to_markdown(&segments, &[], &|_| None);
         assert!(cut);

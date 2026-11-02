@@ -50,7 +50,9 @@ impl Kind {
     }
 
     pub fn parse(value: &str) -> Option<Kind> {
-        [Kind::Writing, Kind::Note, Kind::Clip, Kind::Feed].into_iter().find(|k| k.as_str() == value)
+        [Kind::Writing, Kind::Note, Kind::Clip, Kind::Feed]
+            .into_iter()
+            .find(|k| k.as_str() == value)
     }
 }
 
@@ -146,7 +148,8 @@ impl Index {
             std::fs::create_dir_all(parent).map_err(|e| format!("search index: {e}"))?;
         }
         let conn = Connection::open(path).map_err(sql)?;
-        conn.pragma_update(None, "journal_mode", "WAL").map_err(sql)?;
+        conn.pragma_update(None, "journal_mode", "WAL")
+            .map_err(sql)?;
         Self::setup(conn)
     }
 
@@ -155,8 +158,11 @@ impl Index {
     }
 
     fn setup(conn: Connection) -> Result<Self> {
-        conn.pragma_update(None, "foreign_keys", true).map_err(sql)?;
-        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).map_err(sql)?;
+        conn.pragma_update(None, "foreign_keys", true)
+            .map_err(sql)?;
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .map_err(sql)?;
         if version != SCHEMA {
             conn.execute_batch("DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS meta;")
                 .map_err(sql)?;
@@ -174,19 +180,34 @@ impl Index {
                title, tags, body, tokenize = 'porter unicode61 remove_diacritics 2', prefix = '2 3');",
         )
         .map_err(sql)?;
-        conn.pragma_update(None, "user_version", SCHEMA).map_err(sql)?;
-        Ok(Index { conn, embedder: None, vectors: None })
+        conn.pragma_update(None, "user_version", SCHEMA)
+            .map_err(sql)?;
+        Ok(Index {
+            conn,
+            embedder: None,
+            vectors: None,
+        })
     }
 
     /// Adds vectors to the index. A model other than the one that made the
     /// stored vectors clears them; [`Index::embed_missing`] fills them in.
     pub fn set_embedder(&mut self, embedder: Arc<dyn Embedder>) -> Result<()> {
-        let stored: Option<String> =
-            self.conn.query_row("SELECT value FROM meta WHERE key = 'model'", [], |r| r.get(0)).optional().map_err(sql)?;
+        let stored: Option<String> = self
+            .conn
+            .query_row("SELECT value FROM meta WHERE key = 'model'", [], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(sql)?;
         if stored.as_deref() != Some(embedder.id()) {
-            self.conn.execute("UPDATE chunks SET vector = NULL", []).map_err(sql)?;
             self.conn
-                .execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('model', ?1)", [embedder.id()])
+                .execute("UPDATE chunks SET vector = NULL", [])
+                .map_err(sql)?;
+            self.conn
+                .execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES ('model', ?1)",
+                    [embedder.id()],
+                )
                 .map_err(sql)?;
         }
         self.embedder = Some(embedder);
@@ -205,8 +226,13 @@ impl Index {
 
     /// Each document's stamp in a scope, by id.
     pub fn stamps(&self, scope: &str) -> Result<HashMap<String, String>> {
-        let mut statement = self.conn.prepare_cached("SELECT id, stamp FROM docs WHERE scope = ?1").map_err(sql)?;
-        let rows = statement.query_map([scope], |r| Ok((r.get(0)?, r.get(1)?))).map_err(sql)?;
+        let mut statement = self
+            .conn
+            .prepare_cached("SELECT id, stamp FROM docs WHERE scope = ?1")
+            .map_err(sql)?;
+        let rows = statement
+            .query_map([scope], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(sql)?;
         rows.collect::<std::result::Result<_, _>>().map_err(sql)
     }
 
@@ -235,8 +261,11 @@ impl Index {
                     .copied()
                     .collect::<Vec<_>>()
                     .join("\n");
-                tx.execute("INSERT INTO chunks (doc, ord, embed) VALUES (?1, ?2, ?3)", params![rowid, ord as i64, embed])
-                    .map_err(sql)?;
+                tx.execute(
+                    "INSERT INTO chunks (doc, ord, embed) VALUES (?1, ?2, ?3)",
+                    params![rowid, ord as i64, embed],
+                )
+                .map_err(sql)?;
                 let chunk_id = tx.last_insert_rowid();
                 tx.execute(
                     "INSERT INTO fts (rowid, title, tags, body) VALUES (?1, ?2, ?3, ?4)",
@@ -263,14 +292,20 @@ impl Index {
 
     /// Embeds up to `limit` chunks that have no vector yet. Returns how many.
     pub fn embed_missing(&mut self, limit: usize) -> Result<usize> {
-        let Some(embedder) = self.embedder.clone() else { return Ok(0) };
+        let Some(embedder) = self.embedder.clone() else {
+            return Ok(0);
+        };
         let mut done = 0;
         while done < limit {
             let batch: Vec<(i64, String)> = {
-                let mut statement =
-                    self.conn.prepare_cached("SELECT rowid, embed FROM chunks WHERE vector IS NULL LIMIT ?1").map_err(sql)?;
+                let mut statement = self
+                    .conn
+                    .prepare_cached("SELECT rowid, embed FROM chunks WHERE vector IS NULL LIMIT ?1")
+                    .map_err(sql)?;
                 let rows = statement
-                    .query_map([EMBED_BATCH.min(limit - done) as i64], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .query_map([EMBED_BATCH.min(limit - done) as i64], |r| {
+                        Ok((r.get(0)?, r.get(1)?))
+                    })
                     .map_err(sql)?;
                 rows.collect::<std::result::Result<_, _>>().map_err(sql)?
             };
@@ -281,8 +316,11 @@ impl Index {
             let vectors = embedder.embed(&texts);
             let tx = self.conn.transaction().map_err(sql)?;
             for ((rowid, _), vector) in batch.iter().zip(vectors) {
-                tx.execute("UPDATE chunks SET vector = ?1 WHERE rowid = ?2", params![to_blob(&normalized(vector)), rowid])
-                    .map_err(sql)?;
+                tx.execute(
+                    "UPDATE chunks SET vector = ?1 WHERE rowid = ?2",
+                    params![to_blob(&normalized(vector)), rowid],
+                )
+                .map_err(sql)?;
             }
             tx.commit().map_err(sql)?;
             done += batch.len();
@@ -312,8 +350,10 @@ impl Index {
             entry.0 += 1.0 / (RRF_K + rank as f32 + 1.0);
             entry.2 = Some(*chunk);
         }
-        let mut ranked: Vec<(i64, f32, Option<i64>, Option<i64>)> =
-            fused.into_iter().map(|(doc, (score, words, meaning))| (doc, score, words, meaning)).collect();
+        let mut ranked: Vec<(i64, f32, Option<i64>, Option<i64>)> = fused
+            .into_iter()
+            .map(|(doc, (score, words, meaning))| (doc, score, words, meaning))
+            .collect();
         ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
         ranked.truncate(query.limit);
         let best = lists as f32 / (RRF_K + 1.0);
@@ -322,9 +362,11 @@ impl Index {
         for (doc, score, words, meaning) in ranked {
             let (id, kind, title, source): (String, String, Option<String>, Option<String>) = self
                 .conn
-                .query_row("SELECT id, kind, title, source FROM docs WHERE rowid = ?1", [doc], |r| {
-                    Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
-                })
+                .query_row(
+                    "SELECT id, kind, title, source FROM docs WHERE rowid = ?1",
+                    [doc],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                )
                 .map_err(sql)?;
             let snippet = match (words, meaning) {
                 (Some(chunk), _) => self.lexical_snippet(&fts, chunk)?,
@@ -338,17 +380,29 @@ impl Index {
                 source,
                 snippet,
                 score: (score / best * 1000.0).round() / 1000.0,
-                matched: Matched { words: words.is_some(), meaning: meaning.is_some() },
+                matched: Matched {
+                    words: words.is_some(),
+                    meaning: meaning.is_some(),
+                },
             });
         }
         Ok(hits)
     }
 
     /// Documents ranked by their best-matching chunk, with that chunk.
-    fn lexical(&self, query: &Query, terms: &[String], candidates: usize) -> Result<Vec<(i64, i64)>> {
+    fn lexical(
+        &self,
+        query: &Query,
+        terms: &[String],
+        candidates: usize,
+    ) -> Result<Vec<(i64, i64)>> {
         let mut ranked: Vec<(i64, i64)> = Vec::new();
         let mut seen = HashSet::new();
-        let passes: &[bool] = if query.all_terms || terms.len() == 1 { &[true] } else { &[true, false] };
+        let passes: &[bool] = if query.all_terms || terms.len() == 1 {
+            &[true]
+        } else {
+            &[true, false]
+        };
         for &all in passes {
             let mut values = vec![text::fts_query(terms, all)];
             let filter = filters(query, &mut values);
@@ -357,7 +411,11 @@ impl Index {
                  WHERE fts MATCH ?1 {filter} ORDER BY {BM25} LIMIT {LEXICAL_ROWS}"
             );
             let mut statement = self.conn.prepare(&sql_text).map_err(sql)?;
-            let rows = statement.query_map(params_from_iter(values.iter()), |r| Ok((r.get(0)?, r.get(1)?))).map_err(sql)?;
+            let rows = statement
+                .query_map(params_from_iter(values.iter()), |r| {
+                    Ok((r.get(0)?, r.get(1)?))
+                })
+                .map_err(sql)?;
             for row in rows {
                 let (doc, chunk): (i64, i64) = row.map_err(sql)?;
                 if seen.insert(doc) {
@@ -374,8 +432,15 @@ impl Index {
 
     /// Documents ranked by their nearest chunk, or `None` without a model.
     fn semantic(&mut self, query: &Query, candidates: usize) -> Result<Option<Vec<(i64, i64)>>> {
-        let Some(embedder) = self.embedder.clone() else { return Ok(None) };
-        let probe = normalized(embedder.embed(std::slice::from_ref(&query.text)).pop().unwrap_or_default());
+        let Some(embedder) = self.embedder.clone() else {
+            return Ok(None);
+        };
+        let probe = normalized(
+            embedder
+                .embed(std::slice::from_ref(&query.text))
+                .pop()
+                .unwrap_or_default(),
+        );
         if probe.iter().all(|x| *x == 0.0) {
             return Ok(Some(vec![]));
         }
@@ -386,10 +451,14 @@ impl Index {
         let within = folder(query);
         let mut best: HashMap<i64, (f32, i64)> = HashMap::new();
         for cached in vectors {
-            let Some(meta) = docs.get(&cached.doc) else { continue };
+            let Some(meta) = docs.get(&cached.doc) else {
+                continue;
+            };
             if !query.scopes.contains(&meta.scope)
                 || (!query.kinds.is_empty() && !query.kinds.contains(&meta.kind))
-                || within.as_ref().is_some_and(|w| !meta.id.starts_with(w.as_str()))
+                || within
+                    .as_ref()
+                    .is_some_and(|w| !meta.id.starts_with(w.as_str()))
             {
                 continue;
             }
@@ -402,9 +471,18 @@ impl Index {
                 *entry = (similarity, cached.chunk);
             }
         }
-        let mut ranked: Vec<(i64, f32, i64)> = best.into_iter().map(|(doc, (s, chunk))| (doc, s, chunk)).collect();
+        let mut ranked: Vec<(i64, f32, i64)> = best
+            .into_iter()
+            .map(|(doc, (s, chunk))| (doc, s, chunk))
+            .collect();
         ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
-        Ok(Some(ranked.into_iter().take(candidates).map(|(doc, _, chunk)| (doc, chunk)).collect()))
+        Ok(Some(
+            ranked
+                .into_iter()
+                .take(candidates)
+                .map(|(doc, _, chunk)| (doc, chunk))
+                .collect(),
+        ))
     }
 
     /// One vector per document in `scope`: the normalized mean of its chunks'
@@ -423,29 +501,53 @@ impl Index {
             if docs.get(&cached.doc).is_none_or(|d| d.scope != scope) {
                 continue;
             }
-            let sum = sums.entry(cached.doc).or_insert_with(|| vec![0.0; cached.vector.len()]);
+            let sum = sums
+                .entry(cached.doc)
+                .or_insert_with(|| vec![0.0; cached.vector.len()]);
             if sum.len() == cached.vector.len() {
-                sum.iter_mut().zip(&cached.vector).for_each(|(s, x)| *s += x);
+                sum.iter_mut()
+                    .zip(&cached.vector)
+                    .for_each(|(s, x)| *s += x);
             }
         }
-        Ok(sums.into_iter().map(|(doc, sum)| (docs[&doc].id.clone(), normalized(sum))).collect())
+        Ok(sums
+            .into_iter()
+            .map(|(doc, sum)| (docs[&doc].id.clone(), normalized(sum)))
+            .collect())
     }
 
     fn load_vectors(&self) -> Result<(Vec<Cached>, HashMap<i64, DocMeta>)> {
-        let mut statement = self.conn.prepare("SELECT rowid, scope, id, kind FROM docs").map_err(sql)?;
+        let mut statement = self
+            .conn
+            .prepare("SELECT rowid, scope, id, kind FROM docs")
+            .map_err(sql)?;
         let docs = statement
             .query_map([], |r| {
                 let kind: String = r.get(3)?;
-                Ok((r.get(0)?, DocMeta { scope: r.get(1)?, id: r.get(2)?, kind: Kind::parse(&kind).unwrap_or(Kind::Writing) }))
+                Ok((
+                    r.get(0)?,
+                    DocMeta {
+                        scope: r.get(1)?,
+                        id: r.get(2)?,
+                        kind: Kind::parse(&kind).unwrap_or(Kind::Writing),
+                    },
+                ))
             })
             .map_err(sql)?
             .collect::<std::result::Result<HashMap<_, _>, _>>()
             .map_err(sql)?;
-        let mut statement = self.conn.prepare("SELECT doc, rowid, vector FROM chunks WHERE vector IS NOT NULL").map_err(sql)?;
+        let mut statement = self
+            .conn
+            .prepare("SELECT doc, rowid, vector FROM chunks WHERE vector IS NOT NULL")
+            .map_err(sql)?;
         let vectors = statement
             .query_map([], |r| {
                 let blob: Vec<u8> = r.get(2)?;
-                Ok(Cached { doc: r.get(0)?, chunk: r.get(1)?, vector: from_blob(&blob) })
+                Ok(Cached {
+                    doc: r.get(0)?,
+                    chunk: r.get(1)?,
+                    vector: from_blob(&blob),
+                })
             })
             .map_err(sql)?
             .collect::<std::result::Result<Vec<_>, _>>()
@@ -468,8 +570,13 @@ impl Index {
     }
 
     fn chunk_snippet(&self, chunk: i64) -> Result<String> {
-        let body: Option<String> =
-            self.conn.query_row("SELECT body FROM fts WHERE rowid = ?1", [chunk], |r| r.get(0)).optional().map_err(sql)?;
+        let body: Option<String> = self
+            .conn
+            .query_row("SELECT body FROM fts WHERE rowid = ?1", [chunk], |r| {
+                r.get(0)
+            })
+            .optional()
+            .map_err(sql)?;
         Ok(text::snippet(&body.unwrap_or_default()))
     }
 }
@@ -480,7 +587,11 @@ fn delete(tx: &rusqlite::Transaction, scope: &str, id: &str) -> Result<()> {
         params![scope, id],
     )
     .map_err(sql)?;
-    tx.execute("DELETE FROM docs WHERE scope = ?1 AND id = ?2", params![scope, id]).map_err(sql)?;
+    tx.execute(
+        "DELETE FROM docs WHERE scope = ?1 AND id = ?2",
+        params![scope, id],
+    )
+    .map_err(sql)?;
     Ok(())
 }
 
@@ -489,13 +600,19 @@ fn filters(query: &Query, values: &mut Vec<String>) -> String {
     let mut out = String::new();
     let mut list = |column: &str, items: Vec<String>, values: &mut Vec<String>| {
         let start = values.len() + 1;
-        let marks: Vec<String> = (start..start + items.len()).map(|i| format!("?{i}")).collect();
+        let marks: Vec<String> = (start..start + items.len())
+            .map(|i| format!("?{i}"))
+            .collect();
         values.extend(items);
         out.push_str(&format!(" AND {column} IN ({})", marks.join(", ")));
     };
     list("docs.scope", query.scopes.clone(), values);
     if !query.kinds.is_empty() {
-        list("docs.kind", query.kinds.iter().map(|k| k.as_str().to_string()).collect(), values);
+        list(
+            "docs.kind",
+            query.kinds.iter().map(|k| k.as_str().to_string()).collect(),
+            values,
+        );
     }
     if let Some(within) = folder(query) {
         values.push(within);
@@ -530,7 +647,9 @@ fn to_blob(vector: &[f32]) -> Vec<u8> {
 }
 
 fn from_blob(blob: &[u8]) -> Vec<f32> {
-    blob.chunks_exact(4).map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).collect()
+    blob.chunks_exact(4)
+        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+        .collect()
 }
 
 fn sql(error: rusqlite::Error) -> String {

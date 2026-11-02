@@ -2,15 +2,25 @@
 //! the live network.
 
 use super::*;
-use axum::{Router, http::{HeaderMap, StatusCode, header}, response::IntoResponse, routing::get};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use axum::{
+    Router,
+    http::{HeaderMap, StatusCode, header},
+    response::IntoResponse,
+    routing::get,
+};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn engine() -> Engine {
-    Engine::new().with(FeedAdapter::new().unwrap()).with(WebAdapter::new().unwrap())
+    Engine::new()
+        .with(FeedAdapter::new().unwrap())
+        .with(WebAdapter::new().unwrap())
 }
 
-const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/feed");
+const FIXTURES: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../crates/ingest/fixtures/feed"
+);
 
 fn fixture(name: &str) -> String {
     std::fs::read_to_string(format!("{FIXTURES}/{name}")).unwrap()
@@ -21,17 +31,34 @@ async fn serve(hits: Arc<AtomicUsize>) -> String {
         let hits = hits.clone();
         async move {
             hits.fetch_add(1, Ordering::SeqCst);
-            if headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) == Some("\"v1\"") {
+            if headers
+                .get(header::IF_NONE_MATCH)
+                .and_then(|v| v.to_str().ok())
+                == Some("\"v1\"")
+            {
                 return StatusCode::NOT_MODIFIED.into_response();
             }
-            ([(header::ETAG, "\"v1\""), (header::CONTENT_TYPE, "application/rss+xml")], fixture("blog.rss.xml")).into_response()
+            (
+                [
+                    (header::ETAG, "\"v1\""),
+                    (header::CONTENT_TYPE, "application/rss+xml"),
+                ],
+                fixture("blog.rss.xml"),
+            )
+                .into_response()
         }
     };
     let app = Router::new()
         .route("/feed.xml", get(feed))
-        .route("/blog", get(|| async { ([(header::CONTENT_TYPE, "text/html")], fixture("blog.html")) }))
+        .route(
+            "/blog",
+            get(|| async { ([(header::CONTENT_TYPE, "text/html")], fixture("blog.html")) }),
+        )
         .route("/broken", get(|| async { StatusCode::SERVICE_UNAVAILABLE }))
-        .route("/html", get(|| async { "<html><body>No feeds here</body></html>" }));
+        .route(
+            "/html",
+            get(|| async { "<html><body>No feeds here</body></html>" }),
+        );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -39,7 +66,10 @@ async fn serve(hits: Arc<AtomicUsize>) -> String {
 }
 
 fn runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
 }
 
 #[test]
@@ -50,7 +80,11 @@ fn polls_with_conditional_requests_and_records_health() {
         let store = Mutex::new(Store::memory());
         let engine = engine();
         let url = format!("{base}/feed.xml");
-        let (source, _) = store.lock().unwrap().add_source(&url, SourceKind::Feed, None, now()).unwrap();
+        let (source, _) = store
+            .lock()
+            .unwrap()
+            .add_source(&url, SourceKind::Feed, None, now())
+            .unwrap();
 
         let due = store.lock().unwrap().due_one(source.id).unwrap();
         let first = poll(&store, &engine, &due).await;
@@ -76,8 +110,15 @@ fn failures_back_off_and_keep_the_source() {
         let base = serve(Arc::default()).await;
         let store = Mutex::new(Store::memory());
         let engine = engine();
-        for (path, kind, status) in [("/broken", SourceKind::Youtube, Some(503)), ("/html", SourceKind::Feed, None)] {
-            let (source, _) = store.lock().unwrap().add_source(&format!("{base}{path}"), kind, None, now()).unwrap();
+        for (path, kind, status) in [
+            ("/broken", SourceKind::Youtube, Some(503)),
+            ("/html", SourceKind::Feed, None),
+        ] {
+            let (source, _) = store
+                .lock()
+                .unwrap()
+                .add_source(&format!("{base}{path}"), kind, None, now())
+                .unwrap();
             let due = store.lock().unwrap().due_one(source.id).unwrap();
             let polled = poll(&store, &engine, &due).await;
             assert!(polled.error.is_some());
@@ -98,11 +139,22 @@ fn a_page_url_finds_its_feed() {
     runtime().block_on(async {
         let base = serve(Arc::default()).await;
         let feeds = FeedAdapter::new().unwrap();
-        assert_eq!(find_feed(&feeds, &format!("{base}/blog")).await.unwrap(), format!("{base}/feed.xml"));
-        assert_eq!(find_feed(&feeds, &format!("{base}/feed.xml")).await.unwrap(), format!("{base}/feed.xml"));
+        assert_eq!(
+            find_feed(&feeds, &format!("{base}/blog")).await.unwrap(),
+            format!("{base}/feed.xml")
+        );
+        assert_eq!(
+            find_feed(&feeds, &format!("{base}/feed.xml"))
+                .await
+                .unwrap(),
+            format!("{base}/feed.xml")
+        );
         assert!(find_feed(&feeds, &format!("{base}/html")).await.is_err());
         // Down right now is followed anyway; polling retries it.
-        assert_eq!(find_feed(&feeds, &format!("{base}/broken")).await.unwrap(), format!("{base}/broken"));
+        assert_eq!(
+            find_feed(&feeds, &format!("{base}/broken")).await.unwrap(),
+            format!("{base}/broken")
+        );
     });
 }
 
@@ -113,13 +165,20 @@ fn backoff_grows_and_youtube_stays_close() {
     assert_eq!(retry_after(SourceKind::Feed, 30), 24 * 60 * 60);
     assert_eq!(retry_after(SourceKind::Youtube, 30), 60 * 60);
     assert!(describe(SourceKind::Youtube, ingest::Error::Status(404)).contains("keeps trying"));
-    assert_eq!(describe(SourceKind::Feed, ingest::Error::Status(503)), "HTTP 503");
+    assert_eq!(
+        describe(SourceKind::Feed, ingest::Error::Status(503)),
+        "HTTP 503"
+    );
 }
 
 #[test]
 fn x_accounts_poll_through_the_x_adapter() {
     runtime().block_on(async {
-        let profile = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/x/fx-profile.json")).unwrap();
+        let profile = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../crates/ingest/fixtures/x/fx-profile.json"
+        ))
+        .unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
         let counted = hits.clone();
         let app = Router::new().route(
@@ -131,16 +190,37 @@ fn x_accounts_poll_through_the_x_adapter() {
             }),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = kintsugi_ingest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let base =
+            kintsugi_ingest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap()))
+                .unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let endpoints = kintsugi_ingest::x::XEndpoints { fxtwitter: base.clone(), syndication: base.clone(), oembed: base };
-        let x = XAdapter::with_endpoints(endpoints, kintsugi_ingest::api::ApiLimits::default()).unwrap();
+        let endpoints = kintsugi_ingest::x::XEndpoints {
+            fxtwitter: base.clone(),
+            syndication: base.clone(),
+            oembed: base,
+        };
+        let x = XAdapter::with_endpoints(endpoints, kintsugi_ingest::api::ApiLimits::default())
+            .unwrap();
         let engine = Engine::new().with(x).with(FeedAdapter::new().unwrap());
 
         let store = Mutex::new(Store::memory());
-        let (url, kind, _) = resolve(&FeedAdapter::new().unwrap(), Subscribe::Url { url: "x.com/SimonW".into() }).await.unwrap();
-        assert_eq!((url.as_str(), kind), ("https://x.com/simonw", SourceKind::X));
-        let (source, _) = store.lock().unwrap().add_source(&url, kind, None, now()).unwrap();
+        let (url, kind, _) = resolve(
+            &FeedAdapter::new().unwrap(),
+            Subscribe::Url {
+                url: "x.com/SimonW".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (url.as_str(), kind),
+            ("https://x.com/simonw", SourceKind::X)
+        );
+        let (source, _) = store
+            .lock()
+            .unwrap()
+            .add_source(&url, kind, None, now())
+            .unwrap();
         let due = store.lock().unwrap().due_one(source.id).unwrap();
         let first = poll(&store, &engine, &due).await;
         assert_eq!(first.error, None);
@@ -166,7 +246,10 @@ fn x_failures_retry_within_the_hour() {
     assert!(describe(SourceKind::X, ingest::Error::RateLimited).contains("try again"));
 }
 
-const WATCH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/watch");
+const WATCH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../crates/ingest/fixtures/watch"
+);
 
 #[test]
 fn watched_pages_post_their_changes() {
@@ -183,13 +266,24 @@ fn watched_pages_post_their_changes() {
                 async move {
                     let n = v.load(Ordering::SeqCst);
                     let tag = format!("\"v{n}\"");
-                    if headers.get(header::IF_NONE_MATCH).and_then(|h| h.to_str().ok()) == Some(tag.as_str()) {
+                    if headers
+                        .get(header::IF_NONE_MATCH)
+                        .and_then(|h| h.to_str().ok())
+                        == Some(tag.as_str())
+                    {
                         c.fetch_add(1, Ordering::SeqCst);
                         return StatusCode::NOT_MODIFIED.into_response();
                     }
                     let file = ["now-v1.html", "now-v1-noise.html", "now-v2.html"][n.min(2)];
                     let html = std::fs::read_to_string(format!("{WATCH}/{file}")).unwrap();
-                    ([(header::ETAG, tag), (header::CONTENT_TYPE, "text/html".into())], html).into_response()
+                    (
+                        [
+                            (header::ETAG, tag),
+                            (header::CONTENT_TYPE, "text/html".into()),
+                        ],
+                        html,
+                    )
+                        .into_response()
                 }
             }),
         );
@@ -199,24 +293,50 @@ fn watched_pages_post_their_changes() {
 
         let store = Mutex::new(Store::memory());
         let engine = engine();
-        let (url, kind, _) = resolve(&FeedAdapter::new().unwrap(), Subscribe::Page { url: format!("{base}/now") }).await.unwrap();
+        let (url, kind, _) = resolve(
+            &FeedAdapter::new().unwrap(),
+            Subscribe::Page {
+                url: format!("{base}/now"),
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(kind, SourceKind::Page);
-        let (source, _) = store.lock().unwrap().add_source(&url, kind, None, now()).unwrap();
+        let (source, _) = store
+            .lock()
+            .unwrap()
+            .add_source(&url, kind, None, now())
+            .unwrap();
         let poll_once = || async {
             let due = store.lock().unwrap().due_one(source.id).unwrap();
             poll(&store, &engine, &due).await
         };
 
         let baseline = poll_once().await;
-        assert_eq!((baseline.added, baseline.error.as_deref()), (0, None), "following records a baseline");
+        assert_eq!(
+            (baseline.added, baseline.error.as_deref()),
+            (0, None),
+            "following records a baseline"
+        );
         let followed = store.lock().unwrap().source(source.id).unwrap();
         assert_eq!(followed.title.as_deref(), Some("What I'm doing now"));
-        assert!(followed.next_fetch_at - now() > 5 * 60 * 60, "pages poll every few hours");
+        assert!(
+            followed.next_fetch_at - now() > 5 * 60 * 60,
+            "pages poll every few hours"
+        );
 
         version.store(1, Ordering::SeqCst);
-        assert_eq!(poll_once().await.added, 0, "new dates and counters aren't a change");
+        assert_eq!(
+            poll_once().await.added,
+            0,
+            "new dates and counters aren't a change"
+        );
         assert_eq!(poll_once().await.added, 0);
-        assert_eq!(conditional.load(Ordering::SeqCst), 1, "the ETag came back as If-None-Match");
+        assert_eq!(
+            conditional.load(Ordering::SeqCst),
+            1,
+            "the ETag came back as If-None-Match"
+        );
 
         version.store(2, Ordering::SeqCst);
         let changed = poll_once().await;
@@ -224,42 +344,93 @@ fn watched_pages_post_their_changes() {
         let page = store.lock().unwrap().items(0, 10, None).unwrap();
         let item = &page.items[0];
         assert_eq!(item.title.as_deref(), Some("The Left Hand of Darkness"));
-        assert_eq!(item.summary.as_deref(), Some("2 lines added and 1 removed on What I'm doing now"));
+        assert_eq!(
+            item.summary.as_deref(),
+            Some("2 lines added and 1 removed on What I'm doing now")
+        );
         assert_eq!(item.url.as_deref(), Some(url.as_str()));
         assert_eq!(item.source_kind, SourceKind::Page);
         let content = store.lock().unwrap().content(item.id).unwrap().unwrap();
-        assert!(content.contains("**Removed**\n\n- The Dispossessed"), "{content}");
+        assert!(
+            content.contains("**Removed**\n\n- The Dispossessed"),
+            "{content}"
+        );
     });
 }
 
 #[test]
 fn authors_bring_their_new_books() {
     runtime().block_on(async {
-        let google = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/authors/google-clarke.json")).unwrap();
-        let app = Router::new().route("/books/v1/volumes", get(move || {
-            let google = google.clone();
-            async move { ([(header::CONTENT_TYPE, "application/json")], google) }
-        }));
+        let google = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../../crates/ingest/fixtures/authors/google-clarke.json"
+        ))
+        .unwrap();
+        let app = Router::new().route(
+            "/books/v1/volumes",
+            get(move || {
+                let google = google.clone();
+                async move { ([(header::CONTENT_TYPE, "application/json")], google) }
+            }),
+        );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = kintsugi_ingest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let base =
+            kintsugi_ingest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap()))
+                .unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        let books = AuthorAdapter::with_endpoints(kintsugi_ingest::authors::AuthorEndpoints::at(base), kintsugi_ingest::api::ApiLimits::default()).unwrap();
+        let books = AuthorAdapter::with_endpoints(
+            kintsugi_ingest::authors::AuthorEndpoints::at(base),
+            kintsugi_ingest::api::ApiLimits::default(),
+        )
+        .unwrap();
         let engine = Engine::new().with(FeedAdapter::new().unwrap()).with(books);
 
         let store = Mutex::new(Store::memory());
-        let (url, kind, title) = resolve(&FeedAdapter::new().unwrap(), Subscribe::Author { name: " Susanna Clarke ".into() }).await.unwrap();
-        assert_eq!((kind, title.as_deref()), (SourceKind::Author, Some("Susanna Clarke")));
-        let (source, _) = store.lock().unwrap().add_source(&url, kind, title.as_deref(), now()).unwrap();
+        let (url, kind, title) = resolve(
+            &FeedAdapter::new().unwrap(),
+            Subscribe::Author {
+                name: " Susanna Clarke ".into(),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            (kind, title.as_deref()),
+            (SourceKind::Author, Some("Susanna Clarke"))
+        );
+        let (source, _) = store
+            .lock()
+            .unwrap()
+            .add_source(&url, kind, title.as_deref(), now())
+            .unwrap();
         let due = store.lock().unwrap().due_one(source.id).unwrap();
         let first = poll(&store, &engine, &due).await;
         assert_eq!(first.error, None);
         let page = store.lock().unwrap().items(0, 10, None).unwrap();
-        let titles: Vec<_> = page.items.iter().map(|i| i.title.clone().unwrap()).collect();
+        let titles: Vec<_> = page
+            .items
+            .iter()
+            .map(|i| i.title.clone().unwrap())
+            .collect();
         // The latest three show on following, even though they're old.
-        assert_eq!(titles, ["The Lost Garden: A Novel", "The Wood at Midwinter", "Piranesi"]);
-        assert!(page.items.iter().all(|i| i.media == "book" && i.source_kind == SourceKind::Author));
+        assert_eq!(
+            titles,
+            [
+                "The Lost Garden: A Novel",
+                "The Wood at Midwinter",
+                "Piranesi"
+            ]
+        );
+        assert!(
+            page.items
+                .iter()
+                .all(|i| i.media == "book" && i.source_kind == SourceKind::Author)
+        );
         let followed = store.lock().unwrap().source(source.id).unwrap();
-        assert!(followed.next_fetch_at - now() > 6 * 24 * 60 * 60, "authors poll weekly");
+        assert!(
+            followed.next_fetch_at - now() > 6 * 24 * 60 * 60,
+            "authors poll weekly"
+        );
 
         let due = store.lock().unwrap().due_one(source.id).unwrap();
         assert_eq!(poll(&store, &engine, &due).await.added, 0);

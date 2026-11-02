@@ -87,7 +87,13 @@ impl ApiClient {
             }))
             .build()
             .map_err(|_| Error::Setup)?;
-        Ok(Self { client, direct, limits, next_slot: Mutex::new(None), blocked: Mutex::new(HashMap::new()) })
+        Ok(Self {
+            client,
+            direct,
+            limits,
+            next_slot: Mutex::new(None),
+            blocked: Mutex::new(HashMap::new()),
+        })
     }
 
     /// An API request: waits for its polite slot, honours rate limits, and
@@ -121,7 +127,12 @@ impl ApiClient {
         if !allowed_url(&url) {
             return Err(Error::InvalidUrl);
         }
-        let response = self.client.get(url).send().await.map_err(|_| Error::Unavailable)?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| Error::Unavailable)?;
         if !response.status().is_success() {
             return Err(Error::Unavailable);
         }
@@ -141,7 +152,11 @@ impl ApiClient {
             return Err(Error::RateLimited);
         }
         tokio::time::sleep_until(self.slot()).await;
-        let response = client.get(url).send().await.map_err(|_| Error::Unavailable)?;
+        let response = client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| Error::Unavailable)?;
         let now = Instant::now();
         if let Some(wait) = block_for(response.status(), response.headers()) {
             self.blocked.lock().unwrap().insert(host, now + wait);
@@ -185,7 +200,11 @@ fn block_for(status: StatusCode, headers: &HeaderMap) -> Option<Duration> {
     };
     let bounded = |s: f64| Duration::from_secs_f64(s.min(MAX_BLOCK.as_secs_f64()));
     if status == StatusCode::TOO_MANY_REQUESTS {
-        return Some(seconds("retry-after").or_else(|| seconds("x-ratelimit-reset")).map_or(DEFAULT_BLOCK, bounded));
+        return Some(
+            seconds("retry-after")
+                .or_else(|| seconds("x-ratelimit-reset"))
+                .map_or(DEFAULT_BLOCK, bounded),
+        );
     }
     // Reddit announces an exhausted budget before refusing.
     if seconds("x-ratelimit-remaining").is_some_and(|n| n < 1.0) {
@@ -226,23 +245,47 @@ mod tests {
     #[test]
     fn rate_limit_hints_are_honoured_and_bounded() {
         let tmr = StatusCode::TOO_MANY_REQUESTS;
-        assert_eq!(block_for(tmr, &headers(&[("retry-after", "30")])), Some(Duration::from_secs(30)));
+        assert_eq!(
+            block_for(tmr, &headers(&[("retry-after", "30")])),
+            Some(Duration::from_secs(30))
+        );
         assert_eq!(block_for(tmr, &headers(&[])), Some(DEFAULT_BLOCK));
-        assert_eq!(block_for(tmr, &headers(&[("retry-after", "99999999")])), Some(MAX_BLOCK));
-        assert_eq!(block_for(tmr, &headers(&[("retry-after", "soon")])), Some(DEFAULT_BLOCK));
+        assert_eq!(
+            block_for(tmr, &headers(&[("retry-after", "99999999")])),
+            Some(MAX_BLOCK)
+        );
+        assert_eq!(
+            block_for(tmr, &headers(&[("retry-after", "soon")])),
+            Some(DEFAULT_BLOCK)
+        );
         let ok = StatusCode::OK;
         assert_eq!(
-            block_for(ok, &headers(&[("x-ratelimit-remaining", "0.0"), ("x-ratelimit-reset", "12")])),
+            block_for(
+                ok,
+                &headers(&[
+                    ("x-ratelimit-remaining", "0.0"),
+                    ("x-ratelimit-reset", "12")
+                ])
+            ),
             Some(Duration::from_secs(12))
         );
-        assert_eq!(block_for(ok, &headers(&[("x-ratelimit-remaining", "57.0")])), None);
+        assert_eq!(
+            block_for(ok, &headers(&[("x-ratelimit-remaining", "57.0")])),
+            None
+        );
         assert_eq!(block_for(ok, &headers(&[])), None);
     }
 
     #[test]
     fn requests_are_spaced_by_the_minimum_interval() {
-        let client =
-            ApiClient::new("test", ApiLimits { min_interval: Duration::from_secs(2), ..ApiLimits::default() }).unwrap();
+        let client = ApiClient::new(
+            "test",
+            ApiLimits {
+                min_interval: Duration::from_secs(2),
+                ..ApiLimits::default()
+            },
+        )
+        .unwrap();
         let first = client.slot();
         let second = client.slot();
         assert_eq!(second - first, Duration::from_secs(2));

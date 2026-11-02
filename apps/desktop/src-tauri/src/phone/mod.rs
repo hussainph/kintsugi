@@ -16,7 +16,7 @@ use server::{Changed, Host};
 use std::io::Read;
 use std::sync::{Arc, Mutex};
 use tailscale::Tailnet;
-use tauri::{async_runtime, Emitter, Manager, State};
+use tauri::{Emitter, Manager, State, async_runtime};
 use tokio::sync::oneshot;
 
 /// The same on both sides of `tailscale serve`, so the URL is easy to read.
@@ -45,7 +45,10 @@ pub struct PhoneStatus {
 }
 
 fn pair_link(url: &str, token: &str) -> String {
-    format!("kintsugi://pair?url={}&token={token}", url.replace(':', "%3A").replace('/', "%2F"))
+    format!(
+        "kintsugi://pair?url={}&token={token}",
+        url.replace(':', "%3A").replace('/', "%2F")
+    )
 }
 
 /// 120 random bits as six groups of Crockford base32, readable aloud if need be.
@@ -56,8 +59,15 @@ fn new_token() -> Result<String> {
         .and_then(|mut f| f.read_exact(&mut bytes))
         .map_err(|e| format!("couldn't make a pairing token: {e}"))?;
     let bits = bytes.iter().fold(0u128, |acc, &b| (acc << 8) | b as u128);
-    let chars: Vec<char> = (0..24).rev().map(|i| ALPHABET[((bits >> (i * 5)) & 31) as usize] as char).collect();
-    Ok(chars.chunks(4).map(|c| c.iter().collect::<String>()).collect::<Vec<_>>().join("-"))
+    let chars: Vec<char> = (0..24)
+        .rev()
+        .map(|i| ALPHABET[((bits >> (i * 5)) & 31) as usize] as char)
+        .collect();
+    Ok(chars
+        .chunks(4)
+        .map(|c| c.iter().collect::<String>())
+        .collect::<Vec<_>>()
+        .join("-"))
 }
 
 fn host(app: &AppHandle) -> Result<Host> {
@@ -114,9 +124,10 @@ pub fn restore(app: &AppHandle) {
 async fn status(app: &AppHandle, problem: Option<String>) -> PhoneStatus {
     let phone = config::load(app).phone;
     let listening = app.state::<Phone>().0.lock().unwrap().is_some();
-    let (tailnet, serving) = async_runtime::spawn_blocking(|| (tailscale::status(), tailscale::serving(PORT)))
-        .await
-        .unwrap_or((Tailnet::Down, false));
+    let (tailnet, serving) =
+        async_runtime::spawn_blocking(|| (tailscale::status(), tailscale::serving(PORT)))
+            .await
+            .unwrap_or((Tailnet::Down, false));
     let (tailscale, url) = match tailnet {
         Tailnet::Missing => ("missing", None),
         Tailnet::Down => ("down", None),
@@ -129,7 +140,10 @@ async fn status(app: &AppHandle, problem: Option<String>) -> PhoneStatus {
         enabled: phone.enabled,
         listening,
         tailscale,
-        pair: url.as_deref().zip(token.as_deref()).map(|(u, t)| pair_link(u, t)),
+        pair: url
+            .as_deref()
+            .zip(token.as_deref())
+            .map(|(u, t)| pair_link(u, t)),
         dev_pair: token
             .as_deref()
             .filter(|_| cfg!(debug_assertions))
@@ -150,7 +164,9 @@ pub async fn phone_status(app: AppHandle) -> PhoneStatus {
 #[tauri::command]
 pub async fn phone_enable(app: AppHandle, enabled: bool) -> Result<PhoneStatus> {
     if cfg!(feature = "headless") {
-        return Err("Phone access is unavailable in headless mode (Tailscale settings are shared)".into());
+        return Err(
+            "Phone access is unavailable in headless mode (Tailscale settings are shared)".into(),
+        );
     }
     if !enabled {
         stop(&app);
@@ -207,7 +223,11 @@ mod tests {
         let token = new_token().unwrap();
         assert_eq!(token.len(), 29);
         assert!(token.split('-').all(|g| g.len() == 4));
-        assert!(token.chars().all(|c| c == '-' || "0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(c)));
+        assert!(
+            token
+                .chars()
+                .all(|c| c == '-' || "0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(c))
+        );
         assert_ne!(token, new_token().unwrap());
     }
 

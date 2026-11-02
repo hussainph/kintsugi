@@ -19,12 +19,17 @@
 //! captures, not for a page checked every few hours.
 
 use super::{Limits, WebAdapter, allowed_url, canonical_url, web_url};
-use crate::{Error, Item, Media, MediaKind, Polled, Result, SourceInfo, SourceType, Subscription, markdown, text};
+use crate::{
+    Error, Item, Media, MediaKind, Polled, Result, SourceInfo, SourceType, Subscription, markdown,
+    text,
+};
 use dom_query::Document;
 use futures_util::StreamExt;
 use regex::Regex;
 use reqwest::Url;
-use reqwest::header::{ACCEPT, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
+use reqwest::header::{
+    ACCEPT, CONTENT_TYPE, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -32,8 +37,8 @@ use std::sync::LazyLock;
 
 /// Never worth watching: page chrome and anything not shown as text.
 const CHROME: &[&str] = &[
-    "script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "template", "iframe", "button",
-    "head", "meta", "link", "select", "dialog",
+    "script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "template",
+    "iframe", "button", "head", "meta", "link", "select", "dialog",
 ];
 /// The cursor keeps at most this many lines of the last version.
 const MAX_LINES: usize = 1_500;
@@ -75,18 +80,28 @@ pub struct Change {
 
 pub(super) async fn poll(adapter: &WebAdapter, subscription: &Subscription) -> Result<Polled> {
     let url = web_url(&subscription.url)?;
-    let previous: Option<Cursor> = subscription.cursor.as_deref().and_then(|c| serde_json::from_str(c).ok());
+    let previous: Option<Cursor> = subscription
+        .cursor
+        .as_deref()
+        .and_then(|c| serde_json::from_str(c).ok());
     let deadline = tokio::time::Instant::now() + adapter.limits.deadline;
     let fetched = tokio::time::timeout_at(deadline, fetch(adapter, &url, previous.as_ref()))
         .await
         .map_err(|_| Error::TimedOut)??;
     let Some(page) = fetched else {
-        return Ok(Polled { items: Vec::new(), cursor: subscription.cursor.clone(), source: None });
+        return Ok(Polled {
+            items: Vec::new(),
+            cursor: subscription.cursor.clone(),
+            source: None,
+        });
     };
     let snapshot = if page.html {
         snapshot(&String::from_utf8_lossy(&page.bytes), &page.url)
     } else {
-        Snapshot { lines: lines(&String::from_utf8_lossy(&page.bytes)), ..Snapshot::default() }
+        Snapshot {
+            lines: lines(&String::from_utf8_lossy(&page.bytes)),
+            ..Snapshot::default()
+        }
     };
     if snapshot.lines.is_empty() && snapshot.title.is_none() {
         return Err(Error::Unavailable);
@@ -94,7 +109,10 @@ pub(super) async fn poll(adapter: &WebAdapter, subscription: &Subscription) -> R
     let hash = fingerprint(&snapshot.lines);
     let canonical = canonical_url(&url);
     let source = SourceInfo {
-        title: snapshot.title.clone().or_else(|| canonical.host_str().map(str::to_string)),
+        title: snapshot
+            .title
+            .clone()
+            .or_else(|| canonical.host_str().map(str::to_string)),
         url: Some(canonical.to_string()),
         image: snapshot.image.clone(),
     };
@@ -107,8 +125,17 @@ pub(super) async fn poll(adapter: &WebAdapter, subscription: &Subscription) -> R
             items.push(item(&canonical, &snapshot, &change, &previous.hash, &hash));
         }
     }
-    let next = Cursor { etag: page.etag, modified: page.modified, hash, lines: snapshot.lines };
-    Ok(Polled { items, cursor: serde_json::to_string(&next).ok(), source: Some(source) })
+    let next = Cursor {
+        etag: page.etag,
+        modified: page.modified,
+        hash,
+        lines: snapshot.lines,
+    };
+    Ok(Polled {
+        items,
+        cursor: serde_json::to_string(&next).ok(),
+        source: Some(source),
+    })
 }
 
 struct Page {
@@ -125,7 +152,10 @@ async fn fetch(adapter: &WebAdapter, url: &Url, cursor: Option<&Cursor>) -> Resu
         return Err(Error::InvalidUrl);
     }
     let Limits { html_bytes, .. } = adapter.limits;
-    let mut request = adapter.client.get(url.clone()).header(ACCEPT, "text/html, application/xhtml+xml, text/plain;q=0.9, */*;q=0.5");
+    let mut request = adapter.client.get(url.clone()).header(
+        ACCEPT,
+        "text/html, application/xhtml+xml, text/plain;q=0.9, */*;q=0.5",
+    );
     if let Some(cursor) = cursor {
         if let Some(etag) = &cursor.etag {
             request = request.header(IF_NONE_MATCH, etag);
@@ -134,7 +164,13 @@ async fn fetch(adapter: &WebAdapter, url: &Url, cursor: Option<&Cursor>) -> Resu
             request = request.header(IF_MODIFIED_SINCE, modified);
         }
     }
-    let response = request.send().await.map_err(|e| if e.is_timeout() { Error::TimedOut } else { Error::Unavailable })?;
+    let response = request.send().await.map_err(|e| {
+        if e.is_timeout() {
+            Error::TimedOut
+        } else {
+            Error::Unavailable
+        }
+    })?;
     let status = response.status();
     if status.as_u16() == 304 && cursor.is_some() {
         return Ok(None);
@@ -142,14 +178,27 @@ async fn fetch(adapter: &WebAdapter, url: &Url, cursor: Option<&Cursor>) -> Resu
     if !status.is_success() {
         return Err(Error::Status(status.as_u16()));
     }
-    let header = |name| response.headers().get(name).and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok()).map(str::to_string);
-    let mime = header(CONTENT_TYPE).unwrap_or_default().to_ascii_lowercase();
-    let html = mime.is_empty() || mime.starts_with("text/html") || mime.starts_with("application/xhtml+xml");
+    let header = |name| {
+        response
+            .headers()
+            .get(name)
+            .and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok())
+            .map(str::to_string)
+    };
+    let mime = header(CONTENT_TYPE)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let html = mime.is_empty()
+        || mime.starts_with("text/html")
+        || mime.starts_with("application/xhtml+xml");
     if !html && !mime.starts_with("text/") {
         // An image or a PDF has no lines to compare.
         return Err(Error::Unsupported);
     }
-    if response.content_length().is_some_and(|n| n > html_bytes as u64) {
+    if response
+        .content_length()
+        .is_some_and(|n| n > html_bytes as u64)
+    {
         return Err(Error::TooLarge);
     }
     let (etag, modified, final_url) = (header(ETAG), header(LAST_MODIFIED), response.url().clone());
@@ -162,7 +211,13 @@ async fn fetch(adapter: &WebAdapter, url: &Url, cursor: Option<&Cursor>) -> Resu
         }
         bytes.extend_from_slice(&chunk);
     }
-    Ok(Some(Page { bytes, url: final_url, html, etag, modified }))
+    Ok(Some(Page {
+        bytes,
+        url: final_url,
+        html,
+        etag,
+        modified,
+    }))
 }
 
 /// The readable region of a page as lines, plus its declared title. The
@@ -171,26 +226,49 @@ async fn fetch(adapter: &WebAdapter, url: &Url, cursor: Option<&Cursor>) -> Resu
 pub fn snapshot(html: &str, url: &Url) -> Snapshot {
     let doc = Document::from(html);
     let meta = |key: &str| {
-        doc.select(&format!("meta[property='{key}'], meta[name='{key}']")).attr("content").and_then(|s| markdown::field(&s, 300))
+        doc.select(&format!("meta[property='{key}'], meta[name='{key}']"))
+            .attr("content")
+            .and_then(|s| markdown::field(&s, 300))
     };
-    let title = meta("og:title").or_else(|| doc.select("title").iter().next().and_then(|t| markdown::field(&t.text(), 300)));
+    let title = meta("og:title").or_else(|| {
+        doc.select("title")
+            .iter()
+            .next()
+            .and_then(|t| markdown::field(&t.text(), 300))
+    });
     let site = meta("og:site_name");
-    let image = meta("og:image").and_then(|s| url.join(&s).ok()).filter(allowed_url).map(String::from);
-    doc.select(r#"[hidden], [aria-hidden="true"], [style*="display:none"], [style*="display: none"]"#).remove();
+    let image = meta("og:image")
+        .and_then(|s| url.join(&s).ok())
+        .filter(allowed_url)
+        .map(String::from);
+    doc.select(
+        r#"[hidden], [aria-hidden="true"], [style*="display:none"], [style*="display: none"]"#,
+    )
+    .remove();
     let regions = doc.select("article, main, [role=main]");
-    let roots = if regions.is_empty() { doc.select("body") } else { regions };
+    let roots = if regions.is_empty() {
+        doc.select("body")
+    } else {
+        regions
+    };
     let text = roots
         .nodes()
         .iter()
         .map(|root| root.md(Some(CHROME)).to_string())
         .max_by_key(|s| s.chars().count())
         .unwrap_or_default();
-    Snapshot { title, site, image, lines: lines(&text) }
+    Snapshot {
+        title,
+        site,
+        image,
+        lines: lines(&text),
+    }
 }
 
 static IMAGE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[[^\]]*\]\([^)]*\)").unwrap());
 static LINK: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]*)\]\([^)]*\)").unwrap());
-static MARKER: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+|\|)+").unwrap());
+static MARKER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(?:#{1,6}\s+|>\s*|[-*+]\s+|\d{1,9}[.)]\s+|\|)+").unwrap());
 static EMPHASIS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\*\*|__|`|\\").unwrap());
 static RULE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[-*_=|:\s]+$").unwrap());
 
@@ -205,7 +283,9 @@ pub fn lines(md: &str) -> Vec<String> {
         let line = MARKER.replace(line.trim(), "");
         let line = EMPHASIS.replace_all(&line, "");
         let line = line.trim_end_matches('|');
-        let Some(line) = markdown::field(&line.replace('|', " · "), LINE_CHARS) else { continue };
+        let Some(line) = markdown::field(&line.replace('|', " · "), LINE_CHARS) else {
+            continue;
+        };
         if RULE.is_match(&line) || line == "·" {
             continue;
         }
@@ -226,14 +306,16 @@ const COUNTED: &str = r"(?:views?|likes?|comments?|repl(?:y|ies)|shares?|reposts
 static NOISE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
         // ISO dates and datetimes.
-        r"\b\d{4}-\d{2}-\d{2}(?:[t ]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:z|[+-]\d{2}:?\d{2})?)?\b".to_string(),
+        r"\b\d{4}-\d{2}-\d{2}(?:[t ]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:z|[+-]\d{2}:?\d{2})?)?\b"
+            .to_string(),
         // 11/03/2026, 3.11.26
         r"\b\d{1,2}[/.]\d{1,2}[/.]\d{2,4}\b".to_string(),
         // Nov 3, 2026 · November 3rd · 3 Nov 2026 · Nov 2026
         format!(r"\b{MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?(?:,?\s+\d{{4}})?\b"),
         format!(r"\b\d{{1,2}}(?:st|nd|rd|th)?\s+(?:of\s+)?{MONTH}(?:,?\s+\d{{4}})?\b"),
         format!(r"\b{MONTH}\s+\d{{4}}\b"),
-        r"\b(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day|nesday|sday|urday)?\b".to_string(),
+        r"\b(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day|nesday|sday|urday)?\b"
+            .to_string(),
         // 14:05, 2:05:09 pm
         r"\b\d{1,2}:\d{2}(?::\d{2})?(?:\s*[ap]\.?m\.?)?\b".to_string(),
         // 5 minutes ago, an hour ago, 3h ago, just now, yesterday
@@ -253,7 +335,9 @@ static NOISE: LazyLock<Vec<Regex>> = LazyLock::new(|| {
 /// Masked noise next to masked noise ("# at # · #") is one stretch of noise,
 /// so "Updated Nov 3 at 9:14 · 3 hours ago" and "Updated Dec 1 · yesterday"
 /// compare equal.
-static RUN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"#(?:[\s,·•|/()\-–—]*(?:at|on|by|and)?[\s,·•|/()\-–—]*#)+").unwrap());
+static RUN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"#(?:[\s,·•|/()\-–—]*(?:at|on|by|and)?[\s,·•|/()\-–—]*#)+").unwrap()
+});
 
 /// A line's comparison key: lowercased, noise masked, whitespace collapsed.
 pub fn normalize(line: &str) -> String {
@@ -282,10 +366,24 @@ pub fn fingerprint(lines: &[String]) -> String {
 pub fn diff(old: &[String], new: &[String]) -> Change {
     let a: Vec<String> = old.iter().map(|l| normalize(l)).collect();
     let b: Vec<String> = new.iter().map(|l| normalize(l)).collect();
-    let (keep_a, keep_b) = if a.len().saturating_mul(b.len()) <= LCS_CELLS { lcs(&a, &b) } else { multiset(&a, &b) };
+    let (keep_a, keep_b) = if a.len().saturating_mul(b.len()) <= LCS_CELLS {
+        lcs(&a, &b)
+    } else {
+        multiset(&a, &b)
+    };
     Change {
-        added: new.iter().zip(&keep_b).filter(|(_, kept)| !**kept).map(|(l, _)| l.clone()).collect(),
-        removed: old.iter().zip(&keep_a).filter(|(_, kept)| !**kept).map(|(l, _)| l.clone()).collect(),
+        added: new
+            .iter()
+            .zip(&keep_b)
+            .filter(|(_, kept)| !**kept)
+            .map(|(l, _)| l.clone())
+            .collect(),
+        removed: old
+            .iter()
+            .zip(&keep_a)
+            .filter(|(_, kept)| !**kept)
+            .map(|(l, _)| l.clone())
+            .collect(),
     }
 }
 
@@ -296,7 +394,11 @@ fn lcs(a: &[String], b: &[String]) -> (Vec<bool>, Vec<bool>) {
     let at = |i: usize, j: usize| i * (m + 1) + j;
     for i in (0..n).rev() {
         for j in (0..m).rev() {
-            table[at(i, j)] = if a[i] == b[j] { table[at(i + 1, j + 1)] + 1 } else { table[at(i + 1, j)].max(table[at(i, j + 1)]) };
+            table[at(i, j)] = if a[i] == b[j] {
+                table[at(i + 1, j + 1)] + 1
+            } else {
+                table[at(i + 1, j)].max(table[at(i, j + 1)])
+            };
         }
     }
     let (mut keep_a, mut keep_b) = (vec![false; n], vec![false; m]);
@@ -337,7 +439,10 @@ fn multiset(a: &[String], b: &[String]) -> (Vec<bool>, Vec<bool>) {
             .collect::<Vec<bool>>()
     };
     // A line is kept up to the number of times both sides have it.
-    (mark(a, |(x, y)| (*x).min(*y)), mark(b, |(x, y)| (*x).min(*y)))
+    (
+        mark(a, |(x, y)| (*x).min(*y)),
+        mark(b, |(x, y)| (*x).min(*y)),
+    )
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {
@@ -378,12 +483,22 @@ pub fn describe(change: &Change) -> String {
 }
 
 fn item(url: &Url, snapshot: &Snapshot, change: &Change, before: &str, after: &str) -> Item {
-    let page = snapshot.title.clone().or_else(|| url.host_str().map(str::to_string)).unwrap_or_default();
+    let page = snapshot
+        .title
+        .clone()
+        .or_else(|| url.host_str().map(str::to_string))
+        .unwrap_or_default();
     let headline = change
         .added
         .first()
         .and_then(|l| text::title(l, 120))
-        .or_else(|| change.removed.first().and_then(|l| text::title(l, 110)).map(|l| format!("Removed: {l}")));
+        .or_else(|| {
+            change
+                .removed
+                .first()
+                .and_then(|l| text::title(l, 110))
+                .map(|l| format!("Removed: {l}"))
+        });
     let mut extras = BTreeMap::new();
     extras.insert("extractor".into(), Value::from("watch"));
     extras.insert("media".into(), Value::from("article"));
@@ -398,11 +513,22 @@ fn item(url: &Url, snapshot: &Snapshot, change: &Change, before: &str, after: &s
         url: Some(url.to_string()),
         title: headline.or_else(|| Some(format!("{page} changed"))),
         author: None,
-        site: Some(page.clone()).filter(|p| !p.is_empty()).or_else(|| snapshot.site.clone()),
+        site: Some(page.clone())
+            .filter(|p| !p.is_empty())
+            .or_else(|| snapshot.site.clone()),
         description: Some(format!("{} on {page}", summary(change))),
         published: Some(captured.clone()),
         captured,
-        media: snapshot.image.clone().map(|u| Media { kind: MediaKind::Image, url: Some(u), data: None }).into_iter().collect(),
+        media: snapshot
+            .image
+            .clone()
+            .map(|u| Media {
+                kind: MediaKind::Image,
+                url: Some(u),
+                data: None,
+            })
+            .into_iter()
+            .collect(),
         body: describe(change),
         extras,
     }
