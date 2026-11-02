@@ -27,26 +27,54 @@ pub struct Scripted {
 impl Default for Scripted {
     fn default() -> Self {
         // Priced as a local model: free.
-        Scripted { model: ModelRef { provider: "ollama".into(), model: "kin-headless-mock".into(), reasoning: None } }
+        Scripted {
+            model: ModelRef {
+                provider: "ollama".into(),
+                model: "kin-headless-mock".into(),
+                reasoning: None,
+            },
+        }
     }
 }
 
 /// The owner's words from a user message, without the dynamic context.
 fn said(message: &str) -> &str {
-    message.split("\n\n<context>").next().unwrap_or(message).trim()
+    message
+        .split("\n\n<context>")
+        .next()
+        .unwrap_or(message)
+        .trim()
 }
 
 /// The first on-screen chip that's a vault path or a Feed item.
 fn first_chip(message: &str) -> Option<String> {
-    let context = message.split("On screen (read these if they matter):").nth(1)?;
-    context.lines().skip(1).take_while(|l| l.starts_with("- ")).find_map(|line| {
-        let path = line[2..].split_whitespace().nth(1)?;
-        (path.starts_with("feed:") || path.ends_with(".md") || path.ends_with(".mdx")).then(|| path.to_string())
-    })
+    let context = message
+        .split("On screen (read these if they matter):")
+        .nth(1)?;
+    context
+        .lines()
+        .skip(1)
+        .take_while(|l| l.starts_with("- "))
+        .find_map(|line| {
+            let path = line[2..].split_whitespace().nth(1)?;
+            (path.starts_with("feed:") || path.ends_with(".md") || path.ends_with(".mdx"))
+                .then(|| path.to_string())
+        })
 }
 
 fn reply(text: String, calls: Vec<ToolCall>) -> Reply {
-    Reply { text, calls, usage: Usage { input: 0, output: 0, cache_read: 0, cache_write: 0 }, stop_reason: None, reasoning: vec![] }
+    Reply {
+        text,
+        calls,
+        usage: Usage {
+            input: 0,
+            output: 0,
+            cache_read: 0,
+            cache_write: 0,
+        },
+        stop_reason: None,
+        reasoning: vec![],
+    }
 }
 
 impl Model for Scripted {
@@ -54,7 +82,11 @@ impl Model for Scripted {
         &self.model
     }
 
-    async fn send(&self, ex: &Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> Result<Reply> {
+    async fn send(
+        &self,
+        ex: &Exchange<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Reply> {
         let Some(question) = ex.items.iter().rev().find_map(|i| match i {
             Item::User(text) => Some(text.as_str()),
             _ => None,
@@ -72,45 +104,88 @@ impl Model for Scripted {
             return Ok(comments::step(question, ex.items, on_text).await);
         }
         let text = if ex.system.starts_with(SUMMARIZER) {
-            let lines = question.lines().filter(|l| l.starts_with("Hussain:")).count();
-            let last = question.lines().rev().find(|l| l.starts_with("Hussain:")).unwrap_or_default();
-            format!("Mock summary: Hussain asked {lines} thing(s); most recently “{}”.", last.trim_start_matches("Hussain:").trim())
+            let lines = question
+                .lines()
+                .filter(|l| l.starts_with("Hussain:"))
+                .count();
+            let last = question
+                .lines()
+                .rev()
+                .find(|l| l.starts_with("Hussain:"))
+                .unwrap_or_default();
+            format!(
+                "Mock summary: Hussain asked {lines} thing(s); most recently “{}”.",
+                last.trim_start_matches("Hussain:").trim()
+            )
         } else if let Some(Item::User(message)) = ex.items.last() {
             // First step of a turn: look something up.
             let call = match first_chip(message) {
                 // The Feed's ranking tools, so headless runs can drive them.
-                _ if said(message).to_lowercase().contains("shortlist") => {
-                    ToolCall { id: "mock-1".into(), name: "tool".into(), arguments: json!({ "name": "shortlist", "args": { "n": 5 } }) }
-                }
-                Some(path) => ToolCall { id: "mock-1".into(), name: "read".into(), arguments: json!({ "path": path, "limit": 20 }) },
+                _ if said(message).to_lowercase().contains("shortlist") => ToolCall {
+                    id: "mock-1".into(),
+                    name: "tool".into(),
+                    arguments: json!({ "name": "shortlist", "args": { "n": 5 } }),
+                },
+                Some(path) => ToolCall {
+                    id: "mock-1".into(),
+                    name: "read".into(),
+                    arguments: json!({ "path": path, "limit": 20 }),
+                },
                 None => {
-                    let word = said(message).split(|c: char| !c.is_alphanumeric()).max_by_key(|w| w.len()).unwrap_or("kintsugi");
-                    ToolCall { id: "mock-1".into(), name: "search".into(), arguments: json!({ "query": word }) }
+                    let word = said(message)
+                        .split(|c: char| !c.is_alphanumeric())
+                        .max_by_key(|w| w.len())
+                        .unwrap_or("kintsugi");
+                    ToolCall {
+                        id: "mock-1".into(),
+                        name: "search".into(),
+                        arguments: json!({ "query": word }),
+                    }
                 }
             };
             return Ok(reply(String::new(), vec![call]));
         } else {
             let looked = ex.items.iter().rev().find_map(|i| match i {
-                Item::Assistant { calls, .. } => calls.first().map(|c| format!("{} {}", c.name, c.arguments)),
+                Item::Assistant { calls, .. } => {
+                    calls.first().map(|c| format!("{} {}", c.name, c.arguments))
+                }
                 _ => None,
             });
             // The start of what the tool returned, so a test can see Kin got it.
             let returned = ex.items.iter().rev().find_map(|i| match i {
                 Item::Results(results) => results.first().map(|r| {
-                    let text = r.content.replace("<data tool=\"read\">", "").replace("<data tool=\"tool\">", "");
-                    text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(160).collect::<String>()
+                    let text = r
+                        .content
+                        .replace("<data tool=\"read\">", "")
+                        .replace("<data tool=\"tool\">", "");
+                    text.split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                        .chars()
+                        .take(160)
+                        .collect::<String>()
                 }),
                 _ => None,
             });
-            let earlier = ex.items.iter().filter(|i| matches!(i, Item::Assistant { calls, .. } if calls.is_empty())).count();
+            let earlier = ex
+                .items
+                .iter()
+                .filter(|i| matches!(i, Item::Assistant { calls, .. } if calls.is_empty()))
+                .count();
             let recap = question.contains("Earlier in this conversation");
             format!(
                 "You said: “{}”. I looked with {}. This thread has {earlier} earlier exchange(s){}. \
                  This reply comes from the headless mock model, so nothing was sent to a provider.{}",
-                said(question).lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join(" / "),
+                said(question)
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join(" / "),
                 looked.unwrap_or_else(|| "nothing".into()),
                 if recap { " and a summary" } else { "" },
-                returned.map(|r| format!(" It returned: {r}")).unwrap_or_default(),
+                returned
+                    .map(|r| format!(" It returned: {r}"))
+                    .unwrap_or_default(),
             )
         };
         let mut words = text.split_inclusive(' ').peekable();
@@ -139,39 +214,86 @@ mod comments {
 
     /// The paragraph chip's label, from the dynamic context.
     fn paragraph(question: &str) -> String {
-        question.lines().find(|l| l.starts_with("- paragraph ")).and_then(|l| l.split_once(" (")).map(|(_, label)| label.trim_end_matches(')').to_string()).unwrap_or_default()
+        question
+            .lines()
+            .find(|l| l.starts_with("- paragraph "))
+            .and_then(|l| l.split_once(" ("))
+            .map(|(_, label)| label.trim_end_matches(')').to_string())
+            .unwrap_or_default()
     }
 
-    pub async fn step(question: &str, items: &[Item], on_text: &mut (dyn FnMut(&str) + Send)) -> Reply {
+    pub async fn step(
+        question: &str,
+        items: &[Item],
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> Reply {
         let review = question.starts_with(REVIEW_BRIEF);
         let first = matches!(items.last(), Some(Item::User(_)));
         if first {
             let call = if review {
                 let doc = first_chip(question).unwrap_or_default();
-                ToolCall { id: "mock-1".into(), name: "read".into(), arguments: json!({ "path": doc, "limit": 40 }) }
+                ToolCall {
+                    id: "mock-1".into(),
+                    name: "read".into(),
+                    arguments: json!({ "path": doc, "limit": 40 }),
+                }
             } else {
                 let label = paragraph(question);
-                let word = label.split(|c: char| !c.is_alphanumeric()).max_by_key(|w| w.len()).filter(|w| w.len() > 2).unwrap_or("kintsugi").to_lowercase();
-                ToolCall { id: "mock-1".into(), name: "search".into(), arguments: json!({ "query": word }) }
+                let word = label
+                    .split(|c: char| !c.is_alphanumeric())
+                    .max_by_key(|w| w.len())
+                    .filter(|w| w.len() > 2)
+                    .unwrap_or("kintsugi")
+                    .to_lowercase();
+                ToolCall {
+                    id: "mock-1".into(),
+                    name: "search".into(),
+                    arguments: json!({ "query": word }),
+                }
             };
             return reply(String::new(), vec![call]);
         }
         let text = if review {
-            let n = question.lines().filter(|l| l.starts_with('¶')).count().max(1);
-            let mut notes = vec![json!({ "paragraph": 1, "comment": "Mock review: the opening makes a claim without a source. What's it resting on?" })];
+            let n = question
+                .lines()
+                .filter(|l| l.starts_with('¶'))
+                .count()
+                .max(1);
+            let mut notes = vec![
+                json!({ "paragraph": 1, "comment": "Mock review: the opening makes a claim without a source. What's it resting on?" }),
+            ];
             if n > 1 {
                 notes.push(json!({ "paragraph": n, "comment": format!("Mock review: ¶{n} ends without saying what it costs. Is that the point?") }));
             }
             format!("<comments>{}</comments>", serde_json::Value::Array(notes))
         } else {
             let doc = first_chip(question).unwrap_or_default();
-            let said = said(question).split(COMMENT_NOTE).next().unwrap_or_default().split_whitespace().collect::<Vec<_>>().join(" ");
+            let said = said(question)
+                .split(COMMENT_NOTE)
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
             // The first search hit that isn't this document, as a link to drag in.
             let hit = found(items).and_then(|data| {
-                data.split("\"id\":").skip(1).filter_map(|rest| rest.trim_start().strip_prefix('"')?.split('"').next()).find(|id| *id != doc && !id.starts_with("feed:")).map(String::from)
+                data.split("\"id\":")
+                    .skip(1)
+                    .filter_map(|rest| rest.trim_start().strip_prefix('"')?.split('"').next())
+                    .find(|id| *id != doc && !id.starts_with("feed:"))
+                    .map(String::from)
             });
-            let link = hit.map(|id| format!(" Compare [[{}]].", id.trim_end_matches(".mdx").trim_end_matches(".md"))).unwrap_or_else(|| " I found nothing to compare it with.".into());
-            format!("Mock note: you asked “{said}”. This paragraph leans on one example.{link} (Headless mock model; nothing was sent to a provider.)")
+            let link = hit
+                .map(|id| {
+                    format!(
+                        " Compare [[{}]].",
+                        id.trim_end_matches(".mdx").trim_end_matches(".md")
+                    )
+                })
+                .unwrap_or_else(|| " I found nothing to compare it with.".into());
+            format!(
+                "Mock note: you asked “{said}”. This paragraph leans on one example.{link} (Headless mock model; nothing was sent to a provider.)"
+            )
         };
         for word in text.split_inclusive(' ') {
             on_text(word);
@@ -188,7 +310,11 @@ mod ideas {
     use serde_json::{Value, json};
 
     fn call(n: usize, name: &str, arguments: Value) -> ToolCall {
-        ToolCall { id: format!("mock-{n}"), name: name.into(), arguments }
+        ToolCall {
+            id: format!("mock-{n}"),
+            name: name.into(),
+            arguments,
+        }
     }
 
     /// The `<data>` body of every tool result so far, newest last.
@@ -196,16 +322,27 @@ mod ideas {
         items
             .iter()
             .filter_map(|i| match i {
-                Item::Results(r) => Some(r.iter().filter(|r| !r.is_error).map(|r| r.content.clone()).collect::<Vec<_>>()),
+                Item::Results(r) => Some(
+                    r.iter()
+                        .filter(|r| !r.is_error)
+                        .map(|r| r.content.clone())
+                        .collect::<Vec<_>>(),
+                ),
                 _ => None,
             })
             .flatten()
-            .map(|c| c.split_once('\n').map_or(c.as_str(), |(_, rest)| rest).trim_end_matches("</data>").to_string())
+            .map(|c| {
+                c.split_once('\n')
+                    .map_or(c.as_str(), |(_, rest)| rest)
+                    .trim_end_matches("</data>")
+                    .to_string()
+            })
             .collect()
     }
 
     fn after<'a>(text: &'a str, marker: &str) -> Option<&'a str> {
-        text.split_once(marker).map(|(_, rest)| rest.lines().next().unwrap_or_default().trim())
+        text.split_once(marker)
+            .map(|(_, rest)| rest.lines().next().unwrap_or_default().trim())
     }
 
     /// A read file: its path, title and quotable sentences.
@@ -218,7 +355,10 @@ mod ideas {
     fn parse_read(content: &str) -> Option<Read> {
         let (head, body) = content.split_once('\n')?;
         let path = head.split(", lines").next()?.trim().to_string();
-        let lines: Vec<&str> = body.lines().filter_map(|l| l.split_once(": ").map(|(_, t)| t)).collect();
+        let lines: Vec<&str> = body
+            .lines()
+            .filter_map(|l| l.split_once(": ").map(|(_, t)| t))
+            .collect();
         let mut title = path.rsplit('/').next().unwrap_or(&path).to_string();
         let mut in_front = lines.first().is_some_and(|l| l.trim() == "---");
         let mut sentences = Vec::new();
@@ -232,7 +372,11 @@ mod ideas {
                 continue;
             }
             let line = line.trim().trim_start_matches('>').trim();
-            if line.starts_with('#') || line.starts_with("<!--") || line.contains("[[") || line.ends_with('…') {
+            if line.starts_with('#')
+                || line.starts_with("<!--")
+                || line.contains("[[")
+                || line.ends_with('…')
+            {
                 continue;
             }
             // The first full sentence on the line, copied as it is.
@@ -244,16 +388,28 @@ mod ideas {
                 sentences.push(sentence.to_string());
             }
         }
-        (!sentences.is_empty()).then_some(Read { path, title, sentences })
+        (!sentences.is_empty()).then_some(Read {
+            path,
+            title,
+            sentences,
+        })
     }
 
     fn profile_line(system: &str) -> Option<String> {
         let section = system.split("## About Hussain").nth(1)?;
-        section.lines().skip(1).take_while(|l| !l.starts_with("## ")).find_map(|l| l.strip_prefix("- ").map(str::to_string))
+        section
+            .lines()
+            .skip(1)
+            .take_while(|l| !l.starts_with("## "))
+            .find_map(|l| l.strip_prefix("- ").map(str::to_string))
     }
 
     fn refine(brief: &str) -> String {
-        let asked = brief.split("He asked: \"").nth(1).and_then(|r| r.split('"').next()).unwrap_or("Sharper");
+        let asked = brief
+            .split("He asked: \"")
+            .nth(1)
+            .and_then(|r| r.split('"').next())
+            .unwrap_or("Sharper");
         let current = brief.split(CURRENT).nth(1).and_then(|r| {
             let start = r.find('{')?;
             let mut depth = 0;
@@ -271,20 +427,33 @@ mod ideas {
             }
             None
         });
-        let Some(mut idea) = current else { return "<ideas>[]</ideas>".into() };
+        let Some(mut idea) = current else {
+            return "<ideas>[]</ideas>".into();
+        };
         let title = idea["title"].as_str().unwrap_or_default().to_string();
         let short: String = asked.chars().take(30).collect();
-        idea["title"] = json!(format!("{short}: {title}").chars().take(110).collect::<String>());
+        idea["title"] = json!(
+            format!("{short}: {title}")
+                .chars()
+                .take(110)
+                .collect::<String>()
+        );
         idea["snippet"] = json!(format!("Reworked after you asked for “{short}”."));
         idea["steps"] = json!([{ "did": format!("Reread the quotes with “{short}” in mind") }]);
-        format!("<ideas>\n{}\n</ideas>", serde_json::to_string_pretty(&idea).unwrap_or_default())
+        format!(
+            "<ideas>\n{}\n</ideas>",
+            serde_json::to_string_pretty(&idea).unwrap_or_default()
+        )
     }
 
     fn batch(system: &str, brief: &str, query: &str, reads: &[Read]) -> String {
-        let about = after(brief, "every idea is about one document: ").map(|a| a.trim_end_matches('.').to_string());
+        let about = after(brief, "every idea is about one document: ")
+            .map(|a| a.trim_end_matches('.').to_string());
         let profile = profile_line(system);
         let reason = |text: &str| match &profile {
-            Some(line) => json!([{ "text": text }, { "text": "It fits what you told Kin about yourself", "profileLine": line }]),
+            Some(line) => {
+                json!([{ "text": text }, { "text": "It fits what you told Kin about yourself", "profileLine": line }])
+            }
             None => json!([{ "text": text }]),
         };
         let steps = |a: &Read, b: &Read| {
@@ -303,9 +472,26 @@ mod ideas {
         for (n, (i, j)) in pairs.into_iter().enumerate() {
             let (a, b) = (&reads[i], &reads[j]);
             let (kind, title, hunch) = if n == 0 {
-                ("connection", format!("{} and {} ask the same question", a.title, b.title), format!("There may be one piece here that {} sets up and {} answers.", a.title, b.title))
+                (
+                    "connection",
+                    format!("{} and {} ask the same question", a.title, b.title),
+                    format!(
+                        "There may be one piece here that {} sets up and {} answers.",
+                        a.title, b.title
+                    ),
+                )
             } else {
-                ("gap", format!("You keep returning to {} without writing it down", b.title.to_lowercase()), format!("A short post could say plainly what {} only hints at.", b.title))
+                (
+                    "gap",
+                    format!(
+                        "You keep returning to {} without writing it down",
+                        b.title.to_lowercase()
+                    ),
+                    format!(
+                        "A short post could say plainly what {} only hints at.",
+                        b.title
+                    ),
+                )
             };
             ideas.push(json!({
                 "kind": kind,
@@ -331,7 +517,10 @@ mod ideas {
                 "reasons": [{ "text": "None" }],
             }));
         }
-        format!("<ideas>\n{}\n</ideas>", serde_json::to_string_pretty(&Value::Array(ideas)).unwrap_or_default())
+        format!(
+            "<ideas>\n{}\n</ideas>",
+            serde_json::to_string_pretty(&Value::Array(ideas)).unwrap_or_default()
+        )
     }
 
     /// One step of the scripted helper: tool calls, or the final JSON.
@@ -339,61 +528,107 @@ mod ideas {
         if brief.contains(CURRENT) {
             return (refine(brief), vec![]);
         }
-        let about = after(brief, "every idea is about one document: ").map(|a| a.trim_end_matches('.').to_string());
+        let about = after(brief, "every idea is about one document: ")
+            .map(|a| a.trim_end_matches('.').to_string());
         let query = after(brief, "He asked for ideas about: ")
-            .and_then(|f| f.split(|c: char| !c.is_alphanumeric()).filter(|w| w.len() > 3).max_by_key(|w| w.len()))
+            .and_then(|f| {
+                f.split(|c: char| !c.is_alphanumeric())
+                    .filter(|w| w.len() > 3)
+                    .max_by_key(|w| w.len())
+            })
             .map(str::to_string)
             .unwrap_or_else(|| {
                 // A new subject for each round, so "more" isn't a repeat.
-                let offered = brief.split("Already offered lately").nth(1).map_or(0, |r| r.split("\n\n").next().unwrap_or_default().lines().filter(|l| l.starts_with("- ")).count());
+                let offered = brief.split("Already offered lately").nth(1).map_or(0, |r| {
+                    r.split("\n\n")
+                        .next()
+                        .unwrap_or_default()
+                        .lines()
+                        .filter(|l| l.starts_with("- "))
+                        .count()
+                });
                 ["repair", "attention", "quiet", "light"][(offered / 2) % 4].to_string()
             });
         let found = results(items);
-        let reads: Vec<Read> = found.iter().filter(|c| c.contains(", lines ")).filter_map(|c| parse_read(c)).collect();
+        let reads: Vec<Read> = found
+            .iter()
+            .filter(|c| c.contains(", lines "))
+            .filter_map(|c| parse_read(c))
+            .collect();
         if !reads.is_empty() {
             return (batch(system, brief, &query, &reads), vec![]);
         }
-        let steps = items.iter().filter(|i| matches!(i, Item::Assistant { .. })).count();
+        let steps = items
+            .iter()
+            .filter(|i| matches!(i, Item::Assistant { .. }))
+            .count();
         if steps == 0 {
-            return (String::new(), vec![call(1, "search", json!({ "query": query, "k": 8 }))]);
+            return (
+                String::new(),
+                vec![call(1, "search", json!({ "query": query, "k": 8 }))],
+            );
         }
         // Paths from the search results (or, failing those, recent documents).
         let mut paths: Vec<String> = about.into_iter().collect();
         for content in &found {
             if let Ok(Value::Array(hits)) = serde_json::from_str::<Value>(content.trim()) {
-                paths.extend(hits.iter().filter_map(|h| h["id"].as_str()).filter(|id| !id.starts_with("feed:")).map(str::to_string));
+                paths.extend(
+                    hits.iter()
+                        .filter_map(|h| h["id"].as_str())
+                        .filter(|id| !id.starts_with("feed:"))
+                        .map(str::to_string),
+                );
             } else {
-                paths.extend(content.split_whitespace().filter(|w| w.ends_with(".md") || w.ends_with(".mdx")).map(str::to_string));
+                paths.extend(
+                    content
+                        .split_whitespace()
+                        .filter(|w| w.ends_with(".md") || w.ends_with(".mdx"))
+                        .map(str::to_string),
+                );
             }
         }
         paths.dedup();
         let mut seen = Vec::new();
-        paths.retain(|p| !seen.contains(p) && {
-            seen.push(p.clone());
-            true
+        paths.retain(|p| {
+            !seen.contains(p) && {
+                seen.push(p.clone());
+                true
+            }
         });
         if paths.is_empty() && steps == 1 {
-            return (String::new(), vec![call(2, "tool", json!({ "name": "recent", "args": { "limit": 5 } }))]);
+            return (
+                String::new(),
+                vec![call(
+                    2,
+                    "tool",
+                    json!({ "name": "recent", "args": { "limit": 5 } }),
+                )],
+            );
         }
         if paths.is_empty() {
             return ("<ideas>[]</ideas>".into(), vec![]);
         }
-        let calls = paths.iter().take(3).enumerate().map(|(i, p)| call(10 + i, "read", json!({ "path": p, "limit": 80 }))).collect();
+        let calls = paths
+            .iter()
+            .take(3)
+            .enumerate()
+            .map(|(i, p)| call(10 + i, "read", json!({ "path": p, "limit": 80 })))
+            .collect();
         (String::new(), calls)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use super::super::Task;
     use super::super::agent::tests::block_on;
     use super::super::agent::{self, Cancel, Harness, Limits, Turn};
     use super::super::cost::Meter;
     use super::super::ideas::store::Store;
-    use super::super::ideas::{self, brief, VaultSources};
+    use super::super::ideas::{self, VaultSources, brief};
     use super::super::jobs::{Job, Trace};
     use super::super::prompt::Memory;
     use super::super::tools::Tools;
-    use super::super::Task;
     use super::*;
     use std::fs;
 
@@ -408,37 +643,101 @@ mod tests {
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, text).unwrap();
         };
-        write("posts/on-craft.mdx", "---\ntitle: \"On craft and repair\"\n---\n\n# On craft\n\nA repair is not a cover-up. It is a record of care.\nThe practice of repair is unglamorous and slow.\n");
-        write("notes/repair.md", "---\ntitle: Repair is a kind of attention\n---\n\nThe more interesting repair makes the history legible. The patch is not hidden.\nWe tend to think of repair as restoration of the old.\n");
-        write("inspiration/golden-joinery.md", "---\ntitle: Golden joinery\nsite: Britannica\n---\n\n> The repair is not hidden. It is given a color of its own.\nKintsugi repair uses lacquer dusted with powdered gold.\n");
+        write(
+            "posts/on-craft.mdx",
+            "---\ntitle: \"On craft and repair\"\n---\n\n# On craft\n\nA repair is not a cover-up. It is a record of care.\nThe practice of repair is unglamorous and slow.\n",
+        );
+        write(
+            "notes/repair.md",
+            "---\ntitle: Repair is a kind of attention\n---\n\nThe more interesting repair makes the history legible. The patch is not hidden.\nWe tend to think of repair as restoration of the old.\n",
+        );
+        write(
+            "inspiration/golden-joinery.md",
+            "---\ntitle: Golden joinery\nsite: Britannica\n---\n\n> The repair is not hidden. It is given a color of its own.\nKintsugi repair uses lacquer dusted with powdered gold.\n",
+        );
         let meter = Meter::open(None);
         let tools = Tools::new(vault.path(), outputs.path().into(), "job-1").unwrap();
-        let memory = Memory { about: vec!["Writes about craft.".into()], ..Memory::default() };
+        let memory = Memory {
+            about: vec!["Writes about craft.".into()],
+            ..Memory::default()
+        };
         let cancel = Cancel::default();
-        let harness = Harness { tools: &tools, meter: &meter, memory: &memory, cancel: &cancel, limits: Limits::default() };
-        let text = brief::batch(&brief::Ask { count: 5, ..Default::default() }, &[], &[], &[]);
-        let turn = Turn { task: Task::Ideas, background: true, question: text, chips: vec![], today: "2026-11-02".into(), remember: true, history: vec![], recap: None };
+        let harness = Harness {
+            tools: &tools,
+            meter: &meter,
+            memory: &memory,
+            cancel: &cancel,
+            limits: Limits::default(),
+        };
+        let text = brief::batch(
+            &brief::Ask {
+                count: 5,
+                ..Default::default()
+            },
+            &[],
+            &[],
+            &[],
+        );
+        let turn = Turn {
+            task: Task::Ideas,
+            background: true,
+            question: text,
+            chips: vec![],
+            today: "2026-11-02".into(),
+            remember: true,
+            history: vec![],
+            recap: None,
+        };
         let mut trace = Trace::default();
-        let summary = block_on(agent::run(&Scripted::default(), &harness, &turn, &mut |e| {
-            if let agent::KinEvent::ToolCall { name, arguments, .. } = &e {
-                trace.call(name, arguments);
-            }
-        }))
+        let summary = block_on(agent::run(
+            &Scripted::default(),
+            &harness,
+            &turn,
+            &mut |e| {
+                if let agent::KinEvent::ToolCall {
+                    name, arguments, ..
+                } = &e
+                {
+                    trace.call(name, arguments);
+                }
+            },
+        ))
         .unwrap();
         assert_eq!(trace.searches, ["repair"]);
         assert_eq!(trace.files.len(), 3);
 
         let mut store = Store::open(None);
         let job: Job = serde_json::from_value(json!({ "id": "job-1", "kind": "ideas", "task": "ideas", "brief": "b", "status": "running", "created": "2026-11-02T09:00:00+00:00" })).unwrap();
-        let sources = VaultSources { root: vault.path(), feed: None };
+        let sources = VaultSources {
+            root: vault.path(),
+            feed: None,
+        };
         let now = chrono::DateTime::parse_from_rfc3339("2026-11-02T09:00:00+00:00").unwrap();
-        let report = ideas::finish_batch(&mut store, &sources, &memory.about, &job, &summary.text, &trace, now).unwrap();
-        assert!(report.starts_with("2 new ideas in Ideas") && report.contains("“An idea resting on a quote the mock invented”, because a quote isn't in"), "{report}");
+        let report = ideas::finish_batch(
+            &mut store,
+            &sources,
+            &memory.about,
+            &job,
+            &summary.text,
+            &trace,
+            now,
+        )
+        .unwrap();
+        assert!(
+            report.starts_with("2 new ideas in Ideas")
+                && report.contains(
+                    "“An idea resting on a quote the mock invented”, because a quote isn't in"
+                ),
+            "{report}"
+        );
         let listed = store.list(now);
         assert_eq!(listed.len(), 2);
         for idea in &listed {
             assert!(idea.idea.content.quotes.len() >= 2);
-            assert_eq!(idea.idea.content.reasons[1].profile_line.as_deref(), Some("Writes about craft."));
+            assert_eq!(
+                idea.idea.content.reasons[1].profile_line.as_deref(),
+                Some("Writes about craft.")
+            );
         }
     }
 }
@@ -449,15 +748,34 @@ mod tests {
 /// it says which attempt this is.
 pub fn edit(system: &str, messages: &[super::wire::Message]) -> String {
     use super::wire::Role;
-    let first = messages.iter().find(|m| matches!(m.role, Role::User)).map(|m| m.content.as_str()).unwrap_or_default();
-    let passage = first.split("<passage>").nth(1).and_then(|rest| rest.split("</passage>").next()).unwrap_or_default();
+    let first = messages
+        .iter()
+        .find(|m| matches!(m.role, Role::User))
+        .map(|m| m.content.as_str())
+        .unwrap_or_default();
+    let passage = first
+        .split("<passage>")
+        .nth(1)
+        .and_then(|rest| rest.split("</passage>").next())
+        .unwrap_or_default();
     if system.contains("alternatives") {
         let word = passage.trim();
         return format!("{word} (mock one)\n{word} (mock two)\n{word} (mock three)");
     }
     const FILLER: [&str; 6] = ["really", "very", "just", "actually", "quite", "basically"];
-    let mut out: Vec<&str> = passage.split(' ').filter(|w| !FILLER.contains(&w.to_lowercase().trim_matches(|c: char| !c.is_alphanumeric()))).collect();
-    let retries = messages.iter().filter(|m| matches!(m.role, Role::Assistant)).count();
+    let mut out: Vec<&str> = passage
+        .split(' ')
+        .filter(|w| {
+            !FILLER.contains(
+                &w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric()),
+            )
+        })
+        .collect();
+    let retries = messages
+        .iter()
+        .filter(|m| matches!(m.role, Role::Assistant))
+        .count();
     let tag;
     if retries > 0 {
         tag = format!("(mock version {})", retries + 1);
@@ -472,16 +790,35 @@ mod edit_tests {
     use super::edit;
 
     fn ask(passage: &str) -> Vec<Message> {
-        vec![Message { role: Role::User, content: format!("<context_before></context_before>\n<passage>{passage}</passage>\n<context_after></context_after>\n\nTighten.") }]
+        vec![Message {
+            role: Role::User,
+            content: format!(
+                "<context_before></context_before>\n<passage>{passage}</passage>\n<context_after></context_after>\n\nTighten."
+            ),
+        }]
     }
 
     #[test]
     fn mock_edits_drop_filler_and_vary_on_retry() {
-        assert_eq!(edit("rewrite", &ask("It was really very good.")), "It was good.");
+        assert_eq!(
+            edit("rewrite", &ask("It was really very good.")),
+            "It was good."
+        );
         let mut retry = ask("Plain words.");
-        retry.push(Message { role: Role::Assistant, content: "Plain words.".into() });
-        retry.push(Message { role: Role::User, content: "Give me a different version.".into() });
+        retry.push(Message {
+            role: Role::Assistant,
+            content: "Plain words.".into(),
+        });
+        retry.push(Message {
+            role: Role::User,
+            content: "Give me a different version.".into(),
+        });
         assert_eq!(edit("rewrite", &retry), "Plain words. (mock version 2)");
-        assert_eq!(edit("Reply with up to six alternatives", &ask("gold")).lines().count(), 3);
+        assert_eq!(
+            edit("Reply with up to six alternatives", &ask("gold"))
+                .lines()
+                .count(),
+            3
+        );
     }
 }

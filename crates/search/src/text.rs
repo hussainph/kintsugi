@@ -19,7 +19,8 @@ pub fn chunks(text: &str) -> Vec<String> {
     let mut indexed = 0;
     for paragraph in text.split("\n\n").map(str::trim).filter(|p| !p.is_empty()) {
         for piece in split_long(paragraph) {
-            if !current.is_empty() && current.chars().count() + piece.chars().count() > CHUNK_CHARS {
+            if !current.is_empty() && current.chars().count() + piece.chars().count() > CHUNK_CHARS
+            {
                 indexed += current.chars().count();
                 out.push(std::mem::take(&mut current));
                 if indexed >= MAX_CHARS {
@@ -42,8 +43,14 @@ fn split_long(paragraph: &str) -> Vec<&str> {
     let mut pieces = Vec::new();
     let mut rest = paragraph;
     while rest.chars().count() > CHUNK_CHARS {
-        let limit = rest.char_indices().nth(CHUNK_CHARS).map_or(rest.len(), |(i, _)| i);
-        let cut = rest[..limit].rfind(char::is_whitespace).filter(|&i| i > limit / 2).unwrap_or(limit);
+        let limit = rest
+            .char_indices()
+            .nth(CHUNK_CHARS)
+            .map_or(rest.len(), |(i, _)| i);
+        let cut = rest[..limit]
+            .rfind(char::is_whitespace)
+            .filter(|&i| i > limit / 2)
+            .unwrap_or(limit);
         pieces.push(rest[..cut].trim());
         rest = rest[cut..].trim_start();
     }
@@ -56,7 +63,10 @@ fn split_long(paragraph: &str) -> Vec<&str> {
 /// Lowercased words of a query: runs of letters and digits, deduplicated.
 pub fn terms(query: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
-    for word in query.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()) {
+    for word in query
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+    {
         let word = word.to_lowercase();
         if !out.contains(&word) {
             out.push(word);
@@ -74,7 +84,13 @@ pub fn terms(query: &str) -> Vec<String> {
 pub fn fts_query(terms: &[String], all: bool) -> String {
     let parts: Vec<String> = terms
         .iter()
-        .map(|t| if t.chars().count() > 1 { format!("(\"{t}\" OR \"{t}\"*)") } else { format!("\"{t}\"") })
+        .map(|t| {
+            if t.chars().count() > 1 {
+                format!("(\"{t}\" OR \"{t}\"*)")
+            } else {
+                format!("\"{t}\"")
+            }
+        })
         .collect();
     parts.join(if all { " AND " } else { " OR " })
 }
@@ -85,8 +101,14 @@ pub fn snippet(text: &str) -> String {
     if flat.chars().count() <= SNIPPET_CHARS {
         return flat;
     }
-    let limit = flat.char_indices().nth(SNIPPET_CHARS).map_or(flat.len(), |(i, _)| i);
-    let cut = flat[..limit].rfind(' ').filter(|&i| i > limit / 2).unwrap_or(limit);
+    let limit = flat
+        .char_indices()
+        .nth(SNIPPET_CHARS)
+        .map_or(flat.len(), |(i, _)| i);
+    let cut = flat[..limit]
+        .rfind(' ')
+        .filter(|&i| i > limit / 2)
+        .unwrap_or(limit);
     format!("{}…", flat[..cut].trim_end())
 }
 
@@ -125,14 +147,23 @@ mod tests {
     fn queries_are_words_quoted_as_prefixes() {
         let t = terms("Kiln's \"glaze\" OR a NEAR(x) kiln");
         assert_eq!(t, ["kiln", "s", "glaze", "or", "a", "near", "x"]);
-        assert_eq!(fts_query(&t[..3], true), "(\"kiln\" OR \"kiln\"*) AND \"s\" AND (\"glaze\" OR \"glaze\"*)");
-        assert_eq!(fts_query(&t[..2], false), "(\"kiln\" OR \"kiln\"*) OR \"s\"");
+        assert_eq!(
+            fts_query(&t[..3], true),
+            "(\"kiln\" OR \"kiln\"*) AND \"s\" AND (\"glaze\" OR \"glaze\"*)"
+        );
+        assert_eq!(
+            fts_query(&t[..2], false),
+            "(\"kiln\" OR \"kiln\"*) OR \"s\""
+        );
     }
 
     #[test]
     fn snippets_are_short_and_flat() {
         assert_eq!(snippet("a\n\n  b"), "a b");
         let s = snippet(&"lorem ipsum ".repeat(100));
-        assert!(s.ends_with('…') && s.chars().count() <= SNIPPET_CHARS + 1, "{s}");
+        assert!(
+            s.ends_with('…') && s.chars().count() <= SNIPPET_CHARS + 1,
+            "{s}"
+        );
     }
 }

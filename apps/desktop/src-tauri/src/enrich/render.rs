@@ -11,7 +11,9 @@
 use crate::AppHandle;
 use kintsugi_ingest::{
     BoxFuture, Error, Result, Url,
-    web::render::{QUIET_SCRIPT, Rendered, Renderer, SETTLE_SCRIPT, allowed_navigation, defuddle_script},
+    web::render::{
+        QUIET_SCRIPT, Rendered, Renderer, SETTLE_SCRIPT, allowed_navigation, defuddle_script,
+    },
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -35,7 +37,11 @@ pub struct WebviewRenderer {
 
 impl WebviewRenderer {
     pub fn new(app: AppHandle) -> Self {
-        Self { app, next: AtomicU64::new(0), one_at_a_time: Mutex::new(()) }
+        Self {
+            app,
+            next: AtomicU64::new(0),
+            one_at_a_time: Mutex::new(()),
+        }
     }
 
     async fn run(&self, url: &Url, timeout: Duration) -> Result<Rendered> {
@@ -43,27 +49,33 @@ impl WebviewRenderer {
             return Err(Error::InvalidUrl);
         }
         let deadline = Instant::now() + timeout;
-        let _turn = tokio::time::timeout_at(deadline, self.one_at_a_time.lock()).await.map_err(|_| Error::TimedOut)?;
-        let label = format!("{LABEL_PREFIX}{}", self.next.fetch_add(1, Ordering::Relaxed));
+        let _turn = tokio::time::timeout_at(deadline, self.one_at_a_time.lock())
+            .await
+            .map_err(|_| Error::TimedOut)?;
+        let label = format!(
+            "{LABEL_PREFIX}{}",
+            self.next.fetch_add(1, Ordering::Relaxed)
+        );
         let (loaded_tx, mut loaded) = mpsc::unbounded_channel();
-        let window = WebviewWindowBuilder::new(&self.app, &label, WebviewUrl::External(url.clone()))
-            .title("Kintsugi page reader")
-            .visible(false)
-            .focused(false)
-            .skip_taskbar(true)
-            .incognito(true)
-            .devtools(false)
-            .initialization_script(QUIET_SCRIPT)
-            .on_navigation(allowed_navigation)
-            .on_new_window(|_, _| NewWindowResponse::Deny)
-            .on_download(|_, _| false)
-            .on_page_load(move |_, payload| {
-                if payload.event() == PageLoadEvent::Finished {
-                    let _ = loaded_tx.send(());
-                }
-            })
-            .build()
-            .map_err(|_| Error::Setup)?;
+        let window =
+            WebviewWindowBuilder::new(&self.app, &label, WebviewUrl::External(url.clone()))
+                .title("Kintsugi page reader")
+                .visible(false)
+                .focused(false)
+                .skip_taskbar(true)
+                .incognito(true)
+                .devtools(false)
+                .initialization_script(QUIET_SCRIPT)
+                .on_navigation(allowed_navigation)
+                .on_new_window(|_, _| NewWindowResponse::Deny)
+                .on_download(|_, _| false)
+                .on_page_load(move |_, payload| {
+                    if payload.event() == PageLoadEvent::Finished {
+                        let _ = loaded_tx.send(());
+                    }
+                })
+                .build()
+                .map_err(|_| Error::Setup)?;
         let window = Destroy(window);
         let result = tokio::time::timeout_at(deadline, async {
             loaded.recv().await.ok_or(Error::Unavailable)?;
@@ -90,7 +102,10 @@ async fn settle(window: &WebviewWindow<crate::Runtime>, until: Instant) {
     let mut last = None;
     while Instant::now() < until {
         tokio::time::sleep(SETTLE_POLL).await;
-        let length = eval(window, SETTLE_SCRIPT.to_string()).await.ok().and_then(|raw| raw.trim().parse::<u64>().ok());
+        let length = eval(window, SETTLE_SCRIPT.to_string())
+            .await
+            .ok()
+            .and_then(|raw| raw.trim().parse::<u64>().ok());
         if length.is_some_and(|n| n > 0) && length == last {
             return;
         }

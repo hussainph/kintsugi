@@ -20,7 +20,10 @@ fn a_book_becomes_metadata_a_cover_and_its_chapters_as_markdown() {
     assert_eq!(item.author.as_deref(), Some("Ada Example, Ben Sample"));
     assert_eq!(item.site.as_deref(), Some("Lacquer Press"));
     assert_eq!(item.published.as_deref(), Some("2023-03-01"));
-    assert_eq!(item.description.as_deref(), Some("A short book about repair and patience."));
+    assert_eq!(
+        item.description.as_deref(),
+        Some("A short book about repair and patience.")
+    );
     assert_eq!(item.primary_image().unwrap().mime, "image/png");
     assert_eq!(item.extras["lang"], "en");
     assert_eq!(item.extras["chapters"], 5);
@@ -28,10 +31,24 @@ fn a_book_becomes_metadata_a_cover_and_its_chapters_as_markdown() {
     // Cover, contents and copyright pages are skipped; links into the book
     // become text, outside links stay, images and scripts go.
     assert!(item.body.starts_with("# One: The crack"), "{}", item.body);
-    assert!(item.body.contains("See the mend or [a guide](https://example.org/kintsugi)."), "{}", item.body);
+    assert!(
+        item.body
+            .contains("See the mend or [a guide](https://example.org/kintsugi)."),
+        "{}",
+        item.body
+    );
     assert!(item.body.contains("Gold follows the line."));
-    assert!(item.body.contains("# Two: The mend\n\nLacquer, then gold, then waiting."));
-    for absent in ["Copyright", "alert", "cover.png", "chapter2.xhtml", "Contents"] {
+    assert!(
+        item.body
+            .contains("# Two: The mend\n\nLacquer, then gold, then waiting.")
+    );
+    for absent in [
+        "Copyright",
+        "alert",
+        "cover.png",
+        "chapter2.xhtml",
+        "Contents",
+    ] {
         assert!(!item.body.contains(absent), "{absent} in {}", item.body);
     }
 
@@ -43,19 +60,23 @@ fn epub(files: &[(&str, &[u8])]) -> tempfile::NamedTempFile {
     let file = tempfile::Builder::new().suffix(".epub").tempfile().unwrap();
     let mut zip = zip::ZipWriter::new(file.reopen().unwrap());
     for (name, bytes) in files {
-        zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+        zip.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
         zip.write_all(bytes).unwrap();
     }
     zip.finish().unwrap();
     file
 }
 
-const CONTAINER: &[u8] = br#"<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>"#;
+const CONTAINER: &[u8] =
+    br#"<container><rootfiles><rootfile full-path="book.opf"/></rootfiles></container>"#;
 
 #[test]
 fn hostile_archives_are_refused() {
     let adapter = EpubAdapter::new().unwrap();
-    let capture = |file: &tempfile::NamedTempFile| run(adapter.capture(&Target::File(file.path().into()), CaptureOptions::default()));
+    let capture = |file: &tempfile::NamedTempFile| {
+        run(adapter.capture(&Target::File(file.path().into()), CaptureOptions::default()))
+    };
 
     let not_zip = tempfile::Builder::new().suffix(".epub").tempfile().unwrap();
     std::fs::write(not_zip.path(), "plain text").unwrap();
@@ -84,19 +105,33 @@ fn hostile_archives_are_refused() {
 
 #[test]
 fn hrefs_resolve_inside_the_archive() {
-    assert_eq!(resolve("OEBPS", "text/chapter%201.xhtml#x"), "OEBPS/text/chapter 1.xhtml");
-    assert_eq!(resolve("OEBPS/text", "../images/a.png"), "OEBPS/images/a.png");
+    assert_eq!(
+        resolve("OEBPS", "text/chapter%201.xhtml#x"),
+        "OEBPS/text/chapter 1.xhtml"
+    );
+    assert_eq!(
+        resolve("OEBPS/text", "../images/a.png"),
+        "OEBPS/images/a.png"
+    );
     assert_eq!(resolve("", "../../../etc/passwd"), "etc/passwd");
     assert_eq!(percent_decode("a%2"), "a%2");
 }
 
 #[test]
 fn links_to_epubs_are_downloaded() {
-    let server = Server::start(vec![("/books/repair.epub", 200, "application/epub+zip", std::fs::read(FIXTURE).unwrap())]);
+    let server = Server::start(vec![(
+        "/books/repair.epub",
+        200,
+        "application/epub+zip",
+        std::fs::read(FIXTURE).unwrap(),
+    )]);
     let adapter = EpubAdapter::new().unwrap();
     let target = Target::url(&server.url("/books/repair.epub")).unwrap();
     assert!(adapter.matches(&target));
     let item = run(adapter.capture(&target, CaptureOptions::default())).unwrap();
-    assert_eq!(item.url.as_deref(), Some(server.url("/books/repair.epub").as_str()));
+    assert_eq!(
+        item.url.as_deref(),
+        Some(server.url("/books/repair.epub").as_str())
+    );
     assert_eq!(item.title.as_deref(), Some("The Golden Seam"));
 }

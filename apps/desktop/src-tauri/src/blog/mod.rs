@@ -35,7 +35,11 @@ fn default_site() -> String {
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { path: None, appendix: false, site: default_site() }
+        Settings {
+            path: None,
+            appendix: false,
+            site: default_site(),
+        }
     }
 }
 
@@ -50,7 +54,9 @@ pub struct Blog {
 /// everything in memory, so it never touches the real app's settings.
 pub(crate) fn config_file(app: &AppHandle, name: &str) -> Option<PathBuf> {
     #[cfg(not(feature = "headless"))]
-    if crate::config::isolated_dev() && std::env::var_os("KINTSUGI_CONFIG_DIR").is_none_or(|p| p.is_empty()) {
+    if crate::config::isolated_dev()
+        && std::env::var_os("KINTSUGI_CONFIG_DIR").is_none_or(|p| p.is_empty())
+    {
         return None;
     }
     crate::config::directory(app).ok().map(|d| d.join(name))
@@ -77,7 +83,10 @@ pub(crate) fn appendix_default(app: &AppHandle) -> bool {
 fn save(app: &AppHandle, next: Settings) -> Result<()> {
     if let Some(path) = config_file(app, "blog.json") {
         fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        kintsugi_vault::write_atomic(&path, &serde_json::to_string_pretty(&next).map_err(|e| e.to_string())?)?;
+        kintsugi_vault::write_atomic(
+            &path,
+            &serde_json::to_string_pretty(&next).map_err(|e| e.to_string())?,
+        )?;
     }
     *app.state::<Blog>().settings.lock().unwrap() = Some(next);
     Ok(())
@@ -93,7 +102,10 @@ fn checked(path: &Path) -> Result<PathBuf> {
 
 fn configured(app: &AppHandle) -> Result<(PathBuf, Settings)> {
     let settings = settings(app);
-    let path = settings.path.clone().ok_or("Choose the blog's folder in Settings first.")?;
+    let path = settings
+        .path
+        .clone()
+        .ok_or("Choose the blog's folder in Settings first.")?;
     Ok((checked(&path)?, settings))
 }
 
@@ -136,10 +148,18 @@ pub fn blog_status(app: AppHandle) -> Status {
 
 /// Sets the repository (an empty path forgets it) and/or the appendix default.
 #[tauri::command]
-pub fn blog_configure(app: AppHandle, path: Option<String>, appendix: Option<bool>) -> Result<Status> {
+pub fn blog_configure(
+    app: AppHandle,
+    path: Option<String>,
+    appendix: Option<bool>,
+) -> Result<Status> {
     let mut next = settings(&app);
     if let Some(path) = path {
-        next.path = if path.trim().is_empty() { None } else { Some(checked(Path::new(path.trim()))?) };
+        next.path = if path.trim().is_empty() {
+            None
+        } else {
+            Some(checked(Path::new(path.trim()))?)
+        };
     }
     if let Some(appendix) = appendix {
         next.appendix = appendix;
@@ -157,7 +177,13 @@ struct TreeChanged<'a> {
 /// The tree and references refresh; no open document's text changed.
 fn changed(app: &AppHandle, folder: &str) {
     crate::vault::references_changed(app);
-    let _ = app.emit("vault:changed", TreeChanged { path: folder, text: None });
+    let _ = app.emit(
+        "vault:changed",
+        TreeChanged {
+            path: folder,
+            text: None,
+        },
+    );
 }
 
 /// Refreshes the vault's mirror of the blog's posts.
@@ -219,7 +245,8 @@ pub struct Check {
 /// Does the document own this post? Its `post:` on disk names the file (or
 /// the one being replaced). Saves are flushed before publishing.
 fn owns(root: &Path, source: &str, file: &str, replaces: Option<&str>) -> Result<bool> {
-    let text = fs::read_to_string(kintsugi_vault::resolve(root, source)?).map_err(|e| e.to_string())?;
+    let text =
+        fs::read_to_string(kintsugi_vault::resolve(root, source)?).map_err(|e| e.to_string())?;
     let post = repo::field(&text, "post");
     Ok(post.as_deref() == Some(file) || (post.is_some() && post.as_deref() == replaces))
 }
@@ -228,15 +255,29 @@ fn owns(root: &Path, source: &str, file: &str, replaces: Option<&str>) -> Result
 pub fn blog_check(app: AppHandle, vault: State<Vault>, request: CheckRequest) -> Result<Check> {
     let (path, settings) = configured(&app)?;
     let root = vault.root()?;
-    repo::post_file(&request.file).ok_or_else(|| format!("not a blog post file: {}", request.file))?;
+    repo::post_file(&request.file)
+        .ok_or_else(|| format!("not a blog post file: {}", request.file))?;
     let target = path.join(&request.file);
     let exists = target.exists();
-    let owned = owns(&root, &request.source, &request.file, request.replaces.as_deref())?;
+    let owned = owns(
+        &root,
+        &request.source,
+        &request.file,
+        request.replaces.as_deref(),
+    )?;
     let current = fs::read_to_string(&target).ok().or_else(|| {
-        request.replaces.as_deref().and_then(|old| fs::read_to_string(path.join(old)).ok())
+        request
+            .replaces
+            .as_deref()
+            .and_then(|old| fs::read_to_string(path.join(old)).ok())
     });
-    let written = request.replaces.iter().chain([&request.file]).find_map(|f| ledger(&app).remove(&ledger_key(&path, f)));
-    let changed = owned && matches!((&current, &written), (Some(now), Some(then)) if &kintsugi_vault::version(now) != then);
+    let written = request
+        .replaces
+        .iter()
+        .chain([&request.file])
+        .find_map(|f| ledger(&app).remove(&ledger_key(&path, f)));
+    let changed = owned
+        && matches!((&current, &written), (Some(now), Some(then)) if &kintsugi_vault::version(now) != then);
     Ok(Check {
         exists,
         owned,
@@ -272,11 +313,20 @@ pub struct Published {
 /// Writes the post and its images into the repository's working tree. The
 /// writer commits and pushes; Kintsugi never runs git.
 #[tauri::command]
-pub fn blog_publish(app: AppHandle, vault: State<Vault>, request: PublishRequest) -> Result<Published> {
+pub fn blog_publish(
+    app: AppHandle,
+    vault: State<Vault>,
+    request: PublishRequest,
+) -> Result<Published> {
     let (path, settings) = configured(&app)?;
     let root = vault.root()?;
     repo::refuse_mirror(&root, &request.source)?;
-    let owned = owns(&root, &request.source, &request.file, request.replaces.as_deref())?;
+    let owned = owns(
+        &root,
+        &request.source,
+        &request.file,
+        request.replaces.as_deref(),
+    )?;
     let written = repo::write_post(
         &root,
         &path,
@@ -294,11 +344,17 @@ pub fn blog_publish(app: AppHandle, vault: State<Vault>, request: PublishRequest
             if let Some(old) = &request.replaces {
                 entries.remove(&ledger_key(&path, old));
             }
-            entries.insert(ledger_key(&path, &request.file), kintsugi_vault::version(&request.content));
+            entries.insert(
+                ledger_key(&path, &request.file),
+                kintsugi_vault::version(&request.content),
+            );
             if let Some(parent) = file.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            let _ = kintsugi_vault::write_atomic(&file, &serde_json::to_string_pretty(&entries).unwrap_or_default());
+            let _ = kintsugi_vault::write_atomic(
+                &file,
+                &serde_json::to_string_pretty(&entries).unwrap_or_default(),
+            );
         }
     }
     // The mirror catches up (its post may now be sourced by this document).
@@ -306,5 +362,10 @@ pub fn blog_publish(app: AppHandle, vault: State<Vault>, request: PublishRequest
     if let Some(report) = &import {
         changed(&app, &report.folder);
     }
-    Ok(Published { repo: path.to_string_lossy().into_owned(), written: written.written, removed: written.removed, import })
+    Ok(Published {
+        repo: path.to_string_lossy().into_owned(),
+        written: written.written,
+        removed: written.removed,
+        import,
+    })
 }

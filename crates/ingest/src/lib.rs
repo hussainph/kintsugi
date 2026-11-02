@@ -23,27 +23,27 @@ use std::pin::Pin;
 
 pub mod api;
 pub mod authors;
+pub mod books;
+pub mod epub;
 pub mod feed;
+mod fetch;
 pub mod hn;
 pub mod image;
 mod markdown;
 pub mod media;
+pub mod pdf;
+pub mod podcast;
 pub mod reddit;
+#[cfg(test)]
+mod test_http;
 #[cfg(test)]
 mod test_server;
 mod text;
-pub mod web;
-pub mod x;
-mod fetch;
-pub mod podcast;
-pub mod pdf;
-pub mod epub;
-pub mod books;
-#[cfg(test)]
-mod test_http;
 pub mod tools;
 pub mod transcribe;
 pub mod transcript;
+pub mod web;
+pub mod x;
 pub mod youtube;
 
 pub use reqwest::Url;
@@ -272,7 +272,11 @@ pub trait Adapter: Send + Sync {
     /// Whether this adapter can capture the target. Cheap; no I/O.
     fn matches(&self, target: &Target) -> bool;
     /// Fetch and normalize one item.
-    fn capture<'a>(&'a self, target: &'a Target, options: CaptureOptions) -> BoxFuture<'a, Result<Item>>;
+    fn capture<'a>(
+        &'a self,
+        target: &'a Target,
+        options: CaptureOptions,
+    ) -> BoxFuture<'a, Result<Item>>;
     /// New items from a followed source since its cursor. Adapters whose
     /// source cannot be followed keep this default.
     fn poll<'a>(&'a self, subscription: &'a Subscription) -> BoxFuture<'a, Result<Polled>> {
@@ -290,7 +294,11 @@ impl<A: Adapter + ?Sized> Adapter for std::sync::Arc<A> {
     fn matches(&self, target: &Target) -> bool {
         (**self).matches(target)
     }
-    fn capture<'a>(&'a self, target: &'a Target, options: CaptureOptions) -> BoxFuture<'a, Result<Item>> {
+    fn capture<'a>(
+        &'a self,
+        target: &'a Target,
+        options: CaptureOptions,
+    ) -> BoxFuture<'a, Result<Item>> {
         (**self).capture(target, options)
     }
     fn poll<'a>(&'a self, subscription: &'a Subscription) -> BoxFuture<'a, Result<Polled>> {
@@ -316,16 +324,26 @@ impl Engine {
     }
 
     pub fn adapter_for(&self, target: &Target) -> Option<&dyn Adapter> {
-        self.adapters.iter().find(|a| a.matches(target)).map(|a| a.as_ref())
+        self.adapters
+            .iter()
+            .find(|a| a.matches(target))
+            .map(|a| a.as_ref())
     }
 
     pub async fn capture(&self, target: &Target, options: CaptureOptions) -> Result<Item> {
-        self.adapter_for(target).ok_or(Error::Unsupported)?.capture(target, options).await
+        self.adapter_for(target)
+            .ok_or(Error::Unsupported)?
+            .capture(target, options)
+            .await
     }
 
     /// Polls with the adapter for `source`.
     pub async fn poll(&self, source: SourceType, subscription: &Subscription) -> Result<Polled> {
-        let adapter = self.adapters.iter().find(|a| a.source() == source).ok_or(Error::Unsupported)?;
+        let adapter = self
+            .adapters
+            .iter()
+            .find(|a| a.source() == source)
+            .ok_or(Error::Unsupported)?;
         adapter.poll(subscription).await
     }
 }
@@ -368,18 +386,33 @@ mod tests {
     }
 
     fn run<T>(f: impl Future<Output = T>) -> T {
-        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
     }
 
     #[test]
     fn the_first_matching_adapter_captures() {
         let engine = Engine::new().with(Fixed("a.test")).with(Fixed("b.test"));
-        let item = run(engine.capture(&Target::url("https://b.test/x").unwrap(), CaptureOptions::default())).unwrap();
+        let item = run(engine.capture(
+            &Target::url("https://b.test/x").unwrap(),
+            CaptureOptions::default(),
+        ))
+        .unwrap();
         assert_eq!(item.title.as_deref(), Some("b.test"));
         assert!(item.captured.ends_with('Z'));
-        let none = run(engine.capture(&Target::url("https://c.test/").unwrap(), CaptureOptions::default()));
+        let none = run(engine.capture(
+            &Target::url("https://c.test/").unwrap(),
+            CaptureOptions::default(),
+        ));
         assert_eq!(none, Err(Error::Unsupported));
-        assert!(engine.adapter_for(&Target::File("/tmp/x.pdf".into())).is_none());
+        assert!(
+            engine
+                .adapter_for(&Target::File("/tmp/x.pdf".into()))
+                .is_none()
+        );
     }
 
     #[test]
@@ -404,14 +437,20 @@ mod tests {
             media: vec![Media {
                 kind: MediaKind::Image,
                 url: Some("https://example.org/a.png".into()),
-                data: Some(MediaData { bytes: vec![1, 2], mime: "image/png".into() }),
+                data: Some(MediaData {
+                    bytes: vec![1, 2],
+                    mime: "image/png".into(),
+                }),
             }],
             body: "# Hi".into(),
             extras: BTreeMap::new(),
         };
         let json = serde_json::to_value(&item).unwrap();
         assert_eq!(json["source"], "web");
-        assert_eq!(json["media"][0], serde_json::json!({ "kind": "image", "url": "https://example.org/a.png" }));
+        assert_eq!(
+            json["media"][0],
+            serde_json::json!({ "kind": "image", "url": "https://example.org/a.png" })
+        );
         assert!(json.get("extras").is_some());
     }
 
@@ -420,7 +459,10 @@ mod tests {
         for (error, text) in [
             (Error::TimedOut, "page fetch timed out"),
             (Error::Unavailable, "could not fetch source page"),
-            (Error::InvalidUrl, "source must use http or https without credentials"),
+            (
+                Error::InvalidUrl,
+                "source must use http or https without credentials",
+            ),
         ] {
             assert_eq!(error.to_string(), text);
         }

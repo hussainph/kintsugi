@@ -76,7 +76,10 @@ fn stored(app: &AppHandle) -> Stored {
 
 fn resolve(stored: &Stored, blog_appendix: bool) -> Settings {
     Settings {
-        destinations: stored.destinations.clone().unwrap_or_else(|| KNOWN.iter().map(|s| s.to_string()).collect()),
+        destinations: stored
+            .destinations
+            .clone()
+            .unwrap_or_else(|| KNOWN.iter().map(|s| s.to_string()).collect()),
         appendix: stored.appendix.unwrap_or(blog_appendix),
         statement: stored.statement,
         statement_text: stored.statement_text.clone(),
@@ -106,7 +109,11 @@ fn apply(mut next: Stored, change: Change) -> Result<Stored> {
     if let Some(list) = change.destinations {
         let mut clean: Vec<String> = Vec::new();
         for id in list {
-            let ok = !id.is_empty() && id.len() <= 40 && id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+            let ok = !id.is_empty()
+                && id.len() <= 40
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
             if !ok {
                 return Err(format!("not a destination: {id}"));
             }
@@ -139,7 +146,10 @@ pub fn export_configure(app: AppHandle, change: Change) -> Result<Settings> {
     let next = apply(stored(&app), change)?;
     if let Some(path) = crate::blog::config_file(&app, "export.json") {
         fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        kintsugi_vault::write_atomic(&path, &serde_json::to_string_pretty(&next).map_err(|e| e.to_string())?)?;
+        kintsugi_vault::write_atomic(
+            &path,
+            &serde_json::to_string_pretty(&next).map_err(|e| e.to_string())?,
+        )?;
     }
     *app.state::<Export>().settings.lock().unwrap() = Some(next);
     Ok(settings(&app))
@@ -147,7 +157,10 @@ pub fn export_configure(app: AppHandle, change: Change) -> Result<Settings> {
 
 /// Which vault file each of a piece's images is (as Publish resolves them).
 #[tauri::command]
-pub fn export_images(vault: State<Vault>, images: Vec<ImageRef>) -> Result<BTreeMap<String, Option<String>>> {
+pub fn export_images(
+    vault: State<Vault>,
+    images: Vec<ImageRef>,
+) -> Result<BTreeMap<String, Option<String>>> {
     Ok(repo::resolve_images(&vault.root()?, &images))
 }
 
@@ -195,7 +208,10 @@ pub fn export_assets(vault: State<Vault>, assets: Vec<Asset>) -> Result<BTreeMap
         .map(|asset| {
             let bytes = read_asset(&root, asset)?;
             let data = base64::engine::general_purpose::STANDARD.encode(bytes);
-            Ok((asset.name.clone(), format!("data:{};base64,{data}", mime(&asset.from).unwrap())))
+            Ok((
+                asset.name.clone(),
+                format!("data:{};base64,{data}", mime(&asset.from).unwrap()),
+            ))
         })
         .collect()
 }
@@ -204,7 +220,10 @@ pub fn export_assets(vault: State<Vault>, assets: Vec<Asset>) -> Result<BTreeMap
 /// extension. Headless runs only write inside their scratch vault or config.
 fn target(path: &str, extensions: &[&str]) -> Result<PathBuf> {
     let path = PathBuf::from(path);
-    let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase());
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
     if !path.is_absolute() || !ext.is_some_and(|e| extensions.contains(&e.as_str())) {
         return Err(format!("choose a .{} file to export to", extensions[0]));
     }
@@ -240,17 +259,33 @@ pub struct PdfReply {
 #[tauri::command]
 pub async fn export_pdf(vault: State<'_, Vault>, request: PdfRequest) -> Result<PdfReply> {
     let root = vault.root()?;
-    let path = request.path.as_deref().map(|p| target(p, &["pdf"])).transpose()?;
+    let path = request
+        .path
+        .as_deref()
+        .map(|p| target(p, &["pdf"]))
+        .transpose()?;
     tauri::async_runtime::spawn_blocking(move || {
-        let assets = request.assets.iter().map(|a| Ok((a.name.clone(), read_asset(&root, a)?))).collect::<Result<Vec<_>>>()?;
+        let assets = request
+            .assets
+            .iter()
+            .map(|a| Ok((a.name.clone(), read_asset(&root, a)?)))
+            .collect::<Result<Vec<_>>>()?;
         let document = pdf::typeset(&request.source, assets)?;
         let pages = document.pages().len();
         match path {
             Some(path) => {
                 kintsugi_vault::write_bytes_atomic(&path, &pdf::pdf(&document)?)?;
-                Ok(PdfReply { pages, preview: vec![], written: Some(path.to_string_lossy().into_owned()) })
+                Ok(PdfReply {
+                    pages,
+                    preview: vec![],
+                    written: Some(path.to_string_lossy().into_owned()),
+                })
             }
-            None => Ok(PdfReply { pages, preview: pdf::svg_pages(&document, PREVIEW_PAGES), written: None }),
+            None => Ok(PdfReply {
+                pages,
+                preview: pdf::svg_pages(&document, PREVIEW_PAGES),
+                written: None,
+            }),
         }
     })
     .await
@@ -280,21 +315,57 @@ mod tests {
 
     #[test]
     fn changes_validate_ids_and_trim_the_statement() {
-        let next = apply(Stored::default(), Change {
-            destinations: Some(vec!["pdf".into(), "html".into(), "pdf".into(), "mcp-notion".into()]),
-            appendix: Some(false),
-            statement: Some(true),
-            statement_text: Some("  Mine, all of it.  ".into()),
-        })
+        let next = apply(
+            Stored::default(),
+            Change {
+                destinations: Some(vec![
+                    "pdf".into(),
+                    "html".into(),
+                    "pdf".into(),
+                    "mcp-notion".into(),
+                ]),
+                appendix: Some(false),
+                statement: Some(true),
+                statement_text: Some("  Mine, all of it.  ".into()),
+            },
+        )
         .unwrap();
         let s = resolve(&next, true);
         assert_eq!(s.destinations, ["pdf", "html", "mcp-notion"]);
         assert!(!s.appendix && s.statement);
         assert_eq!(s.statement_text.as_deref(), Some("Mine, all of it."));
-        let back = apply(next, Change { statement_text: Some("  ".into()), ..Default::default() }).unwrap();
-        assert_eq!(back.statement_text, None, "empty goes back to the default wording");
-        assert!(apply(Stored::default(), Change { destinations: Some(vec!["../x".into()]), ..Default::default() }).is_err());
-        assert!(apply(Stored::default(), Change { statement_text: Some("x".repeat(601)), ..Default::default() }).is_err());
+        let back = apply(
+            next,
+            Change {
+                statement_text: Some("  ".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            back.statement_text, None,
+            "empty goes back to the default wording"
+        );
+        assert!(
+            apply(
+                Stored::default(),
+                Change {
+                    destinations: Some(vec!["../x".into()]),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
+        assert!(
+            apply(
+                Stored::default(),
+                Change {
+                    statement_text: Some("x".repeat(601)),
+                    ..Default::default()
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -310,7 +381,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         fs::write(dir.path().join("a.png"), b"png").unwrap();
         fs::write(dir.path().join("notes.md"), b"text").unwrap();
-        let asset = |from: &str| Asset { name: "image-1.png".into(), from: from.into() };
+        let asset = |from: &str| Asset {
+            name: "image-1.png".into(),
+            from: from.into(),
+        };
         assert_eq!(read_asset(dir.path(), &asset("a.png")).unwrap(), b"png");
         assert!(read_asset(dir.path(), &asset("notes.md")).is_err());
         assert!(read_asset(dir.path(), &asset("../a.png")).is_err());

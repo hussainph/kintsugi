@@ -46,7 +46,8 @@ type Result<T> = std::result::Result<T, String>;
 pub const MAX_MESSAGE_BYTES: usize = 20_000;
 const MAX_CHIPS: usize = 12;
 /// The summarizer's instructions; also how a scripted model recognizes it.
-pub const SUMMARIZER: &str = "You keep the running summary of one thread of Hussain's conversation with Kin";
+pub const SUMMARIZER: &str =
+    "You keep the running summary of one thread of Hussain's conversation with Kin";
 const SUMMARY_MAX_TOKENS: u32 = 600;
 
 /// Everything the engine needs from the outside world.
@@ -115,21 +116,46 @@ impl Default for Timing {
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum ChatEvent {
     /// A new log entry: his message, Kin's reply, a helper's report.
-    Entry { entry: Entry },
+    Entry {
+        entry: Entry,
+    },
     /// Kin started answering these messages.
-    TurnStarted { turn: String, answers: Vec<u64>, topic: String },
+    TurnStarted {
+        turn: String,
+        answers: Vec<u64>,
+        topic: String,
+    },
     /// Streaming from the running turn.
-    Turn { turn: String, event: KinEvent },
-    TurnEnded { turn: String },
+    Turn {
+        turn: String,
+        event: KinEvent,
+    },
+    TurnEnded {
+        turn: String,
+    },
     /// A thread's summary changed.
-    Thread { thread: Thread },
-    Job { job: Job },
+    Thread {
+        thread: Thread,
+    },
+    Job {
+        job: Job,
+    },
     /// Kin started replying in a comment thread (`comment`), or reviewing
     /// the document (`comment: None`). Its text streams as `Turn` events.
-    CommentStarted { turn: String, path: String, comment: Option<String> },
-    CommentEnded { turn: String, path: String, comment: Option<String> },
+    CommentStarted {
+        turn: String,
+        path: String,
+        comment: Option<String>,
+    },
+    CommentEnded {
+        turn: String,
+        path: String,
+        comment: Option<String>,
+    },
     /// A document's comment threads changed (created, resolved, a review).
-    Comments { path: String },
+    Comments {
+        path: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -217,7 +243,6 @@ impl<B: Brain> Engine<B> {
         self.0.brain.emit(event);
     }
 
-
     // --- The conversation -------------------------------------------------
 
     /// He said something. It's in the log before this returns.
@@ -229,9 +254,15 @@ impl<B: Brain> Engine<B> {
         if text.len() > MAX_MESSAGE_BYTES {
             return Err("That message is too long.".into());
         }
-        let chips: Vec<Chip> = chips.into_iter().filter(|c| !c.path.trim().is_empty()).take(MAX_CHIPS).collect();
+        let chips: Vec<Chip> = chips
+            .into_iter()
+            .filter(|c| !c.path.trim().is_empty())
+            .take(MAX_CHIPS)
+            .collect();
         let entry = self.0.log.lock().unwrap().say(text, chips)?;
-        self.emit(ChatEvent::Entry { entry: entry.clone() });
+        self.emit(ChatEvent::Entry {
+            entry: entry.clone(),
+        });
         self.interrupt();
         self.schedule(self.0.timing.batch);
         Ok(entry)
@@ -307,22 +338,50 @@ impl<B: Brain> Engine<B> {
         live.want_turn = false;
         let pending = self.0.log.lock().unwrap().pending();
         let Some(last) = pending.last() else { return };
-        let turn = format!("turn-{}-{}", std::process::id(), self.0.turns.fetch_add(1, Ordering::Relaxed) + 1);
-        let info = RunningTurn { turn: turn.clone(), answers: pending.iter().map(|e| e.seq).collect(), topic: last.topic.clone() };
+        let turn = format!(
+            "turn-{}-{}",
+            std::process::id(),
+            self.0.turns.fetch_add(1, Ordering::Relaxed) + 1
+        );
+        let info = RunningTurn {
+            turn: turn.clone(),
+            answers: pending.iter().map(|e| e.seq).collect(),
+            topic: last.topic.clone(),
+        };
         let cancel = Cancel::default();
-        live.running = Some(Running { info: info.clone(), cancel: cancel.clone(), stopped: false });
-        self.emit(ChatEvent::TurnStarted { turn: info.turn.clone(), answers: info.answers.clone(), topic: info.topic.clone() });
+        live.running = Some(Running {
+            info: info.clone(),
+            cancel: cancel.clone(),
+            stopped: false,
+        });
+        self.emit(ChatEvent::TurnStarted {
+            turn: info.turn.clone(),
+            answers: info.answers.clone(),
+            topic: info.topic.clone(),
+        });
         let engine = self.clone();
         async_runtime::spawn(async move { engine.answer(info, pending, cancel).await });
     }
 
     async fn answer(&self, info: RunningTurn, pending: Vec<Entry>, cancel: Cancel) {
-        let (recap, history) = self.0.log.lock().unwrap().context(&info.topic, history::HISTORY_PAIRS);
-        let question = pending.iter().map(|e| e.text.as_str()).collect::<Vec<_>>().join("\n\n");
+        let (recap, history) = self
+            .0
+            .log
+            .lock()
+            .unwrap()
+            .context(&info.topic, history::HISTORY_PAIRS);
+        let question = pending
+            .iter()
+            .map(|e| e.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         // The newest message's chips first; the same chip once.
         let mut chips: Vec<Chip> = Vec::new();
         for chip in pending.iter().rev().flat_map(|e| e.chips.iter()) {
-            if !chips.iter().any(|c| c.kind == chip.kind && c.path == chip.path && c.lines == chip.lines) {
+            if !chips
+                .iter()
+                .any(|c| c.kind == chip.kind && c.path == chip.path && c.lines == chip.lines)
+            {
                 chips.push(chip.clone());
             }
         }
@@ -339,22 +398,52 @@ impl<B: Brain> Engine<B> {
         };
         let (streamed, result, _) = self.execute(&info.turn, &request, &cancel, true).await;
 
-        let stopped = self.0.live.lock().unwrap().running.as_ref().is_some_and(|r| r.stopped);
+        let stopped = self
+            .0
+            .live
+            .lock()
+            .unwrap()
+            .running
+            .as_ref()
+            .is_some_and(|r| r.stopped);
         let through = info.answers.last().copied().unwrap_or_default();
-        let base = Draft { topic: info.topic.clone(), answers: info.answers.clone(), ..Draft::default() };
+        let base = Draft {
+            topic: info.topic.clone(),
+            answers: info.answers.clone(),
+            ..Draft::default()
+        };
         let (draft, settled) = match result {
-            Ok(summary) if summary.stop == Stop::Cancelled => {
-                (Some(Draft { text: streamed.trim().into(), interrupted: true, ..base }).filter(|d| !d.text.is_empty()), stopped)
-            }
+            Ok(summary) if summary.stop == Stop::Cancelled => (
+                Some(Draft {
+                    text: streamed.trim().into(),
+                    interrupted: true,
+                    ..base
+                })
+                .filter(|d| !d.text.is_empty()),
+                stopped,
+            ),
             Ok(summary) => {
                 let text = if summary.text.trim().is_empty() {
                     "I ran out of steps before I could answer. Ask again, more narrowly?".into()
                 } else {
                     summary.text
                 };
-                (Some(Draft { text, usd: Some(summary.usd), ..base }), true)
+                (
+                    Some(Draft {
+                        text,
+                        usd: Some(summary.usd),
+                        ..base
+                    }),
+                    true,
+                )
             }
-            Err(message) => (Some(Draft { error: Some(message), ..base }), true),
+            Err(message) => (
+                Some(Draft {
+                    error: Some(message),
+                    ..base
+                }),
+                true,
+            ),
         };
         {
             let mut log = self.0.log.lock().unwrap();
@@ -367,7 +456,9 @@ impl<B: Brain> Engine<B> {
                 log.mark_answered(through);
             }
         }
-        self.emit(ChatEvent::TurnEnded { turn: info.turn.clone() });
+        self.emit(ChatEvent::TurnEnded {
+            turn: info.turn.clone(),
+        });
 
         let mut live = self.0.live.lock().unwrap();
         live.running = None;
@@ -381,7 +472,13 @@ impl<B: Brain> Engine<B> {
 
     /// Runs one agent turn, streaming to the webview. Returns what was
     /// streamed of the current step (the partial reply, if interrupted).
-    async fn execute(&self, turn: &str, request: &agent::Turn, cancel: &Cancel, chat: bool) -> (String, Result<agent::Summary>, Trace) {
+    async fn execute(
+        &self,
+        turn: &str,
+        request: &agent::Turn,
+        cancel: &Cancel,
+        chat: bool,
+    ) -> (String, Result<agent::Summary>, Trace) {
         let mut streamed = String::new();
         let mut trace = Trace::default();
         let started = std::time::Instant::now();
@@ -390,7 +487,8 @@ impl<B: Brain> Engine<B> {
             let model = self.0.brain.connect(request.task).await?;
             let meter = self.0.brain.meter();
             let log = self.0.log.clone();
-            let history: super::tools::History = Arc::new(move |args: &Value| history_tool(&log.lock().unwrap(), args));
+            let history: super::tools::History =
+                Arc::new(move |args: &Value| history_tool(&log.lock().unwrap(), args));
             let mut tools = Tools::new(&vault, meter.outputs_dir(), turn)?.with_history(history);
             if let Some(searcher) = self.0.brain.searcher() {
                 tools = tools.with_searcher(searcher);
@@ -401,34 +499,60 @@ impl<B: Brain> Engine<B> {
             if let Some(feed) = self.0.brain.feed() {
                 tools = tools.with_feed(feed);
             }
-            if chat && let Some(access) = self.0.brain.memory_access(&vault, turn, &request.question) {
+            if chat
+                && let Some(access) = self.0.brain.memory_access(&vault, turn, &request.question)
+            {
                 tools = tools.with_memory(access);
             }
             let memory = self.0.brain.memory(&vault);
             // A helper's report (a batch of ideas) is long; give it room.
-            let limits = if chat { Limits::default() } else { Limits::report() };
-            let harness = Harness { tools: &tools, meter, memory: &memory, cancel, limits };
+            let limits = if chat {
+                Limits::default()
+            } else {
+                Limits::report()
+            };
+            let harness = Harness {
+                tools: &tools,
+                meter,
+                memory: &memory,
+                cancel,
+                limits,
+            };
             let mut emit = |event: KinEvent| {
                 match &event {
                     KinEvent::Text { delta } => streamed.push_str(delta),
-                    KinEvent::Step { step, usage, stop_reason, text_chars, .. } => {
-                        trace.step(*step, stop_reason.as_deref(), *text_chars, usage.output)
-                    }
+                    KinEvent::Step {
+                        step,
+                        usage,
+                        stop_reason,
+                        text_chars,
+                        ..
+                    } => trace.step(*step, stop_reason.as_deref(), *text_chars, usage.output),
                     // Text before a tool call was thinking aloud.
-                    KinEvent::ToolCall { name, arguments, .. } => {
+                    KinEvent::ToolCall {
+                        name, arguments, ..
+                    } => {
                         streamed.clear();
                         trace.call(name, arguments);
                     }
                     _ => {}
                 }
-                self.emit(ChatEvent::Turn { turn: turn.into(), event });
+                self.emit(ChatEvent::Turn {
+                    turn: turn.into(),
+                    event,
+                });
             };
             // The loop emits its own error event.
             agent::run(&model, &harness, request, &mut emit).await
         }
         .await;
         if let Err(message) = &result {
-            self.emit(ChatEvent::Turn { turn: turn.into(), event: KinEvent::Error { message: message.clone() } });
+            self.emit(ChatEvent::Turn {
+                turn: turn.into(),
+                event: KinEvent::Error {
+                    message: message.clone(),
+                },
+            });
         }
         trace.millis = started.elapsed().as_millis() as u64;
         if let Ok(summary) = &result {
@@ -440,7 +564,14 @@ impl<B: Brain> Engine<B> {
 
     pub fn page(&self, topic: Option<&str>, before: Option<u64>, limit: usize) -> Page {
         // Lock order: live, then log.
-        let running = self.0.live.lock().unwrap().running.as_ref().map(|r| r.info.clone());
+        let running = self
+            .0
+            .live
+            .lock()
+            .unwrap()
+            .running
+            .as_ref()
+            .map(|r| r.info.clone());
         let log = self.0.log.lock().unwrap();
         Page {
             entries: log.page(topic, before, limit.clamp(1, 500)),
@@ -452,11 +583,19 @@ impl<B: Brain> Engine<B> {
 
     /// What a message sent now, with these chips, would be about.
     pub fn topic(&self, chips: &[Chip]) -> Topic {
-        self.0.log.lock().unwrap().infer("", chips, chrono::Local::now().fixed_offset())
+        self.0
+            .log
+            .lock()
+            .unwrap()
+            .infer("", chips, chrono::Local::now().fixed_offset())
     }
 
     pub fn search(&self, query: &str, topic: Option<&str>, limit: usize) -> Vec<Hit> {
-        self.0.log.lock().unwrap().search(query, topic, limit.clamp(1, 100))
+        self.0
+            .log
+            .lock()
+            .unwrap()
+            .search(query, topic, limit.clamp(1, 100))
     }
 
     // --- Idle summaries ---------------------------------------------------
@@ -483,19 +622,34 @@ impl<B: Brain> Engine<B> {
     /// at the cap, and when he comes back.
     pub async fn summarize(&self) {
         let activity = self.0.live.lock().unwrap().activity;
-        let stale = self.0.log.lock().unwrap().stale(self.0.timing.summary_after);
+        let stale = self
+            .0
+            .log
+            .lock()
+            .unwrap()
+            .stale(self.0.timing.summary_after);
         for key in stale {
             let meter = self.0.brain.meter();
             if meter.allows(true).is_err() || self.0.live.lock().unwrap().activity != activity {
                 return;
             }
-            let Ok(model) = self.0.brain.connect(Task::Chat).await else { return };
+            let Ok(model) = self.0.brain.connect(Task::Chat).await else {
+                return;
+            };
             let (label, previous, entries) = {
                 let log = self.0.log.lock().unwrap();
                 let (previous, entries) = log.unsummarized(&key);
-                (log.thread(&key).map(|t| t.label.clone()).unwrap_or_default(), previous, entries)
+                (
+                    log.thread(&key)
+                        .map(|t| t.label.clone())
+                        .unwrap_or_default(),
+                    previous,
+                    entries,
+                )
             };
-            let Some(through) = entries.last().map(|e| e.seq) else { continue };
+            let Some(through) = entries.last().map(|e| e.seq) else {
+                continue;
+            };
             let items = [Item::User(summary_prompt(&label, &previous, &entries))];
             let system = format!(
                 "{SUMMARIZER}. Write the new running summary: who asked what, what Kin found (with paths), what was decided, \
@@ -512,12 +666,19 @@ impl<B: Brain> Engine<B> {
                 reasoning: None,
                 cache_key: None,
             };
-            let Ok(reply) = model.send(&exchange, &mut |_| {}).await else { return };
+            let Ok(reply) = model.send(&exchange, &mut |_| {}).await else {
+                return;
+            };
             meter.record(Task::Chat, model.model(), &reply.usage);
             if reply.text.trim().is_empty() {
                 continue;
             }
-            let thread = self.0.log.lock().unwrap().set_summary(&key, &reply.text, through);
+            let thread = self
+                .0
+                .log
+                .lock()
+                .unwrap()
+                .set_summary(&key, &reply.text, through);
             if let Some(thread) = thread {
                 self.emit(ChatEvent::Thread { thread });
             }
@@ -529,7 +690,9 @@ impl<B: Brain> Engine<B> {
     pub fn create_job(&self, new: NewJob) -> Result<Job> {
         let task = match new.task.as_deref() {
             None => Task::Chat,
-            Some(id) => Task::from_id(id).filter(|t| Task::KIN.contains(t)).ok_or_else(|| format!("unknown Kin task {id}"))?,
+            Some(id) => Task::from_id(id)
+                .filter(|t| Task::KIN.contains(t))
+                .ok_or_else(|| format!("unknown Kin task {id}"))?,
         };
         let job = self.0.jobs.lock().unwrap().create(new, task.id())?;
         self.emit(ChatEvent::Job { job: job.clone() });
@@ -569,8 +732,12 @@ impl<B: Brain> Engine<B> {
         }
         let allows = self.0.brain.meter().allows(true).is_ok();
         let mut jobs = self.0.jobs.lock().unwrap();
-        let Some(next) = jobs.next(allows) else { return };
-        let Some(job) = jobs.start(&next.id) else { return };
+        let Some(next) = jobs.next(allows) else {
+            return;
+        };
+        let Some(job) = jobs.start(&next.id) else {
+            return;
+        };
         drop(jobs);
         let cancel = Cancel::default();
         live.job = Some((job.id.clone(), cancel.clone()));
@@ -593,40 +760,80 @@ impl<B: Brain> Engine<B> {
         };
         let (_, result, trace) = self.execute(&job.id, &request, &cancel, false).await;
         let (status, text, error, usd) = match result {
-            Ok(s) if s.stop == Stop::CapReached => (Status::Waiting, None, Some(super::cost::CapReached::MESSAGE.to_string()), s.usd),
+            Ok(s) if s.stop == Stop::CapReached => (
+                Status::Waiting,
+                None,
+                Some(super::cost::CapReached::MESSAGE.to_string()),
+                s.usd,
+            ),
             Ok(s) if s.stop == Stop::Cancelled => (Status::Cancelled, None, None, s.usd),
-            Ok(s) if s.text.trim().is_empty() && s.stop == Stop::StepLimit => {
-                (Status::Failed, None, Some("The helper ran out of steps without a report.".into()), s.usd)
-            }
+            Ok(s) if s.text.trim().is_empty() && s.stop == Stop::StepLimit => (
+                Status::Failed,
+                None,
+                Some("The helper ran out of steps without a report.".into()),
+                s.usd,
+            ),
             Ok(s) if s.text.trim().is_empty() => {
                 let why = match trace.steps.last().and_then(|t| t.stop.as_deref()) {
-                    Some("length" | "max_tokens" | "max_output_tokens") => "it used its whole reply on thinking",
+                    Some("length" | "max_tokens" | "max_output_tokens") => {
+                        "it used its whole reply on thinking"
+                    }
                     _ => "its reply was empty",
                 };
-                (Status::Failed, None, Some(format!("The helper ended without a report: {why}.")), s.usd)
+                (
+                    Status::Failed,
+                    None,
+                    Some(format!("The helper ended without a report: {why}.")),
+                    s.usd,
+                )
             }
             Ok(s) => match self.0.brain.finish_job(&job, s.text, &trace) {
                 Ok(report) => (Status::Done, Some(report), None, s.usd),
                 Err(e) => (Status::Failed, None, Some(e), s.usd),
             },
-            Err(e) if e == super::cost::CapReached::MESSAGE => (Status::Waiting, None, Some(e), 0.0),
+            Err(e) if e == super::cost::CapReached::MESSAGE => {
+                (Status::Waiting, None, Some(e), 0.0)
+            }
             Err(e) => (Status::Failed, None, Some(e), 0.0),
         };
         // The step trace, for working out why a helper failed: tool names,
         // stop reasons and token counts only.
-        eprintln!("kin: helper {} ({}) {:?}: {}", job.id, job.kind, status, trace.line());
-        self.0.jobs.lock().unwrap().update(&job.id, |j| j.steps = trace.steps.clone());
+        eprintln!(
+            "kin: helper {} ({}) {:?}: {}",
+            job.id,
+            job.kind,
+            status,
+            trace.line()
+        );
+        self.0
+            .jobs
+            .lock()
+            .unwrap()
+            .update(&job.id, |j| j.steps = trace.steps.clone());
         // Report back quietly, before the job reads as finished: a helper
         // entry in the log, no interruption.
         if matches!(status, Status::Done | Status::Failed) {
-            let report = text.clone().unwrap_or_else(|| format!("I couldn't finish: {}", error.clone().unwrap_or_default()));
-            let draft = Draft { text: report, topic: job.topic.clone(), job: Some(job.id.clone()), usd: Some(job.usd + usd), ..Draft::default() };
+            let report = text.clone().unwrap_or_else(|| {
+                format!("I couldn't finish: {}", error.clone().unwrap_or_default())
+            });
+            let draft = Draft {
+                text: report,
+                topic: job.topic.clone(),
+                job: Some(job.id.clone()),
+                usd: Some(job.usd + usd),
+                ..Draft::default()
+            };
             let entry = self.0.log.lock().unwrap().reply(Role::Helper, draft);
             if let Ok(entry) = entry {
                 self.emit(ChatEvent::Entry { entry });
             }
         }
-        let finished = self.0.jobs.lock().unwrap().finish(&job.id, status, text, error, usd);
+        let finished = self
+            .0
+            .jobs
+            .lock()
+            .unwrap()
+            .finish(&job.id, status, text, error, usd);
         if let Some(finished) = finished {
             self.emit(ChatEvent::Job { job: finished });
         }
@@ -650,7 +857,10 @@ fn brief(job: &Job) -> String {
 }
 
 fn summary_prompt(label: &str, previous: &str, entries: &[Entry]) -> String {
-    let mut out = format!("Thread: {}\n\n", if label.is_empty() { "general" } else { label });
+    let mut out = format!(
+        "Thread: {}\n\n",
+        if label.is_empty() { "general" } else { label }
+    );
     if !previous.trim().is_empty() {
         out.push_str(&format!("Summary so far:\n{}\n\n", previous.trim()));
     }
@@ -663,15 +873,25 @@ fn summary_prompt(label: &str, previous: &str, entries: &[Entry]) -> String {
         };
         let note = if e.interrupted { " (interrupted)" } else { "" };
         let text = e.error.as_deref().map_or(e.text.as_str(), |_| "(failed)");
-        out.push_str(&format!("{who}{note}: {}\n", text.replace("</data", "<\\/data")));
+        out.push_str(&format!(
+            "{who}{note}: {}\n",
+            text.replace("</data", "<\\/data")
+        ));
     }
     out.push_str("</data>");
     out
 }
 
 fn history_tool(log: &Log, args: &Value) -> String {
-    let limit = args["limit"].as_u64().map_or(10, |n| (n as usize).clamp(1, 30));
-    log.tool(args["query"].as_str(), args["around"].as_u64(), args["about"].as_str(), limit)
+    let limit = args["limit"]
+        .as_u64()
+        .map_or(10, |n| (n as usize).clamp(1, 30));
+    log.tool(
+        args["query"].as_str(),
+        args["around"].as_u64(),
+        args["about"].as_str(),
+        limit,
+    )
 }
 
 // --- Tauri ----------------------------------------------------------------
@@ -701,7 +921,11 @@ impl Brain for AppBrain {
 
     fn memory_access(&self, vault: &Path, turn: &str, question: &str) -> Option<Access> {
         let store = super::about::store(&self.0, vault).ok()?;
-        Some(Access { store, source: super::memory::Source::chat(turn, question), remember: true })
+        Some(Access {
+            store,
+            source: super::memory::Source::chat(turn, question),
+            remember: true,
+        })
     }
 
     fn searcher(&self) -> Option<super::tools::Searcher> {
@@ -745,7 +969,10 @@ pub fn init(app: &AppHandle) {
     #[allow(unused_mut)]
     let mut timing = Timing::default();
     #[cfg(feature = "headless")]
-    if let Some(ms) = std::env::var("KINTSUGI_HEADLESS_KIN_IDLE_MS").ok().and_then(|v| v.parse().ok()) {
+    if let Some(ms) = std::env::var("KINTSUGI_HEADLESS_KIN_IDLE_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+    {
         timing.idle = Duration::from_millis(ms);
     }
     let engine = Engine::new(AppBrain(app.clone()), super::kin::data_dir(app), timing);
@@ -785,8 +1012,15 @@ pub fn kin_chat_stop(chat: State<Chat>) -> Result<()> {
 }
 
 #[tauri::command]
-pub fn kin_chat_log(chat: State<Chat>, topic: Option<String>, before: Option<u64>, limit: Option<usize>) -> Result<Page> {
-    Ok(chat.engine()?.page(topic.as_deref(), before, limit.unwrap_or(200)))
+pub fn kin_chat_log(
+    chat: State<Chat>,
+    topic: Option<String>,
+    before: Option<u64>,
+    limit: Option<usize>,
+) -> Result<Page> {
+    Ok(chat
+        .engine()?
+        .page(topic.as_deref(), before, limit.unwrap_or(200)))
 }
 
 #[tauri::command]
@@ -795,8 +1029,15 @@ pub fn kin_chat_topic(chat: State<Chat>, chips: Vec<Chip>) -> Result<Topic> {
 }
 
 #[tauri::command]
-pub fn kin_chat_search(chat: State<Chat>, query: String, topic: Option<String>, limit: Option<usize>) -> Result<Vec<Hit>> {
-    Ok(chat.engine()?.search(&query, topic.as_deref(), limit.unwrap_or(20)))
+pub fn kin_chat_search(
+    chat: State<Chat>,
+    query: String,
+    topic: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<Hit>> {
+    Ok(chat
+        .engine()?
+        .search(&query, topic.as_deref(), limit.unwrap_or(20)))
 }
 
 #[tauri::command]
@@ -816,7 +1057,6 @@ pub fn kin_job_cancel(chat: State<Chat>, id: String) -> Result<Option<Job>> {
 
 pub mod comments;
 pub(crate) use comments::{COMMENT_NOTE, REVIEW_BRIEF};
-
 
 #[cfg(test)]
 mod tests;

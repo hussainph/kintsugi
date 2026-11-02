@@ -18,7 +18,14 @@ pub fn sigmoid(x: f64) -> f64 {
 
 impl Ftrl {
     pub fn new(dims: usize) -> Self {
-        Ftrl { alpha: 0.5, beta: 1.0, l1: 0.01, l2: 0.5, z: vec![0.0; dims], n: vec![0.0; dims] }
+        Ftrl {
+            alpha: 0.5,
+            beta: 1.0,
+            l1: 0.01,
+            l2: 0.5,
+            z: vec![0.0; dims],
+            n: vec![0.0; dims],
+        }
     }
 
     /// The learned residual for one coordinate.
@@ -35,7 +42,10 @@ impl Ftrl {
     }
 
     pub fn logit(&self, prior: &[f64], x: &[f64]) -> f64 {
-        x.iter().enumerate().map(|(i, xi)| (prior[i] + self.weight(i)) * xi).sum()
+        x.iter()
+            .enumerate()
+            .map(|(i, xi)| (prior[i] + self.weight(i)) * xi)
+            .sum()
     }
 
     pub fn predict(&self, prior: &[f64], x: &[f64]) -> f64 {

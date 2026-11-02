@@ -13,7 +13,10 @@ pub const YT_DLP: ToolSpec = ToolSpec {
     purpose: "YouTube transcripts",
     homepage: "https://github.com/yt-dlp/yt-dlp",
     license: "Unlicense",
-    source: ToolSource::GitHubRelease { repo: "yt-dlp/yt-dlp", checksums: Checksums::SumsFile("SHA2-256SUMS") },
+    source: ToolSource::GitHubRelease {
+        repo: "yt-dlp/yt-dlp",
+        checksums: Checksums::SumsFile("SHA2-256SUMS"),
+    },
     assets: &[
         ("macos-aarch64", "yt-dlp_macos"),
         ("macos-x86_64", "yt-dlp_macos"),
@@ -38,7 +41,10 @@ pub const DENO: ToolSpec = ToolSpec {
     purpose: "Lets yt-dlp read YouTube's player",
     homepage: "https://deno.com",
     license: "MIT",
-    source: ToolSource::GitHubRelease { repo: "denoland/deno", checksums: Checksums::PerAsset(".sha256sum") },
+    source: ToolSource::GitHubRelease {
+        repo: "denoland/deno",
+        checksums: Checksums::PerAsset(".sha256sum"),
+    },
     assets: &[
         ("macos-aarch64", "deno-aarch64-apple-darwin.zip"),
         ("macos-x86_64", "deno-x86_64-apple-darwin.zip"),
@@ -82,7 +88,10 @@ pub const UV: ToolSpec = ToolSpec {
     purpose: "Installs Python tools such as Docling",
     homepage: "https://github.com/astral-sh/uv",
     license: "MIT or Apache-2.0",
-    source: ToolSource::GitHubRelease { repo: "astral-sh/uv", checksums: Checksums::PerAsset(".sha256") },
+    source: ToolSource::GitHubRelease {
+        repo: "astral-sh/uv",
+        checksums: Checksums::PerAsset(".sha256"),
+    },
     assets: &[
         ("macos-aarch64", "uv-aarch64-apple-darwin.tar.gz"),
         ("macos-x86_64", "uv-x86_64-apple-darwin.tar.gz"),
@@ -116,7 +125,15 @@ pub const DOCLING: ToolSpec = ToolSpec {
         package: "docling[ocrmac]",
         version: "2.145.0",
         python: "3.12",
-        prepare: &["docling-tools", "models", "download", "-o", "{dir}/models", "layout", "tableformer"],
+        prepare: &[
+            "docling-tools",
+            "models",
+            "download",
+            "-o",
+            "{dir}/models",
+            "layout",
+            "tableformer",
+        ],
     },
     assets: &[("macos-aarch64", "")],
     archive: Archive::None,

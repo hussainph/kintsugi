@@ -84,15 +84,34 @@ fn review_key(doc: &str) -> String {
 /// The chips a comment message carries: only the ones about this document,
 /// and the document itself.
 fn doc_chips(doc: &str, chips: Vec<Chip>) -> Vec<Chip> {
-    let mut chips: Vec<Chip> = chips.into_iter().filter(|c| c.path.trim() == doc).take(MAX_CHIPS).collect();
+    let mut chips: Vec<Chip> = chips
+        .into_iter()
+        .filter(|c| c.path.trim() == doc)
+        .take(MAX_CHIPS)
+        .collect();
     if !chips.iter().any(|c| c.kind == "doc") {
-        chips.push(Chip { kind: "doc".into(), path: doc.into(), label: None, lines: None });
+        chips.push(Chip {
+            kind: "doc".into(),
+            path: doc.into(),
+            label: None,
+            lines: None,
+        });
     }
     chips
 }
 
 fn note(doc: &str, chips: &[Chip]) -> String {
-    let lines = chips.iter().find_map(|c| c.lines).map(|[a, b]| if a == b { format!(", line {a}") } else { format!(", lines {a}-{b}") }).unwrap_or_default();
+    let lines = chips
+        .iter()
+        .find_map(|c| c.lines)
+        .map(|[a, b]| {
+            if a == b {
+                format!(", line {a}")
+            } else {
+                format!(", lines {a}-{b}")
+            }
+        })
+        .unwrap_or_default();
     format!(
         "{COMMENT_NOTE} of {doc}{lines}: the paragraph chip below. Reply the way a reviewer does in the margin: brief, specific and plain, \
          a few sentences, no praise. Never write or rewrite his prose, not even as an example: question, point, find. Name anything you found \
@@ -111,11 +130,24 @@ fn review_brief(doc: &str, label: &str, paragraphs: &[Paragraph]) -> String {
          <comments>[{{\"paragraph\": 2, \"comment\": \"…\"}}]</comments>. \"paragraph\" is a number from the list below.\n\nParagraphs:\n"
     );
     for (i, p) in paragraphs.iter().enumerate() {
-        let flat: String = p.anchor.exact.split_whitespace().collect::<Vec<_>>().join(" ");
+        let flat: String = p
+            .anchor
+            .exact
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         let head: String = flat.chars().take(140).collect();
-        let more = if flat.chars().count() > 140 { "…" } else { "" };
+        let more = if flat.chars().count() > 140 {
+            "…"
+        } else {
+            ""
+        };
         let [a, b] = p.lines;
-        out.push_str(&format!("¶{} (lines {a}-{b}): {}{more}\n", i + 1, head.replace("</data", "<\\/data")));
+        out.push_str(&format!(
+            "¶{} (lines {a}-{b}): {}{more}\n",
+            i + 1,
+            head.replace("</data", "<\\/data")
+        ));
     }
     out
 }
@@ -129,15 +161,26 @@ struct Remark {
 /// The review's notes: paragraph index (from 0) and text. `None` if the
 /// reply has no well-formed list.
 fn remarks(text: &str, paragraphs: usize) -> Option<Vec<(usize, String)>> {
-    let body = text.split("<comments>").nth(1)?.split("</comments>").next()?;
+    let body = text
+        .split("<comments>")
+        .nth(1)?
+        .split("</comments>")
+        .next()?;
     let list: Vec<Remark> = serde_json::from_str(body.trim()).ok()?;
     let mut out: Vec<(usize, String)> = Vec::new();
     for remark in list {
         let comment = remark.comment.trim();
-        if remark.paragraph == 0 || remark.paragraph > paragraphs || comment.is_empty() || out.iter().any(|(i, _)| *i == remark.paragraph - 1) {
+        if remark.paragraph == 0
+            || remark.paragraph > paragraphs
+            || comment.is_empty()
+            || out.iter().any(|(i, _)| *i == remark.paragraph - 1)
+        {
             continue;
         }
-        out.push((remark.paragraph - 1, comment.chars().take(MAX_REMARK_CHARS).collect()));
+        out.push((
+            remark.paragraph - 1,
+            comment.chars().take(MAX_REMARK_CHARS).collect(),
+        ));
         if out.len() == MAX_REMARKS {
             break;
         }
@@ -147,8 +190,21 @@ fn remarks(text: &str, paragraphs: usize) -> Option<Vec<(usize, String)>> {
 
 impl<B: Brain> Engine<B> {
     fn topic_for(&self, doc: &str, chips: &[Chip]) -> Topic {
-        let topic = self.0.log.lock().unwrap().infer("", chips, chrono::Local::now().fixed_offset());
-        if topic.key == doc { topic } else { Topic { key: doc.into(), kind: "doc".into(), label: String::new() } }
+        let topic =
+            self.0
+                .log
+                .lock()
+                .unwrap()
+                .infer("", chips, chrono::Local::now().fixed_offset());
+        if topic.key == doc {
+            topic
+        } else {
+            Topic {
+                key: doc.into(),
+                kind: "doc".into(),
+                label: String::new(),
+            }
+        }
     }
 
     /// A document's threads, each with its messages.
@@ -160,16 +216,37 @@ impl<B: Brain> Engine<B> {
             .running
             .values()
             .filter(|r| r.path == file.path)
-            .map(|r| Running { turn: r.turn.clone(), comment: r.comment.clone() })
+            .map(|r| Running {
+                turn: r.turn.clone(),
+                comment: r.comment.clone(),
+            })
             .collect();
         drop(live);
         let log = self.0.log.lock().unwrap();
-        let threads = file.threads.into_iter().map(|thread| View { entries: log.comment_entries(&thread.id), thread }).collect();
-        Ok(Comments { path: file.path, threads, running })
+        let threads = file
+            .threads
+            .into_iter()
+            .map(|thread| View {
+                entries: log.comment_entries(&thread.id),
+                thread,
+            })
+            .collect();
+        Ok(Comments {
+            path: file.path,
+            threads,
+            running,
+        })
     }
 
     /// A new thread on a paragraph, with his first message; Kin replies.
-    pub fn comment_create(&self, doc: &str, anchor: Anchor, origin: &str, text: &str, chips: Vec<Chip>) -> Result<View> {
+    pub fn comment_create(
+        &self,
+        doc: &str,
+        anchor: Anchor,
+        origin: &str,
+        text: &str,
+        chips: Vec<Chip>,
+    ) -> Result<View> {
         let text = text.trim();
         if text.is_empty() {
             return Err("Say something to Kin.".into());
@@ -187,19 +264,39 @@ impl<B: Brain> Engine<B> {
         };
         let chips = doc_chips(doc.trim(), chips);
         let topic = self.topic_for(doc.trim(), &chips);
-        let entry = self.0.log.lock().unwrap().say_in(&thread.id, text, chips, &topic)?;
-        self.emit(ChatEvent::Entry { entry: entry.clone() });
-        self.emit(ChatEvent::Comments { path: doc.trim().into() });
+        let entry = self
+            .0
+            .log
+            .lock()
+            .unwrap()
+            .say_in(&thread.id, text, chips, &topic)?;
+        self.emit(ChatEvent::Entry {
+            entry: entry.clone(),
+        });
+        self.emit(ChatEvent::Comments {
+            path: doc.trim().into(),
+        });
         self.comment_turn(doc.trim(), &thread.id);
-        Ok(View { thread, entries: vec![entry] })
+        Ok(View {
+            thread,
+            entries: vec![entry],
+        })
     }
 
     /// His reply in a thread; Kin answers. An empty reply asks Kin again
     /// (after a failed or stopped answer).
-    pub fn comment_reply(&self, doc: &str, id: &str, text: &str, chips: Vec<Chip>) -> Result<Option<Entry>> {
+    pub fn comment_reply(
+        &self,
+        doc: &str,
+        id: &str,
+        text: &str,
+        chips: Vec<Chip>,
+    ) -> Result<Option<Entry>> {
         let doc = doc.trim();
         let root = self.0.brain.vault()?;
-        store::load(&root, doc)?.get(id).ok_or("That comment thread is gone.")?;
+        store::load(&root, doc)?
+            .get(id)
+            .ok_or("That comment thread is gone.")?;
         let text = text.trim();
         if text.len() > MAX_MESSAGE_BYTES {
             return Err("That message is too long.".into());
@@ -208,11 +305,24 @@ impl<B: Brain> Engine<B> {
             let mut log = self.0.log.lock().unwrap();
             if log.comment_pending(id).is_empty() {
                 // Ask the last question again.
-                let Some(last) = log.comment_entries(id).into_iter().rev().find(|e| e.role == Role::Owner) else { return Ok(None) };
-                let topic = Topic { key: doc.into(), kind: "doc".into(), label: String::new() };
+                let Some(last) = log
+                    .comment_entries(id)
+                    .into_iter()
+                    .rev()
+                    .find(|e| e.role == Role::Owner)
+                else {
+                    return Ok(None);
+                };
+                let topic = Topic {
+                    key: doc.into(),
+                    kind: "doc".into(),
+                    label: String::new(),
+                };
                 let entry = log.say_in(id, &last.text, last.chips.clone(), &topic)?;
                 drop(log);
-                self.emit(ChatEvent::Entry { entry: entry.clone() });
+                self.emit(ChatEvent::Entry {
+                    entry: entry.clone(),
+                });
                 self.comment_turn(doc, id);
                 return Ok(Some(entry));
             }
@@ -223,7 +333,9 @@ impl<B: Brain> Engine<B> {
         let chips = doc_chips(doc.trim(), chips);
         let topic = self.topic_for(doc, &chips);
         let entry = self.0.log.lock().unwrap().say_in(id, text, chips, &topic)?;
-        self.emit(ChatEvent::Entry { entry: entry.clone() });
+        self.emit(ChatEvent::Entry {
+            entry: entry.clone(),
+        });
         self.comment_turn(doc, id);
         Ok(Some(entry))
     }
@@ -237,7 +349,9 @@ impl<B: Brain> Engine<B> {
             store::save(&root, &file)?;
             thread
         };
-        self.emit(ChatEvent::Comments { path: doc.trim().into() });
+        self.emit(ChatEvent::Comments {
+            path: doc.trim().into(),
+        });
         Ok(thread)
     }
 
@@ -274,20 +388,55 @@ impl<B: Brain> Engine<B> {
         if pending.is_empty() {
             return;
         }
-        let turn = format!("comment-{}-{}", std::process::id(), self.0.turns.fetch_add(1, Ordering::Relaxed) + 1);
+        let turn = format!(
+            "comment-{}-{}",
+            std::process::id(),
+            self.0.turns.fetch_add(1, Ordering::Relaxed) + 1
+        );
         let cancel = Cancel::default();
-        live.running.insert(id.into(), Run { turn: turn.clone(), path: doc.into(), comment: Some(id.into()), cancel: cancel.clone(), again: false });
+        live.running.insert(
+            id.into(),
+            Run {
+                turn: turn.clone(),
+                path: doc.into(),
+                comment: Some(id.into()),
+                cancel: cancel.clone(),
+                again: false,
+            },
+        );
         drop(live);
-        self.emit(ChatEvent::CommentStarted { turn: turn.clone(), path: doc.into(), comment: Some(id.into()) });
+        self.emit(ChatEvent::CommentStarted {
+            turn: turn.clone(),
+            path: doc.into(),
+            comment: Some(id.into()),
+        });
         let engine = self.clone();
         let (doc, id) = (doc.to_string(), id.to_string());
-        async_runtime::spawn(async move { engine.answer_comment(doc, id, turn, pending, cancel).await });
+        async_runtime::spawn(
+            async move { engine.answer_comment(doc, id, turn, pending, cancel).await },
+        );
     }
 
-    async fn answer_comment(&self, doc: String, id: String, turn: String, pending: Vec<Entry>, cancel: Cancel) {
-        let history = self.0.log.lock().unwrap().comment_context(&id, history::HISTORY_PAIRS);
+    async fn answer_comment(
+        &self,
+        doc: String,
+        id: String,
+        turn: String,
+        pending: Vec<Entry>,
+        cancel: Cancel,
+    ) {
+        let history = self
+            .0
+            .log
+            .lock()
+            .unwrap()
+            .comment_context(&id, history::HISTORY_PAIRS);
         let chips = pending.last().map(|e| e.chips.clone()).unwrap_or_default();
-        let said = pending.iter().map(|e| e.text.as_str()).collect::<Vec<_>>().join("\n\n");
+        let said = pending
+            .iter()
+            .map(|e| e.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
         let request = agent::Turn {
             task: Task::Chat,
             background: false,
@@ -299,20 +448,52 @@ impl<B: Brain> Engine<B> {
             recap: None,
         };
         let (streamed, result, _) = self.execute(&turn, &request, &cancel, true).await;
-        let base = Draft { topic: doc.clone(), answers: pending.iter().map(|e| e.seq).collect(), comment: Some(id.clone()), ..Draft::default() };
+        let base = Draft {
+            topic: doc.clone(),
+            answers: pending.iter().map(|e| e.seq).collect(),
+            comment: Some(id.clone()),
+            ..Draft::default()
+        };
         let draft = match result {
-            Ok(summary) if summary.stop == Stop::Cancelled => Some(Draft { text: streamed.trim().into(), interrupted: true, ..base }).filter(|d| !d.text.is_empty()),
-            Ok(summary) if summary.text.trim().is_empty() => Some(Draft { text: "I ran out of steps before I could answer. Ask again, more narrowly?".into(), usd: Some(summary.usd), ..base }),
-            Ok(summary) => Some(Draft { text: summary.text, usd: Some(summary.usd), ..base }),
-            Err(message) => Some(Draft { error: Some(message), ..base }),
+            Ok(summary) if summary.stop == Stop::Cancelled => Some(Draft {
+                text: streamed.trim().into(),
+                interrupted: true,
+                ..base
+            })
+            .filter(|d| !d.text.is_empty()),
+            Ok(summary) if summary.text.trim().is_empty() => Some(Draft {
+                text: "I ran out of steps before I could answer. Ask again, more narrowly?".into(),
+                usd: Some(summary.usd),
+                ..base
+            }),
+            Ok(summary) => Some(Draft {
+                text: summary.text,
+                usd: Some(summary.usd),
+                ..base
+            }),
+            Err(message) => Some(Draft {
+                error: Some(message),
+                ..base
+            }),
         };
         if let Some(draft) = draft
             && let Ok(entry) = self.0.log.lock().unwrap().reply(Role::Kin, draft)
         {
             self.emit(ChatEvent::Entry { entry });
         }
-        let again = self.0.comments.lock().unwrap().running.remove(&id).is_some_and(|r| r.again);
-        self.emit(ChatEvent::CommentEnded { turn, path: doc.clone(), comment: Some(id.clone()) });
+        let again = self
+            .0
+            .comments
+            .lock()
+            .unwrap()
+            .running
+            .remove(&id)
+            .is_some_and(|r| r.again);
+        self.emit(ChatEvent::CommentEnded {
+            turn,
+            path: doc.clone(),
+            comment: Some(id.clone()),
+        });
         if again {
             self.comment_turn(&doc, &id);
         }
@@ -323,7 +504,11 @@ impl<B: Brain> Engine<B> {
     pub fn review(&self, doc: &str, paragraphs: Vec<Paragraph>, chips: Vec<Chip>) -> Result<Entry> {
         let doc = doc.trim();
         store::file_path(&self.0.brain.vault()?, doc)?;
-        let paragraphs: Vec<Paragraph> = paragraphs.into_iter().filter(|p| !p.anchor.exact.trim().is_empty()).take(MAX_REVIEW_PARAGRAPHS).collect();
+        let paragraphs: Vec<Paragraph> = paragraphs
+            .into_iter()
+            .filter(|p| !p.anchor.exact.trim().is_empty())
+            .take(MAX_REVIEW_PARAGRAPHS)
+            .collect();
         if paragraphs.is_empty() {
             return Err("Write a paragraph or two first, then ask for a review.".into());
         }
@@ -334,23 +519,64 @@ impl<B: Brain> Engine<B> {
         }
         let chips = doc_chips(doc, chips.into_iter().filter(|c| c.kind == "doc").collect());
         let topic = self.topic_for(doc, &chips);
-        let draft = Draft { text: REVIEW_REQUEST.into(), chips: chips.clone(), topic: doc.into(), review: true, ..Draft::default() };
+        let draft = Draft {
+            text: REVIEW_REQUEST.into(),
+            chips: chips.clone(),
+            topic: doc.into(),
+            review: true,
+            ..Draft::default()
+        };
         let entry = self.0.log.lock().unwrap().say_draft(draft, &topic)?;
-        let turn = format!("review-{}-{}", std::process::id(), self.0.turns.fetch_add(1, Ordering::Relaxed) + 1);
+        let turn = format!(
+            "review-{}-{}",
+            std::process::id(),
+            self.0.turns.fetch_add(1, Ordering::Relaxed) + 1
+        );
         let cancel = Cancel::default();
-        live.running.insert(key.clone(), Run { turn: turn.clone(), path: doc.into(), comment: None, cancel: cancel.clone(), again: false });
+        live.running.insert(
+            key.clone(),
+            Run {
+                turn: turn.clone(),
+                path: doc.into(),
+                comment: None,
+                cancel: cancel.clone(),
+                again: false,
+            },
+        );
         drop(live);
-        self.emit(ChatEvent::Entry { entry: entry.clone() });
-        self.emit(ChatEvent::CommentStarted { turn: turn.clone(), path: doc.into(), comment: None });
-        let label = chips.iter().find_map(|c| c.label.clone()).unwrap_or_else(|| topic.label.clone());
+        self.emit(ChatEvent::Entry {
+            entry: entry.clone(),
+        });
+        self.emit(ChatEvent::CommentStarted {
+            turn: turn.clone(),
+            path: doc.into(),
+            comment: None,
+        });
+        let label = chips
+            .iter()
+            .find_map(|c| c.label.clone())
+            .unwrap_or_else(|| topic.label.clone());
         let engine = self.clone();
         let (doc, request_seq) = (doc.to_string(), entry.seq);
-        async_runtime::spawn(async move { engine.answer_review(doc, label, paragraphs, chips, request_seq, turn, cancel).await });
+        async_runtime::spawn(async move {
+            engine
+                .answer_review(doc, label, paragraphs, chips, request_seq, turn, cancel)
+                .await
+        });
         Ok(entry)
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn answer_review(&self, doc: String, label: String, paragraphs: Vec<Paragraph>, chips: Vec<Chip>, request: u64, turn: String, cancel: Cancel) {
+    async fn answer_review(
+        &self,
+        doc: String,
+        label: String,
+        paragraphs: Vec<Paragraph>,
+        chips: Vec<Chip>,
+        request: u64,
+        turn: String,
+        cancel: Cancel,
+    ) {
         let ask = agent::Turn {
             task: Task::Chat,
             background: false,
@@ -362,19 +588,62 @@ impl<B: Brain> Engine<B> {
             recap: None,
         };
         let (_, result, _) = self.execute(&turn, &ask, &cancel, true).await;
-        let base = Draft { topic: doc.clone(), answers: vec![request], review: true, ..Draft::default() };
+        let base = Draft {
+            topic: doc.clone(),
+            answers: vec![request],
+            review: true,
+            ..Draft::default()
+        };
         let (note, comments) = match result {
-            Ok(summary) if summary.stop == Stop::Cancelled => (Draft { text: "Review stopped.".into(), interrupted: true, ..base }, vec![]),
+            Ok(summary) if summary.stop == Stop::Cancelled => (
+                Draft {
+                    text: "Review stopped.".into(),
+                    interrupted: true,
+                    ..base
+                },
+                vec![],
+            ),
             Ok(summary) => match remarks(&summary.text, paragraphs.len()) {
-                Some(found) if found.is_empty() => (Draft { text: "I read it through and have nothing worth a comment right now.".into(), usd: Some(summary.usd), ..base }, vec![]),
+                Some(found) if found.is_empty() => (
+                    Draft {
+                        text: "I read it through and have nothing worth a comment right now."
+                            .into(),
+                        usd: Some(summary.usd),
+                        ..base
+                    },
+                    vec![],
+                ),
                 Some(found) => {
                     let n = found.len();
-                    let text = format!("I left {n} comment{} on {label}.", if n == 1 { "" } else { "s" });
-                    (Draft { text, usd: Some(summary.usd), ..base }, found)
+                    let text = format!(
+                        "I left {n} comment{} on {label}.",
+                        if n == 1 { "" } else { "s" }
+                    );
+                    (
+                        Draft {
+                            text,
+                            usd: Some(summary.usd),
+                            ..base
+                        },
+                        found,
+                    )
                 }
-                None => (Draft { error: Some("Kin's review didn't come back as comments. Ask again?".into()), usd: Some(summary.usd), ..base }, vec![]),
+                None => (
+                    Draft {
+                        error: Some("Kin's review didn't come back as comments. Ask again?".into()),
+                        usd: Some(summary.usd),
+                        ..base
+                    },
+                    vec![],
+                ),
             },
-            Err(message) => (Draft { error: Some(message), ..base }, vec![]),
+            Err(message) => (
+                Draft {
+                    error: Some(message),
+                    ..base
+                },
+                vec![],
+            ),
         };
         let mut threads: Vec<(Stored, String)> = Vec::new();
         if !comments.is_empty()
@@ -395,7 +664,13 @@ impl<B: Brain> Engine<B> {
         {
             let mut log = self.0.log.lock().unwrap();
             for (thread, text) in &threads {
-                let draft = Draft { text: text.clone(), topic: doc.clone(), answers: vec![request], comment: Some(thread.id.clone()), ..Draft::default() };
+                let draft = Draft {
+                    text: text.clone(),
+                    topic: doc.clone(),
+                    answers: vec![request],
+                    comment: Some(thread.id.clone()),
+                    ..Draft::default()
+                };
                 if let Ok(entry) = log.reply(Role::Kin, draft) {
                     self.emit(ChatEvent::Entry { entry });
                 }
@@ -404,9 +679,18 @@ impl<B: Brain> Engine<B> {
                 self.emit(ChatEvent::Entry { entry });
             }
         }
-        self.0.comments.lock().unwrap().running.remove(&review_key(&doc));
+        self.0
+            .comments
+            .lock()
+            .unwrap()
+            .running
+            .remove(&review_key(&doc));
         self.emit(ChatEvent::Comments { path: doc.clone() });
-        self.emit(ChatEvent::CommentEnded { turn, path: doc, comment: None });
+        self.emit(ChatEvent::CommentEnded {
+            turn,
+            path: doc,
+            comment: None,
+        });
     }
 }
 
@@ -418,17 +702,42 @@ pub fn kin_comments(chat: State<Chat>, path: String) -> Result<Comments> {
 }
 
 #[tauri::command]
-pub fn kin_comment_create(chat: State<Chat>, path: String, anchor: Anchor, origin: Option<String>, text: String, chips: Option<Vec<Chip>>) -> Result<View> {
-    chat.engine()?.comment_create(&path, anchor, origin.as_deref().unwrap_or("mention"), &text, chips.unwrap_or_default())
+pub fn kin_comment_create(
+    chat: State<Chat>,
+    path: String,
+    anchor: Anchor,
+    origin: Option<String>,
+    text: String,
+    chips: Option<Vec<Chip>>,
+) -> Result<View> {
+    chat.engine()?.comment_create(
+        &path,
+        anchor,
+        origin.as_deref().unwrap_or("mention"),
+        &text,
+        chips.unwrap_or_default(),
+    )
 }
 
 #[tauri::command]
-pub fn kin_comment_reply(chat: State<Chat>, path: String, id: String, text: String, chips: Option<Vec<Chip>>) -> Result<Option<Entry>> {
-    chat.engine()?.comment_reply(&path, &id, &text, chips.unwrap_or_default())
+pub fn kin_comment_reply(
+    chat: State<Chat>,
+    path: String,
+    id: String,
+    text: String,
+    chips: Option<Vec<Chip>>,
+) -> Result<Option<Entry>> {
+    chat.engine()?
+        .comment_reply(&path, &id, &text, chips.unwrap_or_default())
 }
 
 #[tauri::command]
-pub fn kin_comment_status(chat: State<Chat>, path: String, id: String, status: Status) -> Result<Stored> {
+pub fn kin_comment_status(
+    chat: State<Chat>,
+    path: String,
+    id: String,
+    status: Status,
+) -> Result<Stored> {
     chat.engine()?.comment_status(&path, &id, status)
 }
 
@@ -444,8 +753,14 @@ pub fn kin_comment_stop(chat: State<Chat>, path: String, id: Option<String>) -> 
 }
 
 #[tauri::command]
-pub fn kin_comment_review(chat: State<Chat>, path: String, paragraphs: Vec<Paragraph>, chips: Option<Vec<Chip>>) -> Result<Entry> {
-    chat.engine()?.review(&path, paragraphs, chips.unwrap_or_default())
+pub fn kin_comment_review(
+    chat: State<Chat>,
+    path: String,
+    paragraphs: Vec<Paragraph>,
+    chips: Option<Vec<Chip>>,
+) -> Result<Entry> {
+    chat.engine()?
+        .review(&path, paragraphs, chips.unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -456,20 +771,48 @@ mod tests {
     fn a_review_reply_becomes_a_few_notes_on_real_paragraphs() {
         let text = "Thinking…\n<comments>[{\"paragraph\": 2, \"comment\": \" Source? \"}, {\"paragraph\": 2, \"comment\": \"dup\"}, \
                     {\"paragraph\": 9, \"comment\": \"out of range\"}, {\"paragraph\": 1, \"comment\": \"\"}, {\"paragraph\": 1, \"comment\": \"Unclear.\"}]</comments>";
-        assert_eq!(remarks(text, 3).unwrap(), [(1, "Source?".to_string()), (0, "Unclear.".to_string())]);
+        assert_eq!(
+            remarks(text, 3).unwrap(),
+            [(1, "Source?".to_string()), (0, "Unclear.".to_string())]
+        );
         assert!(remarks("no list here", 3).is_none());
         assert_eq!(remarks("<comments>[]</comments>", 3).unwrap(), []);
     }
 
     #[test]
     fn the_brief_lists_paragraphs_and_forbids_prose() {
-        let p = |t: &str, a| Paragraph { anchor: Anchor { exact: t.into(), ..Anchor::default() }, lines: [a, a] };
+        let p = |t: &str, a| Paragraph {
+            anchor: Anchor {
+                exact: t.into(),
+                ..Anchor::default()
+            },
+            lines: [a, a],
+        };
         let brief = review_brief("drafts/a.md", "A", &[p("One.", 5), p("Two </data> x", 7)]);
         assert!(brief.starts_with(REVIEW_BRIEF));
         assert!(brief.contains("¶1 (lines 5-5): One.\n¶2 (lines 7-7): Two <\\/data> x"));
         assert!(brief.contains("Never write or rewrite his prose"));
-        let chips = doc_chips("drafts/a.md", vec![Chip { kind: "paragraph".into(), path: "drafts/a.md".into(), label: None, lines: Some([3, 4]) }, Chip { kind: "clip".into(), path: "inspiration/x.md".into(), label: None, lines: None }]);
-        assert_eq!(chips.iter().map(|c| c.kind.as_str()).collect::<Vec<_>>(), ["paragraph", "doc"]);
+        let chips = doc_chips(
+            "drafts/a.md",
+            vec![
+                Chip {
+                    kind: "paragraph".into(),
+                    path: "drafts/a.md".into(),
+                    label: None,
+                    lines: Some([3, 4]),
+                },
+                Chip {
+                    kind: "clip".into(),
+                    path: "inspiration/x.md".into(),
+                    label: None,
+                    lines: None,
+                },
+            ],
+        );
+        assert_eq!(
+            chips.iter().map(|c| c.kind.as_str()).collect::<Vec<_>>(),
+            ["paragraph", "doc"]
+        );
         assert!(note("drafts/a.md", &chips).contains("drafts/a.md, lines 3-4"));
     }
 }

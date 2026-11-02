@@ -13,7 +13,10 @@
 
 mod discover;
 
-use crate::{Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaKind, Polled, Result, SourceInfo, SourceType, Subscription, Target, markdown, web::allowed_url};
+use crate::{
+    Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaKind, Polled, Result, SourceInfo,
+    SourceType, Subscription, Target, markdown, web::allowed_url,
+};
 use dom_query::Document;
 use feed_rs::model::{Entry, Feed};
 use futures_util::StreamExt;
@@ -26,7 +29,11 @@ use std::time::Duration;
 
 pub use discover::{Podcast, channel_id, feed_links, podcasts};
 
-const USER_AGENT: &str = concat!("Kintsugi/", env!("CARGO_PKG_VERSION"), " (feed reader; +https://github.com/hussainph/kintsugi)");
+const USER_AGENT: &str = concat!(
+    "Kintsugi/",
+    env!("CARGO_PKG_VERSION"),
+    " (feed reader; +https://github.com/hussainph/kintsugi)"
+);
 const MAX_BYTES: usize = 8 * 1024 * 1024;
 /// The entry summary, as plain text.
 pub const DESCRIPTION_CHARS: usize = 600;
@@ -85,7 +92,13 @@ impl FeedAdapter {
         if let Some(modified) = &cursor.modified {
             request = request.header(IF_MODIFIED_SINCE, modified);
         }
-        let response = request.send().await.map_err(|e| if e.is_timeout() { Error::TimedOut } else { Error::Unavailable })?;
+        let response = request.send().await.map_err(|e| {
+            if e.is_timeout() {
+                Error::TimedOut
+            } else {
+                Error::Unavailable
+            }
+        })?;
         let status = response.status();
         if status.as_u16() == 304 {
             return Ok(None);
@@ -93,11 +106,21 @@ impl FeedAdapter {
         if !status.is_success() {
             return Err(Error::Status(status.as_u16()));
         }
-        if response.content_length().is_some_and(|n| n > MAX_BYTES as u64) {
+        if response
+            .content_length()
+            .is_some_and(|n| n > MAX_BYTES as u64)
+        {
             return Err(Error::TooLarge);
         }
-        let header = |name| response.headers().get(name).and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok()).map(str::to_string);
-        let (etag, modified, final_url) = (header(ETAG), header(LAST_MODIFIED), response.url().clone());
+        let header = |name| {
+            response
+                .headers()
+                .get(name)
+                .and_then(|v: &reqwest::header::HeaderValue| v.to_str().ok())
+                .map(str::to_string)
+        };
+        let (etag, modified, final_url) =
+            (header(ETAG), header(LAST_MODIFIED), response.url().clone());
         let mut bytes = Vec::new();
         let mut stream = response.bytes_stream();
         while let Some(chunk) = stream.next().await {
@@ -107,21 +130,34 @@ impl FeedAdapter {
             }
             bytes.extend_from_slice(&chunk);
         }
-        Ok(Some(Body { bytes, url: final_url, etag, modified }))
+        Ok(Some(Body {
+            bytes,
+            url: final_url,
+            etag,
+            modified,
+        }))
     }
 
     /// The feed behind a URL: the URL itself if it is a feed, else the first
     /// working feed the page advertises (`<link rel="alternate">`), or a
     /// YouTube channel page's uploads feed.
     pub async fn discover(&self, url: &Url) -> Result<Url> {
-        let body = self.get(url, &Cursor::default()).await?.ok_or(Error::Unavailable)?;
+        let body = self
+            .get(url, &Cursor::default())
+            .await?
+            .ok_or(Error::Unavailable)?;
         if parse(&body.bytes, body.url.as_str()).is_ok() {
             return Ok(url.clone());
         }
         let html = String::from_utf8_lossy(&body.bytes);
         let mut candidates = feed_links(&html, &body.url);
         if let Some(id) = channel_id(&html) {
-            candidates.push(Url::parse(&format!("https://www.youtube.com/feeds/videos.xml?channel_id={id}")).map_err(|_| Error::Unavailable)?);
+            candidates.push(
+                Url::parse(&format!(
+                    "https://www.youtube.com/feeds/videos.xml?channel_id={id}"
+                ))
+                .map_err(|_| Error::Unavailable)?,
+            );
         }
         for candidate in candidates {
             if let Ok(Some(found)) = self.get(&candidate, &Cursor::default()).await
@@ -135,7 +171,10 @@ impl FeedAdapter {
 
     /// A YouTube channel page's channel ID (for `@handle` and `/c/` URLs).
     pub async fn youtube_channel(&self, page: &Url) -> Result<String> {
-        let body = self.get(page, &Cursor::default()).await?.ok_or(Error::Unavailable)?;
+        let body = self
+            .get(page, &Cursor::default())
+            .await?
+            .ok_or(Error::Unavailable)?;
         channel_id(&String::from_utf8_lossy(&body.bytes)).ok_or(Error::Unavailable)
     }
 
@@ -147,7 +186,10 @@ impl FeedAdapter {
             .append_pair("entity", "podcast")
             .append_pair("limit", "12")
             .append_pair("term", term.trim());
-        let body = self.get(&url, &Cursor::default()).await?.ok_or(Error::Unavailable)?;
+        let body = self
+            .get(&url, &Cursor::default())
+            .await?
+            .ok_or(Error::Unavailable)?;
         podcasts(&body.bytes)
     }
 }
@@ -169,21 +211,41 @@ impl Adapter for FeedAdapter {
     fn poll<'a>(&'a self, subscription: &'a Subscription) -> BoxFuture<'a, Result<Polled>> {
         Box::pin(async move {
             let url = crate::web::web_url(&subscription.url)?;
-            let cursor: Cursor = subscription.cursor.as_deref().and_then(|c| serde_json::from_str(c).ok()).unwrap_or_default();
+            let cursor: Cursor = subscription
+                .cursor
+                .as_deref()
+                .and_then(|c| serde_json::from_str(c).ok())
+                .unwrap_or_default();
             let Some(body) = self.get(&url, &cursor).await? else {
-                return Ok(Polled { items: Vec::new(), cursor: subscription.cursor.clone(), source: None });
+                return Ok(Polled {
+                    items: Vec::new(),
+                    cursor: subscription.cursor.clone(),
+                    source: None,
+                });
             };
             let (source, items) = parse(&body.bytes, body.url.as_str())?;
-            let next = Cursor { etag: body.etag, modified: body.modified };
-            let cursor = (next != Cursor::default()).then(|| serde_json::to_string(&next).unwrap_or_default());
-            Ok(Polled { items, cursor, source: Some(source) })
+            let next = Cursor {
+                etag: body.etag,
+                modified: body.modified,
+            };
+            let cursor = (next != Cursor::default())
+                .then(|| serde_json::to_string(&next).unwrap_or_default());
+            Ok(Polled {
+                items,
+                cursor,
+                source: Some(source),
+            })
         })
     }
 }
 
 /// Parses a feed document into items, newest first as the feed lists them.
 pub fn parse(bytes: &[u8], url: &str) -> Result<(SourceInfo, Vec<Item>)> {
-    let feed = feed_rs::parser::Builder::new().base_uri(Some(url)).build().parse(bytes).map_err(|_| Error::NotAFeed)?;
+    let feed = feed_rs::parser::Builder::new()
+        .base_uri(Some(url))
+        .build()
+        .parse(bytes)
+        .map_err(|_| Error::NotAFeed)?;
     let info = SourceInfo {
         title: feed.title.as_ref().and_then(|t| plain(&t.content, 300)),
         url: feed
@@ -192,10 +254,19 @@ pub fn parse(bytes: &[u8], url: &str) -> Result<(SourceInfo, Vec<Item>)> {
             .find(|l| l.rel.as_deref().is_none_or(|r| r == "alternate"))
             .map(|l| l.href.clone())
             .filter(|h| web(h)),
-        image: feed.logo.as_ref().or(feed.icon.as_ref()).map(|i| i.uri.clone()).filter(|u| web(u)),
+        image: feed
+            .logo
+            .as_ref()
+            .or(feed.icon.as_ref())
+            .map(|i| i.uri.clone())
+            .filter(|u| web(u)),
     };
     let captured = crate::now();
-    let items = feed.entries.iter().map(|e| item(e, &feed, &info, &captured)).collect();
+    let items = feed
+        .entries
+        .iter()
+        .map(|e| item(e, &feed, &info, &captured))
+        .collect();
     Ok((info, items))
 }
 
@@ -213,15 +284,51 @@ fn item(entry: &Entry, feed: &Feed, info: &SourceInfo, captured: &str) -> Item {
         .filter(|h| web(h));
     let content = entry.content.as_ref().and_then(|c| c.body.as_deref());
     let summary = entry.summary.as_ref().map(|s| s.content.as_str());
-    let media_description = entry.media.iter().find_map(|m| m.description.as_ref()).map(|d| d.content.as_str());
-    let body = content.or(summary).or(media_description).map(to_markdown).unwrap_or_default();
-    let author = entry.authors.first().or(feed.authors.first()).and_then(|p| p.name.as_deref()).and_then(|n| markdown::field(n, 200));
-    let mime = |ty: &str| entry.media.iter().flat_map(|m| &m.content).any(|c| c.content_type.as_ref().is_some_and(|t| t.ty() == ty));
+    let media_description = entry
+        .media
+        .iter()
+        .find_map(|m| m.description.as_ref())
+        .map(|d| d.content.as_str());
+    let body = content
+        .or(summary)
+        .or(media_description)
+        .map(to_markdown)
+        .unwrap_or_default();
+    let author = entry
+        .authors
+        .first()
+        .or(feed.authors.first())
+        .and_then(|p| p.name.as_deref())
+        .and_then(|n| markdown::field(n, 200));
+    let mime = |ty: &str| {
+        entry
+            .media
+            .iter()
+            .flat_map(|m| &m.content)
+            .any(|c| c.content_type.as_ref().is_some_and(|t| t.ty() == ty))
+    };
     let audio = mime("audio")
-        || entry.links.iter().any(|l| l.rel.as_deref() == Some("enclosure") && l.media_type.as_deref().is_some_and(|t| t.starts_with("audio/")));
-    let video = url.as_deref().is_some_and(|u| u.contains("youtube.com/watch") || u.contains("youtu.be/")) || mime("video");
+        || entry.links.iter().any(|l| {
+            l.rel.as_deref() == Some("enclosure")
+                && l.media_type
+                    .as_deref()
+                    .is_some_and(|t| t.starts_with("audio/"))
+        });
+    let video = url
+        .as_deref()
+        .is_some_and(|u| u.contains("youtube.com/watch") || u.contains("youtu.be/"))
+        || mime("video");
     let mut extras = BTreeMap::new();
-    extras.insert("media".into(), Value::from(if video { "video" } else if audio { "audio" } else { "article" }));
+    extras.insert(
+        "media".into(),
+        Value::from(if video {
+            "video"
+        } else if audio {
+            "audio"
+        } else {
+            "article"
+        }),
+    );
     Item {
         source: SourceType::Rss,
         id: format!("rss:{}", entry.id),
@@ -229,23 +336,48 @@ fn item(entry: &Entry, feed: &Feed, info: &SourceInfo, captured: &str) -> Item {
         title: entry.title.as_ref().and_then(|t| plain(&t.content, 500)),
         author,
         site: info.title.clone(),
-        description: summary.or(media_description).or(content).and_then(|s| plain(s, DESCRIPTION_CHARS)),
-        published: entry.published.or(entry.updated).map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
+        description: summary
+            .or(media_description)
+            .or(content)
+            .and_then(|s| plain(s, DESCRIPTION_CHARS)),
+        published: entry
+            .published
+            .or(entry.updated)
+            .map(|d| d.to_rfc3339_opts(chrono::SecondsFormat::Secs, true)),
         captured: captured.into(),
-        media: image(entry, content.or(summary)).map(|url| Media { kind: MediaKind::Image, url: Some(url), data: None }).into_iter().collect(),
+        media: image(entry, content.or(summary))
+            .map(|url| Media {
+                kind: MediaKind::Image,
+                url: Some(url),
+                data: None,
+            })
+            .into_iter()
+            .collect(),
         body,
         extras,
     }
 }
 
 fn image(entry: &Entry, html: Option<&str>) -> Option<String> {
-    let thumbnail = entry.media.iter().flat_map(|m| &m.thumbnails).map(|t| t.image.uri.clone()).next();
-    let picture = entry
+    let thumbnail = entry
         .media
         .iter()
-        .flat_map(|m| &m.content)
-        .find_map(|c| c.content_type.as_ref().filter(|t| t.ty() == "image").and(c.url.as_ref()).map(|u| u.to_string()));
-    let inline = html.filter(|h| h.contains("<img")).and_then(|h| Document::from(h).select("img[src]").attr("src").map(|s| s.to_string()));
+        .flat_map(|m| &m.thumbnails)
+        .map(|t| t.image.uri.clone())
+        .next();
+    let picture = entry.media.iter().flat_map(|m| &m.content).find_map(|c| {
+        c.content_type
+            .as_ref()
+            .filter(|t| t.ty() == "image")
+            .and(c.url.as_ref())
+            .map(|u| u.to_string())
+    });
+    let inline = html.filter(|h| h.contains("<img")).and_then(|h| {
+        Document::from(h)
+            .select("img[src]")
+            .attr("src")
+            .map(|s| s.to_string())
+    });
     thumbnail.or(picture).or(inline).filter(|u| web(u))
 }
 
@@ -258,7 +390,9 @@ fn to_markdown(html: &str) -> String {
     }
     let doc = Document::from(html);
     let body = doc.select("body");
-    body.nodes().first().map_or_else(String::new, |root| markdown::body(&root.md(Some(SKIP)), crate::BODY_CHARS))
+    body.nodes().first().map_or_else(String::new, |root| {
+        markdown::body(&root.md(Some(SKIP)), crate::BODY_CHARS)
+    })
 }
 
 /// Plain text: tags dropped, entities decoded, whitespace collapsed.
@@ -270,7 +404,14 @@ fn plain(html: &str, limit: usize) -> Option<String> {
     doc.select(&SKIP.join(", ")).remove();
     let text = doc.select("body").text();
     let bounded = markdown::field(&text, limit + 1)?;
-    Some(if bounded.chars().count() > limit { format!("{}…", bounded.chars().take(limit).collect::<String>().trim_end()) } else { bounded })
+    Some(if bounded.chars().count() > limit {
+        format!(
+            "{}…",
+            bounded.chars().take(limit).collect::<String>().trim_end()
+        )
+    } else {
+        bounded
+    })
 }
 
 #[cfg(test)]

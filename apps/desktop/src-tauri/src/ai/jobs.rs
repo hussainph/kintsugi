@@ -127,13 +127,24 @@ pub struct Trace {
 impl Trace {
     /// Notes one finished model call; its tool calls follow.
     pub fn step(&mut self, step: usize, stop: Option<&str>, text: usize, output_tokens: u64) {
-        self.steps.push(StepTrace { step, tools: vec![], stop: stop.map(String::from), text, output_tokens });
+        self.steps.push(StepTrace {
+            step,
+            tools: vec![],
+            stop: stop.map(String::from),
+            text,
+            output_tokens,
+        });
     }
 
     /// One line for the log: `kimi-k3: 1 search | 2 read,read | …`.
     pub fn line(&self) -> String {
         let steps: Vec<String> = self.steps.iter().map(StepTrace::line).collect();
-        format!("{} in {} ms: {}", self.model, self.millis, steps.join(" | "))
+        format!(
+            "{} in {} ms: {}",
+            self.model,
+            self.millis,
+            steps.join(" | ")
+        )
     }
 
     /// Notes one tool call.
@@ -143,9 +154,14 @@ impl Trace {
             step.tools.push(name.into());
         }
         match name {
-            "search" => self.searches.push(arguments["query"].as_str().unwrap_or_default().into()),
+            "search" => self
+                .searches
+                .push(arguments["query"].as_str().unwrap_or_default().into()),
             "read" => {
-                if let Some(path) = arguments["path"].as_str().filter(|p| !p.starts_with("@out/")) {
+                if let Some(path) = arguments["path"]
+                    .as_str()
+                    .filter(|p| !p.starts_with("@out/"))
+                {
                     self.files.push(path.trim().into());
                 }
             }
@@ -198,9 +214,14 @@ impl Table {
     }
 
     fn save(&self) -> Result<()> {
-        let Some(path) = &self.path else { return Ok(()) };
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
         fs::create_dir_all(path.parent().ok_or("bad jobs path")?).map_err(|e| e.to_string())?;
-        write_atomic(path, &serde_json::to_string_pretty(&self.jobs).map_err(|e| e.to_string())?)
+        write_atomic(
+            path,
+            &serde_json::to_string_pretty(&self.jobs).map_err(|e| e.to_string())?,
+        )
     }
 
     pub fn create(&mut self, new: NewJob, task: &str) -> Result<Job> {
@@ -212,7 +233,11 @@ impl Table {
             return Err("That brief is too long.".into());
         }
         let job = Job {
-            id: format!("job-{}-{}", Local::now().format("%Y%m%d-%H%M%S%3f"), NEXT.fetch_add(1, Ordering::Relaxed)),
+            id: format!(
+                "job-{}-{}",
+                Local::now().format("%Y%m%d-%H%M%S%3f"),
+                NEXT.fetch_add(1, Ordering::Relaxed)
+            ),
             kind: new.kind.trim().chars().take(40).collect(),
             task: task.into(),
             brief: brief.into(),
@@ -278,7 +303,14 @@ impl Table {
         })
     }
 
-    pub fn finish(&mut self, id: &str, status: Status, result: Option<String>, error: Option<String>, usd: f64) -> Option<Job> {
+    pub fn finish(
+        &mut self,
+        id: &str,
+        status: Status,
+        result: Option<String>,
+        error: Option<String>,
+        usd: f64,
+    ) -> Option<Job> {
         self.update(id, |j| {
             j.status = status;
             j.usd += usd;
@@ -298,7 +330,12 @@ mod tests {
     use super::*;
 
     fn new(brief: &str) -> NewJob {
-        NewJob { kind: "ideas".into(), task: None, brief: brief.into(), topic: None }
+        NewJob {
+            kind: "ideas".into(),
+            task: None,
+            brief: brief.into(),
+            topic: None,
+        }
     }
 
     #[test]
@@ -310,7 +347,11 @@ mod tests {
         assert!(table.create(new("  "), "chat").is_err());
         assert_ne!(a.id, b.id);
         table.start(&a.id).unwrap();
-        assert_eq!(table.next(true).unwrap().id, b.id, "a running job isn't picked twice");
+        assert_eq!(
+            table.next(true).unwrap().id,
+            b.id,
+            "a running job isn't picked twice"
+        );
 
         // Quit mid-run: the running job is queued again, first in line.
         let reopened = Table::open(Some(dir.path().into()));
@@ -325,11 +366,18 @@ mod tests {
         let mut table = Table::open(None);
         let a = table.create(new("Rank the feed"), "triage").unwrap();
         table.start(&a.id);
-        table.finish(&a.id, Status::Waiting, None, Some("cap".into()), 0.5).unwrap();
+        table
+            .finish(&a.id, Status::Waiting, None, Some("cap".into()), 0.5)
+            .unwrap();
         assert!(table.next(false).is_none());
         assert_eq!(table.next(true).unwrap().id, a.id);
-        let done = table.finish(&a.id, Status::Done, Some("Ranked.".into()), None, 0.25).unwrap();
-        assert_eq!((done.usd, done.result.as_deref(), done.error), (0.75, Some("Ranked."), None));
+        let done = table
+            .finish(&a.id, Status::Done, Some("Ranked.".into()), None, 0.25)
+            .unwrap();
+        assert_eq!(
+            (done.usd, done.result.as_deref(), done.error),
+            (0.75, Some("Ranked."), None)
+        );
         assert!(done.finished.is_some());
     }
 }

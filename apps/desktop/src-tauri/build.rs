@@ -45,7 +45,9 @@ fn swift_helper(name: &str, purpose: &str) {
             .is_ok_and(|status| status.success())
     });
     if !built {
-        println!("cargo:warning=kintsugi-{name} was not built; {purpose} is unavailable in this build");
+        println!(
+            "cargo:warning=kintsugi-{name} was not built; {purpose} is unavailable in this build"
+        );
         if swift_target.is_some() {
             // Swift should work here: a path that never exists makes Cargo run
             // this script again on the next build, which retries instead of
@@ -54,12 +56,16 @@ fn swift_helper(name: &str, purpose: &str) {
             println!("cargo:rerun-if-env-changed=DEVELOPER_DIR");
         }
         let stub = String::from_utf8_lossy(sidecar::STUB_HEADER);
-        std::fs::write(&out, format!("{stub}echo '{purpose} is not available in this build' >&2\nexit 3\n"))
-            .expect("write the helper stub");
+        std::fs::write(
+            &out,
+            format!("{stub}echo '{purpose} is not available in this build' >&2\nexit 3\n"),
+        )
+        .expect("write the helper stub");
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755)).expect("chmod the helper stub");
+            std::fs::set_permissions(&out, std::fs::Permissions::from_mode(0o755))
+                .expect("chmod the helper stub");
         }
     }
 }

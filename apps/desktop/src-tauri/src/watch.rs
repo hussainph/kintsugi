@@ -72,7 +72,11 @@ pub fn start(app: &AppHandle, root: &Path) {
 
 /// Kintsugi saved `text` to `path`: the watcher's echo of it is not news.
 pub fn wrote(app: &AppHandle, path: &str, text: &str) {
-    app.state::<Watch>().written.lock().unwrap().insert(path.to_string(), vault::version(text));
+    app.state::<Watch>()
+        .written
+        .lock()
+        .unwrap()
+        .insert(path.to_string(), vault::version(text));
 }
 
 /// Watches `root` recursively and calls `report` with each batch of outside
@@ -96,7 +100,9 @@ pub(crate) fn watch(
         }
     })
     .map_err(|e| e.to_string())?;
-    watcher.watch(&root, RecursiveMode::Recursive).map_err(|e| e.to_string())?;
+    watcher
+        .watch(&root, RecursiveMode::Recursive)
+        .map_err(|e| e.to_string())?;
 
     std::thread::Builder::new()
         .name("vault-watch".into())
@@ -124,12 +130,18 @@ pub(crate) fn watch(
 
 /// Which of these changed paths are news from outside Kintsugi, or `None` if
 /// none are. Reads each document as it is on disk now.
-pub(crate) fn outside(root: &Path, paths: Vec<PathBuf>, written: &HashMap<String, String>) -> Option<Outside> {
+pub(crate) fn outside(
+    root: &Path,
+    paths: Vec<PathBuf>,
+    written: &HashMap<String, String>,
+) -> Option<Outside> {
     let mut seen = BTreeSet::new();
     let mut out = Outside::default();
     let mut relevant = false;
     for path in paths {
-        let Ok(rel) = path.strip_prefix(root) else { continue };
+        let Ok(rel) = path.strip_prefix(root) else {
+            continue;
+        };
         let parts: Vec<_> = rel.components().collect();
         if parts.is_empty() || !parts.iter().all(|c| matches!(c, Component::Normal(_))) {
             continue;
@@ -142,10 +154,17 @@ pub(crate) fn outside(root: &Path, paths: Vec<PathBuf>, written: &HashMap<String
         if rel.split('/').any(|part| part.starts_with('.')) {
             continue;
         }
-        if rel.split('/').next().is_some_and(|top| top.eq_ignore_ascii_case(INSPIRATION)) {
+        if rel
+            .split('/')
+            .next()
+            .is_some_and(|top| top.eq_ignore_ascii_case(INSPIRATION))
+        {
             continue;
         }
-        let doc = path.extension().and_then(|e| e.to_str()).is_some_and(|e| e == "md" || e == "mdx");
+        let doc = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e == "md" || e == "mdx");
         match fs::metadata(&path) {
             Ok(meta) if meta.is_dir() => relevant = true,
             Ok(_) if doc => match fs::read_to_string(&path) {
@@ -177,7 +196,10 @@ mod tests {
     use super::*;
 
     fn written(entries: &[(&str, &str)]) -> HashMap<String, String> {
-        entries.iter().map(|(p, t)| (p.to_string(), vault::version(t))).collect()
+        entries
+            .iter()
+            .map(|(p, t)| (p.to_string(), vault::version(t)))
+            .collect()
     }
 
     #[test]
@@ -192,12 +214,33 @@ mod tests {
         fs::write(root.join(".kintsugi/comments/x.json"), "{}").unwrap();
         fs::write(root.join("inspiration/clip.md"), "a clip").unwrap();
         fs::write(root.join("posts/image.png"), "png").unwrap();
-        let paths = ["posts/mine.mdx", "posts/.kintsugi-a1b2c3", ".kintsugi/comments/x.json", "inspiration/clip.md", "posts/image.png", ".DS_Store"]
-            .map(|p| root.join(p))
-            .to_vec();
-        assert_eq!(outside(root, paths, &written(&[("posts/mine.mdx", "saved by kintsugi")])), None);
+        let paths = [
+            "posts/mine.mdx",
+            "posts/.kintsugi-a1b2c3",
+            ".kintsugi/comments/x.json",
+            "inspiration/clip.md",
+            "posts/image.png",
+            ".DS_Store",
+        ]
+        .map(|p| root.join(p))
+        .to_vec();
+        assert_eq!(
+            outside(
+                root,
+                paths,
+                &written(&[("posts/mine.mdx", "saved by kintsugi")])
+            ),
+            None
+        );
         // Something outside the vault is not this vault's news either.
-        assert_eq!(outside(root, vec![PathBuf::from("/elsewhere/a.md")], &HashMap::new()), None);
+        assert_eq!(
+            outside(
+                root,
+                vec![PathBuf::from("/elsewhere/a.md")],
+                &HashMap::new()
+            ),
+            None
+        );
     }
 
     #[test]
@@ -206,19 +249,35 @@ mod tests {
         let root = dir.path();
         fs::create_dir_all(root.join("notes/new-folder")).unwrap();
         fs::write(root.join("notes/a.md"), "edited in obsidian").unwrap();
-        let paths = ["notes/a.md", "notes/a.md", "notes/gone.md", "old-folder", "notes/new-folder"]
-            .map(|p| root.join(p))
-            .to_vec();
+        let paths = [
+            "notes/a.md",
+            "notes/a.md",
+            "notes/gone.md",
+            "old-folder",
+            "notes/new-folder",
+        ]
+        .map(|p| root.join(p))
+        .to_vec();
         // Kintsugi saved an older text; the disk has moved on.
         assert_eq!(
-            outside(root, paths, &written(&[("notes/a.md", "saved by kintsugi")])),
+            outside(
+                root,
+                paths,
+                &written(&[("notes/a.md", "saved by kintsugi")])
+            ),
             Some(Outside {
-                docs: vec![Doc { path: "notes/a.md".into(), text: "edited in obsidian".into() }],
+                docs: vec![Doc {
+                    path: "notes/a.md".into(),
+                    text: "edited in obsidian".into()
+                }],
                 gone: vec!["notes/gone.md".into(), "old-folder".into()],
             })
         );
         // A new folder alone still reloads the tree.
-        assert_eq!(outside(root, vec![root.join("notes/new-folder")], &HashMap::new()), Some(Outside::default()));
+        assert_eq!(
+            outside(root, vec![root.join("notes/new-folder")], &HashMap::new()),
+            Some(Outside::default())
+        );
     }
 
     #[test]
@@ -236,16 +295,32 @@ mod tests {
         std::thread::sleep(Duration::from_millis(300));
         while rx.try_recv().is_ok() {}
 
-        written.lock().unwrap().insert("note.md".into(), vault::version("from kintsugi"));
+        written
+            .lock()
+            .unwrap()
+            .insert("note.md".into(), vault::version("from kintsugi"));
         vault::write_atomic(&root.join("note.md"), "from kintsugi").unwrap();
-        assert!(rx.recv_timeout(Duration::from_secs(2)).is_err(), "Kintsugi's own save is not reported");
+        assert!(
+            rx.recv_timeout(Duration::from_secs(2)).is_err(),
+            "Kintsugi's own save is not reported"
+        );
 
         fs::write(root.join("note.md"), "from another app").unwrap();
-        let got = rx.recv_timeout(Duration::from_secs(5)).expect("an outside edit is reported");
-        assert_eq!(got.docs, vec![Doc { path: "note.md".into(), text: "from another app".into() }]);
+        let got = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("an outside edit is reported");
+        assert_eq!(
+            got.docs,
+            vec![Doc {
+                path: "note.md".into(),
+                text: "from another app".into()
+            }]
+        );
 
         fs::remove_file(root.join("note.md")).unwrap();
-        let got = rx.recv_timeout(Duration::from_secs(5)).expect("a delete is reported");
+        let got = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("a delete is reported");
         assert_eq!(got.gone, vec!["note.md".to_string()]);
     }
 }

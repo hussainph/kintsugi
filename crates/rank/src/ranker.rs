@@ -201,7 +201,9 @@ pub const FEATURES: [&str; 14] = [
 ];
 const N: usize = FEATURES.len();
 /// Hand-set priors: the model learns a residual on top of these.
-const PRIOR: [f64; N] = [-1.0, 1.0, 0.8, 2.0, -1.5, 3.0, 2.0, 2.0, -1.5, 0.2, 0.0, 0.0, 0.0, 0.0];
+const PRIOR: [f64; N] = [
+    -1.0, 1.0, 0.8, 2.0, -1.5, 3.0, 2.0, 2.0, -1.5, 0.2, 0.0, 0.0, 0.0, 0.0,
+];
 
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Affinity {
@@ -367,7 +369,14 @@ pub fn effective(events: &[Event]) -> Vec<Event> {
             continue;
         }
         let item = event.item.map(|i| i.to_string()).unwrap_or_default();
-        let reason = || event.data.as_ref().and_then(|d| d["reason"].as_str()).unwrap_or_default().to_string();
+        let reason = || {
+            event
+                .data
+                .as_ref()
+                .and_then(|d| d["reason"].as_str())
+                .unwrap_or_default()
+                .to_string()
+        };
         let (opens, key) = match event.kind.as_str() {
             "like" => (true, ("like".to_string(), item)),
             "unlike" => (false, ("like".to_string(), item)),
@@ -392,13 +401,23 @@ pub fn effective(events: &[Event]) -> Vec<Event> {
             }
         }
     }
-    events.iter().zip(dropped).filter(|(_, d)| !d).map(|(e, _)| e.clone()).collect()
+    events
+        .iter()
+        .zip(dropped)
+        .filter(|(_, d)| !d)
+        .map(|(e, _)| e.clone())
+        .collect()
 }
 
 /// Whether consuming these events online would differ from a replay: undo
 /// events and corrections need the whole log replayed.
 pub fn needs_rebuild(events: &[Event]) -> bool {
-    events.iter().any(|e| matches!(e.kind.as_str(), "unlike" | "undo_not_interested" | "note_cleared" | "correction" | "undo_correction"))
+    events.iter().any(|e| {
+        matches!(
+            e.kind.as_str(),
+            "unlike" | "undo_not_interested" | "note_cleared" | "correction" | "undo_correction"
+        )
+    })
 }
 
 fn hash(value: i64) -> u64 {
@@ -444,14 +463,23 @@ impl Ranker {
         ranker.seed_clips(world);
         ranker.observe(world, &events);
         ranker.advance(world, now_ms);
-        ranker.cursor = events.iter().map(|e| e.id).max().unwrap_or(0).max(ranker.cursor);
+        ranker.cursor = events
+            .iter()
+            .map(|e| e.id)
+            .max()
+            .unwrap_or(0)
+            .max(ranker.cursor);
         ranker
     }
 
     /// Cold start: what he already kept in Inspiration is taste, anchors and
     /// pseudo-counts for the sources, authors and topics it came from.
     fn seed_clips(&mut self, world: &World) {
-        let sources: Vec<(String, i64)> = world.sources.values().map(|s| (norm_name(&s.title), s.id)).collect();
+        let sources: Vec<(String, i64)> = world
+            .sources
+            .values()
+            .map(|s| (norm_name(&s.title), s.id))
+            .collect();
         for clip in &world.clips {
             if clip.item.is_some() {
                 continue;
@@ -464,18 +492,35 @@ impl Ranker {
             self.long.add(&clip.vector, 3.0, at);
             self.short.add(&clip.vector, 3.0, at);
             if !clip.vector.is_empty() {
-                self.anchors.push(Anchor { key, title: clip.title.clone(), vector: clip.vector.clone(), at, clip: true });
+                self.anchors.push(Anchor {
+                    key,
+                    title: clip.title.clone(),
+                    vector: clip.vector.clone(),
+                    at,
+                    clip: true,
+                });
             }
             for topic in &clip.topics {
-                self.affinity.entry(format!("topic:{topic}")).or_default().pos += 1.0;
+                self.affinity
+                    .entry(format!("topic:{topic}"))
+                    .or_default()
+                    .pos += 1.0;
             }
             if let Some(site) = clip.site.as_deref().map(norm_name)
                 && let Some((_, id)) = sources.iter().find(|(title, _)| *title == site)
             {
                 self.affinity.entry(format!("source:{id}")).or_default().pos += 1.0;
             }
-            if let Some(author) = clip.author.as_deref().map(norm_name).filter(|a| !a.is_empty()) {
-                self.affinity.entry(format!("author:{author}")).or_default().pos += 1.0;
+            if let Some(author) = clip
+                .author
+                .as_deref()
+                .map(norm_name)
+                .filter(|a| !a.is_empty())
+            {
+                self.affinity
+                    .entry(format!("author:{author}"))
+                    .or_default()
+                    .pos += 1.0;
             }
         }
     }
@@ -502,7 +547,9 @@ impl Ranker {
                 }
                 continue;
             }
-            let Some(signal) = Signal::from_kind(&event.kind) else { continue };
+            let Some(signal) = Signal::from_kind(&event.kind) else {
+                continue;
+            };
             self.touched.insert(id);
             if let Some(at) = self.pending_at.remove(&id) {
                 self.pending.remove(&(at, id));
@@ -533,7 +580,12 @@ impl Ranker {
 
     fn keys(&self, item: &Item) -> Vec<String> {
         let mut keys = vec![format!("source:{}", item.source)];
-        if let Some(author) = item.author.as_deref().map(norm_name).filter(|a| !a.is_empty()) {
+        if let Some(author) = item
+            .author
+            .as_deref()
+            .map(norm_name)
+            .filter(|a| !a.is_empty())
+        {
             keys.push(format!("author:{author}"));
         }
         keys.extend(item.topics.iter().map(|t| format!("topic:{t}")));
@@ -553,7 +605,10 @@ impl Ranker {
             self.examples += 1.0;
         }
         let keys = self.keys(item);
-        let before: Vec<f64> = keys.iter().map(|k| self.affinity.get(k).map_or(PRIOR_MEAN, Affinity::mean)).collect();
+        let before: Vec<f64> = keys
+            .iter()
+            .map(|k| self.affinity.get(k).map_or(PRIOR_MEAN, Affinity::mean))
+            .collect();
         for key in &keys {
             let affinity = self.affinity.entry(key.clone()).or_default();
             let arm = self.arms.entry(key.clone()).or_default();
@@ -570,14 +625,27 @@ impl Ranker {
         if signal.positive() && !excluded {
             self.long.add(&item.vector, weight, at);
             self.short.add(&item.vector, weight, at);
-            if signal.anchors() && !item.vector.is_empty() && !self.anchors.iter().any(|a| a.key == anchor) {
-                self.anchors.push(Anchor { key: anchor, title: item.title.clone(), vector: item.vector.clone(), at, clip: false });
+            if signal.anchors()
+                && !item.vector.is_empty()
+                && !self.anchors.iter().any(|a| a.key == anchor)
+            {
+                self.anchors.push(Anchor {
+                    key: anchor,
+                    title: item.title.clone(),
+                    vector: item.vector.clone(),
+                    at,
+                    clip: false,
+                });
             }
         } else if signal == Signal::NotInterested && !excluded {
             self.unwanted.add(&item.vector, 1.0, at);
         }
         if signal != Signal::Ignored {
-            self.labels.push(Label { at, item: id, signal });
+            self.labels.push(Label {
+                at,
+                item: id,
+                signal,
+            });
         }
         if signal.positive() && signal != Signal::Open {
             let changes = keys
@@ -597,14 +665,25 @@ impl Ranker {
 
     /// A readable name for an affinity or anchor key.
     pub fn key_label(&self, world: &World, key: &str) -> String {
-        if let Some(id) = key.strip_prefix("source:").and_then(|s| s.parse::<i64>().ok()) {
-            return world.sources.get(&id).map_or_else(|| format!("source {id}"), |s| s.title.clone());
+        if let Some(id) = key
+            .strip_prefix("source:")
+            .and_then(|s| s.parse::<i64>().ok())
+        {
+            return world
+                .sources
+                .get(&id)
+                .map_or_else(|| format!("source {id}"), |s| s.title.clone());
         }
         if let Some(author) = key.strip_prefix("author:") {
             return world
                 .items
                 .values()
-                .find_map(|i| i.author.as_ref().filter(|a| norm_name(a) == author).cloned())
+                .find_map(|i| {
+                    i.author
+                        .as_ref()
+                        .filter(|a| norm_name(a) == author)
+                        .cloned()
+                })
                 .unwrap_or_else(|| author.to_string());
         }
         if let Some(topic) = key.strip_prefix("topic:") {
@@ -627,7 +706,11 @@ impl Ranker {
 
     /// Items he already acted on (or ignored); picks skip them.
     pub fn touched(&self, item: i64) -> bool {
-        self.touched.contains(&item) || self.pending_at.get(&item).is_some_and(|at| *at + IGNORED_AFTER_MS <= self.clock)
+        self.touched.contains(&item)
+            || self
+                .pending_at
+                .get(&item)
+                .is_some_and(|at| *at + IGNORED_AFTER_MS <= self.clock)
     }
 
     /// How much of the score the learned model carries.
@@ -660,7 +743,12 @@ impl Ranker {
         }
         let near = nearest.map_or(0.0, |(_, s)| f64::from(s.max(0.0)));
         let source = self.lift(&format!("source:{}", item.source));
-        let author = item.author.as_deref().map(norm_name).filter(|a| !a.is_empty()).map_or(0.0, |a| self.lift(&format!("author:{a}")));
+        let author = item
+            .author
+            .as_deref()
+            .map(norm_name)
+            .filter(|a| !a.is_empty())
+            .map_or(0.0, |a| self.lift(&format!("author:{a}")));
         let topic = item
             .topics
             .iter()
@@ -689,23 +777,42 @@ impl Ranker {
         let learned = self.model.predict(&PRIOR, &x);
         // Until there's history: recency, per-source priors, Inspiration taste.
         let recency = (-hours / 72.0).exp();
-        let source_prior = if self.corrections.contains(&format!("source:{}", item.source)) {
+        let source_prior = if self
+            .corrections
+            .contains(&format!("source:{}", item.source))
+        {
             PRIOR_MEAN
         } else {
-            self.affinity.get(&format!("source:{}", item.source)).map_or(PRIOR_MEAN, Affinity::mean)
+            self.affinity
+                .get(&format!("source:{}", item.source))
+                .map_or(PRIOR_MEAN, Affinity::mean)
         };
-        let cold = 0.45 * recency + 0.2 * source_prior + 0.35 * near.max(taste_long).clamp(0.0, 1.0);
+        let cold =
+            0.45 * recency + 0.2 * source_prior + 0.35 * near.max(taste_long).clamp(0.0, 1.0);
         let share = self.learned_share();
-        Scored { x, cold, learned, score: (1.0 - share) * cold + share * learned, nearest, topic, fresh_hours: hours }
+        Scored {
+            x,
+            cold,
+            learned,
+            score: (1.0 - share) * cold + share * learned,
+            nearest,
+            topic,
+            fresh_hours: hours,
+        }
     }
 
     fn reasons(&self, world: &World, item: &Item, scored: &Scored) -> Vec<Reason> {
         let mut reasons = Vec::new();
         let weights: Vec<f64> = (0..N).map(|i| PRIOR[i] + self.model.weight(i)).collect();
         let contribution = |i: usize| weights[i] * scored.x[i];
-        if let Some((index, similarity)) = scored.nearest.filter(|(_, s)| *s >= NAMEABLE_SIMILARITY) {
+        if let Some((index, similarity)) = scored.nearest.filter(|(_, s)| *s >= NAMEABLE_SIMILARITY)
+        {
             let anchor = &self.anchors[index];
-            let how = if anchor.clip { "in Inspiration" } else { "which you kept" };
+            let how = if anchor.clip {
+                "in Inspiration"
+            } else {
+                "which you kept"
+            };
             reasons.push(Reason {
                 key: anchor.key.reason_key(),
                 label: format!("Close to “{}”, {how}", anchor.title),
@@ -716,12 +823,27 @@ impl Ranker {
         let source_key = format!("source:{}", item.source);
         if self.lift(&source_key) > 0.05 {
             let name = self.key_label(world, &source_key);
-            reasons.push(Reason { key: source_key, label: format!("You often keep things from {name}"), removable: true, weight: contribution(5) });
+            reasons.push(Reason {
+                key: source_key,
+                label: format!("You often keep things from {name}"),
+                removable: true,
+                weight: contribution(5),
+            });
         }
         if let Some(author) = item.author.as_deref().filter(|a| !a.trim().is_empty()) {
             let key = format!("author:{}", norm_name(author));
-            if self.lift(&key) > 0.05 && world.sources.get(&item.source).is_none_or(|s| norm_name(&s.title) != norm_name(author)) {
-                reasons.push(Reason { key, label: format!("You’ve liked {author} before"), removable: true, weight: contribution(6) });
+            if self.lift(&key) > 0.05
+                && world
+                    .sources
+                    .get(&item.source)
+                    .is_none_or(|s| norm_name(&s.title) != norm_name(author))
+            {
+                reasons.push(Reason {
+                    key,
+                    label: format!("You’ve liked {author} before"),
+                    removable: true,
+                    weight: contribution(6),
+                });
             }
         }
         if let Some((topic, lift)) = scored.topic.as_ref().filter(|t| t.1 > 0.05) {
@@ -733,11 +855,25 @@ impl Ranker {
             });
         }
         if scored.x[2] > 0.3 && reasons.is_empty() {
-            reasons.push(Reason { key: "taste".into(), label: "Like what you’ve been keeping this week".into(), removable: false, weight: contribution(2) });
+            reasons.push(Reason {
+                key: "taste".into(),
+                label: "Like what you’ve been keeping this week".into(),
+                removable: false,
+                weight: contribution(2),
+            });
         }
         if scored.fresh_hours < 6.0 {
-            let label = if scored.fresh_hours < 1.0 { "New in the last hour".to_string() } else { format!("New: {:.0} hours ago", scored.fresh_hours.floor().max(1.0)) };
-            reasons.push(Reason { key: "fresh".into(), label, removable: false, weight: 0.1 });
+            let label = if scored.fresh_hours < 1.0 {
+                "New in the last hour".to_string()
+            } else {
+                format!("New: {:.0} hours ago", scored.fresh_hours.floor().max(1.0))
+            };
+            reasons.push(Reason {
+                key: "fresh".into(),
+                label,
+                removable: false,
+                weight: 0.1,
+            });
         }
         if self.learned_share() < 0.5 {
             reasons.push(Reason {
@@ -772,7 +908,12 @@ impl Ranker {
             .enumerate()
             .map(|(i, name)| {
                 let weight = PRIOR[i] + self.model.weight(i);
-                FeatureValue { name, value: round(scored.x[i]), weight: round(weight), contribution: round(weight * scored.x[i]) }
+                FeatureValue {
+                    name,
+                    value: round(scored.x[i]),
+                    weight: round(weight),
+                    contribution: round(weight * scored.x[i]),
+                }
             })
             .collect();
         Some(Explained {
@@ -781,7 +922,10 @@ impl Ranker {
             cold: round(scored.cold),
             learned: round(scored.learned),
             learned_share: round(self.learned_share()),
-            nearest: scored.nearest.filter(|(_, s)| *s >= NAMEABLE_SIMILARITY).map(|(i, _)| self.anchors[i].title.clone()),
+            nearest: scored
+                .nearest
+                .filter(|(_, s)| *s >= NAMEABLE_SIMILARITY)
+                .map(|(i, _)| self.anchors[i].title.clone()),
             features,
             reasons: self.reasons(world, item, &scored),
         })
@@ -791,18 +935,31 @@ impl Ranker {
     fn sample(&self, rng: &mut Rng, key: &str, new: bool) -> f64 {
         let (wins, losses) = self.arms.get(key).copied().unwrap_or_default();
         let theta = rng.beta(1.0 + wins, 1.0 + losses);
-        if new { theta.max(rng.beta(1.0 + wins, 1.0 + losses)) + 0.05 } else { theta }
+        if new {
+            theta.max(rng.beta(1.0 + wins, 1.0 + losses)) + 0.05
+        } else {
+            theta
+        }
     }
 
     fn is_new_source(&self, world: &World, source: i64, now_ms: i64) -> bool {
-        let recent = world.sources.get(&source).is_some_and(|s| now_ms - s.added * 1000 < NEW_SOURCE_MS);
+        let recent = world
+            .sources
+            .get(&source)
+            .is_some_and(|s| now_ms - s.added * 1000 < NEW_SOURCE_MS);
         recent || self.shown.get(&source).copied().unwrap_or(0) < NEW_SOURCE_IMPRESSIONS
     }
 
     /// Picked for you: relevance, then MMR diversity with author and source
     /// decay and near-duplicate removal, with exploration slots filled by
     /// Thompson sampling over sources and topics.
-    pub fn pick(&self, world: &World, candidates: &[i64], now_ms: i64, options: PickOptions) -> Vec<Pick> {
+    pub fn pick(
+        &self,
+        world: &World,
+        candidates: &[i64],
+        now_ms: i64,
+        options: PickOptions,
+    ) -> Vec<Pick> {
         let mut pool: Vec<(&Item, Scored)> = candidates
             .iter()
             .filter_map(|id| world.items.get(id))
@@ -823,7 +980,11 @@ impl Ranker {
                     || (item.url.is_some() && other.url == item.url)
             })
         };
-        let mut explore_slots = if options.explore && options.n >= 4 { ((options.n as f64 * 0.125).round() as usize).max(1) } else { 0 };
+        let mut explore_slots = if options.explore && options.n >= 4 {
+            ((options.n as f64 * 0.125).round() as usize).max(1)
+        } else {
+            0
+        };
         // A small pool still keeps room for exploring.
         let mut unique: Vec<usize> = Vec::new();
         for i in 0..pool.len() {
@@ -833,7 +994,9 @@ impl Ranker {
         }
         explore_slots = explore_slots.min(unique.len().saturating_sub(1));
         let exploit = (options.n - explore_slots).min(unique.len() - explore_slots);
-        let (low, high) = pool.iter().fold((f64::MAX, f64::MIN), |(lo, hi), (_, s)| (lo.min(s.score), hi.max(s.score)));
+        let (low, high) = pool.iter().fold((f64::MAX, f64::MIN), |(lo, hi), (_, s)| {
+            (lo.min(s.score), hi.max(s.score))
+        });
         let span = (high - low).max(1e-9);
 
         let mut chosen: Vec<usize> = Vec::new();
@@ -844,10 +1007,21 @@ impl Ranker {
                     continue;
                 }
                 let relevance = (scored.score - low) / span;
-                let authors = chosen.iter().filter(|&&c| item.author.is_some() && pool[c].0.author == item.author).count();
-                let sources = chosen.iter().filter(|&&c| pool[c].0.source == item.source).count();
-                let decayed = relevance * AUTHOR_DECAY.powi(authors as i32) * SOURCE_DECAY.powi(sources as i32);
-                let redundancy = chosen.iter().map(|&c| f64::from(cosine(&pool[c].0.vector, &item.vector))).fold(0.0, f64::max);
+                let authors = chosen
+                    .iter()
+                    .filter(|&&c| item.author.is_some() && pool[c].0.author == item.author)
+                    .count();
+                let sources = chosen
+                    .iter()
+                    .filter(|&&c| pool[c].0.source == item.source)
+                    .count();
+                let decayed = relevance
+                    * AUTHOR_DECAY.powi(authors as i32)
+                    * SOURCE_DECAY.powi(sources as i32);
+                let redundancy = chosen
+                    .iter()
+                    .map(|&c| f64::from(cosine(&pool[c].0.vector, &item.vector)))
+                    .fold(0.0, f64::max);
                 let value = MMR_LAMBDA * decayed - (1.0 - MMR_LAMBDA) * redundancy;
                 if best.is_none_or(|(_, b)| value > b) {
                     best = Some((i, value));
@@ -868,7 +1042,11 @@ impl Ranker {
                 }
                 let new = self.is_new_source(world, item.source, now_ms);
                 let source = self.sample(&mut rng, &format!("source:{}", item.source), new);
-                let topic = item.topics.iter().map(|t| self.sample(&mut rng, &format!("topic:{t}"), false)).fold(0.0, f64::max);
+                let topic = item
+                    .topics
+                    .iter()
+                    .map(|t| self.sample(&mut rng, &format!("topic:{t}"), false))
+                    .fold(0.0, f64::max);
                 let fresh = (-scored.fresh_hours / 72.0).exp();
                 let theta = (0.5 * source + 0.5 * topic) * (0.6 + 0.4 * fresh);
                 if best.is_none_or(|(_, b)| theta > b) {
@@ -881,23 +1059,61 @@ impl Ranker {
 
         let mut picks: Vec<Pick> = chosen
             .iter()
-            .map(|&i| Pick { id: pool[i].0.id, score: round(pool[i].1.score), explore: false, reasons: self.reasons(world, pool[i].0, &pool[i].1) })
+            .map(|&i| Pick {
+                id: pool[i].0.id,
+                score: round(pool[i].1.score),
+                explore: false,
+                reasons: self.reasons(world, pool[i].0, &pool[i].1),
+            })
             .collect();
         for (k, &i) in explored.iter().enumerate() {
             let (item, scored) = &pool[i];
             let new = self.is_new_source(world, item.source, now_ms);
-            let name = world.sources.get(&item.source).map_or("this source".to_string(), |s| s.title.clone());
-            let label = if new { format!("Exploring: {name} is new to you") } else { format!("Exploring: a change from your usual, from {name}") };
-            let mut reasons = vec![Reason { key: "explore".into(), label, removable: false, weight: 1.0 }];
-            reasons.extend(self.reasons(world, item, scored).into_iter().filter(|r| r.key != "cold").take(2));
-            let at = ((k + 1) * options.n / (explore_slots + 1)).saturating_sub(1).min(picks.len());
-            picks.insert(at, Pick { id: item.id, score: round(scored.score), explore: true, reasons });
+            let name = world
+                .sources
+                .get(&item.source)
+                .map_or("this source".to_string(), |s| s.title.clone());
+            let label = if new {
+                format!("Exploring: {name} is new to you")
+            } else {
+                format!("Exploring: a change from your usual, from {name}")
+            };
+            let mut reasons = vec![Reason {
+                key: "explore".into(),
+                label,
+                removable: false,
+                weight: 1.0,
+            }];
+            reasons.extend(
+                self.reasons(world, item, scored)
+                    .into_iter()
+                    .filter(|r| r.key != "cold")
+                    .take(2),
+            );
+            let at = ((k + 1) * options.n / (explore_slots + 1))
+                .saturating_sub(1)
+                .min(picks.len());
+            picks.insert(
+                at,
+                Pick {
+                    id: item.id,
+                    score: round(scored.score),
+                    explore: true,
+                    reasons,
+                },
+            );
         }
         picks
     }
 
     /// Feed items nearest to a vector, excluding `except`.
-    pub fn similar(&self, world: &World, vector: &[f32], except: Option<i64>, n: usize) -> Vec<(i64, f64)> {
+    pub fn similar(
+        &self,
+        world: &World,
+        vector: &[f32],
+        except: Option<i64>,
+        n: usize,
+    ) -> Vec<(i64, f64)> {
         let mut out: Vec<(i64, f64)> = world
             .items
             .values()
@@ -914,7 +1130,11 @@ impl Ranker {
     pub fn top_topics(&self, world: &World, days: i64, now_ms: i64, n: usize) -> Vec<TopicWeight> {
         let since = now_ms - days * DAY_MS;
         let mut topics: BTreeMap<String, (f64, usize)> = BTreeMap::new();
-        for label in self.labels.iter().filter(|l| l.at >= since && l.signal.positive()) {
+        for label in self
+            .labels
+            .iter()
+            .filter(|l| l.at >= since && l.signal.positive())
+        {
             if let Some(item) = world.items.get(&label.item) {
                 for topic in &item.topics {
                     let entry = topics.entry(topic.clone()).or_default();
@@ -923,7 +1143,11 @@ impl Ranker {
                 }
             }
         }
-        for clip in world.clips.iter().filter(|c| c.item.is_none() && c.captured * 1000 >= since) {
+        for clip in world
+            .clips
+            .iter()
+            .filter(|c| c.item.is_none() && c.captured * 1000 >= since)
+        {
             for topic in &clip.topics {
                 let entry = topics.entry(topic.clone()).or_default();
                 entry.0 += Signal::Save.weight();
@@ -933,7 +1157,11 @@ impl Ranker {
         let mut out: Vec<TopicWeight> = topics
             .into_iter()
             .filter(|(topic, _)| !self.corrections.contains(&format!("topic:{topic}")))
-            .map(|(topic, (weight, items))| TopicWeight { topic, weight: round(weight), items })
+            .map(|(topic, (weight, items))| TopicWeight {
+                topic,
+                weight: round(weight),
+                items,
+            })
             .collect();
         out.sort_by(|a, b| b.weight.total_cmp(&a.weight).then(a.topic.cmp(&b.topic)));
         out.truncate(n);
@@ -947,7 +1175,13 @@ impl Ranker {
                 .affinity
                 .iter()
                 .filter(|(k, _)| k.starts_with(prefix) && !self.corrections.contains(*k))
-                .map(|(k, a)| KeyAffinity { key: k.clone(), name: self.key_label(world, k), affinity: round(a.mean()), kept: round(a.pos), passed: round(a.neg) })
+                .map(|(k, a)| KeyAffinity {
+                    key: k.clone(),
+                    name: self.key_label(world, k),
+                    affinity: round(a.mean()),
+                    kept: round(a.pos),
+                    passed: round(a.neg),
+                })
                 .collect();
             out.sort_by(|a, b| b.affinity.total_cmp(&a.affinity).then(a.key.cmp(&b.key)));
             out.truncate(5);
@@ -965,7 +1199,11 @@ impl Ranker {
             sources: top("source:"),
             authors: top("author:"),
             topics: self.top_topics(world, 90, now_ms, 8),
-            weights: FEATURES.iter().enumerate().map(|(i, name)| (name.to_string(), round(PRIOR[i] + self.model.weight(i)))).collect(),
+            weights: FEATURES
+                .iter()
+                .enumerate()
+                .map(|(i, name)| (name.to_string(), round(PRIOR[i] + self.model.weight(i))))
+                .collect(),
             corrections: self.corrections.iter().cloned().collect(),
         }
     }

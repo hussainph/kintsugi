@@ -84,9 +84,12 @@ pub(crate) fn wire_trace() -> bool {
 /// name, `KINTSUGI_HEADLESS_PI_READONLY=1`). OpenCode's and Pi's credentials
 /// are then read, never locked, refreshed or written.
 pub(crate) fn ai_enabled() -> bool {
-    ["KINTSUGI_HEADLESS_AI_READONLY", "KINTSUGI_HEADLESS_PI_READONLY"]
-        .iter()
-        .any(|key| std::env::var(key).as_deref() == Ok("1"))
+    [
+        "KINTSUGI_HEADLESS_AI_READONLY",
+        "KINTSUGI_HEADLESS_PI_READONLY",
+    ]
+    .iter()
+    .any(|key| std::env::var(key).as_deref() == Ok("1"))
 }
 
 /// Guard both startup overrides and the folder prompt. Never allow an ancestor,
@@ -136,7 +139,8 @@ pub(crate) fn scratch_path(path: &Path) -> Result<PathBuf> {
 pub(crate) fn scratch_file(path: &Path) -> Result<PathBuf> {
     let parent = path.parent().ok_or("a file needs a folder")?;
     let parent = checked_directory(parent)?;
-    let inside = parent.starts_with(required_dir("KINTSUGI_VAULT")?) || parent.starts_with(config_directory()?);
+    let inside = parent.starts_with(required_dir("KINTSUGI_VAULT")?)
+        || parent.starts_with(config_directory()?);
     if !inside {
         return Err("headless only writes files inside this run's scratch vault or config".into());
     }
@@ -155,10 +159,15 @@ pub(crate) fn scratch_blog(path: &Path) -> Result<PathBuf> {
     let real = home.join("Desktop/code/3d-portfolio");
     let real = real.canonicalize().unwrap_or(real);
     if path.starts_with(&real) || real.starts_with(&path) {
-        return Err("headless refuses the owner's blog repository; use a scratch copy under .headless/".into());
+        return Err(
+            "headless refuses the owner's blog repository; use a scratch copy under .headless/"
+                .into(),
+        );
     }
     if !path.components().any(|c| c.as_os_str() == ".headless") {
-        return Err("headless only publishes into a scratch blog copy under a .headless/ folder".into());
+        return Err(
+            "headless only publishes into a scratch blog copy under a .headless/ folder".into(),
+        );
     }
     Ok(path)
 }
@@ -908,10 +917,19 @@ mod tests {
             // A save from a stale base is refused, and a deleted file stays deleted.
             std::fs::write(vault.join("test.md"), "Edited in another app").unwrap();
             let stale = kintsugi_vault::version("Saved via real IPC");
-            let refused = call(&client, &bridge, "doc_write", json!({"path":"test.md","contents":"Typed here","base":stale})).await;
+            let refused = call(
+                &client,
+                &bridge,
+                "doc_write",
+                json!({"path":"test.md","contents":"Typed here","base":stale}),
+            )
+            .await;
             assert_eq!(refused["value"]["result"], "conflict", "{refused}");
             assert_eq!(refused["value"]["current"]["text"], "Edited in another app");
-            assert_eq!(std::fs::read_to_string(vault.join("test.md")).unwrap(), "Edited in another app");
+            assert_eq!(
+                std::fs::read_to_string(vault.join("test.md")).unwrap(),
+                "Edited in another app"
+            );
             std::fs::remove_file(vault.join("test.md")).unwrap();
             let gone = call(&client, &bridge, "doc_write", json!({"path":"test.md","contents":"Typed here","base":kintsugi_vault::version("Edited in another app")})).await;
             assert_eq!(gone["value"]["result"], "gone", "{gone}");
@@ -973,37 +991,77 @@ mod tests {
             let found = call(&client, &bridge, "search", json!({"query":"saved ipc"})).await;
             assert_eq!(found["value"][0]["id"], "test.md", "{found}");
             assert_eq!(found["value"][0]["kind"], "writing");
-            let clips = call(&client, &bridge, "search", json!({"query":"scratch","kinds":["clip"]})).await;
+            let clips = call(
+                &client,
+                &bridge,
+                "search",
+                json!({"query":"scratch","kinds":["clip"]}),
+            )
+            .await;
             assert_eq!(clips["value"].as_array().unwrap().len(), 1, "{clips}");
             let library = call(&client, &bridge, "clip_search", json!({"query":"scratch"})).await;
             assert_eq!(library["value"]["total"], 1, "{library}");
-            assert!(crate::config::directory(&bridge.app).unwrap().join("search/index.sqlite").is_file());
+            assert!(
+                crate::config::directory(&bridge.app)
+                    .unwrap()
+                    .join("search/index.sqlite")
+                    .is_file()
+            );
             assert!(!vault.join(".kintsugi/search").exists());
             // Feed items join the index when the Feed ingests them.
-            let rss = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../crates/ingest/fixtures/feed/blog.rss.xml")).unwrap();
+            let rss = std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../crates/ingest/fixtures/feed/blog.rss.xml"
+            ))
+            .unwrap();
             let feeds = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let feed_url = format!("http://{}/feed.xml", feeds.local_addr().unwrap());
             let routes = axum::Router::new().route(
                 "/feed.xml",
                 axum::routing::get(move || {
                     let rss = rss.clone();
-                    async move { ([(axum::http::header::CONTENT_TYPE, "application/rss+xml")], rss) }
+                    async move {
+                        (
+                            [(axum::http::header::CONTENT_TYPE, "application/rss+xml")],
+                            rss,
+                        )
+                    }
                 }),
             );
             tokio::spawn(async move { axum::serve(feeds, routes).await.unwrap() });
-            let followed = call(&client, &bridge, "feed_subscribe", json!({"input":{"kind":"url","url":feed_url}})).await;
+            let followed = call(
+                &client,
+                &bridge,
+                "feed_subscribe",
+                json!({"input":{"kind":"url","url":feed_url}}),
+            )
+            .await;
             assert_eq!(followed["ok"], true, "{followed}");
             let mut found = Value::Null;
             for _ in 0..50 {
-                found = call(&client, &bridge, "search", json!({"query":"mending","kinds":["feed"]})).await;
-                if found["value"].as_array().is_some_and(|hits| !hits.is_empty()) {
+                found = call(
+                    &client,
+                    &bridge,
+                    "search",
+                    json!({"query":"mending","kinds":["feed"]}),
+                )
+                .await;
+                if found["value"]
+                    .as_array()
+                    .is_some_and(|hits| !hits.is_empty())
+                {
                     break;
                 }
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
             assert_eq!(found["value"][0]["title"], "On mending", "{found}");
             assert_eq!(found["value"][0]["source"], "The Quiet Blog", "{found}");
-            assert!(found["value"][0]["id"].as_str().unwrap().starts_with("feed:"));
+            assert!(
+                found["value"][0]["id"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("feed:")
+            );
             assert_eq!(
                 call(&client, &bridge, "reference_index", json!({})).await["ok"],
                 true
@@ -1055,7 +1113,12 @@ mod tests {
             let channel = packet(&mut events).await;
             assert_eq!(channel["callback"], 98);
             assert_eq!(channel["payload"]["message"]["type"], "error");
-            assert!(channel["payload"]["message"]["message"].as_str().unwrap().starts_with("No AI provider"));
+            assert!(
+                channel["payload"]["message"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("No AI provider")
+            );
             assert_eq!(
                 call(&client, &bridge, "not_a_command", json!({})).await["ok"],
                 false

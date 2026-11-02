@@ -62,7 +62,11 @@ pub struct Line {
 impl PdfText {
     /// Characters of text found, ignoring whitespace.
     pub fn chars(&self) -> usize {
-        self.pages.iter().flat_map(|p| &p.lines).map(|l| l.text.chars().filter(|c| !c.is_whitespace()).count()).sum()
+        self.pages
+            .iter()
+            .flat_map(|p| &p.lines)
+            .map(|l| l.text.chars().filter(|c| !c.is_whitespace()).count())
+            .sum()
     }
 }
 
@@ -79,7 +83,11 @@ pub fn page_marker(n: usize) -> String {
 
 /// The page a marker line names.
 pub fn marker_page(line: &str) -> Option<usize> {
-    line.trim().strip_prefix("<!-- page ")?.strip_suffix(" -->")?.parse().ok()
+    line.trim()
+        .strip_prefix("<!-- page ")?
+        .strip_suffix(" -->")?
+        .parse()
+        .ok()
 }
 
 /// Blocks with a page marker whenever the page a block starts on changes.
@@ -118,7 +126,11 @@ pub fn markdown(doc: &PdfText) -> String {
     let outline: Vec<String> = doc.outline.iter().map(|o| normalize(&o.title)).collect();
     let use_outline = heading_sizes.is_empty() && !outline.is_empty();
 
-    let mut out = Blocks { blocks: Vec::new(), marked: None, mark: doc.pages.len() > 1 };
+    let mut out = Blocks {
+        blocks: Vec::new(),
+        marked: None,
+        mark: doc.pages.len() > 1,
+    };
     // Each pending block remembers the page it started on.
     let mut paragraph = String::new();
     let mut paragraph_page = 0;
@@ -131,9 +143,15 @@ pub fn markdown(doc: &PdfText) -> String {
     };
     let flush_heading = |heading: &mut Option<(f64, String, usize)>, out: &mut Blocks| {
         if let Some((size, text, page)) = heading.take() {
-            let rank = heading_sizes.iter().position(|s| (s - size).abs() < 0.5).unwrap_or(0);
+            let rank = heading_sizes
+                .iter()
+                .position(|s| (s - size).abs() < 0.5)
+                .unwrap_or(0);
             let marks = "#".repeat((rank + 2).min(4));
-            out.push(page, format!("{marks} {}", plain(text.trim()).trim_start_matches('\\')));
+            out.push(
+                page,
+                format!("{marks} {}", plain(text.trim()).trim_start_matches('\\')),
+            );
         }
     };
     for page in &doc.pages {
@@ -154,17 +172,28 @@ pub fn markdown(doc: &PdfText) -> String {
             if let Some(marks) = numbered_heading(line, body_size) {
                 flush(&mut paragraph, paragraph_page, &mut out);
                 flush_heading(&mut heading, &mut out);
-                out.push(page.page, format!("{marks} {}", plain(text).trim_start_matches('\\')));
+                out.push(
+                    page.page,
+                    format!("{marks} {}", plain(text).trim_start_matches('\\')),
+                );
                 previous_y = Some(line.y);
                 continue;
             }
             let outline_heading = use_outline && outline.contains(&normalize(text));
-            if (is_heading(line, body_size) || outline_heading) && text.chars().count() <= HEADING_CHARS {
+            if (is_heading(line, body_size) || outline_heading)
+                && text.chars().count() <= HEADING_CHARS
+            {
                 flush(&mut paragraph, paragraph_page, &mut out);
-                let size = if outline_heading { heading_sizes.first().copied().unwrap_or(line.size) } else { line.size };
+                let size = if outline_heading {
+                    heading_sizes.first().copied().unwrap_or(line.size)
+                } else {
+                    line.size
+                };
                 match &mut heading {
                     // A title wrapped over two lines in the same type.
-                    Some((current, words, _)) if (*current - size).abs() < 0.5 && previous_y.is_some() => {
+                    Some((current, words, _))
+                        if (*current - size).abs() < 0.5 && previous_y.is_some() =>
+                    {
                         words.push(' ');
                         words.push_str(text);
                     }
@@ -178,7 +207,9 @@ pub fn markdown(doc: &PdfText) -> String {
             }
             flush_heading(&mut heading, &mut out);
             let bullet = bullet(text);
-            let jumped = previous_x.zip(line.x).is_some_and(|(a, b)| (a - b).abs() > column_jump);
+            let jumped = previous_x
+                .zip(line.x)
+                .is_some_and(|(a, b)| (a - b).abs() > column_jump);
             let spaced = previous_y.is_some_and(|y| y - line.y > gap * 1.5 || line.y > y) || jumped;
             if bullet.is_some() || spaced || (previous_y.is_none() && ends_sentence(&paragraph)) {
                 flush(&mut paragraph, paragraph_page, &mut out);
@@ -217,12 +248,16 @@ enum Column {
 /// helper's order stands.
 fn reading_order(page: &PageText) -> Vec<usize> {
     let natural: Vec<usize> = (0..page.lines.len()).collect();
-    let Some(columns) = columns(page) else { return natural };
+    let Some(columns) = columns(page) else {
+        return natural;
+    };
     let mut by_height = natural;
     by_height.sort_by(|&a, &b| {
         let (a, b) = (&page.lines[a], &page.lines[b]);
         let top = |l: &Line| l.y + l.height.unwrap_or(l.size);
-        top(b).total_cmp(&top(a)).then(a.x.unwrap_or(0.0).total_cmp(&b.x.unwrap_or(0.0)))
+        top(b)
+            .total_cmp(&top(a))
+            .then(a.x.unwrap_or(0.0).total_cmp(&b.x.unwrap_or(0.0)))
     });
     let mut order = Vec::with_capacity(by_height.len());
     let (mut lefts, mut rights) = (Vec::new(), Vec::new());
@@ -266,7 +301,11 @@ fn columns(page: &PageText) -> Option<Vec<Column>> {
         .collect();
     let columns = columns?;
     let count = |c: Column| columns.iter().filter(|x| **x == c).count();
-    let (left, right, full) = (count(Column::Left), count(Column::Right), count(Column::Full));
+    let (left, right, full) = (
+        count(Column::Left),
+        count(Column::Right),
+        count(Column::Full),
+    );
     (left >= 3 && right >= 3 && left + right > full).then_some(columns)
 }
 
@@ -279,7 +318,10 @@ fn numbered_heading(line: &Line, body_size: f64) -> Option<&'static str> {
     if text.chars().count() > 100 || (body_size > 0.0 && line.size >= body_size * HEADING_RATIO) {
         return None;
     }
-    let number: String = text.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    let number: String = text
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .collect();
     let rest = text[number.len()..].strip_prefix(' ')?.trim_start();
     let parts: Vec<&str> = number.trim_end_matches('.').split('.').collect();
     let valid = !number.is_empty()
@@ -298,7 +340,10 @@ fn body_size(doc: &PdfText) -> f64 {
     for line in doc.pages.iter().flat_map(|p| &p.lines) {
         *chars.entry((line.size * 2.0).round() as i64).or_default() += line.text.chars().count();
     }
-    chars.into_iter().max_by_key(|(size, n)| (*n, -*size)).map_or(0.0, |(size, _)| size as f64 / 2.0)
+    chars
+        .into_iter()
+        .max_by_key(|(size, n)| (*n, -*size))
+        .map_or(0.0, |(size, _)| size as f64 / 2.0)
 }
 
 fn is_heading(line: &Line, body_size: f64) -> bool {
@@ -313,13 +358,21 @@ fn line_gap(doc: &PdfText, body_size: f64) -> f64 {
     let mut gaps: Vec<f64> = doc
         .pages
         .iter()
-        .flat_map(|p| reading_order(p).windows(2).map(|w| (&p.lines[w[0]], &p.lines[w[1]])).collect::<Vec<_>>())
+        .flat_map(|p| {
+            reading_order(p)
+                .windows(2)
+                .map(|w| (&p.lines[w[0]], &p.lines[w[1]]))
+                .collect::<Vec<_>>()
+        })
         .filter(|(a, b)| (a.size - body_size).abs() < 0.5 && (b.size - body_size).abs() < 0.5)
         .map(|(a, b)| a.y - b.y)
         .filter(|g| *g > 0.0)
         .collect();
     gaps.sort_by(f64::total_cmp);
-    gaps.get(gaps.len() / 2).copied().unwrap_or(body_size * 1.3).max(1.0)
+    gaps.get(gaps.len() / 2)
+        .copied()
+        .unwrap_or(body_size * 1.3)
+        .max(1.0)
 }
 
 /// Running headers and footers: text at the top or bottom of a page that
@@ -338,14 +391,21 @@ fn furniture(doc: &PdfText) -> Vec<String> {
         }
     }
     let needed = doc.pages.len().div_ceil(2).max(2);
-    seen.into_iter().filter(|(_, n)| *n >= needed).map(|(key, _)| key).collect()
+    seen.into_iter()
+        .filter(|(_, n)| *n >= needed)
+        .map(|(key, _)| key)
+        .collect()
 }
 
 /// The first and last two lines of a page, in reading order.
 fn edges(page: &PageText) -> impl Iterator<Item = &Line> {
     let order = reading_order(page);
     let n = order.len();
-    order.into_iter().enumerate().filter(move |(i, _)| *i < 2 || *i + 2 >= n).map(|(_, l)| &page.lines[l])
+    order
+        .into_iter()
+        .enumerate()
+        .filter(move |(i, _)| *i < 2 || *i + 2 >= n)
+        .map(|(_, l)| &page.lines[l])
 }
 
 fn is_furniture(furniture: &[String], lines: usize, position: usize, text: &str) -> bool {
@@ -355,24 +415,46 @@ fn is_furniture(furniture: &[String], lines: usize, position: usize, text: &str)
 
 /// Digits and whitespace don't distinguish a running header.
 fn shape(text: &str) -> String {
-    text.chars().filter(|c| !c.is_whitespace()).map(|c| if c.is_ascii_digit() { '#' } else { c.to_ascii_lowercase() }).collect()
+    text.chars()
+        .filter(|c| !c.is_whitespace())
+        .map(|c| {
+            if c.is_ascii_digit() {
+                '#'
+            } else {
+                c.to_ascii_lowercase()
+            }
+        })
+        .collect()
 }
 
 fn page_number(text: &str) -> bool {
     let t = text.trim().to_ascii_lowercase();
     let t = t.strip_prefix("page ").unwrap_or(&t);
-    let core = t.split(" of ").next().unwrap_or(t).trim_matches(|c: char| c == '-' || c == '–' || c.is_whitespace());
+    let core = t
+        .split(" of ")
+        .next()
+        .unwrap_or(t)
+        .trim_matches(|c: char| c == '-' || c == '–' || c.is_whitespace());
     !core.is_empty()
         && core.len() <= 8
-        && (core.chars().all(|c| c.is_ascii_digit()) || core.chars().all(|c| matches!(c, 'i' | 'v' | 'x' | 'l' | 'c')))
+        && (core.chars().all(|c| c.is_ascii_digit())
+            || core
+                .chars()
+                .all(|c| matches!(c, 'i' | 'v' | 'x' | 'l' | 'c')))
 }
 
 fn bullet(text: &str) -> Option<&str> {
-    ["• ", "◦ ", "▪ ", "– ", "- ", "· "].iter().find_map(|b| text.strip_prefix(b)).map(str::trim).filter(|r| !r.is_empty())
+    ["• ", "◦ ", "▪ ", "– ", "- ", "· "]
+        .iter()
+        .find_map(|b| text.strip_prefix(b))
+        .map(str::trim)
+        .filter(|r| !r.is_empty())
 }
 
 fn ends_sentence(paragraph: &str) -> bool {
-    paragraph.trim_end().ends_with(['.', '!', '?', ':', '"', '”', '’', ')'])
+    paragraph
+        .trim_end()
+        .ends_with(['.', '!', '?', ':', '"', '”', '’', ')'])
 }
 
 /// Appends a wrapped line, rejoining a word hyphenated across the break.
@@ -382,7 +464,10 @@ fn join(paragraph: &mut String, line: &str) {
         return;
     }
     let hyphenated = paragraph.ends_with('-')
-        && paragraph[..paragraph.len() - 1].chars().last().is_some_and(char::is_alphabetic)
+        && paragraph[..paragraph.len() - 1]
+            .chars()
+            .last()
+            .is_some_and(char::is_alphabetic)
         && line.chars().next().is_some_and(char::is_lowercase);
     if hyphenated {
         paragraph.pop();
@@ -394,11 +479,24 @@ fn join(paragraph: &mut String, line: &str) {
 
 /// Most words of four letters or more start with a capital.
 fn title_case(text: &str) -> bool {
-    let long: Vec<&str> = text.split_whitespace().filter(|w| w.chars().filter(|c| c.is_alphabetic()).count() >= 4).collect();
-    let capital = long.iter().filter(|w| w.chars().find(|c| c.is_alphabetic()).is_some_and(char::is_uppercase)).count();
+    let long: Vec<&str> = text
+        .split_whitespace()
+        .filter(|w| w.chars().filter(|c| c.is_alphabetic()).count() >= 4)
+        .collect();
+    let capital = long
+        .iter()
+        .filter(|w| {
+            w.chars()
+                .find(|c| c.is_alphabetic())
+                .is_some_and(char::is_uppercase)
+        })
+        .count();
     !long.is_empty() && capital * 3 >= long.len() * 2
 }
 
 fn normalize(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }

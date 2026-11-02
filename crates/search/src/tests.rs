@@ -3,15 +3,30 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-const SLEEP: &[&str] = &["sleep", "rest", "nap", "insomnia", "tired", "bedtime", "dreams", "asleep"];
-const POTTERY: &[&str] = &["kiln", "pottery", "ceramics", "glaze", "clay", "potter", "firing"];
+const SLEEP: &[&str] = &[
+    "sleep", "rest", "nap", "insomnia", "tired", "bedtime", "dreams", "asleep",
+];
+const POTTERY: &[&str] = &[
+    "kiln", "pottery", "ceramics", "glaze", "clay", "potter", "firing",
+];
 const MONEY: &[&str] = &["money", "budget", "finance", "savings", "spending"];
 const WRITING: &[&str] = &["writing", "essay", "draft", "prose", "blog"];
 const ATTENTION: &[&str] = &["attention", "focus", "distraction", "concentration"];
-const SOFTWARE: &[&str] = &["api", "endpoints", "verbs", "resources", "routes", "status", "codes", "server"];
+const SOFTWARE: &[&str] = &[
+    "api",
+    "endpoints",
+    "verbs",
+    "resources",
+    "routes",
+    "status",
+    "codes",
+    "server",
+];
 
 fn model() -> Arc<dyn Embedder> {
-    Arc::new(embed::fixture(&[SLEEP, POTTERY, MONEY, WRITING, ATTENTION, SOFTWARE]))
+    Arc::new(embed::fixture(&[
+        SLEEP, POTTERY, MONEY, WRITING, ATTENTION, SOFTWARE,
+    ]))
 }
 
 fn write(root: &Path, rel: &str, text: &str) {
@@ -31,17 +46,53 @@ fn clip(title: &str, site: &str, tags: &str, own: &str, source: &str) -> String 
 fn vault() -> tempfile::TempDir {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    write(root, "posts/why-i-nap.md", "---\ntitle: Why I nap\nstatus: complete\n---\n\nAn afternoon nap resets me. Dreams arrive fast.\n");
-    write(root, "posts/rest-api.md", "---\ntitle: Designing a REST API\n---\n\nRest endpoints, verbs, resources, routes and status codes for the server.\n");
-    write(root, "drafts/kiln.mdx", "---\ntitle: Firing the kiln\nstatus: draft\n---\n\nMy grandmother's kiln. The glaze ran and the clay cracked.\n");
-    write(root, "posts/budget.md", "# Monthly budget\n\nTracking spending and savings every month.\n");
-    write(root, "inbox/2026-11-01.md", "On the train: distraction everywhere, focus is a muscle.\n");
+    write(
+        root,
+        "posts/why-i-nap.md",
+        "---\ntitle: Why I nap\nstatus: complete\n---\n\nAn afternoon nap resets me. Dreams arrive fast.\n",
+    );
+    write(
+        root,
+        "posts/rest-api.md",
+        "---\ntitle: Designing a REST API\n---\n\nRest endpoints, verbs, resources, routes and status codes for the server.\n",
+    );
+    write(
+        root,
+        "drafts/kiln.mdx",
+        "---\ntitle: Firing the kiln\nstatus: draft\n---\n\nMy grandmother's kiln. The glaze ran and the clay cracked.\n",
+    );
+    write(
+        root,
+        "posts/budget.md",
+        "# Monthly budget\n\nTracking spending and savings every month.\n",
+    );
+    write(
+        root,
+        "inbox/2026-11-01.md",
+        "On the train: distraction everywhere, focus is a muscle.\n",
+    );
     write(
         root,
         "inspiration/why-we-sleep.md",
-        &clip("Why we sleep", "The New Yorker", "science", "Insomnia at bedtime.", "A long article about insomnia and being tired."),
+        &clip(
+            "Why we sleep",
+            "The New Yorker",
+            "science",
+            "Insomnia at bedtime.",
+            "A long article about insomnia and being tired.",
+        ),
     );
-    write(root, "inspiration/anagama.md", &clip("Anagama", "Ceramics Monthly", "craft", "", "Pottery fired for days in a tunnel kiln."));
+    write(
+        root,
+        "inspiration/anagama.md",
+        &clip(
+            "Anagama",
+            "Ceramics Monthly",
+            "craft",
+            "",
+            "Pottery fired for days in a tunnel kiln.",
+        ),
+    );
     write(root, ".kintsugi/agent/NOTES.md", "secret insomnia notes\n");
     write(root, "posts/image.png", "insomnia");
     dir
@@ -57,7 +108,12 @@ fn indexed(root: &Path, embedder: Option<Arc<dyn Embedder>>) -> Index {
 }
 
 fn ids(index: &mut Index, query: &Query) -> Vec<String> {
-    index.search(query).unwrap().into_iter().map(|h| h.id).collect()
+    index
+        .search(query)
+        .unwrap()
+        .into_iter()
+        .map(|h| h.id)
+        .collect()
 }
 
 fn q(text: &str) -> Query {
@@ -69,7 +125,10 @@ fn words_alone_find_and_rank_writing_notes_and_clips() {
     let dir = vault();
     let mut index = indexed(dir.path(), None);
     let hits = index.search(&q("insomnia")).unwrap();
-    assert_eq!(hits.iter().map(|h| h.id.as_str()).collect::<Vec<_>>(), ["inspiration/why-we-sleep.md"]);
+    assert_eq!(
+        hits.iter().map(|h| h.id.as_str()).collect::<Vec<_>>(),
+        ["inspiration/why-we-sleep.md"]
+    );
     let hit = &hits[0];
     assert_eq!(hit.kind, Kind::Clip);
     assert_eq!(hit.title.as_deref(), Some("Why we sleep"));
@@ -79,7 +138,10 @@ fn words_alone_find_and_rank_writing_notes_and_clips() {
     assert!(hit.matched.words && !hit.matched.meaning);
 
     // Prefixes and stems: "kiln" finds the clip's "kiln", "kilns" finds "kiln".
-    assert_eq!(ids(&mut index, &q("kilns")), ["drafts/kiln.mdx", "inspiration/anagama.md"]);
+    assert_eq!(
+        ids(&mut index, &q("kilns")),
+        ["drafts/kiln.mdx", "inspiration/anagama.md"]
+    );
     assert_eq!(ids(&mut index, &q("distractions")), ["inbox/2026-11-01.md"]);
     assert_eq!(ids(&mut index, &q("budg")), ["posts/budget.md"]);
     // Titles weigh more than bodies.
@@ -100,14 +162,21 @@ fn words_alone_find_and_rank_writing_notes_and_clips() {
     // A folder is vault-relative however it's written; `.` and `/` are the whole vault (KI-52).
     for within in ["posts", "./posts", "/posts/", " posts// "] {
         posts.within = Some(within.into());
-        assert_eq!(ids(&mut index, &posts), ["posts/why-i-nap.md"], "{within:?}");
+        assert_eq!(
+            ids(&mut index, &posts),
+            ["posts/why-i-nap.md"],
+            "{within:?}"
+        );
     }
     for within in [".", "./", "/", "", " "] {
         posts.within = Some(within.into());
         assert_eq!(ids(&mut index, &posts).len(), 3, "{within:?}");
     }
     // Headings title untitled documents; hidden folders and non-text files are never indexed.
-    assert_eq!(index.search(&q("budget")).unwrap()[0].title.as_deref(), Some("Monthly budget"));
+    assert_eq!(
+        index.search(&q("budget")).unwrap()[0].title.as_deref(),
+        Some("Monthly budget")
+    );
     assert!(ids(&mut index, &q("secret")).is_empty());
     assert!(index.search(&q("   ")).unwrap().is_empty());
     // Query syntax is never interpreted.
@@ -121,18 +190,33 @@ fn words_alone_find_and_rank_writing_notes_and_clips() {
 fn hybrid_search_finds_by_meaning_and_keeps_exact_matches_first() {
     let dir = vault();
     let cases: &[(&str, &[&str])] = &[
-        ("insomnia", &["inspiration/why-we-sleep.md", "posts/why-i-nap.md"]),
+        (
+            "insomnia",
+            &["inspiration/why-we-sleep.md", "posts/why-i-nap.md"],
+        ),
         ("ceramics", &["inspiration/anagama.md", "drafts/kiln.mdx"]),
         ("savings", &["posts/budget.md"]),
         ("concentration", &["inbox/2026-11-01.md"]),
-        ("tired at bedtime", &["inspiration/why-we-sleep.md", "posts/why-i-nap.md"]),
+        (
+            "tired at bedtime",
+            &["inspiration/why-we-sleep.md", "posts/why-i-nap.md"],
+        ),
     ];
     let recall = |index: &mut Index| {
         let mut found = 0;
         let mut total = 0;
         for (query, expected) in cases {
-            let top = ids(index, &Query { limit: expected.len().max(2), ..q(query) });
-            found += expected.iter().filter(|e| top.contains(&e.to_string())).count();
+            let top = ids(
+                index,
+                &Query {
+                    limit: expected.len().max(2),
+                    ..q(query)
+                },
+            );
+            found += expected
+                .iter()
+                .filter(|e| top.contains(&e.to_string()))
+                .count();
             total += expected.len();
         }
         found as f32 / total as f32
@@ -141,7 +225,10 @@ fn hybrid_search_finds_by_meaning_and_keeps_exact_matches_first() {
     let mut hybrid = indexed(dir.path(), Some(model()));
     let (words, both) = (recall(&mut lexical), recall(&mut hybrid));
     assert_eq!(both, 1.0, "hybrid recall");
-    assert!(words < 0.6, "words alone should miss the synonyms, got {words}");
+    assert!(
+        words < 0.6,
+        "words alone should miss the synonyms, got {words}"
+    );
 
     // The exact match leads; the meaning-only match follows.
     let hits = hybrid.search(&q("insomnia")).unwrap();
@@ -149,12 +236,18 @@ fn hybrid_search_finds_by_meaning_and_keeps_exact_matches_first() {
     assert!(hits[0].matched.words && hits[0].matched.meaning && hits[0].score == 1.0);
     let nap = hits.iter().find(|h| h.id == "posts/why-i-nap.md").unwrap();
     assert!(nap.matched.meaning && !nap.matched.words && nap.score < 1.0);
-    assert!(nap.snippet.contains("nap"), "a meaning match shows its chunk: {nap:?}");
+    assert!(
+        nap.snippet.contains("nap"),
+        "a meaning match shows its chunk: {nap:?}"
+    );
     // Unrelated documents don't ride along on noise.
     assert!(!hits.iter().any(|h| h.id == "posts/budget.md"), "{hits:?}");
     // "rest" is ambiguous: the REST API (words) and sleep (meaning) both show.
     let rest = ids(&mut hybrid, &q("rest"));
-    assert!(rest.contains(&"posts/rest-api.md".into()) && rest.contains(&"posts/why-i-nap.md".into()), "{rest:?}");
+    assert!(
+        rest.contains(&"posts/rest-api.md".into()) && rest.contains(&"posts/why-i-nap.md".into()),
+        "{rest:?}"
+    );
     // Filters apply to meaning too.
     let mut clips = q("tired");
     clips.kinds = vec![Kind::Clip];
@@ -175,12 +268,20 @@ fn a_cold_index_finds_by_words_on_the_first_search() {
     };
     let mut kiln = q("kiln");
     kiln.within = Some(".".into());
-    let mut library = Query { kinds: vec![Kind::Clip], all_terms: true, min_similarity: 0.35, ..q("kiln") };
+    let mut library = Query {
+        kinds: vec![Kind::Clip],
+        all_terms: true,
+        min_similarity: 0.35,
+        ..q("kiln")
+    };
     library.limit = 500;
 
     // Words only (`KINTSUGI_EMBEDDINGS=off`, or the model still downloading).
     let mut index = Index::open(&path).unwrap();
-    assert_eq!(first(&mut index, &kiln), ["drafts/kiln.mdx", "inspiration/anagama.md"]);
+    assert_eq!(
+        first(&mut index, &kiln),
+        ["drafts/kiln.mdx", "inspiration/anagama.md"]
+    );
     assert_eq!(ids(&mut index, &library), ["inspiration/anagama.md"]);
     drop(index);
 
@@ -191,7 +292,10 @@ fn a_cold_index_finds_by_words_on_the_first_search() {
     let mut index = Index::open(&path).unwrap();
     vault::sync(&mut index, "v", dir.path()).unwrap();
     index.set_embedder(model()).unwrap();
-    assert_eq!(ids(&mut index, &kiln)[..2], ["drafts/kiln.mdx", "inspiration/anagama.md"]);
+    assert_eq!(
+        ids(&mut index, &kiln)[..2],
+        ["drafts/kiln.mdx", "inspiration/anagama.md"]
+    );
     let mut with_model = Index::open_in_memory().unwrap();
     with_model.set_embedder(model()).unwrap();
     assert_eq!(first(&mut with_model, &library), ["inspiration/anagama.md"]);
@@ -202,14 +306,36 @@ fn sync_reads_only_what_changed() {
     let dir = vault();
     let root = dir.path();
     let mut index = Index::open_in_memory().unwrap();
-    assert_eq!(vault::sync(&mut index, "v", root).unwrap(), vault::Synced { indexed: 7, removed: 0 });
-    assert_eq!(vault::sync(&mut index, "v", root).unwrap(), vault::Synced::default());
+    assert_eq!(
+        vault::sync(&mut index, "v", root).unwrap(),
+        vault::Synced {
+            indexed: 7,
+            removed: 0
+        }
+    );
+    assert_eq!(
+        vault::sync(&mut index, "v", root).unwrap(),
+        vault::Synced::default()
+    );
 
-    write(root, "posts/budget.md", "# Monthly budget\n\nNow about lighthouses.\n");
+    write(
+        root,
+        "posts/budget.md",
+        "# Monthly budget\n\nNow about lighthouses.\n",
+    );
     fs::remove_file(root.join("posts/why-i-nap.md")).unwrap();
     write(root, "drafts/new.md", "A lighthouse keeper's log.\n");
-    assert_eq!(vault::sync(&mut index, "v", root).unwrap(), vault::Synced { indexed: 2, removed: 1 });
-    assert_eq!(ids(&mut index, &q("lighthouse")), ["drafts/new.md", "posts/budget.md"]);
+    assert_eq!(
+        vault::sync(&mut index, "v", root).unwrap(),
+        vault::Synced {
+            indexed: 2,
+            removed: 1
+        }
+    );
+    assert_eq!(
+        ids(&mut index, &q("lighthouse")),
+        ["drafts/new.md", "posts/budget.md"]
+    );
     assert!(ids(&mut index, &q("savings")).is_empty());
     assert!(ids(&mut index, &q("nap")).is_empty());
 }
@@ -233,7 +359,10 @@ fn feed_items_share_the_index_in_their_own_scope() {
     let both = Query::new("naps", &["v", FEED_SCOPE]);
     let hits = index.search(&both).unwrap();
     let feed = hits.iter().find(|h| h.id == "feed:42").unwrap();
-    assert_eq!((feed.kind, feed.source.as_deref()), (Kind::Feed, Some("Hacker News")));
+    assert_eq!(
+        (feed.kind, feed.source.as_deref()),
+        (Kind::Feed, Some("Hacker News"))
+    );
     // A vault sync never removes feed items.
     vault::sync(&mut index, "v", dir.path()).unwrap();
     assert_eq!(index.stamps(FEED_SCOPE).unwrap().len(), 1);
@@ -252,11 +381,18 @@ fn the_index_persists_and_re_embeds_when_the_model_changes() {
     }
     // Reopened: nothing to re-read, and a model fills in every vector.
     let mut index = Index::open(&file).unwrap();
-    assert_eq!(vault::sync(&mut index, "v", dir.path()).unwrap(), vault::Synced::default());
+    assert_eq!(
+        vault::sync(&mut index, "v", dir.path()).unwrap(),
+        vault::Synced::default()
+    );
     index.set_embedder(model()).unwrap();
     assert_eq!(index.embed_missing(usize::MAX).unwrap(), 7);
     assert_eq!(index.embed_missing(usize::MAX).unwrap(), 0);
-    assert!(index.search(&q("concentration")).unwrap()[0].matched.meaning);
+    assert!(
+        index.search(&q("concentration")).unwrap()[0]
+            .matched
+            .meaning
+    );
 
     struct Other;
     impl Embedder for Other {
@@ -268,17 +404,31 @@ fn the_index_persists_and_re_embeds_when_the_model_changes() {
         }
     }
     index.set_embedder(Arc::new(Other)).unwrap();
-    assert_eq!(index.embed_missing(usize::MAX).unwrap(), 7, "a new model re-embeds everything");
+    assert_eq!(
+        index.embed_missing(usize::MAX).unwrap(),
+        7,
+        "a new model re-embeds everything"
+    );
 }
 
 #[test]
 fn snippets_stay_short_on_long_documents() {
     let dir = tempfile::tempdir().unwrap();
-    let long = (0..400).map(|i| format!("Paragraph {i} about nothing much at all.")).collect::<Vec<_>>().join("\n\n");
-    write(dir.path(), "posts/long.md", &format!("{long}\n\nThe lighthouse appears near the end.\n\n{long}"));
+    let long = (0..400)
+        .map(|i| format!("Paragraph {i} about nothing much at all."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    write(
+        dir.path(),
+        "posts/long.md",
+        &format!("{long}\n\nThe lighthouse appears near the end.\n\n{long}"),
+    );
     let mut index = indexed(dir.path(), None);
     let hit = &index.search(&q("lighthouse")).unwrap()[0];
-    assert!(hit.snippet.contains("lighthouse") && hit.snippet.chars().count() <= SNIPPET_CHARS + 1, "{hit:?}");
+    assert!(
+        hit.snippet.contains("lighthouse") && hit.snippet.chars().count() <= SNIPPET_CHARS + 1,
+        "{hit:?}"
+    );
 }
 
 /// The real model, downloaded into a temporary folder. Run with
@@ -289,8 +439,13 @@ fn snippets_stay_short_on_long_documents() {
 fn live_potion_base_8m() {
     // Kept between runs, outside the repository.
     let models = std::env::temp_dir().join("kintsugi-search-live-model");
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-    let model = runtime.block_on(POTION_BASE_8M.ensure(&models, &reqwest::Client::new())).unwrap();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let model = runtime
+        .block_on(POTION_BASE_8M.ensure(&models, &reqwest::Client::new()))
+        .unwrap();
     assert!(POTION_BASE_8M.verified(&models));
     let model: Arc<dyn Embedder> = Arc::new(model);
     let v = model.embed(&[
@@ -299,27 +454,75 @@ fn live_potion_base_8m() {
         "the quarterly budget spreadsheet".into(),
     ]);
     let cos = |a: &[f32], b: &[f32]| a.iter().zip(b).map(|(x, y)| x * y).sum::<f32>();
-    println!("related {} unrelated {}", cos(&v[0], &v[1]), cos(&v[0], &v[2]));
-    let probes = ["trouble falling asleep", "ceramics", "personal finance", "staying focused", "insomnia", "rest", "zebra", "the"];
-    let docs = ["Why I nap\nAn afternoon nap resets me. Dreams arrive fast.", "Designing a REST API\nRest endpoints, verbs, resources, routes and status codes for the server.", "Firing the kiln\nMy grandmother's kiln. The glaze ran and the clay cracked.", "Monthly budget\nTracking spending and savings every month.", "On the train: distraction everywhere, focus is a muscle.", "Why we sleep\nscience\nInsomnia at bedtime.\n\nA long article about insomnia and being tired.", "Anagama\ncraft\nPottery fired for days in a tunnel kiln."];
+    println!(
+        "related {} unrelated {}",
+        cos(&v[0], &v[1]),
+        cos(&v[0], &v[2])
+    );
+    let probes = [
+        "trouble falling asleep",
+        "ceramics",
+        "personal finance",
+        "staying focused",
+        "insomnia",
+        "rest",
+        "zebra",
+        "the",
+    ];
+    let docs = [
+        "Why I nap\nAn afternoon nap resets me. Dreams arrive fast.",
+        "Designing a REST API\nRest endpoints, verbs, resources, routes and status codes for the server.",
+        "Firing the kiln\nMy grandmother's kiln. The glaze ran and the clay cracked.",
+        "Monthly budget\nTracking spending and savings every month.",
+        "On the train: distraction everywhere, focus is a muscle.",
+        "Why we sleep\nscience\nInsomnia at bedtime.\n\nA long article about insomnia and being tired.",
+        "Anagama\ncraft\nPottery fired for days in a tunnel kiln.",
+    ];
     let dv = model.embed(&docs.iter().map(|d| d.to_string()).collect::<Vec<_>>());
     for p in probes {
         let pv = model.embed(&[p.to_string()]).pop().unwrap();
-        println!("{p:>24}: {:?}", dv.iter().map(|d| (cos(&pv, d) * 100.0).round() / 100.0).collect::<Vec<_>>());
+        println!(
+            "{p:>24}: {:?}",
+            dv.iter()
+                .map(|d| (cos(&pv, d) * 100.0).round() / 100.0)
+                .collect::<Vec<_>>()
+        );
     }
     assert!(cos(&v[0], &v[1]) > MIN_SIMILARITY && cos(&v[0], &v[2]) < MIN_SIMILARITY);
 
     let dir = vault();
     let mut index = indexed(dir.path(), Some(model));
-    for query in ["trouble falling asleep", "ceramics", "personal finance", "staying focused"] {
+    for query in [
+        "trouble falling asleep",
+        "ceramics",
+        "personal finance",
+        "staying focused",
+    ] {
         let hits = index.search(&q(query)).unwrap();
-        println!("{query}: {:?}", hits.iter().map(|h| (&h.id, h.score)).collect::<Vec<_>>());
+        println!(
+            "{query}: {:?}",
+            hits.iter().map(|h| (&h.id, h.score)).collect::<Vec<_>>()
+        );
     }
-    let top = |index: &mut Index, query: &str, n: usize| ids(index, &Query { limit: n, ..q(query) });
+    let top = |index: &mut Index, query: &str, n: usize| {
+        ids(
+            index,
+            &Query {
+                limit: n,
+                ..q(query)
+            },
+        )
+    };
     let asleep = top(&mut index, "trouble falling asleep", 2);
-    assert!(asleep.contains(&"posts/why-i-nap.md".into()) && asleep.contains(&"inspiration/why-we-sleep.md".into()));
+    assert!(
+        asleep.contains(&"posts/why-i-nap.md".into())
+            && asleep.contains(&"inspiration/why-we-sleep.md".into())
+    );
     assert_eq!(top(&mut index, "personal finance", 1), ["posts/budget.md"]);
-    assert_eq!(top(&mut index, "staying focused", 1), ["inbox/2026-11-01.md"]);
+    assert_eq!(
+        top(&mut index, "staying focused", 1),
+        ["inbox/2026-11-01.md"]
+    );
     assert!(top(&mut index, "zebra", 5).is_empty());
 }
 
@@ -327,17 +530,41 @@ fn live_potion_base_8m() {
 #[test]
 fn doc_vectors_are_one_normalized_vector_per_document_in_a_scope() {
     let dir = vault();
-    assert!(indexed(dir.path(), None).doc_vectors("v").unwrap().is_empty(), "no model, no vectors");
+    assert!(
+        indexed(dir.path(), None)
+            .doc_vectors("v")
+            .unwrap()
+            .is_empty(),
+        "no model, no vectors"
+    );
     let mut index = indexed(dir.path(), Some(model()));
-    index.upsert("feed", &[Doc { id: "feed:1".into(), kind: Some(Kind::Feed), body: "glaze and clay".into(), stamp: "1".into(), ..Default::default() }]).unwrap();
+    index
+        .upsert(
+            "feed",
+            &[Doc {
+                id: "feed:1".into(),
+                kind: Some(Kind::Feed),
+                body: "glaze and clay".into(),
+                stamp: "1".into(),
+                ..Default::default()
+            }],
+        )
+        .unwrap();
     let vault_vectors = index.doc_vectors("v").unwrap();
-    assert!(vault_vectors.contains_key("inspiration/anagama.md") && !vault_vectors.contains_key("feed:1"));
+    assert!(
+        vault_vectors.contains_key("inspiration/anagama.md")
+            && !vault_vectors.contains_key("feed:1")
+    );
     let feed = index.doc_vectors("feed").unwrap();
     let kiln = &vault_vectors["drafts/kiln.mdx"];
     let norm: f32 = kiln.iter().map(|x| x * x).sum::<f32>().sqrt();
     assert!((norm - 1.0).abs() < 1e-4);
     let close: f32 = feed["feed:1"].iter().zip(kiln).map(|(a, b)| a * b).sum();
-    let far: f32 = feed["feed:1"].iter().zip(&vault_vectors["posts/budget.md"]).map(|(a, b)| a * b).sum();
+    let far: f32 = feed["feed:1"]
+        .iter()
+        .zip(&vault_vectors["posts/budget.md"])
+        .map(|(a, b)| a * b)
+        .sum();
     assert!(close > far, "{close} vs {far}");
 }
 
@@ -360,8 +587,19 @@ fn a_long_clip_is_found_by_words_past_its_excerpt_and_its_sidecar_is_not_a_docum
         },
     )
     .unwrap();
-    let source = format!("{}\n\nAt minute thirty: urushi.", "Filler paragraph.\n\n".repeat(3_000));
-    kintsugi_vault::clip_update(root, &path, &kintsugi_vault::ClipUpdate { source: Some(source), ..Default::default() }).unwrap();
+    let source = format!(
+        "{}\n\nAt minute thirty: urushi.",
+        "Filler paragraph.\n\n".repeat(3_000)
+    );
+    kintsugi_vault::clip_update(
+        root,
+        &path,
+        &kintsugi_vault::ClipUpdate {
+            source: Some(source),
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert!(root.join("inspiration/sources/the-long-talk.txt").exists());
     let mut index = indexed(root, None);
     assert_eq!(ids(&mut index, &q("urushi")), [path]);
@@ -387,12 +625,22 @@ fn the_tail_of_a_full_length_sidecar_is_searchable() {
     )
     .unwrap();
     // Close to the sidecar's 250,000-character limit, the rare word at the very end.
-    let paragraph = "Speaker one: and then we left the pots in the cooling chamber overnight, as always.\n\n";
+    let paragraph =
+        "Speaker one: and then we left the pots in the cooling chamber overnight, as always.\n\n";
     let mut source = paragraph.repeat(249_000 / paragraph.len());
     source.push_str("At the very end: urushi.");
     assert!(source.chars().count() < kintsugi_vault::MAX_FULL_SOURCE_CHARS);
-    kintsugi_vault::clip_update(root, &path, &kintsugi_vault::ClipUpdate { source: Some(source), ..Default::default() }).unwrap();
-    let sidecar = fs::read_to_string(root.join("inspiration/sources/the-longest-talk.txt")).unwrap();
+    kintsugi_vault::clip_update(
+        root,
+        &path,
+        &kintsugi_vault::ClipUpdate {
+            source: Some(source),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let sidecar =
+        fs::read_to_string(root.join("inspiration/sources/the-longest-talk.txt")).unwrap();
     assert!(sidecar.trim_end().ends_with("urushi."));
     let started = std::time::Instant::now();
     let mut index = indexed(root, Some(model()));

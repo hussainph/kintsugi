@@ -7,7 +7,7 @@ use super::sections::{self, Receipts, Sections};
 use crate::clip_capture;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::extract::{DefaultBodyLimit, Query, Request, State};
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -74,8 +74,14 @@ impl Ctx {
 }
 
 pub fn router(host: Host, token: &str) -> Router {
-    let kin_sent = Arc::new(tokio::sync::Mutex::new(Receipts::open(host.kin_ids.clone())));
-    let ctx = Ctx { host, token: token.into(), kin_sent };
+    let kin_sent = Arc::new(tokio::sync::Mutex::new(Receipts::open(
+        host.kin_ids.clone(),
+    )));
+    let ctx = Ctx {
+        host,
+        token: token.into(),
+        kin_sent,
+    };
     Router::new()
         .route("/v1/hello", get(hello))
         .route("/v1/tree", get(tree))
@@ -130,7 +136,11 @@ async fn authorize(State(ctx): State<Ctx>, request: Request, next: Next) -> Resp
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or_default();
     if !same(presented.as_bytes(), ctx.token.as_bytes()) {
-        return Error(StatusCode::UNAUTHORIZED, "This phone isn't paired with Kintsugi.".into()).into_response();
+        return Error(
+            StatusCode::UNAUTHORIZED,
+            "This phone isn't paired with Kintsugi.".into(),
+        )
+        .into_response();
     }
     next.run(request).await
 }
@@ -142,7 +152,10 @@ fn same(a: &[u8], b: &[u8]) -> bool {
 
 async fn hello(State(ctx): State<Ctx>) -> Reply<serde_json::Value> {
     let root = ctx.root()?;
-    let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = root
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     // 4: clip captures accept files (PDFs and EPUBs).
     // 5: the phone browses inspiration: /v1/inspiration, clip images and
     //    sources, and version-checked note edits (PUT /v1/clip).
@@ -167,7 +180,10 @@ struct PathQuery {
 async fn read(State(ctx): State<Ctx>, Query(q): Query<PathQuery>) -> Reply<vault::Versioned> {
     let root = ctx.root()?;
     if !vault::resolve(&root, &q.path)?.is_file() {
-        return Err(Error(StatusCode::NOT_FOUND, format!("no document at {}", q.path)));
+        return Err(Error(
+            StatusCode::NOT_FOUND,
+            format!("no document at {}", q.path),
+        ));
     }
     Ok(Json(vault::read(&root, &q.path)?))
 }
@@ -188,7 +204,10 @@ async fn write(State(ctx): State<Ctx>, Json(body): Json<WriteBody>) -> Result<Re
     let result = vault::write(&ctx.root()?, &body.path, &body.text, body.base.as_deref())?;
     let status = match result {
         Write::Saved { .. } => {
-            (ctx.host.changed)(Changed { path: body.path, text: Some(body.text) });
+            (ctx.host.changed)(Changed {
+                path: body.path,
+                text: Some(body.text),
+            });
             StatusCode::OK
         }
         Write::Conflict { .. } => StatusCode::CONFLICT,
@@ -209,7 +228,10 @@ async fn create(State(ctx): State<Ctx>, Json(body): Json<CreateBody>) -> Reply<s
         return Err("use clip endpoints for inspiration".to_string().into());
     }
     let path = vault::create_doc(&ctx.root()?, &body.dir, &body.title)?;
-    (ctx.host.changed)(Changed { path: path.clone(), text: None });
+    (ctx.host.changed)(Changed {
+        path: path.clone(),
+        text: None,
+    });
     Ok(Json(json!({ "path": path })))
 }
 
@@ -221,9 +243,15 @@ struct CaptureBody {
     captured_at: String,
 }
 
-async fn capture(State(ctx): State<Ctx>, Json(body): Json<CaptureBody>) -> Reply<serde_json::Value> {
+async fn capture(
+    State(ctx): State<Ctx>,
+    Json(body): Json<CaptureBody>,
+) -> Reply<serde_json::Value> {
     let path = vault::capture(&ctx.root()?, &body.text, &body.captured_at)?;
-    (ctx.host.changed)(Changed { path: path.clone(), text: None });
+    (ctx.host.changed)(Changed {
+        path: path.clone(),
+        text: None,
+    });
     Ok(Json(json!({ "path": path })))
 }
 
@@ -279,13 +307,14 @@ impl ClipBody {
                 Ok(bytes)
             })
             .transpose()?;
-        let file = clip_capture::decode_file(self.file, self.file_type, self.file_name).map_err(|e| {
-            let status = match e {
-                clip_capture::FileError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-                clip_capture::FileError::Invalid(_) => StatusCode::BAD_REQUEST,
-            };
-            Error(status, e.to_string())
-        })?;
+        let file =
+            clip_capture::decode_file(self.file, self.file_type, self.file_name).map_err(|e| {
+                let status = match e {
+                    clip_capture::FileError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+                    clip_capture::FileError::Invalid(_) => StatusCode::BAD_REQUEST,
+                };
+                Error(status, e.to_string())
+            })?;
         Ok(clip_capture::Capture {
             id: self.id,
             clip: vault::ClipCapture {
@@ -317,13 +346,14 @@ async fn create_clip(
         Error(e.status(), message.into())
     })?;
     let capture = body.capture()?;
-    let created = clip_capture::create(&ctx.root()?, &ctx.host.capture_ids, &capture).map_err(|e| {
-        let status = match &e {
-            clip_capture::Error::Invalid(_) => StatusCode::BAD_REQUEST,
-            clip_capture::Error::Storage => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        Error(status, e.to_string())
-    })?;
+    let created =
+        clip_capture::create(&ctx.root()?, &ctx.host.capture_ids, &capture).map_err(|e| {
+            let status = match &e {
+                clip_capture::Error::Invalid(_) => StatusCode::BAD_REQUEST,
+                clip_capture::Error::Storage => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            Error(status, e.to_string())
+        })?;
     if created.created {
         (ctx.host.clip_changed)(created.path.clone());
     }
@@ -336,8 +366,12 @@ async fn clips(State(ctx): State<Ctx>) -> Reply<Vec<vault::ClipSummary>> {
 
 /// The vault root and the requested path, once it names an existing clip:
 /// 400 for a missing or non-clip path, 404 for a clip that isn't there.
-fn existing_clip(ctx: &Ctx, query: Result<Query<PathQuery>, QueryRejection>) -> Result<(PathBuf, String), Error> {
-    let Query(q) = query.map_err(|_| Error(StatusCode::BAD_REQUEST, "A clip path is required.".into()))?;
+fn existing_clip(
+    ctx: &Ctx,
+    query: Result<Query<PathQuery>, QueryRejection>,
+) -> Result<(PathBuf, String), Error> {
+    let Query(q) =
+        query.map_err(|_| Error(StatusCode::BAD_REQUEST, "A clip path is required.".into()))?;
     let root = ctx.root()?;
     if !vault::clip_path(&root, &q.path)?.is_file() {
         return Err(not_found());
@@ -378,7 +412,12 @@ async fn inspiration(State(ctx): State<Ctx>) -> Reply<Vec<PhoneClip>> {
     let root = ctx.root()?;
     let clips = tokio::task::spawn_blocking(move || vault::clip_list_with_text(&root))
         .await
-        .map_err(|_| Error(StatusCode::INTERNAL_SERVER_ERROR, "Couldn't list clips.".into()))??;
+        .map_err(|_| {
+            Error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Couldn't list clips.".into(),
+            )
+        })??;
     Ok(Json(clips.into_iter().map(PhoneClip::from).collect()))
 }
 
@@ -390,12 +429,21 @@ async fn clip_image(
     query: Result<Query<PathQuery>, QueryRejection>,
 ) -> Result<Response, Error> {
     let (root, path) = existing_clip(&ctx, query)?;
-    let (bytes, mime) = tokio::task::spawn_blocking(move || crate::library::primary_image_typed(&root, &path))
-        .await
-        .map_err(|_| Error(StatusCode::INTERNAL_SERVER_ERROR, "Couldn't read the clip image.".into()))?
-        .map_err(|_| Error(StatusCode::NOT_FOUND, "This clip has no image.".into()))?;
+    let (bytes, mime) =
+        tokio::task::spawn_blocking(move || crate::library::primary_image_typed(&root, &path))
+            .await
+            .map_err(|_| {
+                Error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Couldn't read the clip image.".into(),
+                )
+            })?
+            .map_err(|_| Error(StatusCode::NOT_FOUND, "This clip has no image.".into()))?;
     Ok((
-        [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, "private, max-age=86400")],
+        [
+            (header::CONTENT_TYPE, mime),
+            (header::CACHE_CONTROL, "private, max-age=86400"),
+        ],
         bytes,
     )
         .into_response())
@@ -410,7 +458,12 @@ async fn clip_source(
     let (root, path) = existing_clip(&ctx, query)?;
     let text = tokio::task::spawn_blocking(move || vault::clip_full_source(&root, &path))
         .await
-        .map_err(|_| Error(StatusCode::INTERNAL_SERVER_ERROR, "Couldn't read the clip source.".into()))??;
+        .map_err(|_| {
+            Error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Couldn't read the clip source.".into(),
+            )
+        })??;
     Ok(Json(json!({ "text": text })))
 }
 
@@ -441,12 +494,20 @@ async fn write_clip_note(
         vault::NoteWrite::Saved(clip) => {
             (ctx.host.clip_changed)(body.path);
             let saved = PhoneClip::from(clip);
-            (StatusCode::OK, Json(json!({ "result": "saved", "version": saved.version, "clip": saved }))).into_response()
+            (
+                StatusCode::OK,
+                Json(json!({ "result": "saved", "version": saved.version, "clip": saved })),
+            )
+                .into_response()
         }
         vault::NoteWrite::Conflict(clip) => {
             let version = vault::version(&clip.text);
             let current = json!({ "text": clip.text, "version": version });
-            (StatusCode::CONFLICT, Json(json!({ "result": "conflict", "current": current }))).into_response()
+            (
+                StatusCode::CONFLICT,
+                Json(json!({ "result": "conflict", "current": current })),
+            )
+                .into_response()
         }
     })
 }
@@ -479,14 +540,16 @@ pub(super) mod tests {
     #[test]
     #[ignore]
     fn phone_dev_server() {
-        let vault = std::env::var("KINTSUGI_PHONE_DEV_VAULT").expect("set KINTSUGI_PHONE_DEV_VAULT");
+        let vault =
+            std::env::var("KINTSUGI_PHONE_DEV_VAULT").expect("set KINTSUGI_PHONE_DEV_VAULT");
         let root = std::fs::canonicalize(&vault).expect("the scratch vault must exist");
         assert!(
             root.components().any(|c| c.as_os_str() == ".headless"),
             "refusing {}: use a scratch vault under a .headless folder",
             root.display()
         );
-        let port: u16 = std::env::var("KINTSUGI_PHONE_DEV_PORT").map_or(47475, |p| p.parse().unwrap());
+        let port: u16 =
+            std::env::var("KINTSUGI_PHONE_DEV_PORT").map_or(47475, |p| p.parse().unwrap());
         let config = tempfile::tempdir().unwrap();
         let host = Host {
             capture_ids: config.path().join("clip-capture-ids.json"),
@@ -496,7 +559,10 @@ pub(super) mod tests {
             sections: None,
             kin_ids: None,
         };
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         runtime.block_on(async {
             let listener = TcpListener::bind(("127.0.0.1", port)).await.unwrap();
             println!("kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A{port}&token={TOKEN}");
@@ -651,7 +717,10 @@ pub(super) mod tests {
                 .await
                 .unwrap();
             let text = std::fs::read_to_string(root.join(&path)).unwrap();
-            assert_eq!(docs, json!([{ "path": path, "text": text, "version": vault::version(&text) }]));
+            assert_eq!(
+                docs,
+                json!([{ "path": path, "text": text, "version": vault::version(&text) }])
+            );
 
             // A note started offline: written where the phone put it, with
             // its folder, once, even if the phone sends it again.
@@ -663,7 +732,10 @@ pub(super) mod tests {
             };
             assert_eq!(put().await.unwrap().status(), 200);
             assert_eq!(put().await.unwrap().status(), 200);
-            assert_eq!(std::fs::read_to_string(root.join("inbox/on-a-plane.mdx")).unwrap(), "on a plane");
+            assert_eq!(
+                std::fs::read_to_string(root.join("inbox/on-a-plane.mdx")).unwrap(),
+                "on a plane"
+            );
             assert_eq!(changes.lock().unwrap().len(), 2);
             let taken = http
                 .put(format!("{base}/v1/doc"))
@@ -742,27 +814,62 @@ pub(super) mod tests {
             let created: serde_json::Value = response.json().await.unwrap();
             let path = created["path"].as_str().unwrap();
             assert_eq!(path, "inspiration/field-notes.md");
-            let clip: serde_json::Value =
-                http.get(clip_url(&base, path)).bearer_auth(TOKEN).send().await.unwrap().json().await.unwrap();
+            let clip: serde_json::Value = http
+                .get(clip_url(&base, path))
+                .bearer_auth(TOKEN)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
             assert_eq!(clip["kind"], "document");
             assert_eq!(clip["file"], "files/field-notes.pdf");
-            assert_eq!(std::fs::read(root.join("inspiration/files/field-notes.pdf")).unwrap(), pdf);
+            assert_eq!(
+                std::fs::read(root.join("inspiration/files/field-notes.pdf")).unwrap(),
+                pdf
+            );
             assert_eq!(*clip_changes.lock().unwrap(), vec![path.to_string()]);
 
             for (body, status) in [
-                (json!({ "file": "not base64!", "fileType": "application/pdf" }), 400),
+                (
+                    json!({ "file": "not base64!", "fileType": "application/pdf" }),
+                    400,
+                ),
                 (json!({ "file": encoded, "fileType": "text/html" }), 400),
                 (json!({ "file": encoded }), 400),
-                (json!({ "file": base64::engine::general_purpose::STANDARD.encode(b"<html>"), "fileType": "application/pdf" }), 400),
-                (json!({ "file": "A".repeat(crate::clip_capture::MAX_ENCODED_FILE_BYTES + 4), "fileType": "application/pdf" }), 413),
+                (
+                    json!({ "file": base64::engine::general_purpose::STANDARD.encode(b"<html>"), "fileType": "application/pdf" }),
+                    400,
+                ),
+                (
+                    json!({ "file": "A".repeat(crate::clip_capture::MAX_ENCODED_FILE_BYTES + 4), "fileType": "application/pdf" }),
+                    413,
+                ),
             ] {
                 let mut body = body;
                 body["capturedAt"] = json!("2026-10-29T09:15");
                 body["via"] = json!("share");
-                let response = http.post(format!("{base}/v1/clips")).bearer_auth(TOKEN).json(&body).send().await.unwrap();
-                assert_eq!(response.status(), status, "{}", &body.to_string()[..80.min(body.to_string().len())]);
+                let response = http
+                    .post(format!("{base}/v1/clips"))
+                    .bearer_auth(TOKEN)
+                    .json(&body)
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    status,
+                    "{}",
+                    &body.to_string()[..80.min(body.to_string().len())]
+                );
             }
-            assert_eq!(std::fs::read_dir(root.join("inspiration/files")).unwrap().count(), 1);
+            assert_eq!(
+                std::fs::read_dir(root.join("inspiration/files"))
+                    .unwrap()
+                    .count(),
+                1
+            );
         });
     }
 
@@ -841,7 +948,12 @@ pub(super) mod tests {
                 "title": "Window light", "image": PNG, "imageType": "image/png",
                 "capturedAt": "2026-10-29T09:14", "via": "share"
             });
-            let post = || http.post(format!("{base}/v1/clips")).bearer_auth(TOKEN).json(&body).send();
+            let post = || {
+                http.post(format!("{base}/v1/clips"))
+                    .bearer_auth(TOKEN)
+                    .json(&body)
+                    .send()
+            };
             let (a, b) = futures_util::future::join(post(), post()).await;
             let a = a.unwrap();
             let b = b.unwrap();
@@ -852,14 +964,22 @@ pub(super) mod tests {
             let path = original["path"].as_str().unwrap();
             assert_eq!(vault::clip_list(&root).unwrap().len(), 1);
             vault::clip_trash(&root, path, |paths| {
-                for path in paths { std::fs::remove_file(path).map_err(|e| e.to_string())?; }
+                for path in paths {
+                    std::fs::remove_file(path).map_err(|e| e.to_string())?;
+                }
                 Ok(())
-            }).unwrap();
+            })
+            .unwrap();
             let retry = post().await.unwrap();
             assert_eq!(retry.status(), 200);
             assert_eq!(retry.json::<serde_json::Value>().await.unwrap(), original);
             assert!(vault::clip_list(&root).unwrap().is_empty());
-            assert_eq!(std::fs::read_dir(root.join("inspiration/media")).unwrap().count(), 0);
+            assert_eq!(
+                std::fs::read_dir(root.join("inspiration/media"))
+                    .unwrap()
+                    .count(),
+                0
+            );
             assert_eq!(*clip_changes.lock().unwrap(), vec![path.to_string()]);
             assert!(changes.lock().unwrap().is_empty());
         });
@@ -873,7 +993,10 @@ pub(super) mod tests {
                 .json(&json!({ "id": "6d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "text": "PRIVATE-CAPTURE-CONTENT", "capturedAt": "2026-10-29T09:14", "via": "phone" }))
                 .send().await.unwrap();
             assert_eq!(response.status(), 500);
-            assert_eq!(response.json::<serde_json::Value>().await.unwrap()["error"], "Could not save the clip capture. Please retry.");
+            assert_eq!(
+                response.json::<serde_json::Value>().await.unwrap()["error"],
+                "Could not save the clip capture. Please retry."
+            );
             assert!(clip_changes.lock().unwrap().is_empty());
         });
     }
@@ -963,40 +1086,102 @@ pub(super) mod tests {
                 .json(&json!({ "title": "Window light", "image": PNG, "imageType": "image/png", "note": "First note", "capturedAt": "2026-10-29T10:00", "via": "phone" }))
                 .send().await.unwrap().json().await.unwrap();
             let path = created["path"].as_str().unwrap().to_string();
-            vault::clip_update(&root, &path, &vault::ClipUpdate { source: Some("The page, readable.".into()), ..Default::default() }).unwrap();
-            let bare = vault::clip_create(&root, &vault::ClipCapture {
-                url: None, text: Some("A bare thought".into()), note: None, title: None, image: None,
-                image_type: None, file: None, captured_at: "2026-10-28T10:00".into(), via: vault::ClipVia::Mac,
-            }).unwrap();
+            vault::clip_update(
+                &root,
+                &path,
+                &vault::ClipUpdate {
+                    source: Some("The page, readable.".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let bare = vault::clip_create(
+                &root,
+                &vault::ClipCapture {
+                    url: None,
+                    text: Some("A bare thought".into()),
+                    note: None,
+                    title: None,
+                    image: None,
+                    image_type: None,
+                    file: None,
+                    captured_at: "2026-10-28T10:00".into(),
+                    via: vault::ClipVia::Mac,
+                },
+            )
+            .unwrap();
             let query = |path: &str| format!("?path={}", path.replace('/', "%2F"));
 
-            let list: serde_json::Value = get("/v1/inspiration").await.unwrap().json().await.unwrap();
+            let list: serde_json::Value =
+                get("/v1/inspiration").await.unwrap().json().await.unwrap();
             assert_eq!(list.as_array().unwrap().len(), 2);
             assert_eq!(list[0]["path"], path);
             assert_eq!(list[0]["text"], "First note");
             assert_eq!(list[0]["version"], vault::version("First note"));
             assert_eq!(list[0]["hasSource"], true);
-            assert!(list[0].get("source").is_none(), "extracted source stays on the Mac");
+            assert!(
+                list[0].get("source").is_none(),
+                "extracted source stays on the Mac"
+            );
 
-            let image = get(&format!("/v1/clip/image{}", query(&path))).await.unwrap();
+            let image = get(&format!("/v1/clip/image{}", query(&path)))
+                .await
+                .unwrap();
             assert_eq!(image.status(), 200);
             assert_eq!(image.headers()[header::CONTENT_TYPE], "image/png");
             let bytes = image.bytes().await.unwrap();
-            assert_eq!(bytes.as_ref(), base64::engine::general_purpose::STANDARD.decode(PNG).unwrap());
-            assert_eq!(get(&format!("/v1/clip/image{}", query(&bare))).await.unwrap().status(), 404);
-            assert_eq!(get("/v1/clip/image?path=inspiration%2Fnope.md").await.unwrap().status(), 404);
-            assert_eq!(get("/v1/clip/image?path=drafts%2Fx.md").await.unwrap().status(), 400);
+            assert_eq!(
+                bytes.as_ref(),
+                base64::engine::general_purpose::STANDARD
+                    .decode(PNG)
+                    .unwrap()
+            );
+            assert_eq!(
+                get(&format!("/v1/clip/image{}", query(&bare)))
+                    .await
+                    .unwrap()
+                    .status(),
+                404
+            );
+            assert_eq!(
+                get("/v1/clip/image?path=inspiration%2Fnope.md")
+                    .await
+                    .unwrap()
+                    .status(),
+                404
+            );
+            assert_eq!(
+                get("/v1/clip/image?path=drafts%2Fx.md")
+                    .await
+                    .unwrap()
+                    .status(),
+                400
+            );
             assert_eq!(get("/v1/clip/image").await.unwrap().status(), 400);
 
-            let source: serde_json::Value = get(&format!("/v1/clip/source{}", query(&path))).await.unwrap().json().await.unwrap();
+            let source: serde_json::Value = get(&format!("/v1/clip/source{}", query(&path)))
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
             assert_eq!(source["text"], "The page, readable.");
-            let none: serde_json::Value = get(&format!("/v1/clip/source{}", query(&bare))).await.unwrap().json().await.unwrap();
+            let none: serde_json::Value = get(&format!("/v1/clip/source{}", query(&bare)))
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
             assert!(none["text"].is_null());
 
             let base_version = vault::version("First note");
-            let saved = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+            let saved = http
+                .put(format!("{base}/v1/clip"))
+                .bearer_auth(TOKEN)
                 .json(&json!({ "path": path, "note": "Second note", "base": base_version }))
-                .send().await.unwrap();
+                .send()
+                .await
+                .unwrap();
             assert_eq!(saved.status(), 200);
             let saved: serde_json::Value = saved.json().await.unwrap();
             assert_eq!(saved["result"], "saved");
@@ -1004,23 +1189,38 @@ pub(super) mod tests {
             assert_eq!(saved["clip"]["text"], "Second note");
             assert_eq!(clip_changes.lock().unwrap().last(), Some(&path));
 
-            let stale = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+            let stale = http
+                .put(format!("{base}/v1/clip"))
+                .bearer_auth(TOKEN)
                 .json(&json!({ "path": path, "note": "Offline note", "base": base_version }))
-                .send().await.unwrap();
+                .send()
+                .await
+                .unwrap();
             assert_eq!(stale.status(), 409);
             let stale: serde_json::Value = stale.json().await.unwrap();
             assert_eq!(stale["result"], "conflict");
             assert_eq!(stale["current"]["text"], "Second note");
             assert_eq!(vault::clip_read(&root, &path).unwrap().text, "Second note");
-            assert_eq!(vault::clip_full_source(&root, &path).unwrap().as_deref(), Some("The page, readable."));
+            assert_eq!(
+                vault::clip_full_source(&root, &path).unwrap().as_deref(),
+                Some("The page, readable.")
+            );
 
-            let gone = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+            let gone = http
+                .put(format!("{base}/v1/clip"))
+                .bearer_auth(TOKEN)
                 .json(&json!({ "path": "inspiration/nope.md", "note": "x" }))
-                .send().await.unwrap();
+                .send()
+                .await
+                .unwrap();
             assert_eq!(gone.status(), 404);
-            let document = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+            let document = http
+                .put(format!("{base}/v1/clip"))
+                .bearer_auth(TOKEN)
                 .json(&json!({ "path": "drafts/x.md", "note": "x" }))
-                .send().await.unwrap();
+                .send()
+                .await
+                .unwrap();
             assert_eq!(document.status(), 400);
         });
     }
@@ -1217,15 +1417,36 @@ pub(super) mod tests {
     #[test]
     fn document_mutation_endpoints_cannot_bypass_clip_updates() {
         with_server(async |base, http, root, changes, clip_changes| {
-            let path = vault::clip_create(&root, &vault::ClipCapture {
-                url: None, text: Some("Own text".into()), note: None, title: None,
-                image: None, image_type: None, file: None, captured_at: "2026-10-29T10:00".into(), via: vault::ClipVia::Phone,
-            }).unwrap();
-            let write = http.put(format!("{base}/v1/doc")).bearer_auth(TOKEN)
-                .json(&json!({"path": path, "text": "overwrite"})).send().await.unwrap();
+            let path = vault::clip_create(
+                &root,
+                &vault::ClipCapture {
+                    url: None,
+                    text: Some("Own text".into()),
+                    note: None,
+                    title: None,
+                    image: None,
+                    image_type: None,
+                    file: None,
+                    captured_at: "2026-10-29T10:00".into(),
+                    via: vault::ClipVia::Phone,
+                },
+            )
+            .unwrap();
+            let write = http
+                .put(format!("{base}/v1/doc"))
+                .bearer_auth(TOKEN)
+                .json(&json!({"path": path, "text": "overwrite"}))
+                .send()
+                .await
+                .unwrap();
             assert_eq!(write.status(), 400);
-            let create = http.post(format!("{base}/v1/docs")).bearer_auth(TOKEN)
-                .json(&json!({"dir": "inspiration", "title": "Not a document"})).send().await.unwrap();
+            let create = http
+                .post(format!("{base}/v1/docs"))
+                .bearer_auth(TOKEN)
+                .json(&json!({"dir": "inspiration", "title": "Not a document"}))
+                .send()
+                .await
+                .unwrap();
             assert_eq!(create.status(), 400);
             assert_eq!(vault::clip_read(&root, &path).unwrap().text, "Own text");
             assert_eq!(vault::clip_list(&root).unwrap().len(), 1);

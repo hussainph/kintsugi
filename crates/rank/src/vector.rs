@@ -33,7 +33,10 @@ pub struct Centroid {
 
 impl Centroid {
     pub fn new(half_life_days: f64) -> Self {
-        Centroid { half_life_ms: half_life_days * 86_400_000.0, ..Default::default() }
+        Centroid {
+            half_life_ms: half_life_days * 86_400_000.0,
+            ..Default::default()
+        }
     }
 
     fn decay_to(&mut self, at: i64) {
@@ -57,7 +60,11 @@ impl Centroid {
             self.sum = vec![0.0; vector.len()];
             self.mass = 0.0;
         }
-        let weight = if at < self.at { weight * 0.5f64.powf((self.at - at) as f64 / self.half_life_ms) } else { weight };
+        let weight = if at < self.at {
+            weight * 0.5f64.powf((self.at - at) as f64 / self.half_life_ms)
+        } else {
+            weight
+        };
         self.decay_to(at);
         for (s, x) in self.sum.iter_mut().zip(vector) {
             *s += x * weight as f32;

@@ -31,9 +31,16 @@ pub fn sync(index: &mut Index, scope: &str, root: &Path) -> Result<Synced> {
     let files = walk(root);
     let stored = index.stamps(scope)?;
     let present: HashSet<&str> = files.iter().map(|(rel, _, _)| rel.as_str()).collect();
-    let removed: Vec<String> = stored.keys().filter(|id| !present.contains(id.as_str())).cloned().collect();
+    let removed: Vec<String> = stored
+        .keys()
+        .filter(|id| !present.contains(id.as_str()))
+        .cloned()
+        .collect();
     index.remove(scope, &removed)?;
-    let mut report = Synced { indexed: 0, removed: removed.len() };
+    let mut report = Synced {
+        indexed: 0,
+        removed: removed.len(),
+    };
     let mut batch = Vec::new();
     let mut unreadable = Vec::new();
     for (rel, path, stamp) in files {
@@ -77,14 +84,26 @@ fn load(root: &Path, rel: &str, path: &Path, stamp: String) -> Option<Doc> {
     {
         let summary = clip.summary;
         // The whole source (a long transcript's sidecar), not just the excerpt.
-        let source = vault::clip_full_source(root, rel).ok().flatten().or(clip.source).unwrap_or_default();
-        let body = [summary.summary.as_deref().unwrap_or_default(), clip.text.trim(), source.as_str()]
-            .iter()
-            .filter(|s| !s.trim().is_empty())
-            .copied()
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        let source = summary.site.clone().or_else(|| summary.url.as_deref().and_then(host)).or(summary.author.clone());
+        let source = vault::clip_full_source(root, rel)
+            .ok()
+            .flatten()
+            .or(clip.source)
+            .unwrap_or_default();
+        let body = [
+            summary.summary.as_deref().unwrap_or_default(),
+            clip.text.trim(),
+            source.as_str(),
+        ]
+        .iter()
+        .filter(|s| !s.trim().is_empty())
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n\n");
+        let source = summary
+            .site
+            .clone()
+            .or_else(|| summary.url.as_deref().and_then(host))
+            .or(summary.author.clone());
         return Some(Doc {
             id: rel.into(),
             kind: Some(Kind::Clip),
@@ -99,7 +118,15 @@ fn load(root: &Path, rel: &str, path: &Path, stamp: String) -> Option<Doc> {
     let (title, _) = vault::front_matter(&text);
     let body = strip_front_matter(&text);
     let title = title.or_else(|| heading(body));
-    Some(Doc { id: rel.into(), kind: Some(kind), title, source: None, tags: front_matter_tags(&text), body: body.into(), stamp })
+    Some(Doc {
+        id: rel.into(),
+        kind: Some(kind),
+        title,
+        source: None,
+        tags: front_matter_tags(&text),
+        body: body.into(),
+        stamp,
+    })
 }
 
 /// Clips are the Markdown files directly in `inspiration/`.
@@ -114,11 +141,19 @@ fn host(url: &str) -> Option<String> {
 }
 
 fn heading(body: &str) -> Option<String> {
-    body.lines().find_map(|l| l.strip_prefix("# ")).map(|h| h.trim().to_string()).filter(|h| !h.is_empty())
+    body.lines()
+        .find_map(|l| l.strip_prefix("# "))
+        .map(|h| h.trim().to_string())
+        .filter(|h| !h.is_empty())
 }
 
 fn strip_front_matter(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("---\n").or_else(|| text.strip_prefix("---\r\n")) else { return text };
+    let Some(rest) = text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))
+    else {
+        return text;
+    };
     let mut at = 0;
     for line in rest.split_inclusive('\n') {
         at += line.len();
@@ -139,15 +174,22 @@ fn walk(root: &Path) -> Vec<(String, PathBuf, String)> {
     let mut out = Vec::new();
     let mut stack = vec![(root.to_path_buf(), 0)];
     while let Some((dir, depth)) = stack.pop() {
-        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
-            let Ok(kind) = entry.file_type() else { continue };
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
             if entry.file_name().to_string_lossy().starts_with('.') || kind.is_symlink() {
                 continue;
             }
             let path = entry.path();
             // Clip sidecars (`inspiration/sources/`) are indexed with their clip.
-            if kind.is_dir() && vault::relative(root, &path).eq_ignore_ascii_case(&format!("{INSPIRATION}/sources")) {
+            if kind.is_dir()
+                && vault::relative(root, &path)
+                    .eq_ignore_ascii_case(&format!("{INSPIRATION}/sources"))
+            {
                 continue;
             }
             if kind.is_dir() && depth < MAX_DEPTH {
@@ -166,17 +208,29 @@ fn walk(root: &Path) -> Vec<(String, PathBuf, String)> {
 }
 
 fn is_text(path: &Path) -> bool {
-    path.extension().and_then(|e| e.to_str()).is_some_and(|e| TEXT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| TEXT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 
 /// Modification time, size and (on Unix) inode and change time, so atomic
 /// replacements and same-size edits are noticed.
 fn stamp(meta: &fs::Metadata) -> String {
-    let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+    let modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos());
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
-        format!("{modified}:{}:{}:{}.{}", meta.len(), meta.ino(), meta.ctime(), meta.ctime_nsec())
+        format!(
+            "{modified}:{}:{}:{}.{}",
+            meta.len(),
+            meta.ino(),
+            meta.ctime(),
+            meta.ctime_nsec()
+        )
     }
     #[cfg(not(unix))]
     format!("{modified}:{}", meta.len())
@@ -191,9 +245,15 @@ mod tests {
         let text = "---\ntitle: On Kilns\ntags: [Craft, \"fire\"]\n---\n\n# Ignored\n\nBody.";
         assert_eq!(strip_front_matter(text), "\n# Ignored\n\nBody.");
         assert_eq!(front_matter_tags(text), ["craft", "fire"]);
-        assert_eq!(front_matter_tags("---\ntags:\n  - a\n  - b\ntitle: x\n---\n"), ["a", "b"]);
+        assert_eq!(
+            front_matter_tags("---\ntags:\n  - a\n  - b\ntitle: x\n---\n"),
+            ["a", "b"]
+        );
         assert_eq!(heading("intro\n# Title here\n"), Some("Title here".into()));
-        assert_eq!(host("https://www.newyorker.com/a?b"), Some("newyorker.com".into()));
+        assert_eq!(
+            host("https://www.newyorker.com/a?b"),
+            Some("newyorker.com".into())
+        );
         assert_eq!(kind("Inbox/x.md"), Kind::Note);
     }
 }

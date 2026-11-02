@@ -27,7 +27,11 @@ type Result<T> = std::result::Result<T, String>;
 pub trait Model: Send + Sync {
     fn model(&self) -> &ModelRef;
     /// One request; text deltas go to `on_text` as they stream in.
-    fn send(&self, ex: &Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> impl Future<Output = Result<Reply>> + Send;
+    fn send(
+        &self,
+        ex: &Exchange<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> impl Future<Output = Result<Reply>> + Send;
 }
 
 impl<M: Model> Model for std::sync::Arc<M> {
@@ -35,7 +39,11 @@ impl<M: Model> Model for std::sync::Arc<M> {
         (**self).model()
     }
 
-    fn send(&self, ex: &Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> impl Future<Output = Result<Reply>> + Send {
+    fn send(
+        &self,
+        ex: &Exchange<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> impl Future<Output = Result<Reply>> + Send {
         (**self).send(ex, on_text)
     }
 }
@@ -53,8 +61,16 @@ impl Model for Remote {
         &self.model
     }
 
-    async fn send(&self, ex: &Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> Result<Reply> {
-        let endpoint = Endpoint { provider: self.provider, base_url: &self.base_url, auth: self.auth.clone() };
+    async fn send(
+        &self,
+        ex: &Exchange<'_>,
+        on_text: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Reply> {
+        let endpoint = Endpoint {
+            provider: self.provider,
+            base_url: &self.base_url,
+            auth: self.auth.clone(),
+        };
         wire::send(endpoint, ex, on_text).await
     }
 }
@@ -117,7 +133,10 @@ pub struct Limits {
 
 impl Default for Limits {
     fn default() -> Self {
-        Limits { max_steps: 24, max_tokens: 4096 }
+        Limits {
+            max_steps: 24,
+            max_tokens: 4096,
+        }
     }
 }
 
@@ -126,7 +145,10 @@ impl Limits {
     /// quotes) need room for it on top of a reasoning model's thinking,
     /// which counts against the same budget on most gateways.
     pub fn report() -> Self {
-        Limits { max_tokens: 16_384, ..Limits::default() }
+        Limits {
+            max_tokens: 16_384,
+            ..Limits::default()
+        }
     }
 }
 
@@ -176,15 +198,35 @@ pub struct Summary {
 pub enum KinEvent {
     /// Text of the current step. A step that ends in tool calls may say
     /// something first; the answer is the last step's text.
-    Text { delta: String },
-    ToolCall { id: String, name: String, arguments: Value },
+    Text {
+        delta: String,
+    },
+    ToolCall {
+        id: String,
+        name: String,
+        arguments: Value,
+    },
     #[serde(rename_all = "camelCase")]
-    ToolResult { id: String, is_error: bool, preview: String },
+    ToolResult {
+        id: String,
+        is_error: bool,
+        preview: String,
+    },
     /// A step finished and was charged. Its tool calls follow.
     #[serde(rename_all = "camelCase")]
-    Step { step: usize, usage: Usage, usd: f64, stop_reason: Option<String>, text_chars: usize },
-    Done { summary: Summary },
-    Error { message: String },
+    Step {
+        step: usize,
+        usage: Usage,
+        usd: f64,
+        stop_reason: Option<String>,
+        text_chars: usize,
+    },
+    Done {
+        summary: Summary,
+    },
+    Error {
+        message: String,
+    },
 }
 
 const PREVIEW_CHARS: usize = 400;
@@ -199,30 +241,59 @@ pub struct Harness<'a> {
 }
 
 /// Runs one turn to its end. Errors (a failed request) are also emitted.
-pub async fn run(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mut (dyn FnMut(KinEvent) + Send)) -> Result<Summary> {
+pub async fn run(
+    model: &impl Model,
+    harness: &Harness<'_>,
+    turn: &Turn,
+    emit: &mut (dyn FnMut(KinEvent) + Send),
+) -> Result<Summary> {
     let result = steps(model, harness, turn, emit).await;
     match result {
         Ok(summary) => {
-            emit(KinEvent::Done { summary: summary.clone() });
+            emit(KinEvent::Done {
+                summary: summary.clone(),
+            });
             Ok(summary)
         }
         Err(message) => {
-            emit(KinEvent::Error { message: message.clone() });
+            emit(KinEvent::Error {
+                message: message.clone(),
+            });
             Err(message)
         }
     }
 }
 
-async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mut (dyn FnMut(KinEvent) + Send)) -> Result<Summary> {
-    let Harness { tools, meter, memory, cancel, limits } = *harness;
+async fn steps(
+    model: &impl Model,
+    harness: &Harness<'_>,
+    turn: &Turn,
+    emit: &mut (dyn FnMut(KinEvent) + Send),
+) -> Result<Summary> {
+    let Harness {
+        tools,
+        meter,
+        memory,
+        cancel,
+        limits,
+    } = *harness;
     let reference = model.model();
     let system = prompt::system(memory);
     let mut items = Vec::with_capacity(turn.history.len() * 2 + 1);
     for (said, answered) in &turn.history {
         items.push(Item::User(said.clone()));
-        items.push(Item::Assistant { text: answered.clone(), calls: vec![] });
+        items.push(Item::Assistant {
+            text: answered.clone(),
+            calls: vec![],
+        });
     }
-    items.push(Item::User(prompt::user_message(&turn.question, &turn.chips, &turn.today, turn.remember, turn.recap.as_deref())));
+    items.push(Item::User(prompt::user_message(
+        &turn.question,
+        &turn.chips,
+        &turn.today,
+        turn.remember,
+        turn.recap.as_deref(),
+    )));
     let mut summary = Summary {
         text: String::new(),
         stop: Stop::StepLimit,
@@ -278,7 +349,13 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
         summary.usd += usd;
         summary.text = reply.text.clone();
         let text_chars = reply.text.chars().count();
-        emit(KinEvent::Step { step, usage: reply.usage, usd, stop_reason: reply.stop_reason.clone(), text_chars });
+        emit(KinEvent::Step {
+            step,
+            usage: reply.usage,
+            usd,
+            stop_reason: reply.stop_reason.clone(),
+            text_chars,
+        });
 
         if reply.calls.is_empty() {
             // Some models end a turn with nothing to show (all thinking, no
@@ -287,7 +364,10 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
                 nudged_empty = true;
                 // Its reasoning isn't replayed: Codex rejects reasoning
                 // that no output item follows.
-                items.push(Item::Assistant { text: String::new(), calls: vec![] });
+                items.push(Item::Assistant {
+                    text: String::new(),
+                    calls: vec![],
+                });
                 items.push(Item::User(EMPTY_REPLY.into()));
                 continue;
             }
@@ -296,14 +376,22 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
         }
         let mut results = Vec::with_capacity(reply.calls.len());
         for call in &reply.calls {
-            emit(KinEvent::ToolCall { id: call.id.clone(), name: call.name.clone(), arguments: call.arguments.clone() });
+            emit(KinEvent::ToolCall {
+                id: call.id.clone(),
+                name: call.name.clone(),
+                arguments: call.arguments.clone(),
+            });
             let output = tools.run(call);
             emit(KinEvent::ToolResult {
                 id: call.id.clone(),
                 is_error: output.is_error,
                 preview: output.content.chars().take(PREVIEW_CHARS).collect(),
             });
-            results.push(ToolResult { call_id: call.id.clone(), content: output.content, is_error: output.is_error });
+            results.push(ToolResult {
+                call_id: call.id.clone(),
+                content: output.content,
+                is_error: output.is_error,
+            });
         }
         summary.tool_calls += results.len();
         // Codex's reasoning goes back with its step: the model keeps its
@@ -311,7 +399,10 @@ async fn steps(model: &impl Model, harness: &Harness<'_>, turn: &Turn, emit: &mu
         if !reply.reasoning.is_empty() {
             items.push(Item::Reasoning(reply.reasoning));
         }
-        items.push(Item::Assistant { text: reply.text, calls: reply.calls });
+        items.push(Item::Assistant {
+            text: reply.text,
+            calls: reply.calls,
+        });
         items.push(Item::Results(results));
     }
     summary.cap_reached = meter.cap_reached();
@@ -348,7 +439,11 @@ pub(crate) mod tests {
     impl Mock {
         pub fn new(replies: Vec<Reply>) -> Self {
             Mock {
-                model: ModelRef { provider: "anthropic".into(), model: "claude-sonnet-5-5".into(), reasoning: None },
+                model: ModelRef {
+                    provider: "anthropic".into(),
+                    model: "claude-sonnet-5-5".into(),
+                    reasoning: None,
+                },
                 replies: Mutex::new(replies.into()),
                 seen: Mutex::default(),
                 hook: None,
@@ -362,10 +457,18 @@ pub(crate) mod tests {
             &self.model
         }
 
-        async fn send(&self, ex: &Exchange<'_>, on_text: &mut (dyn FnMut(&str) + Send)) -> Result<Reply> {
+        async fn send(
+            &self,
+            ex: &Exchange<'_>,
+            on_text: &mut (dyn FnMut(&str) + Send),
+        ) -> Result<Reply> {
             let n = {
                 let mut seen = self.seen.lock().unwrap();
-                seen.push(Seen { system: ex.system.into(), tools: ex.tools.to_vec(), items: ex.items.to_vec() });
+                seen.push(Seen {
+                    system: ex.system.into(),
+                    tools: ex.tools.to_vec(),
+                    items: ex.items.to_vec(),
+                });
                 seen.len()
             };
             if let Some(hook) = &self.hook {
@@ -374,9 +477,18 @@ pub(crate) mod tests {
             if self.hang {
                 std::future::pending::<()>().await;
             }
-            let reply = self.replies.lock().unwrap().pop_front().ok_or("the mock ran out of replies")?;
+            let reply = self
+                .replies
+                .lock()
+                .unwrap()
+                .pop_front()
+                .ok_or("the mock ran out of replies")?;
             // Stream the text in two pieces, as a provider would.
-            let split = reply.text.char_indices().nth(reply.text.chars().count() / 2).map_or(0, |(i, _)| i);
+            let split = reply
+                .text
+                .char_indices()
+                .nth(reply.text.chars().count() / 2)
+                .map_or(0, |(i, _)| i);
             for piece in [&reply.text[..split], &reply.text[split..]] {
                 if !piece.is_empty() {
                     on_text(piece);
@@ -391,9 +503,18 @@ pub(crate) mod tests {
             text: text.into(),
             calls: calls
                 .iter()
-                .map(|(id, name, args)| ToolCall { id: (*id).into(), name: (*name).into(), arguments: args.clone() })
+                .map(|(id, name, args)| ToolCall {
+                    id: (*id).into(),
+                    name: (*name).into(),
+                    arguments: args.clone(),
+                })
                 .collect(),
-            usage: Usage { input: 1_000, output: 100, cache_read: 0, cache_write: 2_000 },
+            usage: Usage {
+                input: 1_000,
+                output: 100,
+                cache_read: 0,
+                cache_write: 2_000,
+            },
             stop_reason: Some("tool_use".into()),
             reasoning: vec![],
         }
@@ -403,7 +524,12 @@ pub(crate) mod tests {
         Reply {
             text: text.into(),
             calls: vec![],
-            usage: Usage { input: 200, output: 300, cache_read: 3_000, cache_write: 0 },
+            usage: Usage {
+                input: 200,
+                output: 300,
+                cache_read: 3_000,
+                cache_write: 0,
+            },
             stop_reason: Some("end_turn".into()),
             reasoning: vec![],
         }
@@ -423,7 +549,11 @@ pub(crate) mod tests {
     }
 
     pub fn block_on<F: Future>(future: F) -> F::Output {
-        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(future)
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(future)
     }
 
     struct Fixture {
@@ -434,11 +564,21 @@ pub(crate) mod tests {
         meter: Meter,
     }
 
-    static NO_MEMORY: Memory = Memory { about: Vec::new(), notes: Vec::new(), skills: Vec::new() };
+    static NO_MEMORY: Memory = Memory {
+        about: Vec::new(),
+        notes: Vec::new(),
+        skills: Vec::new(),
+    };
 
     impl Fixture {
         fn harness<'a>(&'a self, cancel: &'a Cancel, limits: Limits) -> Harness<'a> {
-            Harness { tools: &self.tools, meter: &self.meter, memory: &NO_MEMORY, cancel, limits }
+            Harness {
+                tools: &self.tools,
+                meter: &self.meter,
+                memory: &NO_MEMORY,
+                cancel,
+                limits,
+            }
         }
     }
 
@@ -448,12 +588,28 @@ pub(crate) mod tests {
         let ledger = tempfile::tempdir().unwrap();
         let tools = Tools::new(vault.path(), outputs.path().into(), "t1").unwrap();
         let meter = Meter::with_clock(Some(ledger.path().into()), || "2026-11".into());
-        Fixture { vault, _outputs: outputs, ledger, tools, meter }
+        Fixture {
+            vault,
+            _outputs: outputs,
+            ledger,
+            tools,
+            meter,
+        }
     }
 
-    fn run_turn(f: &Fixture, mock: &Mock, turn: &Turn, cancel: &Cancel) -> (Result<Summary>, Vec<KinEvent>) {
+    fn run_turn(
+        f: &Fixture,
+        mock: &Mock,
+        turn: &Turn,
+        cancel: &Cancel,
+    ) -> (Result<Summary>, Vec<KinEvent>) {
         let mut events = Vec::new();
-        let result = block_on(run(mock, &f.harness(cancel, Limits::default()), turn, &mut |e| events.push(e)));
+        let result = block_on(run(
+            mock,
+            &f.harness(cancel, Limits::default()),
+            turn,
+            &mut |e| events.push(e),
+        ));
         (result, events)
     }
 
@@ -461,35 +617,78 @@ pub(crate) mod tests {
     fn answers_a_question_by_searching_and_reading_the_vault() {
         let f = fixture();
         let mock = Mock::new(vec![
-            calls(&[("c1", "search", json!({ "query": "kiln" }))], "Let me look."),
-            calls(&[("c2", "read", json!({ "path": "posts/kintsugi.md" })), ("c3", "list", json!({ "path": "inbox" }))], ""),
+            calls(
+                &[("c1", "search", json!({ "query": "kiln" }))],
+                "Let me look.",
+            ),
+            calls(
+                &[
+                    ("c2", "read", json!({ "path": "posts/kintsugi.md" })),
+                    ("c3", "list", json!({ "path": "inbox" })),
+                ],
+                "",
+            ),
             answer("You wrote about your grandmother's kiln in posts/kintsugi.md."),
         ]);
         let (result, events) = run_turn(&f, &mock, &turn(false), &Cancel::default());
         let summary = result.unwrap();
         assert_eq!(summary.stop, Stop::Answered);
-        assert_eq!(summary.text, "You wrote about your grandmother's kiln in posts/kintsugi.md.");
+        assert_eq!(
+            summary.text,
+            "You wrote about your grandmother's kiln in posts/kintsugi.md."
+        );
         assert_eq!((summary.steps, summary.tool_calls), (3, 3));
         assert_eq!(summary.model, "anthropic/claude-sonnet-5-5");
 
         // The model saw real search and read results from the scratch vault.
         let seen = mock.seen.lock().unwrap();
-        let Item::Results(found) = &seen[1].items[2] else { panic!("expected results") };
-        assert!(found[0].content.contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#), "{}", found[0].content);
-        let Item::Results(read) = &seen[2].items[4] else { panic!("expected results") };
-        assert!(read[0].content.contains("12: My grandmother's kiln taught me patience."));
+        let Item::Results(found) = &seen[1].items[2] else {
+            panic!("expected results")
+        };
+        assert!(
+            found[0]
+                .content
+                .contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#),
+            "{}",
+            found[0].content
+        );
+        let Item::Results(read) = &seen[2].items[4] else {
+            panic!("expected results")
+        };
+        assert!(
+            read[0]
+                .content
+                .contains("12: My grandmother's kiln taught me patience.")
+        );
         assert!(read[1].content.contains("inbox/2026-11-01.md"));
 
         // Events stream in order: text, calls, results, steps, done.
-        let text: String = events.iter().filter_map(|e| match e { KinEvent::Text { delta } => Some(delta.as_str()), _ => None }).collect();
+        let text: String = events
+            .iter()
+            .filter_map(|e| match e {
+                KinEvent::Text { delta } => Some(delta.as_str()),
+                _ => None,
+            })
+            .collect();
         assert!(text.starts_with("Let me look.") && text.ends_with("posts/kintsugi.md."));
-        let names: Vec<_> = events.iter().filter_map(|e| match e { KinEvent::ToolCall { name, .. } => Some(name.as_str()), _ => None }).collect();
+        let names: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                KinEvent::ToolCall { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
         assert_eq!(names, ["search", "read", "list"]);
         assert!(matches!(events.last(), Some(KinEvent::Done { .. })));
 
         // Cost: two tool steps and an answer, priced as Sonnet and recorded.
-        let expected = 2.0 * (1_000.0 * 3.0 + 100.0 * 15.0 + 2_000.0 * 3.75) / 1e6 + (200.0 * 3.0 + 300.0 * 15.0 + 3_000.0 * 0.3) / 1e6;
-        assert!((summary.usd - expected).abs() < 1e-12, "{} vs {expected}", summary.usd);
+        let expected = 2.0 * (1_000.0 * 3.0 + 100.0 * 15.0 + 2_000.0 * 3.75) / 1e6
+            + (200.0 * 3.0 + 300.0 * 15.0 + 3_000.0 * 0.3) / 1e6;
+        assert!(
+            (summary.usd - expected).abs() < 1e-12,
+            "{} vs {expected}",
+            summary.usd
+        );
         let report = f.meter.report();
         assert!((report.spent_usd - expected).abs() < 1e-12);
         assert_eq!(report.by_task[0].task, "chat");
@@ -507,51 +706,88 @@ pub(crate) mod tests {
         let f = fixture();
         let mock = Mock::new(vec![
             calls(&[("c1", "search", json!({ "query": "kiln" }))], ""),
-            calls(&[("c2", "read", json!({ "path": "posts/kintsugi.md" }))], ""),
+            calls(
+                &[("c2", "read", json!({ "path": "posts/kintsugi.md" }))],
+                "",
+            ),
             answer("Done."),
         ]);
-        run_turn(&f, &mock, &turn(false), &Cancel::default()).0.unwrap();
+        run_turn(&f, &mock, &turn(false), &Cancel::default())
+            .0
+            .unwrap();
         let other = Mock::new(vec![answer("Hi.")]);
         let mut later = turn(false);
         later.today = "2027-01-15".into();
-        later.chips = vec![Chip { kind: "doc".into(), path: "drafts/tools.mdx".into(), label: None, lines: None }];
+        later.chips = vec![Chip {
+            kind: "doc".into(),
+            path: "drafts/tools.mdx".into(),
+            label: None,
+            lines: None,
+        }];
         run_turn(&f, &other, &later, &Cancel::default()).0.unwrap();
 
         let seen = mock.seen.lock().unwrap();
         let first = &seen[0];
-        for (i, request) in seen.iter().chain(other.seen.lock().unwrap().iter()).enumerate() {
+        for (i, request) in seen
+            .iter()
+            .chain(other.seen.lock().unwrap().iter())
+            .enumerate()
+        {
             assert_eq!(request.system, first.system, "request {i}");
             assert_eq!(request.tools, first.tools, "request {i}");
         }
         for pair in seen.windows(2) {
-            assert!(pair[1].items.starts_with(&pair[0].items), "history must only be appended to");
+            assert!(
+                pair[1].items.starts_with(&pair[0].items),
+                "history must only be appended to"
+            );
         }
         // The dynamic context sits at the end of the user message.
-        let Item::User(message) = &other.seen.lock().unwrap()[0].items[0] else { panic!() };
-        assert!(message.ends_with("- doc drafts/tools.mdx\n</context>"), "{message}");
+        let Item::User(message) = &other.seen.lock().unwrap()[0].items[0] else {
+            panic!()
+        };
+        assert!(
+            message.ends_with("- doc drafts/tools.mdx\n</context>"),
+            "{message}"
+        );
     }
 
     #[test]
     fn the_cap_stops_background_turns_before_and_between_steps() {
         let f = fixture();
         // One tool step costs ~$0.0120; a cap below that stops after it.
-        f.meter.update_settings(|s| s.monthly_cap_usd = Some(0.01)).unwrap();
-        let mock = Mock::new(vec![calls(&[("c1", "search", json!({ "query": "kiln" }))], ""), answer("never")]);
-        let summary = run_turn(&f, &mock, &turn(true), &Cancel::default()).0.unwrap();
+        f.meter
+            .update_settings(|s| s.monthly_cap_usd = Some(0.01))
+            .unwrap();
+        let mock = Mock::new(vec![
+            calls(&[("c1", "search", json!({ "query": "kiln" }))], ""),
+            answer("never"),
+        ]);
+        let summary = run_turn(&f, &mock, &turn(true), &Cancel::default())
+            .0
+            .unwrap();
         assert_eq!(summary.stop, Stop::CapReached);
         assert_eq!(summary.steps, 1);
         assert!(summary.cap_reached);
-        assert_eq!(mock.seen.lock().unwrap().len(), 1, "no request after the cap");
+        assert_eq!(
+            mock.seen.lock().unwrap().len(),
+            1,
+            "no request after the cap"
+        );
 
         // Already over: a background turn makes no request at all.
         let idle = Mock::new(vec![answer("never")]);
-        let summary = run_turn(&f, &idle, &turn(true), &Cancel::default()).0.unwrap();
+        let summary = run_turn(&f, &idle, &turn(true), &Cancel::default())
+            .0
+            .unwrap();
         assert_eq!((summary.stop, summary.steps), (Stop::CapReached, 0));
         assert!(idle.seen.lock().unwrap().is_empty());
 
         // The owner asking still gets an answer, flagged as over the cap.
         let asked = Mock::new(vec![answer("Here.")]);
-        let summary = run_turn(&f, &asked, &turn(false), &Cancel::default()).0.unwrap();
+        let summary = run_turn(&f, &asked, &turn(false), &Cancel::default())
+            .0
+            .unwrap();
         assert_eq!(summary.stop, Stop::Answered);
         assert!(summary.cap_reached);
     }
@@ -574,34 +810,73 @@ pub(crate) mod tests {
     #[test]
     fn stops_at_the_step_limit_and_reports_provider_errors() {
         let f = fixture();
-        let looping: Vec<Reply> = (0..3).map(|i| calls(&[(&format!("c{i}"), "list", json!({}))], "")).collect();
+        let looping: Vec<Reply> = (0..3)
+            .map(|i| calls(&[(&format!("c{i}"), "list", json!({}))], ""))
+            .collect();
         let mock = Mock::new(looping);
         let mut events = Vec::new();
-        let limits = Limits { max_steps: 3, max_tokens: 100 };
-        let summary = block_on(run(&mock, &f.harness(&Cancel::default(), limits), &turn(false), &mut |e| events.push(e))).unwrap();
-        assert_eq!((summary.stop, summary.steps, summary.tool_calls), (Stop::StepLimit, 3, 3));
+        let limits = Limits {
+            max_steps: 3,
+            max_tokens: 100,
+        };
+        let summary = block_on(run(
+            &mock,
+            &f.harness(&Cancel::default(), limits),
+            &turn(false),
+            &mut |e| events.push(e),
+        ))
+        .unwrap();
+        assert_eq!(
+            (summary.stop, summary.steps, summary.tool_calls),
+            (Stop::StepLimit, 3, 3)
+        );
 
         let empty = Mock::new(vec![]);
         let (result, events) = run_turn(&f, &empty, &turn(false), &Cancel::default());
         assert_eq!(result, Err("the mock ran out of replies".into()));
-        assert_eq!(events, vec![KinEvent::Error { message: "the mock ran out of replies".into() }]);
+        assert_eq!(
+            events,
+            vec![KinEvent::Error {
+                message: "the mock ran out of replies".into()
+            }]
+        );
     }
 
     #[test]
     fn kin_is_told_to_wrap_up_three_steps_before_the_limit() {
         let f = fixture();
-        let mut replies: Vec<Reply> = (0..4).map(|i| calls(&[(&format!("c{i}"), "list", json!({}))], "")).collect();
+        let mut replies: Vec<Reply> = (0..4)
+            .map(|i| calls(&[(&format!("c{i}"), "list", json!({}))], ""))
+            .collect();
         replies.push(answer("Here is what I found."));
         let mock = Mock::new(replies);
-        let limits = Limits { max_steps: 6, max_tokens: 100 };
-        let summary = block_on(run(&mock, &f.harness(&Cancel::default(), limits), &turn(true), &mut |_| {})).unwrap();
+        let limits = Limits {
+            max_steps: 6,
+            max_tokens: 100,
+        };
+        let summary = block_on(run(
+            &mock,
+            &f.harness(&Cancel::default(), limits),
+            &turn(true),
+            &mut |_| {},
+        ))
+        .unwrap();
         assert_eq!((summary.stop, summary.steps), (Stop::Answered, 5));
         let seen = mock.seen.lock().unwrap();
-        let nudges = |i: usize| seen[i].items.iter().filter(|item| matches!(item, Item::User(t) if t.contains("model calls left"))).count();
+        let nudges = |i: usize| {
+            seen[i]
+                .items
+                .iter()
+                .filter(|item| matches!(item, Item::User(t) if t.contains("model calls left")))
+                .count()
+        };
         // Step 4 of 6 is the first with three calls left.
         assert_eq!((nudges(2), nudges(3), nudges(4)), (0, 1, 1));
         assert!(matches!(seen[3].items.last(), Some(Item::User(t)) if t == &wrap_up(3)));
-        assert!(matches!(&seen[3].items[seen[3].items.len() - 2], Item::Results(_)), "after the last results");
+        assert!(
+            matches!(&seen[3].items[seen[3].items.len() - 2], Item::Results(_)),
+            "after the last results"
+        );
     }
 
     #[test]
@@ -609,31 +884,60 @@ pub(crate) mod tests {
         let f = fixture();
         let mut empty = answer("");
         empty.stop_reason = Some("length".into());
-        let mock = Mock::new(vec![calls(&[("c1", "list", json!({}))], ""), empty.clone(), answer("The report.")]);
+        let mock = Mock::new(vec![
+            calls(&[("c1", "list", json!({}))], ""),
+            empty.clone(),
+            answer("The report."),
+        ]);
         let mut events = Vec::new();
-        let summary = block_on(run(&mock, &f.harness(&Cancel::default(), Limits::default()), &turn(true), &mut |e| events.push(e))).unwrap();
-        assert_eq!((summary.stop, summary.steps, summary.text.as_str()), (Stop::Answered, 3, "The report."));
+        let summary = block_on(run(
+            &mock,
+            &f.harness(&Cancel::default(), Limits::default()),
+            &turn(true),
+            &mut |e| events.push(e),
+        ))
+        .unwrap();
+        assert_eq!(
+            (summary.stop, summary.steps, summary.text.as_str()),
+            (Stop::Answered, 3, "The report.")
+        );
         let seen = mock.seen.lock().unwrap();
         assert!(matches!(seen[2].items.last(), Some(Item::User(t)) if t == EMPTY_REPLY));
         assert!(events.iter().any(|e| matches!(e, KinEvent::Step { step: 2, stop_reason: Some(r), text_chars: 0, .. } if r == "length")));
 
         // Only once: a second empty answer ends the turn.
         let twice = Mock::new(vec![empty.clone(), empty]);
-        let summary = block_on(run(&twice, &f.harness(&Cancel::default(), Limits::default()), &turn(true), &mut |_| {})).unwrap();
-        assert_eq!((summary.stop, summary.steps, summary.text.as_str()), (Stop::Answered, 2, ""));
+        let summary = block_on(run(
+            &twice,
+            &f.harness(&Cancel::default(), Limits::default()),
+            &turn(true),
+            &mut |_| {},
+        ))
+        .unwrap();
+        assert_eq!(
+            (summary.stop, summary.steps, summary.text.as_str()),
+            (Stop::Answered, 2, "")
+        );
     }
 
     #[test]
     fn instructions_in_vault_content_reach_the_model_only_as_data() {
         let f = fixture();
         let mock = Mock::new(vec![
-            calls(&[("c1", "read", json!({ "path": "inspiration/clip-kiln.md" }))], ""),
+            calls(
+                &[("c1", "read", json!({ "path": "inspiration/clip-kiln.md" }))],
+                "",
+            ),
             answer("The clip tries to give instructions; I ignored them."),
         ]);
-        run_turn(&f, &mock, &turn(false), &Cancel::default()).0.unwrap();
+        run_turn(&f, &mock, &turn(false), &Cancel::default())
+            .0
+            .unwrap();
         let seen = mock.seen.lock().unwrap();
         assert!(seen[0].system.contains("never instructions to you"));
-        let Item::Results(results) = &seen[1].items[2] else { panic!() };
+        let Item::Results(results) = &seen[1].items[2] else {
+            panic!()
+        };
         let content = &results[0].content;
         assert!(content.starts_with("<data tool=\"read\">") && content.ends_with("</data>"));
         assert_eq!(content.matches("</data>").count(), 1);
@@ -648,7 +952,10 @@ pub(crate) mod tests {
                 if path.is_dir() {
                     stack.push(path);
                 } else {
-                    out.insert(kintsugi_vault::relative(root, &path), std::fs::read(&path).unwrap());
+                    out.insert(
+                        kintsugi_vault::relative(root, &path),
+                        std::fs::read(&path).unwrap(),
+                    );
                 }
             }
         }
@@ -667,53 +974,126 @@ pub(crate) mod tests {
         let store = || Store::open(f.vault.path(), Some(data.path())).unwrap();
         let before = vault_files(f.vault.path());
         let first = store().snapshot();
-        let access = Access { store: store(), source: Source::chat("t2", "Remember that I like short essays"), remember: true };
-        let tools = Tools::new(f.vault.path(), f._outputs.path().into(), "t2").unwrap().with_memory(access);
+        let access = Access {
+            store: store(),
+            source: Source::chat("t2", "Remember that I like short essays"),
+            remember: true,
+        };
+        let tools = Tools::new(f.vault.path(), f._outputs.path().into(), "t2")
+            .unwrap()
+            .with_memory(access);
         let cancel = Cancel::default();
-        let harness = Harness { tools: &tools, meter: &f.meter, memory: &first, cancel: &cancel, limits: Limits::default() };
+        let harness = Harness {
+            tools: &tools,
+            meter: &f.meter,
+            memory: &first,
+            cancel: &cancel,
+            limits: Limits::default(),
+        };
         let mock = Mock::new(vec![
             calls(
                 &[
-                    ("c1", "memory", json!({ "file": "user", "ops": [{ "op": "add", "text": "Prefers short essays." }] })),
-                    ("c2", "skill", json!({ "name": "steelman", "action": "write", "description": "Argue the strongest version of a passage.", "body": "1. Restate it.\n2. Strengthen it.", "command": true })),
+                    (
+                        "c1",
+                        "memory",
+                        json!({ "file": "user", "ops": [{ "op": "add", "text": "Prefers short essays." }] }),
+                    ),
+                    (
+                        "c2",
+                        "skill",
+                        json!({ "name": "steelman", "action": "write", "description": "Argue the strongest version of a passage.", "body": "1. Restate it.\n2. Strengthen it.", "command": true }),
+                    ),
                 ],
                 "",
             ),
-            calls(&[("c3", "skill", json!({ "name": "steelman" })), ("c4", "search", json!({ "query": "kiln" }))], ""),
+            calls(
+                &[
+                    ("c3", "skill", json!({ "name": "steelman" })),
+                    ("c4", "search", json!({ "query": "kiln" })),
+                ],
+                "",
+            ),
             answer("Noted."),
         ]);
         block_on(run(&mock, &harness, &turn(false), &mut |_| {})).unwrap();
 
         let seen = mock.seen.lock().unwrap();
-        assert!(seen.iter().all(|r| r.system == seen[0].system && r.tools == seen[0].tools), "frozen within the turn");
-        assert!(!seen[0].system.contains("Prefers short essays.") && seen[0].system.contains("- secret notes about kiln"));
-        let Item::Results(saved) = &seen[1].items[2] else { panic!("expected results") };
-        assert!(!saved[0].is_error && saved[0].content.contains("1. Prefers short essays."), "{}", saved[0].content);
+        assert!(
+            seen.iter()
+                .all(|r| r.system == seen[0].system && r.tools == seen[0].tools),
+            "frozen within the turn"
+        );
+        assert!(
+            !seen[0].system.contains("Prefers short essays.")
+                && seen[0].system.contains("- secret notes about kiln")
+        );
+        let Item::Results(saved) = &seen[1].items[2] else {
+            panic!("expected results")
+        };
+        assert!(
+            !saved[0].is_error && saved[0].content.contains("1. Prefers short essays."),
+            "{}",
+            saved[0].content
+        );
         assert!(!saved[1].is_error, "{}", saved[1].content);
-        let Item::Results(loaded) = &seen[2].items[4] else { panic!("expected results") };
-        assert!(loaded[0].content.starts_with("<skill name=\"steelman\" command=\"true\">") && loaded[0].content.contains("2. Strengthen it."));
+        let Item::Results(loaded) = &seen[2].items[4] else {
+            panic!("expected results")
+        };
+        assert!(
+            loaded[0]
+                .content
+                .starts_with("<skill name=\"steelman\" command=\"true\">")
+                && loaded[0].content.contains("2. Strengthen it.")
+        );
 
         let next = prompt::system(&store().snapshot());
         assert!(next.contains("- Prefers short essays.\n"), "{next}");
-        assert!(next.contains("- steelman: Argue the strongest version of a passage. [/ command]\n"));
-        assert_eq!(next, prompt::system(&store().snapshot()), "the same memory renders the same prefix");
+        assert!(
+            next.contains("- steelman: Argue the strongest version of a passage. [/ command]\n")
+        );
+        assert_eq!(
+            next,
+            prompt::system(&store().snapshot()),
+            "the same memory renders the same prefix"
+        );
         let instructions = &seen[0].system[..seen[0].system.find("\n## About Hussain").unwrap()];
         assert!(next.starts_with(instructions));
 
         let after = vault_files(f.vault.path());
-        let changed: Vec<&String> = after.keys().chain(before.keys()).filter(|k| before.get(*k) != after.get(*k)).collect();
-        assert_eq!(changed, [".kintsugi/agent/USER.md", ".kintsugi/agent/skills/steelman/SKILL.md"]);
+        let changed: Vec<&String> = after
+            .keys()
+            .chain(before.keys())
+            .filter(|k| before.get(*k) != after.get(*k))
+            .collect();
+        assert_eq!(
+            changed,
+            [
+                ".kintsugi/agent/USER.md",
+                ".kintsugi/agent/skills/steelman/SKILL.md"
+            ]
+        );
     }
 
     #[test]
     fn without_memory_access_the_memory_tools_refuse() {
         let f = fixture();
         let mock = Mock::new(vec![
-            calls(&[("c1", "memory", json!({ "file": "user", "ops": [{ "op": "add", "text": "x" }] }))], ""),
+            calls(
+                &[(
+                    "c1",
+                    "memory",
+                    json!({ "file": "user", "ops": [{ "op": "add", "text": "x" }] }),
+                )],
+                "",
+            ),
             answer("ok"),
         ]);
-        run_turn(&f, &mock, &turn(false), &Cancel::default()).0.unwrap();
-        let Item::Results(results) = &mock.seen.lock().unwrap()[1].items[2] else { panic!() };
+        run_turn(&f, &mock, &turn(false), &Cancel::default())
+            .0
+            .unwrap();
+        let Item::Results(results) = &mock.seen.lock().unwrap()[1].items[2] else {
+            panic!()
+        };
         assert!(results[0].is_error && results[0].content.contains("isn't available"));
         assert!(!f.vault.path().join(".kintsugi/agent/USER.md").exists());
     }
@@ -733,23 +1113,31 @@ pub(crate) mod tests {
             let seen = recorded.clone();
             let app = axum::Router::new().route(
                 path,
-                axum::routing::post(move |headers: axum::http::HeaderMap, axum::Json(body): axum::Json<Value>| {
-                    let (seen, queue) = (seen.clone(), queue.clone());
-                    async move {
-                        let key = ["authorization", "x-api-key"]
-                            .iter()
-                            .find_map(|h| headers.get(*h)?.to_str().ok().map(String::from))
-                            .unwrap_or_default();
-                        // OpenCode's gateways also get a session id.
-                        let key = match headers.get("x-opencode-session").and_then(|v| v.to_str().ok()) {
-                            Some(session) => format!("{key} session={session}"),
-                            None => key,
-                        };
-                        seen.lock().unwrap().push((key, body));
-                        let sse = queue.lock().unwrap().pop_front().unwrap_or_default();
-                        ([(axum::http::header::CONTENT_TYPE, "text/event-stream")], sse)
-                    }
-                }),
+                axum::routing::post(
+                    move |headers: axum::http::HeaderMap, axum::Json(body): axum::Json<Value>| {
+                        let (seen, queue) = (seen.clone(), queue.clone());
+                        async move {
+                            let key = ["authorization", "x-api-key"]
+                                .iter()
+                                .find_map(|h| headers.get(*h)?.to_str().ok().map(String::from))
+                                .unwrap_or_default();
+                            // OpenCode's gateways also get a session id.
+                            let key = match headers
+                                .get("x-opencode-session")
+                                .and_then(|v| v.to_str().ok())
+                            {
+                                Some(session) => format!("{key} session={session}"),
+                                None => key,
+                            };
+                            seen.lock().unwrap().push((key, body));
+                            let sse = queue.lock().unwrap().pop_front().unwrap_or_default();
+                            (
+                                [(axum::http::header::CONTENT_TYPE, "text/event-stream")],
+                                sse,
+                            )
+                        }
+                    },
+                ),
             );
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let base = format!("http://{}", listener.local_addr().unwrap());
@@ -763,7 +1151,11 @@ pub(crate) mod tests {
 
         fn remote(provider: &str, model: &str, base_url: String) -> Remote {
             Remote {
-                model: ModelRef { provider: provider.into(), model: model.into(), reasoning: None },
+                model: ModelRef {
+                    provider: provider.into(),
+                    model: model.into(),
+                    reasoning: None,
+                },
                 provider: wire::provider(provider).unwrap(),
                 base_url,
                 auth: Some(Auth::ApiKey("test-key".into())),
@@ -772,13 +1164,27 @@ pub(crate) mod tests {
 
         /// The server must live on the runtime the turn runs on.
         fn runtime() -> tokio::runtime::Runtime {
-            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap()
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
         }
 
         fn run_remote(rt: &tokio::runtime::Runtime, f: &Fixture, remote: &Remote) -> Summary {
             let mut events = Vec::new();
-            let summary = rt.block_on(run(remote, &f.harness(&Cancel::default(), Limits::default()), &turn(false), &mut |e| events.push(e))).unwrap();
-            assert!(events.iter().any(|e| matches!(e, KinEvent::ToolCall { name, .. } if name == "search")));
+            let summary = rt
+                .block_on(run(
+                    remote,
+                    &f.harness(&Cancel::default(), Limits::default()),
+                    &turn(false),
+                    &mut |e| events.push(e),
+                ))
+                .unwrap();
+            assert!(
+                events
+                    .iter()
+                    .any(|e| matches!(e, KinEvent::ToolCall { name, .. } if name == "search"))
+            );
             summary
         }
 
@@ -802,8 +1208,19 @@ pub(crate) mod tests {
             let summary = run_remote(&rt, &f, &remote("openai", "gpt-6-mini", base));
 
             assert_eq!(summary.stop, Stop::Answered);
-            assert_eq!(summary.text, "In posts/kintsugi.md, about your grandmother's kiln.");
-            assert_eq!(summary.usage, Usage { input: 1500, output: 50, cache_read: 1200, cache_write: 0 });
+            assert_eq!(
+                summary.text,
+                "In posts/kintsugi.md, about your grandmother's kiln."
+            );
+            assert_eq!(
+                summary.usage,
+                Usage {
+                    input: 1500,
+                    output: 50,
+                    cache_read: 1200,
+                    cache_write: 0
+                }
+            );
             let expected = (1500.0 * 0.25 + 50.0 * 2.0 + 1200.0 * 0.025) / 1e6;
             assert!((summary.usd - expected).abs() < 1e-12);
             assert!((f.meter.report().spent_usd - expected).abs() < 1e-12);
@@ -814,9 +1231,17 @@ pub(crate) mod tests {
             assert_eq!(requests[0].1["tools"][0]["function"]["name"], "search");
             assert_eq!(requests[0].1["prompt_cache_key"], "kin");
             let messages = requests[1].1["messages"].as_array().unwrap();
-            assert_eq!(messages[2]["tool_calls"][0]["function"]["arguments"], "{\"query\":\"kiln\"}");
+            assert_eq!(
+                messages[2]["tool_calls"][0]["function"]["arguments"],
+                "{\"query\":\"kiln\"}"
+            );
             assert_eq!(messages[3]["role"], "tool");
-            assert!(messages[3]["content"].as_str().unwrap().contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#));
+            assert!(
+                messages[3]["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#)
+            );
             // Same prefix on both requests.
             assert_eq!(requests[0].1["messages"][0], requests[1].1["messages"][0]);
             assert_eq!(requests[0].1["tools"], requests[1].1["tools"]);
@@ -829,8 +1254,9 @@ pub(crate) mod tests {
                 json!({ "choices": [{ "delta": { "tool_calls": [{ "index": 0, "id": "call_1", "type": "function",
                     "function": { "name": "search", "arguments": "{\"query\":\"kiln\"}" } }] }, "finish_reason": "tool_calls" }] }),
             ]) + "data: [DONE]\n\n";
-            let second = sse(&[json!({ "choices": [{ "delta": { "content": "posts/kintsugi.md" }, "finish_reason": "stop" }] })])
-                + "data: [DONE]\n\n";
+            let second = sse(&[
+                json!({ "choices": [{ "delta": { "content": "posts/kintsugi.md" }, "finish_reason": "stop" }] }),
+            ]) + "data: [DONE]\n\n";
             let rt = runtime();
             let (base, recorded) = rt.block_on(provider("/chat/completions", vec![first, second]));
             let summary = run_remote(&rt, &f, &remote("opencode-go", "kimi-k3", base));
@@ -851,33 +1277,69 @@ pub(crate) mod tests {
         fn codex_turn_replays_encrypted_reasoning_through_the_tool_loop() {
             let f = fixture();
             let reasoning = |id: &str, secret: &str| json!({ "type": "reasoning", "id": id, "summary": [], "encrypted_content": secret });
-            let step = |n: u64, call: &str, query: &str, secret: &str| sse(&[
-                json!({ "type": "response.output_item.added", "output_index": 0, "item": { "type": "reasoning", "id": format!("rs_{n}"), "summary": [] } }),
-                json!({ "type": "response.output_item.done", "output_index": 0, "item": reasoning(&format!("rs_{n}"), secret) }),
-                json!({ "type": "response.output_item.done", "output_index": 1, "item": { "type": "function_call", "id": format!("fc_{n}"), "call_id": call, "name": "search", "arguments": json!({ "query": query }).to_string() } }),
-                json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 900, "output_tokens": 40 } } }),
-            ]);
+            let step = |n: u64, call: &str, query: &str, secret: &str| {
+                sse(&[
+                    json!({ "type": "response.output_item.added", "output_index": 0, "item": { "type": "reasoning", "id": format!("rs_{n}"), "summary": [] } }),
+                    json!({ "type": "response.output_item.done", "output_index": 0, "item": reasoning(&format!("rs_{n}"), secret) }),
+                    json!({ "type": "response.output_item.done", "output_index": 1, "item": { "type": "function_call", "id": format!("fc_{n}"), "call_id": call, "name": "search", "arguments": json!({ "query": query }).to_string() } }),
+                    json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 900, "output_tokens": 40 } } }),
+                ])
+            };
             let last = sse(&[
                 json!({ "type": "response.output_item.done", "output_index": 0, "item": reasoning("rs_3", "enc-3") }),
                 json!({ "type": "response.output_text.delta", "delta": "posts/kintsugi.md" }),
                 json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 1200, "output_tokens": 10 } } }),
             ]);
             let rt = runtime();
-            let (base, recorded) = rt.block_on(provider("/codex/responses", vec![step(1, "call_1", "kiln", "enc-1"), step(2, "call_2", "glaze", "enc-2"), last]));
+            let (base, recorded) = rt.block_on(provider(
+                "/codex/responses",
+                vec![
+                    step(1, "call_1", "kiln", "enc-1"),
+                    step(2, "call_2", "glaze", "enc-2"),
+                    last,
+                ],
+            ));
             let mut codex = remote("openai-codex", "gpt-6-luna", base);
-            codex.auth = Some(Auth::Bearer { token: "test-token".into(), account_id: Some("acct".into()) });
+            codex.auth = Some(Auth::Bearer {
+                token: "test-token".into(),
+                account_id: Some("acct".into()),
+            });
             let summary = run_remote(&rt, &f, &codex);
-            assert_eq!((summary.stop, summary.steps, summary.text.as_str()), (Stop::Answered, 3, "posts/kintsugi.md"));
+            assert_eq!(
+                (summary.stop, summary.steps, summary.text.as_str()),
+                (Stop::Answered, 3, "posts/kintsugi.md")
+            );
 
             let requests = recorded.lock().unwrap();
             assert_eq!(requests[0].0, "Bearer test-token");
-            assert!(requests.iter().all(|(_, body)| body["include"] == json!(["reasoning.encrypted_content"]) && body["store"] == false));
+            assert!(requests.iter().all(|(_, body)| body["include"]
+                == json!(["reasoning.encrypted_content"])
+                && body["store"] == false));
             let kinds = |i: usize| -> Vec<String> {
-                requests[i].1["input"].as_array().unwrap().iter().map(|i| i["type"].as_str().unwrap_or("user").to_string()).collect()
+                requests[i].1["input"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|i| i["type"].as_str().unwrap_or("user").to_string())
+                    .collect()
             };
             assert_eq!(kinds(0), ["user"]);
-            assert_eq!(kinds(1), ["user", "reasoning", "function_call", "function_call_output"]);
-            assert_eq!(kinds(2), ["user", "reasoning", "function_call", "function_call_output", "reasoning", "function_call", "function_call_output"]);
+            assert_eq!(
+                kinds(1),
+                ["user", "reasoning", "function_call", "function_call_output"]
+            );
+            assert_eq!(
+                kinds(2),
+                [
+                    "user",
+                    "reasoning",
+                    "function_call",
+                    "function_call_output",
+                    "reasoning",
+                    "function_call",
+                    "function_call_output"
+                ]
+            );
             let input = requests[2].1["input"].as_array().unwrap();
             // Verbatim, in order, each before its own step's call.
             assert_eq!(input[1], reasoning("rs_1", "enc-1"));
@@ -909,17 +1371,35 @@ pub(crate) mod tests {
             let (base, recorded) = rt.block_on(provider("/v1/messages", vec![first, second]));
             let summary = run_remote(&rt, &f, &remote("anthropic", "claude-sonnet-5-5", base));
 
-            assert_eq!((summary.stop, summary.text.as_str()), (Stop::Answered, "posts/kintsugi.md, line 12."));
-            assert_eq!(summary.usage, Usage { input: 1800, output: 37, cache_read: 1400, cache_write: 1400 });
+            assert_eq!(
+                (summary.stop, summary.text.as_str()),
+                (Stop::Answered, "posts/kintsugi.md, line 12.")
+            );
+            assert_eq!(
+                summary.usage,
+                Usage {
+                    input: 1800,
+                    output: 37,
+                    cache_read: 1400,
+                    cache_write: 1400
+                }
+            );
             let requests = recorded.lock().unwrap();
             assert_eq!(requests[0].0, "test-key");
-            assert_eq!(requests[0].1["system"][0]["cache_control"]["type"], "ephemeral");
+            assert_eq!(
+                requests[0].1["system"][0]["cache_control"]["type"],
+                "ephemeral"
+            );
             assert_eq!(requests[0].1["system"], requests[1].1["system"]);
             let result = &requests[1].1["messages"][2]["content"][0];
             assert_eq!(result["type"], "tool_result");
             assert_eq!(result["tool_use_id"], "toolu_1");
-            assert!(result["content"].as_str().unwrap().contains(r#""id":"inspiration/clip-kiln.md","kind":"clip""#));
+            assert!(
+                result["content"]
+                    .as_str()
+                    .unwrap()
+                    .contains(r#""id":"inspiration/clip-kiln.md","kind":"clip""#)
+            );
         }
     }
-
 }

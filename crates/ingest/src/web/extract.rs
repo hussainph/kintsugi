@@ -9,8 +9,8 @@ use reqwest::Url;
 
 /// Elements never worth reading when Readability gives up.
 const CHROME: &[&str] = &[
-    "script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "template", "iframe", "button",
-    "head", "meta", "link", "select", "dialog",
+    "script", "style", "noscript", "nav", "header", "footer", "aside", "form", "svg", "template",
+    "iframe", "button", "head", "meta", "link", "select", "dialog",
 ];
 
 /// Real pages nest a few dozen levels; far beyond that is not an article.
@@ -40,7 +40,9 @@ pub(crate) fn page(html: &str, url: &Url) -> Extracted {
             for element in doc.select("meta").iter() {
                 let name = element.attr("property").or_else(|| element.attr("name"));
                 if name.is_some_and(|name| name.eq_ignore_ascii_case(key))
-                    && let Some(value) = element.attr("content").and_then(|s| markdown::field(&s, 2000))
+                    && let Some(value) = element
+                        .attr("content")
+                        .and_then(|s| markdown::field(&s, 2000))
                 {
                     return Some(value);
                 }
@@ -49,26 +51,42 @@ pub(crate) fn page(html: &str, url: &Url) -> Extracted {
         None
     };
     let mut page = Extracted {
-        title: meta(&["og:title", "twitter:title"])
-            .or_else(|| doc.select("title").iter().next().and_then(|el| markdown::field(&el.text(), 500))),
+        title: meta(&["og:title", "twitter:title"]).or_else(|| {
+            doc.select("title")
+                .iter()
+                .next()
+                .and_then(|el| markdown::field(&el.text(), 500))
+        }),
         site: meta(&["og:site_name", "application-name"]),
         author: meta(&["author", "article:author", "twitter:creator"]),
         description: meta(&["og:description", "twitter:description", "description"]),
         published: meta(&["article:published_time", "datePublished", "date"]),
         modified: meta(&["article:modified_time", "dateModified"]),
-        image_url: meta(&["og:image:secure_url", "og:image", "twitter:image", "twitter:image:src"])
-            .and_then(|s| url.join(&s).ok())
-            .filter(allowed_url),
+        image_url: meta(&[
+            "og:image:secure_url",
+            "og:image",
+            "twitter:image",
+            "twitter:image:src",
+        ])
+        .and_then(|s| url.join(&s).ok())
+        .filter(allowed_url),
         canonical: canonical(&doc, url),
         ..Extracted::default()
     };
     // Hidden text is not what the reader saw.
-    doc.select(r#"[hidden], [aria-hidden="true"], [style*="display:none"], [style*="display: none"]"#).remove();
+    doc.select(
+        r#"[hidden], [aria-hidden="true"], [style*="display:none"], [style*="display: none"]"#,
+    )
+    .remove();
     let fallback = || {
         // Small or unstructured pages: the largest explicit main region, else
         // the body, without page chrome.
         let regions = doc.select("article, main, [role=main]");
-        let roots = if regions.is_empty() { doc.select("body") } else { regions };
+        let roots = if regions.is_empty() {
+            doc.select("body")
+        } else {
+            regions
+        };
         roots
             .nodes()
             .iter()
@@ -113,7 +131,10 @@ pub(crate) fn page(html: &str, url: &Url) -> Extracted {
             fill(&mut page.modified, article.modified_time, 100);
             fill(&mut page.lang, article.lang, 40);
             if page.image_url.is_none() {
-                page.image_url = article.image.and_then(|s| url.join(&s).ok()).filter(allowed_url);
+                page.image_url = article
+                    .image
+                    .and_then(|s| url.join(&s).ok())
+                    .filter(allowed_url);
             }
         }
         None => {
@@ -122,7 +143,10 @@ pub(crate) fn page(html: &str, url: &Url) -> Extracted {
         }
     }
     if page.lang.is_none() {
-        page.lang = doc.select("html").attr("lang").and_then(|s| markdown::field(&s, 40));
+        page.lang = doc
+            .select("html")
+            .attr("lang")
+            .and_then(|s| markdown::field(&s, 40));
     }
     if page.body.is_empty() {
         page.extractor = "none";
@@ -163,13 +187,22 @@ fn canonical(doc: &Document, url: &Url) -> Option<Url> {
         .select("link[rel=canonical]")
         .attr("href")
         .map(|s| s.to_string())
-        .or_else(|| doc.select("meta[property='og:url']").attr("content").map(|s| s.to_string()))?;
-    url.join(declared.trim()).ok().filter(allowed_url).filter(|c| c.host_str() == url.host_str())
+        .or_else(|| {
+            doc.select("meta[property='og:url']")
+                .attr("content")
+                .map(|s| s.to_string())
+        })?;
+    url.join(declared.trim())
+        .ok()
+        .filter(allowed_url)
+        .filter(|c| c.host_str() == url.host_str())
 }
 
 /// Markdown for a small trusted-shape fragment such as an oEmbed's HTML.
 pub(crate) fn fragment(html: &str) -> String {
     let doc = Document::from(html);
     let body = doc.select("body");
-    body.nodes().first().map_or_else(String::new, |root| markdown::body(&root.md(Some(CHROME)), FULL_CHARS))
+    body.nodes().first().map_or_else(String::new, |root| {
+        markdown::body(&root.md(Some(CHROME)), FULL_CHARS)
+    })
 }

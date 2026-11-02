@@ -17,7 +17,9 @@
 //! No HN account or cookie is ever used.
 
 use crate::api::{ApiClient, ApiLimits};
-use crate::{Adapter, BoxFuture, CaptureOptions, Error, Item, Result, SourceType, Target, markdown, text};
+use crate::{
+    Adapter, BoxFuture, CaptureOptions, Error, Item, Result, SourceType, Target, markdown, text,
+};
 use reqwest::Url;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -47,13 +49,19 @@ impl HackerNewsAdapter {
             request_timeout: Duration::from_secs(30),
             ..ApiLimits::default()
         };
-        Self::with_endpoint(Url::parse("https://hn.algolia.com/api/v1/").unwrap(), limits)
+        Self::with_endpoint(
+            Url::parse("https://hn.algolia.com/api/v1/").unwrap(),
+            limits,
+        )
     }
 
     /// `base` replaces `https://hn.algolia.com/api/v1/` (tests use a loopback
     /// server).
     pub fn with_endpoint(base: Url, limits: ApiLimits) -> Result<Self> {
-        Ok(Self { client: ApiClient::new(USER_AGENT, limits)?, base })
+        Ok(Self {
+            client: ApiClient::new(USER_AGENT, limits)?,
+            base,
+        })
     }
 
     pub async fn fetch(&self, url: &Url) -> Result<Item> {
@@ -63,18 +71,26 @@ impl HackerNewsAdapter {
             let first = self.item(id).await?;
             match first.get("type").and_then(Value::as_str) {
                 Some("comment") => {
-                    let story = first.get("story_id").and_then(Value::as_u64).ok_or(Error::Unavailable)?;
+                    let story = first
+                        .get("story_id")
+                        .and_then(Value::as_u64)
+                        .ok_or(Error::Unavailable)?;
                     let story = self.item(story).await?;
                     item_from_story(&story, Some(id)).ok_or(Error::Unavailable)
                 }
                 _ => item_from_story(&first, None).ok_or(Error::Unavailable),
             }
         };
-        tokio::time::timeout_at(deadline, read).await.map_err(|_| Error::TimedOut)?
+        tokio::time::timeout_at(deadline, read)
+            .await
+            .map_err(|_| Error::TimedOut)?
     }
 
     async fn item(&self, id: u64) -> Result<Value> {
-        let url = self.base.join(&format!("items/{id}")).map_err(|_| Error::InvalidUrl)?;
+        let url = self
+            .base
+            .join(&format!("items/{id}"))
+            .map_err(|_| Error::InvalidUrl)?;
         let body = self.client.get(url).await?;
         serde_json::from_slice(&body.bytes).map_err(|_| Error::Unavailable)
     }
@@ -101,14 +117,20 @@ impl Adapter for HackerNewsAdapter {
 
 /// The item id in `https://news.ycombinator.com/item?id=<n>`.
 pub fn item_id(url: &Url) -> Option<u64> {
-    if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some() {
+    if !matches!(url.scheme(), "http" | "https")
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
         return None;
     }
     if !url.host_str()?.eq_ignore_ascii_case("news.ycombinator.com") || url.path() != "/item" {
         return None;
     }
     let (_, id) = url.query_pairs().find(|(k, _)| k == "id")?;
-    (id.len() <= 12 && id.bytes().all(|b| b.is_ascii_digit())).then(|| id.parse().ok()).flatten().filter(|n| *n > 0)
+    (id.len() <= 12 && id.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| id.parse().ok())
+        .flatten()
+        .filter(|n| *n > 0)
 }
 
 /// A comment's (or story's) page on HN.
@@ -119,7 +141,10 @@ pub fn permalink(id: u64) -> String {
 // --- Items ---------------------------------------------------------------------
 
 fn s<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
-    v.get(key)?.as_str().map(str::trim).filter(|s| !s.is_empty())
+    v.get(key)?
+        .as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 fn item_from_story(story: &Value, comment: Option<u64>) -> Option<Item> {
@@ -131,13 +156,25 @@ fn item_from_story(story: &Value, comment: Option<u64>) -> Option<Item> {
     let mut body = String::new();
     let link = s(story, "url").and_then(safe_url);
     if let Some(link) = &link {
-        let host = Url::parse(link).ok().and_then(|u| u.host_str().map(|h| h.trim_start_matches("www.").to_string()));
-        push_block(&mut body, &format!("[{}](<{link}>)", text::label(host.as_deref().unwrap_or(link), 200)));
+        let host = Url::parse(link).ok().and_then(|u| {
+            u.host_str()
+                .map(|h| h.trim_start_matches("www.").to_string())
+        });
+        push_block(
+            &mut body,
+            &format!(
+                "[{}](<{link}>)",
+                text::label(host.as_deref().unwrap_or(link), 200)
+            ),
+        );
     }
     if let Some(html) = s(story, "text") {
         push_block(&mut body, &html_markdown(html));
     }
-    let mut rendered = Rendered { op, ..Rendered::default() };
+    let mut rendered = Rendered {
+        op,
+        ..Rendered::default()
+    };
     if let Some(children) = story.get("children").and_then(Value::as_array) {
         render(children, 0, &mut rendered);
     }
@@ -189,7 +226,12 @@ fn push_block(body: &mut String, block: &str) {
 
 fn safe_url(raw: &str) -> Option<String> {
     let url = crate::web::web_url(raw.trim()).ok()?;
-    Some(url.as_str().replace('<', "%3C").replace('>', "%3E").replace(' ', "%20"))
+    Some(
+        url.as_str()
+            .replace('<', "%3C")
+            .replace('>', "%3E")
+            .replace(' ', "%20"),
+    )
 }
 
 #[derive(Default)]
@@ -217,7 +259,10 @@ fn render(children: &[Value], depth: usize, rendered: &mut Rendered) {
         if s(child, "type") != Some("comment") {
             continue;
         }
-        let replies = child.get("children").and_then(Value::as_array).filter(|r| !r.is_empty());
+        let replies = child
+            .get("children")
+            .and_then(Value::as_array)
+            .filter(|r| !r.is_empty());
         let author = s(child, "author");
         let html = s(child, "text");
         if (author.is_none() || html.is_none()) && replies.is_none() {
@@ -227,7 +272,9 @@ fn render(children: &[Value], depth: usize, rendered: &mut Rendered) {
             Some(author) => format!("**{}**", escape(&text::label(author, 40))),
             None => "**[deleted]**".to_string(),
         };
-        if let Some(date) = s(child, "created_at").filter(|d| d.len() >= 10 && d.is_char_boundary(10)) {
+        if let Some(date) =
+            s(child, "created_at").filter(|d| d.len() >= 10 && d.is_char_boundary(10))
+        {
             head.push_str(&format!(" · {}", &date[..10]));
         }
         if author.is_some() && author == rendered.op {
@@ -245,7 +292,9 @@ fn render(children: &[Value], depth: usize, rendered: &mut Rendered) {
             rendered.out.push_str("\n\n");
         }
         let block = format!("{head}\n\n{text}");
-        rendered.out.push_str(&block.lines().map(prefix).collect::<Vec<_>>().join("\n"));
+        rendered
+            .out
+            .push_str(&block.lines().map(prefix).collect::<Vec<_>>().join("\n"));
         if let Some(replies) = replies {
             render(replies, depth + 1, rendered);
         }
@@ -324,7 +373,9 @@ pub(crate) fn html_markdown(html: &str) -> String {
             }
             ("i", _) | ("em", _) if code.is_none() && link.is_none() => paragraph.push('*'),
             ("a", false) if code.is_none() => {
-                let href = attribute(inner, "href").map(|h| entities(&h)).and_then(|h| safe_url(&h));
+                let href = attribute(inner, "href")
+                    .map(|h| entities(&h))
+                    .and_then(|h| safe_url(&h));
                 link = Some((String::new(), href.unwrap_or_default()));
             }
             ("a", true) => {
@@ -333,7 +384,10 @@ pub(crate) fn html_markdown(html: &str) -> String {
                     if href.is_empty() {
                         paragraph.push_str(&label);
                     } else {
-                        paragraph.push_str(&format!("[{}](<{href}>)", if label.is_empty() { &href } else { &label }));
+                        paragraph.push_str(&format!(
+                            "[{}](<{href}>)",
+                            if label.is_empty() { &href } else { &label }
+                        ));
                     }
                 }
             }
@@ -372,7 +426,8 @@ fn escape(text: &str) -> String {
 fn guard_block_start(paragraph: &str) -> String {
     let first = paragraph.chars().next();
     let digits = paragraph.chars().take_while(char::is_ascii_digit).count();
-    let ordered = digits > 0 && digits <= 9 && matches!(paragraph[digits..].chars().next(), Some('.' | ')'));
+    let ordered =
+        digits > 0 && digits <= 9 && matches!(paragraph[digits..].chars().next(), Some('.' | ')'));
     if matches!(first, Some('#' | '-' | '+' | '=' | '~')) || ordered {
         format!("\\{paragraph}")
     } else {

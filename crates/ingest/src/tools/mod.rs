@@ -45,10 +45,17 @@ use tokio::sync::Mutex;
 pub enum ToolSource {
     /// The latest GitHub release of `repo` (`owner/name`). The asset is
     /// picked per platform from [`ToolSpec::assets`].
-    GitHubRelease { repo: &'static str, checksums: Checksums },
+    GitHubRelease {
+        repo: &'static str,
+        checksums: Checksums,
+    },
     /// One fixed file, for models and other data that do not have
     /// "latest" releases. Updating means shipping a new spec.
-    Pinned { version: &'static str, url: &'static str, sha256: &'static str },
+    Pinned {
+        version: &'static str,
+        url: &'static str,
+        sha256: &'static str,
+    },
     /// Provided, downloaded and updated by the operating system (Apple's
     /// speech models). The manager only records consent; the adapter that
     /// uses it asks the system to fetch it once consent exists.
@@ -127,7 +134,10 @@ impl ToolSpec {
     /// The release asset for the platform this runs on, if there is one.
     pub fn asset(&self) -> Option<&'static str> {
         let key = format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH);
-        self.assets.iter().find(|(platform, _)| *platform == key).map(|(_, asset)| *asset)
+        self.assets
+            .iter()
+            .find(|(platform, _)| *platform == key)
+            .map(|(_, asset)| *asset)
     }
 }
 
@@ -238,7 +248,9 @@ impl Tools {
             .connect_timeout(Duration::from_secs(10))
             .read_timeout(Duration::from_secs(60))
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                if attempt.previous().len() >= 10 || attempt.url().scheme() != "https" && !loopback(attempt.url()) {
+                if attempt.previous().len() >= 10
+                    || attempt.url().scheme() != "https" && !loopback(attempt.url())
+                {
                     attempt.error("unsupported redirect")
                 } else {
                     attempt.follow()
@@ -280,12 +292,18 @@ impl Tools {
             homepage: spec.homepage.into(),
             license: spec.license.into(),
             approx_bytes: spec.approx_bytes,
-            kind: if matches!(spec.source, ToolSource::System) { "system" } else { "download" },
+            kind: if matches!(spec.source, ToolSource::System) {
+                "system"
+            } else {
+                "download"
+            },
             supported: match spec.source {
                 ToolSource::Pinned { .. } => true,
                 ToolSource::GitHubRelease { .. } => spec.asset().is_some(),
                 ToolSource::System => listed_here(spec),
-                ToolSource::PythonPackage { runner, .. } => listed_here(spec) && runner.asset().is_some(),
+                ToolSource::PythonPackage { runner, .. } => {
+                    listed_here(spec) && runner.asset().is_some()
+                }
             },
             consented: state.consented_at.is_some(),
             path: self.path(spec),
@@ -303,7 +321,10 @@ impl Tools {
     /// The installed entry, if it is present on disk.
     pub fn path(&self, spec: &ToolSpec) -> Option<PathBuf> {
         let installed = self.state(spec).installed?;
-        let path = self.dir(spec).join(safe_component(&installed.version)?).join(spec.entry);
+        let path = self
+            .dir(spec)
+            .join(safe_component(&installed.version)?)
+            .join(spec.entry);
         path.is_file().then_some(path)
     }
 
@@ -328,7 +349,11 @@ impl Tools {
     /// is older than that; a failed check keeps the installed version.
     pub async fn ensure(&self, spec: &ToolSpec) -> ToolResult<PathBuf> {
         if matches!(spec.source, ToolSource::System) {
-            return Err(if self.consented(spec) { ToolError::SystemManaged } else { ToolError::NeedsConsent });
+            return Err(if self.consented(spec) {
+                ToolError::SystemManaged
+            } else {
+                ToolError::NeedsConsent
+            });
         }
         if let Some(path) = self.path(spec) {
             if let Some(every) = spec.update_every
@@ -387,7 +412,12 @@ impl Tools {
             .checked_at
             .as_deref()
             .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
-            .is_some_and(|t| chrono::Utc::now().signed_duration_since(t).to_std().is_ok_and(|elapsed| elapsed < age));
+            .is_some_and(|t| {
+                chrono::Utc::now()
+                    .signed_duration_since(t)
+                    .to_std()
+                    .is_ok_and(|elapsed| elapsed < age)
+            });
         if !fresh {
             let release = self.check(spec).await?;
             let current = self.state(spec).installed.map(|i| i.version);
@@ -411,17 +441,25 @@ impl Tools {
             std::fs::set_permissions(&entry, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let mut state = self.state(spec);
-        state.installed =
-            Some(Installed { version: version.into(), sha256: hex::encode(Sha256::digest(bytes)), installed_at: crate::now() });
+        state.installed = Some(Installed {
+            version: version.into(),
+            sha256: hex::encode(Sha256::digest(bytes)),
+            installed_at: crate::now(),
+        });
         state.checked_at = Some(crate::now());
         self.save(spec, &state).unwrap();
     }
 
     async fn install_release(&self, spec: &ToolSpec, release: &Release) -> ToolResult<Installed> {
         let _guard = self.lock(spec).await;
-        let version = safe_component(&release.version).ok_or(ToolError::Unavailable)?.to_string();
+        let version = safe_component(&release.version)
+            .ok_or(ToolError::Unavailable)?
+            .to_string();
         // Another capture may have installed it while this one waited.
-        if let Some(installed) = self.state(spec).installed.filter(|i| i.version == version && i.sha256 == release.sha256)
+        if let Some(installed) = self
+            .state(spec)
+            .installed
+            .filter(|i| i.version == version && i.sha256 == release.sha256)
             && self.path(spec).is_some()
         {
             return Ok(installed);
@@ -447,7 +485,11 @@ impl Tools {
         let _ = std::fs::remove_dir_all(&target);
         std::fs::rename(&staging, &target).map_err(|_| ToolError::Storage)?;
 
-        let installed = Installed { version: version.clone(), sha256: release.sha256.clone(), installed_at: crate::now() };
+        let installed = Installed {
+            version: version.clone(),
+            sha256: release.sha256.clone(),
+            installed_at: crate::now(),
+        };
         let mut state = self.state(spec);
         state.installed = Some(installed.clone());
         self.save(spec, &state)?;
@@ -471,7 +513,11 @@ impl Tools {
                 url: Url::parse("https://pypi.org/simple/").map_err(|_| ToolError::Unavailable)?,
                 sha256: String::new(),
             }),
-            ToolSource::Pinned { version, url, sha256 } => Ok(Release {
+            ToolSource::Pinned {
+                version,
+                url,
+                sha256,
+            } => Ok(Release {
                 version: (*version).into(),
                 url: Url::parse(url).map_err(|_| ToolError::Unavailable)?,
                 sha256: sha256.to_ascii_lowercase(),
@@ -480,12 +526,22 @@ impl Tools {
                 let asset = spec.asset().ok_or(ToolError::UnsupportedPlatform)?;
                 let api = format!("{}/repos/{repo}/releases/latest", self.github_api);
                 let body = self.get_small(&api, 1024 * 1024).await?;
-                let release: GitHubRelease = serde_json::from_slice(&body).map_err(|_| ToolError::Unavailable)?;
+                let release: GitHubRelease =
+                    serde_json::from_slice(&body).map_err(|_| ToolError::Unavailable)?;
                 let find = |name: &str| {
-                    release.assets.iter().find(|a| a.name == name).and_then(|a| Url::parse(&a.browser_download_url).ok())
+                    release
+                        .assets
+                        .iter()
+                        .find(|a| a.name == name)
+                        .and_then(|a| Url::parse(&a.browser_download_url).ok())
                 };
                 let digest = || {
-                    let found = release.assets.iter().find(|a| a.name == asset)?.digest.as_deref()?;
+                    let found = release
+                        .assets
+                        .iter()
+                        .find(|a| a.name == asset)?
+                        .digest
+                        .as_deref()?;
                     sum_for(found.strip_prefix("sha256:")?, asset)
                 };
                 let url = find(asset).ok_or(ToolError::UnsupportedPlatform)?;
@@ -496,14 +552,19 @@ impl Tools {
                         sum_for(&String::from_utf8_lossy(&text), asset)
                     }
                     Checksums::PerAsset(suffix) => {
-                        let sums = find(&format!("{asset}{suffix}")).ok_or(ToolError::Unavailable)?;
+                        let sums =
+                            find(&format!("{asset}{suffix}")).ok_or(ToolError::Unavailable)?;
                         let text = self.get_small(sums.as_str(), 64 * 1024).await?;
                         sum_for(&String::from_utf8_lossy(&text), asset)
                     }
                     Checksums::GitHubDigest => digest(),
                 }
                 .ok_or(ToolError::Unavailable)?;
-                Ok(Release { version: release.tag_name, url, sha256 })
+                Ok(Release {
+                    version: release.tag_name,
+                    url,
+                    sha256,
+                })
             }
         }
     }
@@ -541,11 +602,19 @@ impl Tools {
         if release.url.scheme() != "https" && !loopback(&release.url) {
             return Err(ToolError::Unavailable);
         }
-        let response = self.client.get(release.url.clone()).send().await.map_err(|_| ToolError::Unavailable)?;
+        let response = self
+            .client
+            .get(release.url.clone())
+            .send()
+            .await
+            .map_err(|_| ToolError::Unavailable)?;
         if !response.status().is_success() {
             return Err(ToolError::Unavailable);
         }
-        if response.content_length().is_some_and(|n| n > spec.max_bytes) {
+        if response
+            .content_length()
+            .is_some_and(|n| n > spec.max_bytes)
+        {
             return Err(ToolError::TooLarge);
         }
         let mut file = std::fs::File::create(path).map_err(|_| ToolError::Storage)?;
@@ -574,7 +643,14 @@ impl Tools {
     /// `tools/python/`, and no download cache left behind. Nothing goes to
     /// the person's own Python or uv settings.
     async fn install_python(&self, spec: &ToolSpec) -> ToolResult<Installed> {
-        let ToolSource::PythonPackage { runner, package, version, python, prepare } = spec.source else {
+        let ToolSource::PythonPackage {
+            runner,
+            package,
+            version,
+            python,
+            prepare,
+        } = spec.source
+        else {
             return Err(ToolError::Unavailable);
         };
         if !listed_here(spec) {
@@ -582,7 +658,9 @@ impl Tools {
         }
         let uv = Box::pin(self.ensure(runner)).await?;
         let _guard = self.lock(spec).await;
-        let version = safe_component(version).ok_or(ToolError::Unavailable)?.to_string();
+        let version = safe_component(version)
+            .ok_or(ToolError::Unavailable)?
+            .to_string();
         if let Some(installed) = self.state(spec).installed.filter(|i| i.version == version)
             && self.path(spec).is_some()
         {
@@ -608,7 +686,8 @@ impl Tools {
                 command.env("HF_HOME", target.join("hf"));
                 run_quietly(command, Duration::from_secs(60 * 60)).await?;
             }
-            let entry = std::fs::read(target.join(spec.entry)).map_err(|_| ToolError::BadArchive)?;
+            let entry =
+                std::fs::read(target.join(spec.entry)).map_err(|_| ToolError::BadArchive)?;
             Ok::<_, ToolError>(hex::encode(Sha256::digest(&entry)))
         }
         .await;
@@ -619,7 +698,11 @@ impl Tools {
                 return Err(error);
             }
         };
-        let installed = Installed { version: version.clone(), sha256, installed_at: crate::now() };
+        let installed = Installed {
+            version: version.clone(),
+            sha256,
+            installed_at: crate::now(),
+        };
         let mut state = self.state(spec);
         state.installed = Some(installed.clone());
         state.checked_at = Some(crate::now());
@@ -667,7 +750,13 @@ impl Tools {
     }
 
     async fn lock(&self, spec: &ToolSpec) -> tokio::sync::OwnedMutexGuard<()> {
-        let lock = self.locks.lock().unwrap_or_else(|e| e.into_inner()).entry(spec.id).or_default().clone();
+        let lock = self
+            .locks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(spec.id)
+            .or_default()
+            .clone();
         lock.lock_owned().await
     }
 }
@@ -700,8 +789,13 @@ fn sum_for(text: &str, name: &str) -> Option<String> {
     found.or_else(|| {
         let only = lines.next()?;
         let hash = only.split_whitespace().next()?;
-        (lines.next().is_none() && is_hash(hash) && only.split_whitespace().nth(1).is_none_or(|f| f.ends_with(name)))
-            .then(|| hash.to_ascii_lowercase())
+        (lines.next().is_none()
+            && is_hash(hash)
+            && only
+                .split_whitespace()
+                .nth(1)
+                .is_none_or(|f| f.ends_with(name)))
+        .then(|| hash.to_ascii_lowercase())
     })
 }
 
@@ -714,7 +808,10 @@ fn unpack(spec: &ToolSpec, download: &Path, entry: &Path) -> ToolResult<()> {
             let mut found = false;
             for item in tar.entries().map_err(|_| ToolError::BadArchive)? {
                 let mut item = item.map_err(|_| ToolError::BadArchive)?;
-                let named = item.path().ok().is_some_and(|p| p.file_name().is_some_and(|n| n == spec.entry));
+                let named = item
+                    .path()
+                    .ok()
+                    .is_some_and(|p| p.file_name().is_some_and(|n| n == spec.entry));
                 if !named || !item.header().entry_type().is_file() {
                     continue;
                 }
@@ -722,8 +819,11 @@ fn unpack(spec: &ToolSpec, download: &Path, entry: &Path) -> ToolResult<()> {
                     return Err(ToolError::TooLarge);
                 }
                 let mut out = std::fs::File::create(entry).map_err(|_| ToolError::Storage)?;
-                std::io::copy(&mut (&mut item).take(spec.max_bytes.saturating_mul(4)), &mut out)
-                    .map_err(|_| ToolError::BadArchive)?;
+                std::io::copy(
+                    &mut (&mut item).take(spec.max_bytes.saturating_mul(4)),
+                    &mut out,
+                )
+                .map_err(|_| ToolError::BadArchive)?;
                 found = true;
                 break;
             }
@@ -737,7 +837,10 @@ fn unpack(spec: &ToolSpec, download: &Path, entry: &Path) -> ToolResult<()> {
             let index = (0..zip.len())
                 .find(|&i| {
                     zip.by_index(i).ok().is_some_and(|f| {
-                        f.is_file() && f.enclosed_name().and_then(|p| p.file_name().map(|n| n == spec.entry)).unwrap_or(false)
+                        f.is_file()
+                            && f.enclosed_name()
+                                .and_then(|p| p.file_name().map(|n| n == spec.entry))
+                                .unwrap_or(false)
                     })
                 })
                 .ok_or(ToolError::BadArchive)?;
@@ -753,7 +856,8 @@ fn unpack(spec: &ToolSpec, download: &Path, entry: &Path) -> ToolResult<()> {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(entry, std::fs::Permissions::from_mode(0o755)).map_err(|_| ToolError::Storage)?;
+            std::fs::set_permissions(entry, std::fs::Permissions::from_mode(0o755))
+                .map_err(|_| ToolError::Storage)?;
         }
     }
     Ok(())
@@ -785,7 +889,9 @@ fn safe_component(version: &str) -> Option<&str> {
     (!version.is_empty()
         && version.len() <= 64
         && !version.starts_with('.')
-        && version.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+')))
+        && version
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+')))
     .then_some(version)
 }
 

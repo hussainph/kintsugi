@@ -22,8 +22,13 @@ pub struct Outline {
 }
 
 pub fn export(sources: &[Source], created: &str) -> String {
-    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml version=\"2.0\">\n  <head>\n    <title>Kintsugi subscriptions</title>\n");
-    out.push_str(&format!("    <dateCreated>{}</dateCreated>\n  </head>\n  <body>\n", escape(created)));
+    let mut out = String::from(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<opml version=\"2.0\">\n  <head>\n    <title>Kintsugi subscriptions</title>\n",
+    );
+    out.push_str(&format!(
+        "    <dateCreated>{}</dateCreated>\n  </head>\n  <body>\n",
+        escape(created)
+    ));
     for source in sources {
         let title = source.title.as_deref().unwrap_or(&source.url);
         let link = matches!(source.kind, SourceKind::Page | SourceKind::Author);
@@ -55,7 +60,10 @@ pub fn import(text: &str) -> Result<(Vec<Outline>, usize), String> {
     let mut invalid = 0;
     let mut saw_opml = false;
     loop {
-        match reader.read_event().map_err(|e| format!("not valid OPML ({e})"))? {
+        match reader
+            .read_event()
+            .map_err(|e| format!("not valid OPML ({e})"))?
+        {
             Event::Eof => break,
             Event::Start(e) | Event::Empty(e) => {
                 let name = e.local_name();
@@ -65,10 +73,18 @@ pub fn import(text: &str) -> Result<(Vec<Outline>, usize), String> {
                 if name.as_ref() != "outline" {
                     continue;
                 }
-                let (mut url, mut link, mut title, mut text): (Option<String>, Option<String>, Option<String>, Option<String>) = (None, None, None, None);
+                let (mut url, mut link, mut title, mut text): (
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                    Option<String>,
+                ) = (None, None, None, None);
                 let (mut kind, mut muted): (Option<SourceKind>, bool) = (None, false);
                 for attribute in e.attributes().flatten() {
-                    let value = attribute.normalized_value(quick_xml::XmlVersion::Implicit1_0).map(|v| v.trim().to_string()).unwrap_or_default();
+                    let value = attribute
+                        .normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                        .map(|v| v.trim().to_string())
+                        .unwrap_or_default();
                     match attribute.key.local_name().as_ref() {
                         "xmlUrl" => url = Some(value),
                         "url" => link = Some(value),
@@ -80,7 +96,9 @@ pub fn import(text: &str) -> Result<(Vec<Outline>, usize), String> {
                     }
                 }
                 // A link outline is a source only when Kintsugi wrote it.
-                let url = url.or(link.filter(|_| matches!(kind, Some(SourceKind::Page | SourceKind::Author))));
+                let url = url
+                    .or(link
+                        .filter(|_| matches!(kind, Some(SourceKind::Page | SourceKind::Author))));
                 let Some(url) = url else { continue };
                 match checked_url(&url) {
                     Ok(url) => {
@@ -134,17 +152,44 @@ mod tests {
     #[test]
     fn round_trip() {
         let sources = [
-            source(1, "https://quiet.example/feed.xml", Some("Quiet & \"Loud\" <Blog>"), SourceKind::Feed, false),
-            source(2, "https://hnrss.org/best?points=200&comments=10", None, SourceKind::Hn, true),
-            source(3, "https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv", Some("Slow Craft"), SourceKind::Youtube, false),
+            source(
+                1,
+                "https://quiet.example/feed.xml",
+                Some("Quiet & \"Loud\" <Blog>"),
+                SourceKind::Feed,
+                false,
+            ),
+            source(
+                2,
+                "https://hnrss.org/best?points=200&comments=10",
+                None,
+                SourceKind::Hn,
+                true,
+            ),
+            source(
+                3,
+                "https://www.youtube.com/feeds/videos.xml?channel_id=UCabcdefghijklmnopqrstuv",
+                Some("Slow Craft"),
+                SourceKind::Youtube,
+                false,
+            ),
         ];
         let text = export(&sources, "Sun, 01 Nov 2026 00:00:00 GMT");
         let (outlines, invalid) = import(&text).unwrap();
         assert_eq!(invalid, 0);
         assert_eq!(outlines.len(), 3);
-        assert_eq!(outlines[0].title.as_deref(), Some("Quiet & \"Loud\" <Blog>"));
-        assert_eq!(outlines[1].url, "https://hnrss.org/best?points=200&comments=10");
-        assert_eq!(outlines[1].title, None, "a URL-only title isn't kept as a title");
+        assert_eq!(
+            outlines[0].title.as_deref(),
+            Some("Quiet & \"Loud\" <Blog>")
+        );
+        assert_eq!(
+            outlines[1].url,
+            "https://hnrss.org/best?points=200&comments=10"
+        );
+        assert_eq!(
+            outlines[1].title, None,
+            "a URL-only title isn't kept as a title"
+        );
         assert!(outlines[1].muted);
         assert_eq!(outlines[1].kind, SourceKind::Hn);
         assert_eq!(outlines[2].kind, SourceKind::Youtube);
@@ -153,19 +198,44 @@ mod tests {
     #[test]
     fn pages_and_authors_are_link_outlines() {
         let sources = [
-            source(1, "https://ada.example/now", Some("What I'm doing now"), SourceKind::Page, false),
-            source(2, "https://openlibrary.org/search?author=Susanna+Clarke&sort=new", Some("Susanna Clarke"), SourceKind::Author, true),
+            source(
+                1,
+                "https://ada.example/now",
+                Some("What I'm doing now"),
+                SourceKind::Page,
+                false,
+            ),
+            source(
+                2,
+                "https://openlibrary.org/search?author=Susanna+Clarke&sort=new",
+                Some("Susanna Clarke"),
+                SourceKind::Author,
+                true,
+            ),
         ];
         let text = export(&sources, "Sun, 01 Nov 2026 00:00:00 GMT");
         assert!(text.contains(r#"<outline type="link" text="What I&apos;m doing now" title="What I&apos;m doing now" url="https://ada.example/now" kintsugiKind="page"/>"#), "{text}");
         assert!(text.contains(r#"url="https://openlibrary.org/search?author=Susanna+Clarke&amp;sort=new" kintsugiKind="author" kintsugiMuted="true"/>"#), "{text}");
-        assert!(!text.contains("xmlUrl"), "other readers must not take them for feeds");
+        assert!(
+            !text.contains("xmlUrl"),
+            "other readers must not take them for feeds"
+        );
         let (outlines, invalid) = import(&text).unwrap();
         assert_eq!(invalid, 0);
-        assert_eq!(outlines.iter().map(|o| (o.url.as_str(), o.kind, o.muted)).collect::<Vec<_>>(), [
-            ("https://ada.example/now", SourceKind::Page, false),
-            ("https://openlibrary.org/search?author=Susanna+Clarke&sort=new", SourceKind::Author, true),
-        ]);
+        assert_eq!(
+            outlines
+                .iter()
+                .map(|o| (o.url.as_str(), o.kind, o.muted))
+                .collect::<Vec<_>>(),
+            [
+                ("https://ada.example/now", SourceKind::Page, false),
+                (
+                    "https://openlibrary.org/search?author=Susanna+Clarke&sort=new",
+                    SourceKind::Author,
+                    true
+                ),
+            ]
+        );
         // Another reader's plain link outline isn't a subscription.
         let (outlines, _) = import(r#"<opml version="2.0"><body><outline type="link" text="A site" url="https://example.org/"/></body></opml>"#).unwrap();
         assert!(outlines.is_empty());

@@ -35,16 +35,72 @@ pub struct Provider {
 }
 
 pub const PROVIDERS: &[Provider] = &[
-    Provider { id: "anthropic", name: "Anthropic", base_url: "https://api.anthropic.com", wire: Wire::Anthropic, env_key: Some("ANTHROPIC_API_KEY"), keyless: false },
-    Provider { id: "openai-codex", name: "ChatGPT (Codex)", base_url: "https://chatgpt.com/backend-api", wire: Wire::Codex, env_key: None, keyless: false },
-    Provider { id: "openai", name: "OpenAI", base_url: "https://api.openai.com/v1", wire: Wire::OpenAiChat, env_key: Some("OPENAI_API_KEY"), keyless: false },
-    Provider { id: "openrouter", name: "OpenRouter", base_url: "https://openrouter.ai/api/v1", wire: Wire::OpenAiChat, env_key: Some("OPENROUTER_API_KEY"), keyless: false },
-    Provider { id: "zai", name: "Z.AI", base_url: "https://api.z.ai/api/coding/paas/v4", wire: Wire::OpenAiChat, env_key: Some("ZAI_API_KEY"), keyless: false },
+    Provider {
+        id: "anthropic",
+        name: "Anthropic",
+        base_url: "https://api.anthropic.com",
+        wire: Wire::Anthropic,
+        env_key: Some("ANTHROPIC_API_KEY"),
+        keyless: false,
+    },
+    Provider {
+        id: "openai-codex",
+        name: "ChatGPT (Codex)",
+        base_url: "https://chatgpt.com/backend-api",
+        wire: Wire::Codex,
+        env_key: None,
+        keyless: false,
+    },
+    Provider {
+        id: "openai",
+        name: "OpenAI",
+        base_url: "https://api.openai.com/v1",
+        wire: Wire::OpenAiChat,
+        env_key: Some("OPENAI_API_KEY"),
+        keyless: false,
+    },
+    Provider {
+        id: "openrouter",
+        name: "OpenRouter",
+        base_url: "https://openrouter.ai/api/v1",
+        wire: Wire::OpenAiChat,
+        env_key: Some("OPENROUTER_API_KEY"),
+        keyless: false,
+    },
+    Provider {
+        id: "zai",
+        name: "Z.AI",
+        base_url: "https://api.z.ai/api/coding/paas/v4",
+        wire: Wire::OpenAiChat,
+        env_key: Some("ZAI_API_KEY"),
+        keyless: false,
+    },
     // OpenCode's gateways serve every text model over chat completions,
     // translating where a model's native API differs (opencode.ai/docs, Console › Harnesses).
-    Provider { id: "opencode", name: "OpenCode Zen", base_url: "https://opencode.ai/inference/openai/v1", wire: Wire::OpenAiChat, env_key: Some("OPENCODE_API_KEY"), keyless: false },
-    Provider { id: "opencode-go", name: "OpenCode Go", base_url: "https://opencode.ai/inference/go/openai/v1", wire: Wire::OpenAiChat, env_key: None, keyless: false },
-    Provider { id: "ollama", name: "Ollama (local)", base_url: "http://localhost:11434/v1", wire: Wire::OpenAiChat, env_key: None, keyless: true },
+    Provider {
+        id: "opencode",
+        name: "OpenCode Zen",
+        base_url: "https://opencode.ai/inference/openai/v1",
+        wire: Wire::OpenAiChat,
+        env_key: Some("OPENCODE_API_KEY"),
+        keyless: false,
+    },
+    Provider {
+        id: "opencode-go",
+        name: "OpenCode Go",
+        base_url: "https://opencode.ai/inference/go/openai/v1",
+        wire: Wire::OpenAiChat,
+        env_key: None,
+        keyless: false,
+    },
+    Provider {
+        id: "ollama",
+        name: "Ollama (local)",
+        base_url: "http://localhost:11434/v1",
+        wire: Wire::OpenAiChat,
+        env_key: None,
+        keyless: true,
+    },
 ];
 
 pub fn provider(id: &str) -> Option<&'static Provider> {
@@ -88,10 +144,16 @@ pub struct Request {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum Event {
-    Delta { text: String },
+    Delta {
+        text: String,
+    },
     #[serde(rename_all = "camelCase")]
-    Done { stop_reason: Option<String> },
-    Error { message: String },
+    Done {
+        stop_reason: Option<String>,
+    },
+    Error {
+        message: String,
+    },
 }
 
 /// A tool the model may call. `parameters` is a JSON Schema object.
@@ -121,7 +183,10 @@ pub struct ToolResult {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     User(String),
-    Assistant { text: String, calls: Vec<ToolCall> },
+    Assistant {
+        text: String,
+        calls: Vec<ToolCall>,
+    },
     Results(Vec<ToolResult>),
     /// A step's reasoning, opaque and provider-specific: the Codex backend's
     /// `reasoning` output items (with `encrypted_content`), exactly as they
@@ -192,18 +257,29 @@ pub struct Endpoint<'a> {
 
 impl<'a> Endpoint<'a> {
     pub fn new(provider: &'a Provider, auth: Option<Auth>) -> Self {
-        Endpoint { provider, base_url: provider.base_url, auth }
+        Endpoint {
+            provider,
+            base_url: provider.base_url,
+            auth,
+        }
     }
 }
 
 /// The webview's plain streaming call: one exchange, events as they come.
-pub async fn stream(endpoint: Endpoint<'_>, req: &Request, mut emit: impl FnMut(Event)) -> Result<Reply> {
+pub async fn stream(
+    endpoint: Endpoint<'_>,
+    req: &Request,
+    mut emit: impl FnMut(Event),
+) -> Result<Reply> {
     let items: Vec<Item> = req
         .messages
         .iter()
         .map(|m| match m.role {
             Role::User => Item::User(m.content.clone()),
-            Role::Assistant => Item::Assistant { text: m.content.clone(), calls: vec![] },
+            Role::Assistant => Item::Assistant {
+                text: m.content.clone(),
+                calls: vec![],
+            },
         })
         .collect();
     let exchange = Exchange {
@@ -217,8 +293,13 @@ pub async fn stream(endpoint: Endpoint<'_>, req: &Request, mut emit: impl FnMut(
         reasoning: req.reasoning.as_deref(),
         cache_key: None,
     };
-    let reply = send(endpoint, &exchange, |text| emit(Event::Delta { text: text.into() })).await?;
-    emit(Event::Done { stop_reason: reply.stop_reason.clone() });
+    let reply = send(endpoint, &exchange, |text| {
+        emit(Event::Delta { text: text.into() })
+    })
+    .await?;
+    emit(Event::Done {
+        stop_reason: reply.stop_reason.clone(),
+    });
     Ok(reply)
 }
 
@@ -247,7 +328,11 @@ pub(crate) const PATIENCE: Patience = Patience {
 };
 
 /// Sends one exchange; text deltas go to `on_text` as they arrive.
-pub async fn send(endpoint: Endpoint<'_>, ex: &Exchange<'_>, on_text: impl FnMut(&str)) -> Result<Reply> {
+pub async fn send(
+    endpoint: Endpoint<'_>,
+    ex: &Exchange<'_>,
+    on_text: impl FnMut(&str),
+) -> Result<Reply> {
     send_with(endpoint, ex, on_text, PATIENCE).await
 }
 
@@ -260,14 +345,25 @@ struct Failure {
 
 impl Failure {
     fn fatal(message: impl Into<String>) -> Self {
-        Failure { message: message.into(), retry: None }
+        Failure {
+            message: message.into(),
+            retry: None,
+        }
     }
     fn transient(message: impl Into<String>) -> Self {
-        Failure { message: message.into(), retry: Some(None) }
+        Failure {
+            message: message.into(),
+            retry: Some(None),
+        }
     }
 }
 
-pub(crate) async fn send_with(endpoint: Endpoint<'_>, ex: &Exchange<'_>, mut on_text: impl FnMut(&str), patience: Patience) -> Result<Reply> {
+pub(crate) async fn send_with(
+    endpoint: Endpoint<'_>,
+    ex: &Exchange<'_>,
+    mut on_text: impl FnMut(&str),
+    patience: Patience,
+) -> Result<Reply> {
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .user_agent(USER_AGENT)
@@ -315,7 +411,11 @@ async fn send_once(
     on_text: &mut impl FnMut(&str),
     idle: Duration,
 ) -> std::result::Result<Reply, Failure> {
-    let Endpoint { provider, base_url, auth } = endpoint;
+    let Endpoint {
+        provider,
+        base_url,
+        auth,
+    } = endpoint;
     let builder = match provider.wire {
         Wire::Anthropic => {
             let Some(Auth::ApiKey(key)) = auth else {
@@ -328,19 +428,29 @@ async fn send_once(
                 .json(&anthropic_body(ex))
         }
         Wire::OpenAiChat => {
-            let mut builder = client.post(format!("{base_url}/chat/completions")).json(&openai_body(provider.id, ex));
+            let mut builder = client
+                .post(format!("{base_url}/chat/completions"))
+                .json(&openai_body(provider.id, ex));
             if provider.id.starts_with("opencode") {
                 // OpenCode routes and caches by session; Go requires one.
                 builder = builder.header("x-opencode-session", opencode_session(ex));
             }
             match auth {
-                Some(Auth::ApiKey(key)) | Some(Auth::Bearer { token: key, .. }) => builder.bearer_auth(key),
+                Some(Auth::ApiKey(key)) | Some(Auth::Bearer { token: key, .. }) => {
+                    builder.bearer_auth(key)
+                }
                 None => builder,
             }
         }
         Wire::Codex => {
-            let Some(Auth::Bearer { token, account_id: Some(account) }) = auth else {
-                return Err(Failure::fatal("ChatGPT needs a ChatGPT login; log in to OpenAI in OpenCode (or Pi)"));
+            let Some(Auth::Bearer {
+                token,
+                account_id: Some(account),
+            }) = auth
+            else {
+                return Err(Failure::fatal(
+                    "ChatGPT needs a ChatGPT login; log in to OpenAI in OpenCode (or Pi)",
+                ));
             };
             client
                 .post(format!("{base_url}/codex/responses"))
@@ -353,7 +463,12 @@ async fn send_once(
         }
     };
     let name = provider.name;
-    let stalled = || Failure::transient(format!("{name} stopped responding (nothing for {} s)", idle.as_secs()));
+    let stalled = || {
+        Failure::transient(format!(
+            "{name} stopped responding (nothing for {} s)",
+            idle.as_secs()
+        ))
+    };
     let response = match tokio::time::timeout(idle, builder.send()).await {
         Err(_) => return Err(stalled()),
         Ok(Err(e)) if e.is_builder() => return Err(Failure::fatal(format!("{name}: {e}"))),
@@ -363,10 +478,22 @@ async fn send_once(
     let status = response.status();
     if !status.is_success() {
         let asked = retry_after(response.headers());
-        let body = tokio::time::timeout(idle, response.text()).await.ok().and_then(|r| r.ok()).unwrap_or_default();
+        let body = tokio::time::timeout(idle, response.text())
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or_default();
         let message = format!("{name} returned {status}: {}", error_text(&body));
-        let transient = status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
-        return Err(if transient { Failure { message, retry: Some(asked) } } else { Failure::fatal(message) });
+        let transient =
+            status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error();
+        return Err(if transient {
+            Failure {
+                message,
+                retry: Some(asked),
+            }
+        } else {
+            Failure::fatal(message)
+        });
     }
 
     let mut sse = Sse::default();
@@ -379,7 +506,10 @@ async fn send_once(
             Ok(Some(chunk)) => chunk.map_err(|e| Failure::transient(format!("{name}: {e}")))?,
         };
         for (event, data) in sse.push(&chunk) {
-            if let Some(text) = decoder.feed(event.as_deref(), &data).map_err(Failure::fatal)? {
+            if let Some(text) = decoder
+                .feed(event.as_deref(), &data)
+                .map_err(Failure::fatal)?
+            {
                 on_text(&text);
             }
             if decoder.done {
@@ -420,7 +550,12 @@ fn shape(provider: &str, ex: &Exchange, reply: &Reply) -> String {
 /// A Retry-After header in seconds (the HTTP-date form is ignored).
 fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
     let value = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
-    value.trim().parse::<f64>().ok().filter(|s| s.is_finite() && *s >= 0.0).map(Duration::from_secs_f64)
+    value
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|s| s.is_finite() && *s >= 0.0)
+        .map(Duration::from_secs_f64)
 }
 
 /// A stable session id for OpenCode's gateways: requests sharing a model
@@ -472,7 +607,10 @@ pub(crate) fn anthropic_body(ex: &Exchange) -> Value {
     // A rolling breakpoint on the newest block: the next step reads the whole
     // conversation so far from cache.
     if !ex.tools.is_empty()
-        && let Some(last) = messages.last_mut().and_then(|m| m["content"].as_array_mut()).and_then(|c| c.last_mut())
+        && let Some(last) = messages
+            .last_mut()
+            .and_then(|m| m["content"].as_array_mut())
+            .and_then(|c| c.last_mut())
     {
         *last = cached(last.take());
     }
@@ -524,11 +662,9 @@ pub(crate) fn openai_body(provider_id: &str, ex: &Exchange) -> Value {
                     "function": { "name": c.name, "arguments": arguments_string(&c.arguments) },
                 })).collect::<Vec<_>>(),
             })),
-            Item::Results(results) => messages.extend(
-                results
-                    .iter()
-                    .map(|r| json!({ "role": "tool", "tool_call_id": r.call_id, "content": r.content })),
-            ),
+            Item::Results(results) => messages.extend(results.iter().map(
+                |r| json!({ "role": "tool", "tool_call_id": r.call_id, "content": r.content }),
+            )),
             // Codex's encrypted reasoning means nothing to chat completions.
             Item::Reasoning(_) => {}
         }
@@ -540,15 +676,21 @@ pub(crate) fn openai_body(provider_id: &str, ex: &Exchange) -> Value {
         "stream_options": { "include_usage": true },
     });
     // OpenAI's newer models reject `max_tokens`; compatible servers expect it.
-    let max_key = if provider_id == "openai" { "max_completion_tokens" } else { "max_tokens" };
+    let max_key = if provider_id == "openai" {
+        "max_completion_tokens"
+    } else {
+        "max_tokens"
+    };
     body[max_key] = json!(ex.max_tokens.unwrap_or(DEFAULT_MAX_TOKENS));
     if !ex.tools.is_empty() {
         body["tools"] = ex
             .tools
             .iter()
-            .map(|t| json!({ "type": "function", "function": {
-                "name": t.name, "description": t.description, "parameters": t.parameters,
-            }}))
+            .map(|t| {
+                json!({ "type": "function", "function": {
+                    "name": t.name, "description": t.description, "parameters": t.parameters,
+                }})
+            })
             .collect();
     }
     if provider_id == "openai"
@@ -576,9 +718,9 @@ pub(crate) fn codex_body(ex: &Exchange) -> Value {
     let mut input = Vec::new();
     for item in ex.items {
         match item {
-            Item::User(text) => {
-                input.push(json!({ "role": "user", "content": [{ "type": "input_text", "text": text }] }))
-            }
+            Item::User(text) => input.push(
+                json!({ "role": "user", "content": [{ "type": "input_text", "text": text }] }),
+            ),
             Item::Assistant { text, calls } => {
                 if !text.is_empty() {
                     input.push(json!({
@@ -586,20 +728,28 @@ pub(crate) fn codex_body(ex: &Exchange) -> Value {
                         "content": [{ "type": "output_text", "text": text }],
                     }));
                 }
-                input.extend(calls.iter().map(|c| json!({
-                    "type": "function_call", "call_id": c.id, "name": c.name,
-                    "arguments": arguments_string(&c.arguments),
-                })));
+                input.extend(calls.iter().map(|c| {
+                    json!({
+                        "type": "function_call", "call_id": c.id, "name": c.name,
+                        "arguments": arguments_string(&c.arguments),
+                    })
+                }));
             }
-            Item::Results(results) => input.extend(results.iter().map(|r| json!({
-                "type": "function_call_output", "call_id": r.call_id, "output": r.content,
-            }))),
+            Item::Results(results) => input.extend(results.iter().map(|r| {
+                json!({
+                    "type": "function_call_output", "call_id": r.call_id, "output": r.content,
+                })
+            })),
             // Replayed verbatim (id, summary, encrypted_content), before the
             // step's message and function calls, as pi-ai does.
             Item::Reasoning(reasoning) => input.extend(reasoning.iter().cloned()),
         }
     }
-    let instructions = if ex.system.is_empty() { "You are a helpful assistant." } else { ex.system };
+    let instructions = if ex.system.is_empty() {
+        "You are a helpful assistant."
+    } else {
+        ex.system
+    };
     let mut body = json!({
         "model": ex.model,
         "store": false,
@@ -615,10 +765,12 @@ pub(crate) fn codex_body(ex: &Exchange) -> Value {
         body["tools"] = ex
             .tools
             .iter()
-            .map(|t| json!({
-                "type": "function", "name": t.name, "description": t.description,
-                "parameters": t.parameters, "strict": false,
-            }))
+            .map(|t| {
+                json!({
+                    "type": "function", "name": t.name, "description": t.description,
+                    "parameters": t.parameters, "strict": false,
+                })
+            })
             .collect();
     }
     if let Some(key) = ex.cache_key {
@@ -636,7 +788,11 @@ pub(crate) fn codex_body(ex: &Exchange) -> Value {
 
 /// Anthropic wants an object; anything else the model sent is wrapped.
 fn object_arguments(arguments: &Value) -> Value {
-    if arguments.is_object() { arguments.clone() } else { json!({ "value": arguments }) }
+    if arguments.is_object() {
+        arguments.clone()
+    } else {
+        json!({ "value": arguments })
+    }
 }
 
 fn arguments_string(arguments: &Value) -> String {
@@ -677,14 +833,23 @@ struct Decoder {
 
 impl Decoder {
     fn new(wire: Wire) -> Self {
-        Decoder { wire, reply: Reply::default(), calls: Vec::new(), reasoning: Vec::new(), done: false }
+        Decoder {
+            wire,
+            reply: Reply::default(),
+            calls: Vec::new(),
+            reasoning: Vec::new(),
+            done: false,
+        }
     }
 
     fn call(&mut self, index: u64) -> &mut PartialCall {
         let position = match self.calls.iter().position(|c| c.index == index) {
             Some(position) => position,
             None => {
-                self.calls.push(PartialCall { index, ..Default::default() });
+                self.calls.push(PartialCall {
+                    index,
+                    ..Default::default()
+                });
                 self.calls.len() - 1
             }
         };
@@ -703,10 +868,17 @@ impl Decoder {
             self.done = true;
             return Ok(None);
         }
-        let Ok(json) = serde_json::from_str::<Value>(data) else { return Ok(None) };
+        let Ok(json) = serde_json::from_str::<Value>(data) else {
+            return Ok(None);
+        };
         let kind = json["type"].as_str().or(event).unwrap_or("").to_string();
         let text = |v: &Value| v.as_str().filter(|s| !s.is_empty()).map(String::from);
-        let error = |v: &Value| Err(v["message"].as_str().unwrap_or("the model returned an error").to_string());
+        let error = |v: &Value| {
+            Err(v["message"]
+                .as_str()
+                .unwrap_or("the model returned an error")
+                .to_string())
+        };
         let n = |v: &Value| v.as_u64().unwrap_or(0);
         match self.wire {
             Wire::Anthropic => match kind.as_str() {
@@ -727,7 +899,10 @@ impl Decoder {
                     let delta = &json["delta"];
                     match delta["type"].as_str() {
                         Some("input_json_delta") => {
-                            let partial = delta["partial_json"].as_str().unwrap_or_default().to_string();
+                            let partial = delta["partial_json"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .to_string();
                             self.call(n(&json["index"])).arguments.push_str(&partial);
                         }
                         _ => return Ok(self.text(text(&delta["text"]))),
@@ -784,15 +959,20 @@ impl Decoder {
                     call.id = item["call_id"].as_str().unwrap_or_default().into();
                     call.name = item["name"].as_str().unwrap_or_default().into();
                     if done {
-                        call.complete = Some(parse_arguments(item["arguments"].as_str().unwrap_or_default()));
+                        call.complete = Some(parse_arguments(
+                            item["arguments"].as_str().unwrap_or_default(),
+                        ));
                     }
                 }
                 "response.output_item.done" if json["item"]["type"] == "reasoning" => {
-                    self.reasoning.push((n(&json["output_index"]), json["item"].clone()));
+                    self.reasoning
+                        .push((n(&json["output_index"]), json["item"].clone()));
                 }
                 "response.function_call_arguments.delta" => {
                     let delta = json["delta"].as_str().unwrap_or_default().to_string();
-                    self.call(n(&json["output_index"])).arguments.push_str(&delta);
+                    self.call(n(&json["output_index"]))
+                        .arguments
+                        .push_str(&delta);
                 }
                 "response.completed" | "response.incomplete" => {
                     let response = &json["response"];
@@ -805,13 +985,22 @@ impl Decoder {
                     // The final output repeats every item: fill in reasoning
                     // whose `done` event was missed or came without its
                     // encrypted content.
-                    for (index, item) in response["output"].as_array().into_iter().flatten().enumerate() {
+                    for (index, item) in response["output"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .enumerate()
+                    {
                         if item["type"] != "reasoning" {
                             continue;
                         }
                         let index = index as u64;
                         match self.reasoning.iter_mut().find(|(i, _)| *i == index) {
-                            Some((_, kept)) if kept.get("encrypted_content").is_none_or(Value::is_null) => *kept = item.clone(),
+                            Some((_, kept))
+                                if kept.get("encrypted_content").is_none_or(Value::is_null) =>
+                            {
+                                *kept = item.clone()
+                            }
                             Some(_) => {}
                             None => self.reasoning.push((index, item.clone())),
                         }
@@ -839,7 +1028,11 @@ impl Decoder {
             .reasoning
             .into_iter()
             .map(|(_, item)| item)
-            .filter(|item| item["encrypted_content"].as_str().is_some_and(|c| !c.is_empty()))
+            .filter(|item| {
+                item["encrypted_content"]
+                    .as_str()
+                    .is_some_and(|c| !c.is_empty())
+            })
             .collect();
         self.calls.sort_by_key(|c| c.index);
         self.reply.calls = self
@@ -849,7 +1042,11 @@ impl Decoder {
             .enumerate()
             .map(|(i, c)| ToolCall {
                 // Every call needs an id to pair it with its result.
-                id: if c.id.is_empty() { format!("call_{i}") } else { c.id },
+                id: if c.id.is_empty() {
+                    format!("call_{i}")
+                } else {
+                    c.id
+                },
                 arguments: c.complete.unwrap_or_else(|| parse_arguments(&c.arguments)),
                 name: c.name,
             })
@@ -861,8 +1058,15 @@ impl Decoder {
 /// The useful part of an error body, without echoing anything huge.
 fn error_text(body: &str) -> String {
     let message = serde_json::from_str::<Value>(body).ok().and_then(|json| {
-        let candidates = [&json["error"]["message"], &json["message"], &json["detail"], &json["error"]];
-        candidates.into_iter().find_map(|v| v.as_str().map(String::from))
+        let candidates = [
+            &json["error"]["message"],
+            &json["message"],
+            &json["detail"],
+            &json["error"],
+        ];
+        candidates
+            .into_iter()
+            .find_map(|v| v.as_str().map(String::from))
     });
     let text = message.unwrap_or_else(|| body.trim().to_string());
     text.chars().take(300).collect()
@@ -922,14 +1126,26 @@ mod tests {
             Item::User("Where did I write about kilns?".into()),
             Item::Assistant {
                 text: "Searching.".into(),
-                calls: vec![ToolCall { id: "c1".into(), name: "search".into(), arguments: json!({ "query": "kiln" }) }],
+                calls: vec![ToolCall {
+                    id: "c1".into(),
+                    name: "search".into(),
+                    arguments: json!({ "query": "kiln" }),
+                }],
             },
-            Item::Results(vec![ToolResult { call_id: "c1".into(), content: "posts/kiln.md".into(), is_error: false }]),
+            Item::Results(vec![ToolResult {
+                call_id: "c1".into(),
+                content: "posts/kiln.md".into(),
+                is_error: false,
+            }]),
         ]
     }
 
     fn tool() -> ToolSpec {
-        ToolSpec { name: "search", description: "Search.", parameters: json!({ "type": "object" }) }
+        ToolSpec {
+            name: "search",
+            description: "Search.",
+            parameters: json!({ "type": "object" }),
+        }
     }
 
     fn exchange<'a>(items: &'a [Item], tools: &'a [ToolSpec]) -> Exchange<'a> {
@@ -955,63 +1171,126 @@ mod tests {
         events.extend(sse.push(rest));
         assert_eq!(
             events,
-            vec![(Some("a".into()), "{\"t\":\"ké\"}".into()), (None, "x\ny".into())]
+            vec![
+                (Some("a".into()), "{\"t\":\"ké\"}".into()),
+                (None, "x\ny".into())
+            ]
         );
     }
 
     #[test]
     fn decodes_anthropic_text_tools_and_usage() {
-        let (reply, text) = decode(Wire::Anthropic, &[
-            r#"{"type":"message_start","message":{"usage":{"input_tokens":12,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":1}}}"#,
-            r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
-            r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me look."}}"#,
-            r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"search","input":{}}}"#,
-            r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\":"}}"#,
-            r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"kiln\"}"}}"#,
-            r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":30}}"#,
-            r#"{"type":"message_stop"}"#,
-        ]);
+        let (reply, text) = decode(
+            Wire::Anthropic,
+            &[
+                r#"{"type":"message_start","message":{"usage":{"input_tokens":12,"cache_read_input_tokens":900,"cache_creation_input_tokens":40,"output_tokens":1}}}"#,
+                r#"{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+                r#"{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me look."}}"#,
+                r#"{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"search","input":{}}}"#,
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\":"}}"#,
+                r#"{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"\"kiln\"}"}}"#,
+                r#"{"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":30}}"#,
+                r#"{"type":"message_stop"}"#,
+            ],
+        );
         assert_eq!(text, "Let me look.");
-        assert_eq!(reply.calls, vec![ToolCall { id: "toolu_1".into(), name: "search".into(), arguments: json!({ "query": "kiln" }) }]);
-        assert_eq!(reply.usage, Usage { input: 12, output: 30, cache_read: 900, cache_write: 40 });
+        assert_eq!(
+            reply.calls,
+            vec![ToolCall {
+                id: "toolu_1".into(),
+                name: "search".into(),
+                arguments: json!({ "query": "kiln" })
+            }]
+        );
+        assert_eq!(
+            reply.usage,
+            Usage {
+                input: 12,
+                output: 30,
+                cache_read: 900,
+                cache_write: 40
+            }
+        );
         assert_eq!(reply.stop_reason.as_deref(), Some("tool_use"));
         let err = r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;
-        assert_eq!(Decoder::new(Wire::Anthropic).feed(None, err), Err("Overloaded".into()));
+        assert_eq!(
+            Decoder::new(Wire::Anthropic).feed(None, err),
+            Err("Overloaded".into())
+        );
     }
 
     #[test]
     fn decodes_openai_chat_parallel_tool_calls_and_usage() {
-        let (reply, text) = decode(Wire::OpenAiChat, &[
-            r#"{"choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}"#,
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"read","arguments":"{\"pa"}}]}}]}"#,
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"b","type":"function","function":{"name":"list","arguments":"{}"}}]}}]}"#,
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\":\"x.md\"}"}}]}}]}"#,
-            r#"{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#,
-            r#"{"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":800}}}"#,
-            "[DONE]",
-        ]);
+        let (reply, text) = decode(
+            Wire::OpenAiChat,
+            &[
+                r#"{"choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}"#,
+                r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"read","arguments":"{\"pa"}}]}}]}"#,
+                r#"{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"b","type":"function","function":{"name":"list","arguments":"{}"}}]}}]}"#,
+                r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\":\"x.md\"}"}}]}}]}"#,
+                r#"{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}"#,
+                r#"{"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":20,"prompt_tokens_details":{"cached_tokens":800}}}"#,
+                "[DONE]",
+            ],
+        );
         assert_eq!(text, "Hi");
         assert_eq!(reply.calls.len(), 2);
-        assert_eq!(reply.calls[0], ToolCall { id: "a".into(), name: "read".into(), arguments: json!({ "path": "x.md" }) });
+        assert_eq!(
+            reply.calls[0],
+            ToolCall {
+                id: "a".into(),
+                name: "read".into(),
+                arguments: json!({ "path": "x.md" })
+            }
+        );
         assert_eq!(reply.calls[1].name, "list");
-        assert_eq!(reply.usage, Usage { input: 200, output: 20, cache_read: 800, cache_write: 0 });
+        assert_eq!(
+            reply.usage,
+            Usage {
+                input: 200,
+                output: 20,
+                cache_read: 800,
+                cache_write: 0
+            }
+        );
         assert_eq!(reply.stop_reason.as_deref(), Some("tool_calls"));
     }
 
     #[test]
     fn decodes_codex_function_calls_and_usage() {
-        let (reply, text) = decode(Wire::Codex, &[
-            r#"{"type":"response.output_text.delta","delta":"Hi"}"#,
-            r#"{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","call_id":"call_9","name":"search","arguments":""}}"#,
-            r#"{"type":"response.function_call_arguments.delta","output_index":1,"delta":"{\"query\":\"ki"}"#,
-            r#"{"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","call_id":"call_9","name":"search","arguments":"{\"query\":\"kiln\"}"}}"#,
-            r#"{"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":500,"input_tokens_details":{"cached_tokens":400},"output_tokens":9}}}"#,
-        ]);
+        let (reply, text) = decode(
+            Wire::Codex,
+            &[
+                r#"{"type":"response.output_text.delta","delta":"Hi"}"#,
+                r#"{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","call_id":"call_9","name":"search","arguments":""}}"#,
+                r#"{"type":"response.function_call_arguments.delta","output_index":1,"delta":"{\"query\":\"ki"}"#,
+                r#"{"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","call_id":"call_9","name":"search","arguments":"{\"query\":\"kiln\"}"}}"#,
+                r#"{"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":500,"input_tokens_details":{"cached_tokens":400},"output_tokens":9}}}"#,
+            ],
+        );
         assert_eq!(text, "Hi");
-        assert_eq!(reply.calls, vec![ToolCall { id: "call_9".into(), name: "search".into(), arguments: json!({ "query": "kiln" }) }]);
-        assert_eq!(reply.usage, Usage { input: 100, output: 9, cache_read: 400, cache_write: 0 });
+        assert_eq!(
+            reply.calls,
+            vec![ToolCall {
+                id: "call_9".into(),
+                name: "search".into(),
+                arguments: json!({ "query": "kiln" })
+            }]
+        );
+        assert_eq!(
+            reply.usage,
+            Usage {
+                input: 100,
+                output: 9,
+                cache_read: 400,
+                cache_write: 0
+            }
+        );
         let failed = r#"{"type":"response.failed","response":{"error":{"message":"nope"}}}"#;
-        assert_eq!(Decoder::new(Wire::Codex).feed(None, failed), Err("nope".into()));
+        assert_eq!(
+            Decoder::new(Wire::Codex).feed(None, failed),
+            Err("nope".into())
+        );
     }
 
     #[test]
@@ -1023,7 +1302,11 @@ mod tests {
             r#"{"type":"response.output_item.done","output_index":1,"item":{"type":"function_call","call_id":"call_1","name":"search","arguments":"{}"}}"#,
             r#"{"type":"response.completed","response":{"usage":{"input_tokens":5,"output_tokens":1}}}"#,
         ]);
-        assert_eq!(reply.reasoning, vec![reasoning.clone()], "kept verbatim, id and summary included");
+        assert_eq!(
+            reply.reasoning,
+            vec![reasoning.clone()],
+            "kept verbatim, id and summary included"
+        );
 
         // A `done` without the encrypted content is filled in from the final
         // output; an item that never gets it is dropped (it can't be replayed).
@@ -1031,10 +1314,14 @@ mod tests {
         let full = json!({ "type": "reasoning", "id": "rs_2", "summary": [], "encrypted_content": "gBBB" });
         let lost = json!({ "type": "reasoning", "id": "rs_3", "summary": [] });
         let completed = json!({ "type": "response.completed", "response": { "output": [full, { "type": "message" }, lost], "usage": {} } });
-        let (reply, _) = decode(Wire::Codex, &[
-            &json!({ "type": "response.output_item.done", "output_index": 0, "item": bare }).to_string(),
-            &completed.to_string(),
-        ]);
+        let (reply, _) = decode(
+            Wire::Codex,
+            &[
+                &json!({ "type": "response.output_item.done", "output_index": 0, "item": bare })
+                    .to_string(),
+                &completed.to_string(),
+            ],
+        );
         assert_eq!(reply.reasoning, vec![full]);
     }
 
@@ -1044,13 +1331,31 @@ mod tests {
         let mut items = sample_items();
         items.insert(1, Item::Reasoning(vec![reasoning.clone()]));
         let tools = [tool()];
-        let body = codex_body(&Exchange { reasoning: Some("high"), ..exchange(&items, &tools) });
+        let body = codex_body(&Exchange {
+            reasoning: Some("high"),
+            ..exchange(&items, &tools)
+        });
         assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
-        assert_eq!(body["reasoning"], json!({ "effort": "high", "summary": "auto" }));
+        assert_eq!(
+            body["reasoning"],
+            json!({ "effort": "high", "summary": "auto" })
+        );
         assert_eq!(body["store"], false);
         let input = body["input"].as_array().unwrap();
-        let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap_or("user")).collect();
-        assert_eq!(kinds, ["user", "reasoning", "message", "function_call", "function_call_output"]);
+        let kinds: Vec<_> = input
+            .iter()
+            .map(|i| i["type"].as_str().unwrap_or("user"))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "user",
+                "reasoning",
+                "message",
+                "function_call",
+                "function_call_output"
+            ]
+        );
         assert_eq!(input[1], reasoning);
         // The other wires never see it.
         let openai = openai_body("openai", &exchange(&items, &tools));
@@ -1063,10 +1368,13 @@ mod tests {
 
     #[test]
     fn malformed_arguments_are_kept_as_a_string() {
-        let (reply, _) = decode(Wire::OpenAiChat, &[
-            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"read","arguments":"{oops"}}]}}]}"#,
-            "[DONE]",
-        ]);
+        let (reply, _) = decode(
+            Wire::OpenAiChat,
+            &[
+                r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"read","arguments":"{oops"}}]}}]}"#,
+                "[DONE]",
+            ],
+        );
         assert_eq!(reply.calls[0].arguments, json!("{oops"));
         assert_eq!(reply.calls[0].id, "call_0");
     }
@@ -1095,12 +1403,22 @@ mod tests {
         let body = openai_body("openai", &exchange(&items, &tools));
         let messages = body["messages"].as_array().unwrap();
         assert_eq!(messages[0]["role"], "system");
-        assert_eq!(messages[2]["tool_calls"][0]["function"]["arguments"], r#"{"query":"kiln"}"#);
-        assert_eq!(messages[3], json!({ "role": "tool", "tool_call_id": "c1", "content": "posts/kiln.md" }));
+        assert_eq!(
+            messages[2]["tool_calls"][0]["function"]["arguments"],
+            r#"{"query":"kiln"}"#
+        );
+        assert_eq!(
+            messages[3],
+            json!({ "role": "tool", "tool_call_id": "c1", "content": "posts/kiln.md" })
+        );
         assert_eq!(body["tools"][0]["function"]["name"], "search");
         assert_eq!(body["stream_options"]["include_usage"], true);
         assert_eq!(body["prompt_cache_key"], "kin");
-        assert!(openai_body("zai", &exchange(&items, &tools)).get("prompt_cache_key").is_none());
+        assert!(
+            openai_body("zai", &exchange(&items, &tools))
+                .get("prompt_cache_key")
+                .is_none()
+        );
     }
 
     #[test]
@@ -1111,7 +1429,10 @@ mod tests {
         let input = body["input"].as_array().unwrap();
         assert_eq!(input[2]["type"], "function_call");
         assert_eq!(input[2]["call_id"], "c1");
-        assert_eq!(input[3], json!({ "type": "function_call_output", "call_id": "c1", "output": "posts/kiln.md" }));
+        assert_eq!(
+            input[3],
+            json!({ "type": "function_call_output", "call_id": "c1", "output": "posts/kiln.md" })
+        );
         assert_eq!(body["tools"][0]["type"], "function");
         assert_eq!(body["instructions"], "sys");
     }
@@ -1120,16 +1441,28 @@ mod tests {
     fn opencode_sessions_are_stable_per_prefix() {
         let items = sample_items();
         let a = exchange(&items, &[]);
-        assert_eq!(opencode_session(&a), opencode_session(&exchange(&items[..1], &[])));
+        assert_eq!(
+            opencode_session(&a),
+            opencode_session(&exchange(&items[..1], &[]))
+        );
         assert!(opencode_session(&a).starts_with("ses_"));
-        let other = Exchange { system: "another brief", ..a.clone() };
+        let other = Exchange {
+            system: "another brief",
+            ..a.clone()
+        };
         assert_ne!(opencode_session(&a), opencode_session(&other));
     }
 
     #[test]
     fn error_text_prefers_the_message() {
-        assert_eq!(error_text(r#"{"error":{"message":"bad model"}}"#), "bad model");
-        assert_eq!(error_text(r#"{"detail":"Unsupported parameter"}"#), "Unsupported parameter");
+        assert_eq!(
+            error_text(r#"{"error":{"message":"bad model"}}"#),
+            "bad model"
+        );
+        assert_eq!(
+            error_text(r#"{"detail":"Unsupported parameter"}"#),
+            "Unsupported parameter"
+        );
         assert_eq!(error_text("  plain  "), "plain");
     }
 
@@ -1165,7 +1498,11 @@ mod tests {
                     if let Some(end) = text.find("\r\n\r\n") {
                         let length = text[..end]
                             .lines()
-                            .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap()))
+                            .find_map(|l| {
+                                l.to_ascii_lowercase()
+                                    .strip_prefix("content-length:")
+                                    .map(|v| v.trim().parse::<usize>().unwrap())
+                            })
                             .unwrap_or(0);
                         if request.len() >= end + 4 + length {
                             break;
@@ -1179,15 +1516,23 @@ mod tests {
                     match reply {
                         Reply_::Status(code, after) => {
                             let body = r#"{"error":{"message":"try later"}}"#;
-                            let after = after.map(|a| format!("retry-after: {a}\r\n")).unwrap_or_default();
-                            let head = format!("HTTP/1.1 {code} X\r\ncontent-type: application/json\r\n{after}content-length: {}\r\nconnection: close\r\n\r\n{body}", body.len());
+                            let after = after
+                                .map(|a| format!("retry-after: {a}\r\n"))
+                                .unwrap_or_default();
+                            let head = format!(
+                                "HTTP/1.1 {code} X\r\ncontent-type: application/json\r\n{after}content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                                body.len()
+                            );
                             socket.write_all(head.as_bytes()).await.unwrap();
                         }
                         Reply_::Stream { events, stall } => {
                             let head = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n";
                             socket.write_all(head.as_bytes()).await.unwrap();
                             for event in events {
-                                socket.write_all(format!("data: {event}\n\n").as_bytes()).await.unwrap();
+                                socket
+                                    .write_all(format!("data: {event}\n\n").as_bytes())
+                                    .await
+                                    .unwrap();
                             }
                             if stall {
                                 tokio::time::sleep(Duration::from_secs(30)).await;
@@ -1207,7 +1552,10 @@ mod tests {
 
     fn answer(text: &str) -> Reply_ {
         let stop = json!({ "choices": [{ "delta": {}, "finish_reason": "stop" }] }).to_string();
-        Reply_::Stream { events: vec![text_event(text), stop, "[DONE]".into()], stall: false }
+        Reply_::Stream {
+            events: vec![text_event(text), stop, "[DONE]".into()],
+            stall: false,
+        }
     }
 
     const QUICK: Patience = Patience {
@@ -1220,21 +1568,36 @@ mod tests {
     /// Sends one exchange to `base` (an OpenAI-compatible local server);
     /// returns the outcome, the streamed text and how many requests arrived.
     fn call(script: Vec<Reply_>) -> (Result<Reply>, String, usize) {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         rt.block_on(async {
             let (base, count) = mock(script).await;
             let items = vec![Item::User("hi".into())];
             let ex = exchange(&items, &[]);
-            let endpoint = Endpoint { provider: provider("ollama").unwrap(), base_url: &base, auth: None };
+            let endpoint = Endpoint {
+                provider: provider("ollama").unwrap(),
+                base_url: &base,
+                auth: None,
+            };
             let mut text = String::new();
             let result = send_with(endpoint, &ex, |t| text.push_str(t), QUICK).await;
-            (result, text, count.load(std::sync::atomic::Ordering::SeqCst))
+            (
+                result,
+                text,
+                count.load(std::sync::atomic::Ordering::SeqCst),
+            )
         })
     }
 
     #[test]
     fn rate_limits_and_server_errors_are_retried_with_backoff() {
-        let (result, text, requests) = call(vec![Reply_::Status(429, Some("0")), Reply_::Status(503, None), answer("Hello.")]);
+        let (result, text, requests) = call(vec![
+            Reply_::Status(429, Some("0")),
+            Reply_::Status(503, None),
+            answer("Hello."),
+        ]);
         assert_eq!(result.unwrap().text, "Hello.");
         assert_eq!(text, "Hello.");
         assert_eq!(requests, 3);
@@ -1260,7 +1623,13 @@ mod tests {
 
     #[test]
     fn a_stalled_stream_times_out_and_is_retried_before_any_output() {
-        let (result, text, requests) = call(vec![Reply_::Stream { events: vec![], stall: true }, answer("Back.")]);
+        let (result, text, requests) = call(vec![
+            Reply_::Stream {
+                events: vec![],
+                stall: true,
+            },
+            answer("Back."),
+        ]);
         assert_eq!(result.unwrap().text, "Back.");
         assert_eq!(text, "Back.");
         assert_eq!(requests, 2);
@@ -1268,7 +1637,10 @@ mod tests {
 
     #[test]
     fn a_stream_that_stalls_after_output_fails_without_repeating_it() {
-        let stalled = Reply_::Stream { events: vec![text_event("Half")], stall: true };
+        let stalled = Reply_::Stream {
+            events: vec![text_event("Half")],
+            stall: true,
+        };
         let (result, text, requests) = call(vec![stalled, answer("Again")]);
         assert!(result.unwrap_err().contains("stopped responding"));
         assert_eq!(text, "Half");
@@ -1277,14 +1649,21 @@ mod tests {
 
     #[test]
     fn a_refused_connection_is_retried_then_fails() {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
         let base = rt.block_on(async {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             format!("http://{}", listener.local_addr().unwrap())
         });
         let items = vec![Item::User("hi".into())];
         let ex = exchange(&items, &[]);
-        let endpoint = Endpoint { provider: provider("ollama").unwrap(), base_url: &base, auth: None };
+        let endpoint = Endpoint {
+            provider: provider("ollama").unwrap(),
+            base_url: &base,
+            auth: None,
+        };
         let started = std::time::Instant::now();
         let result = rt.block_on(send_with(endpoint, &ex, |_| {}, QUICK));
         assert!(result.unwrap_err().starts_with("Ollama"));

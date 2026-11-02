@@ -19,9 +19,13 @@ pub(crate) fn endpoint(url: &Url) -> Option<Url> {
     let host = url.host_str()?.trim_start_matches("www.");
     let endpoint = match host {
         "youtube.com" | "m.youtube.com" | "youtu.be" => "https://www.youtube.com/oembed",
-        "x.com" | "mobile.x.com" | "twitter.com" | "mobile.twitter.com" => "https://publish.twitter.com/oembed",
+        "x.com" | "mobile.x.com" | "twitter.com" | "mobile.twitter.com" => {
+            "https://publish.twitter.com/oembed"
+        }
         "bsky.app" => "https://embed.bsky.app/oembed",
-        "tiktok.com" | "vm.tiktok.com" | "vt.tiktok.com" | "m.tiktok.com" => "https://www.tiktok.com/oembed",
+        "tiktok.com" | "vm.tiktok.com" | "vt.tiktok.com" | "m.tiktok.com" => {
+            "https://www.tiktok.com/oembed"
+        }
         "vimeo.com" | "player.vimeo.com" => "https://vimeo.com/api/oembed.json",
         _ => return None,
     };
@@ -44,7 +48,10 @@ pub(crate) fn merge(draft: &mut Draft, embed: OEmbed) {
     super::fill(&mut draft.author, field(embed.author_name));
     super::fill(&mut draft.site, field(embed.provider_name));
     if draft.image_url.is_none() {
-        draft.image_url = embed.thumbnail_url.and_then(|s| draft.final_url.join(&s).ok()).filter(allowed_url);
+        draft.image_url = embed
+            .thumbnail_url
+            .and_then(|s| draft.final_url.join(&s).ok())
+            .filter(allowed_url);
     }
     if let Some(html) = embed.html {
         let text = extract::fragment(&html);

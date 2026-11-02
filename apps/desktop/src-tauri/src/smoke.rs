@@ -47,6 +47,9 @@ pub fn app_ready(app: AppHandle, rendered: usize) -> bool {
 #[cfg(not(feature = "headless"))]
 pub fn navigation(url: &tauri::Url, allowed: bool) {
     if enabled() {
-        eprintln!("smoke: navigation to {url} {}", if allowed { "allowed" } else { "blocked" });
+        eprintln!(
+            "smoke: navigation to {url} {}",
+            if allowed { "allowed" } else { "blocked" }
+        );
     }
 }

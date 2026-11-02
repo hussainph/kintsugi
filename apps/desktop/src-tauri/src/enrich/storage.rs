@@ -39,14 +39,15 @@ pub struct VaultStore;
 
 impl Store for VaultStore {
     fn pending(&self, root: &Path) -> Result<Vec<Clip>> {
-        let pending = vault::clips_needing_enrichment(root).map_err(|_| "could not list clips for enrichment")?;
+        let pending = vault::clips_needing_enrichment(root)
+            .map_err(|_| "could not list clips for enrichment")?;
         Ok(pending
             .into_iter()
             .filter_map(|summary| {
                 // A clip can be edited, finished or trashed between listing and read.
-                vault::clip_read(root, &summary.path)
-                    .ok()
-                    .filter(|clip| clip.summary.enriched.is_none() && clip.summary.enrich_error.is_none())
+                vault::clip_read(root, &summary.path).ok().filter(|clip| {
+                    clip.summary.enriched.is_none() && clip.summary.enrich_error.is_none()
+                })
             })
             .collect())
     }
@@ -57,11 +58,13 @@ impl Store for VaultStore {
 
     fn apply(&self, root: &Path, clip: &Clip, update: &Update) -> Result<()> {
         let baseline = &clip.summary;
-        let current = vault::clip_read(root, &baseline.path).map_err(|_| "could not read clip for enrichment")?;
+        let current = vault::clip_read(root, &baseline.path)
+            .map_err(|_| "could not read clip for enrichment")?;
         if current.summary.enriched.is_some() {
             return Ok(());
         }
-        let kind: ClipKind = serde_json::from_value(serde_json::json!(update.kind)).map_err(|_| "invalid enrichment kind")?;
+        let kind: ClipKind = serde_json::from_value(serde_json::json!(update.kind))
+            .map_err(|_| "invalid enrichment kind")?;
         let mut tags = baseline.tags.clone();
         for tag in &update.tags {
             if !tags.contains(tag) {
@@ -71,17 +74,37 @@ impl Store for VaultStore {
         let patch = ClipUpdate {
             title: update.title.clone(),
             // A saved PDF or EPUB stays a document or book whatever the model says.
-            kind: (current.summary.kind == baseline.kind && baseline.file.is_none()).then_some(kind),
-            site: current.summary.site.is_none().then(|| update.site.clone()).flatten(),
-            author: current.summary.author.is_none().then(|| update.author.clone()).flatten(),
+            kind: (current.summary.kind == baseline.kind && baseline.file.is_none())
+                .then_some(kind),
+            site: current
+                .summary
+                .site
+                .is_none()
+                .then(|| update.site.clone())
+                .flatten(),
+            author: current
+                .summary
+                .author
+                .is_none()
+                .then(|| update.author.clone())
+                .flatten(),
             tags: Some(tags),
             summary: Some(update.summary.clone()),
             source: update.source_text.clone(),
             // Only while the writer hasn't changed the link since capture.
-            url: update.url.clone().filter(|_| current.summary.url == baseline.url),
+            url: update
+                .url
+                .clone()
+                .filter(|_| current.summary.url == baseline.url),
             // The passage these describe is the one enrichment read.
-            quote_by: update.quote_by.clone().filter(|_| current.text == clip.text),
-            quote_link: update.quote_link.clone().filter(|_| current.text == clip.text),
+            quote_by: update
+                .quote_by
+                .clone()
+                .filter(|_| current.text == clip.text),
+            quote_link: update
+                .quote_link
+                .clone()
+                .filter(|_| current.text == clip.text),
             enriched: Some(chrono::Local::now().format("%Y-%m-%dT%H:%M").to_string()),
             enrich_error: Some(String::new()),
             // No note or image patch: own text is inaccessible here, and
@@ -104,7 +127,8 @@ impl Store for VaultStore {
 
     fn fail(&self, root: &Path, clip: &Clip, message: &str) -> Result<()> {
         let baseline = &clip.summary;
-        let current = vault::clip_read(root, &baseline.path).map_err(|_| "could not read clip for enrichment")?;
+        let current = vault::clip_read(root, &baseline.path)
+            .map_err(|_| "could not read clip for enrichment")?;
         if current.summary.enriched.is_some() {
             return Ok(());
         }
@@ -290,7 +314,10 @@ mod tests {
         .unwrap();
         let before = vault::clip_read(root, &path).unwrap();
         assert_eq!(before.summary.kind, ClipKind::Podcast);
-        let long = format!("{}\n\n[1:05](<https://media.example.com/idea.mp3#t=65>) **Ken:** Gold makes the crack visible.", "Talk.\n\n".repeat(5_000));
+        let long = format!(
+            "{}\n\n[1:05](<https://media.example.com/idea.mp3#t=65>) **Ken:** Gold makes the crack visible.",
+            "Talk.\n\n".repeat(5_000)
+        );
         let enriched = Update {
             kind: "podcast".into(),
             url: Some("https://media.example.com/idea.mp3".into()),
@@ -301,13 +328,25 @@ mod tests {
         };
         VaultStore.apply(root, &before, &enriched).unwrap();
         let after = vault::clip_read(root, &path).unwrap();
-        assert_eq!(after.summary.url.as_deref(), Some("https://media.example.com/idea.mp3"));
+        assert_eq!(
+            after.summary.url.as_deref(),
+            Some("https://media.example.com/idea.mp3")
+        );
         assert_eq!(after.summary.quote_by.as_deref(), Some("Ken"));
-        assert_eq!(after.summary.quote_link.as_deref(), Some("https://media.example.com/idea.mp3#t=65"));
+        assert_eq!(
+            after.summary.quote_link.as_deref(),
+            Some("https://media.example.com/idea.mp3#t=65")
+        );
         assert_eq!(after.summary.kind, ClipKind::Podcast);
         // The whole transcript is kept beside the clip; the clip shows an excerpt.
         assert!(after.source.unwrap().chars().count() <= 20_000);
-        assert_eq!(vault::clip_full_source(root, &path).unwrap().unwrap().trim_end(), long);
+        assert_eq!(
+            vault::clip_full_source(root, &path)
+                .unwrap()
+                .unwrap()
+                .trim_end(),
+            long
+        );
 
         // A writer who changed the link or the passage keeps their version.
         let path = capture(root, "Before.");
@@ -315,13 +354,20 @@ mod tests {
         vault::clip_update(
             root,
             &path,
-            &ClipUpdate { note: Some("> Another passage".into()), url: Some("https://mine.example/".into()), ..ClipUpdate::default() },
+            &ClipUpdate {
+                note: Some("> Another passage".into()),
+                url: Some("https://mine.example/".into()),
+                ..ClipUpdate::default()
+            },
         )
         .unwrap();
         VaultStore.apply(root, &before, &enriched).unwrap();
         let after = vault::clip_read(root, &path).unwrap();
         assert_eq!(after.summary.url.as_deref(), Some("https://mine.example/"));
-        assert_eq!((after.summary.quote_by, after.summary.quote_link), (None, None));
+        assert_eq!(
+            (after.summary.quote_by, after.summary.quote_link),
+            (None, None)
+        );
     }
 
     #[test]
@@ -337,7 +383,11 @@ mod tests {
         })
         .unwrap();
         assert!(VaultStore.apply(dir.path(), &before, &update()).is_err());
-        assert!(VaultStore.fail(dir.path(), &before, "page fetch timed out").is_err());
+        assert!(
+            VaultStore
+                .fail(dir.path(), &before, "page fetch timed out")
+                .is_err()
+        );
         assert!(!dir.path().join(path).exists());
     }
 
@@ -346,11 +396,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = capture(dir.path(), "My own note.");
         let before = vault::clip_read(dir.path(), &path).unwrap();
-        VaultStore.fail(dir.path(), &before, "page fetch timed out").unwrap();
+        VaultStore
+            .fail(dir.path(), &before, "page fetch timed out")
+            .unwrap();
         let after = vault::clip_read(dir.path(), &path).unwrap();
         assert_eq!(after.text, before.text);
         assert_eq!(after.source, before.source);
-        assert_eq!(after.summary.enrich_error.as_deref(), Some("page fetch timed out"));
+        assert_eq!(
+            after.summary.enrich_error.as_deref(),
+            Some("page fetch timed out")
+        );
         assert!(VaultStore.pending(dir.path()).unwrap().is_empty());
     }
 }

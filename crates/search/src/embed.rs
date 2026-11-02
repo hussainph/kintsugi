@@ -29,14 +29,24 @@ pub struct Model2Vec {
 impl Model2Vec {
     /// Loads a verified model folder (see [`ensure`]).
     pub fn load(dir: &Path, id: &str) -> Result<Self> {
-        let read = |name: &str| fs::read(dir.join(name)).map_err(|_| format!("embedding model is missing {name}"));
-        Self::from_bytes(id, &read("tokenizer.json")?, &read("model.safetensors")?, &read("config.json")?)
+        let read = |name: &str| {
+            fs::read(dir.join(name)).map_err(|_| format!("embedding model is missing {name}"))
+        };
+        Self::from_bytes(
+            id,
+            &read("tokenizer.json")?,
+            &read("model.safetensors")?,
+            &read("config.json")?,
+        )
     }
 
     pub fn from_bytes(id: &str, tokenizer: &[u8], model: &[u8], config: &[u8]) -> Result<Self> {
         let model = StaticModel::from_bytes(tokenizer, model, config, Some(true))
             .map_err(|e| format!("could not load the embedding model: {e}"))?;
-        Ok(Model2Vec { id: id.into(), model })
+        Ok(Model2Vec {
+            id: id.into(),
+            model,
+        })
     }
 }
 
@@ -78,12 +88,22 @@ pub const POTION_BASE_8M: ModelSpec = ModelSpec {
     repo: "minishlab/potion-base-8M",
     revision: "bf8b056651a2c21b8d2565580b8569da283cab23",
     files: &[
-        ModelFile { name: "config.json", size: 202, check: Check::GitBlob("7df26884a1aaaefbd7a30b37c32a25477cfb4c0e") },
-        ModelFile { name: "tokenizer.json", size: 683_666, check: Check::GitBlob("3e511f68ccf95c33b9ffd214a94c6d25bdb3034f") },
+        ModelFile {
+            name: "config.json",
+            size: 202,
+            check: Check::GitBlob("7df26884a1aaaefbd7a30b37c32a25477cfb4c0e"),
+        },
+        ModelFile {
+            name: "tokenizer.json",
+            size: 683_666,
+            check: Check::GitBlob("3e511f68ccf95c33b9ffd214a94c6d25bdb3034f"),
+        },
         ModelFile {
             name: "model.safetensors",
             size: 30_236_760,
-            check: Check::Sha256("f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2"),
+            check: Check::Sha256(
+                "f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2",
+            ),
         },
     ],
 };
@@ -100,13 +120,18 @@ impl ModelSpec {
     }
 
     fn url(&self, file: &ModelFile) -> String {
-        format!("https://huggingface.co/{}/resolve/{}/{}", self.repo, self.revision, file.name)
+        format!(
+            "https://huggingface.co/{}/resolve/{}/{}",
+            self.repo, self.revision, file.name
+        )
     }
 
     /// True when every file is present and matches its pinned hash.
     pub fn verified(&self, models: &Path) -> bool {
         let dir = self.dir(models);
-        self.files.iter().all(|file| fs::read(dir.join(file.name)).is_ok_and(|bytes| file.matches(&bytes)))
+        self.files
+            .iter()
+            .all(|file| fs::read(dir.join(file.name)).is_ok_and(|bytes| file.matches(&bytes)))
     }
 
     /// Loads the model, downloading any missing or damaged file first.
@@ -202,7 +227,13 @@ pub fn fixture(groups: &[&[&str]]) -> Model2Vec {
     let mut safetensors = (header.len() as u64).to_le_bytes().to_vec();
     safetensors.extend_from_slice(header.as_bytes());
     safetensors.extend_from_slice(&data);
-    Model2Vec::from_bytes("fixture", tokenizer.to_string().as_bytes(), &safetensors, br#"{"normalize": true}"#).unwrap()
+    Model2Vec::from_bytes(
+        "fixture",
+        tokenizer.to_string().as_bytes(),
+        &safetensors,
+        br#"{"normalize": true}"#,
+    )
+    .unwrap()
 }
 
 #[cfg(test)]
@@ -212,7 +243,12 @@ mod tests {
     #[test]
     fn fixture_model_embeds_synonyms_together() {
         let model = fixture(&[&["sleep", "rest"], &["kiln", "pottery"]]);
-        let v = model.embed(&["Sleep".into(), "rest rest".into(), "pottery".into(), "zebra".into()]);
+        let v = model.embed(&[
+            "Sleep".into(),
+            "rest rest".into(),
+            "pottery".into(),
+            "zebra".into(),
+        ]);
         assert_eq!(v[0], v[1]);
         assert_eq!(v[0], vec![1.0, 0.0]);
         assert_eq!(v[2], vec![0.0, 1.0]);
@@ -221,13 +257,19 @@ mod tests {
 
     #[test]
     fn files_are_checked_by_size_and_hash() {
-        let blob = ModelFile { name: "x", size: 5, check: Check::GitBlob("b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0") };
+        let blob = ModelFile {
+            name: "x",
+            size: 5,
+            check: Check::GitBlob("b6fc4c620b67d95f953a5c1c1230aaab5db5a1b0"),
+        };
         assert!(blob.matches(b"hello"));
         assert!(!blob.matches(b"hellp"));
         let sha = ModelFile {
             name: "y",
             size: 5,
-            check: Check::Sha256("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"),
+            check: Check::Sha256(
+                "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+            ),
         };
         assert!(sha.matches(b"hello") && !sha.matches(b"hello!"));
         assert_eq!(POTION_BASE_8M.id(), "potion-base-8M@bf8b056651a2");

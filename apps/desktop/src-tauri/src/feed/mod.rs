@@ -17,7 +17,13 @@ mod store;
 pub use picked::kin_hook;
 
 use crate::AppHandle;
-use kintsugi_ingest::{self as ingest, CaptureOptions, Engine, Subscription, Target, authors::AuthorAdapter, feed::{FeedAdapter, Podcast}, web::WebAdapter, x::XAdapter};
+use kintsugi_ingest::{
+    self as ingest, CaptureOptions, Engine, Subscription, Target,
+    authors::AuthorAdapter,
+    feed::{FeedAdapter, Podcast},
+    web::WebAdapter,
+    x::XAdapter,
+};
 use kintsugi_vault as vault;
 use presets::{Subscribe, Youtube};
 use serde::{Deserialize, Serialize};
@@ -73,12 +79,21 @@ impl Ingest {
         let web = WebAdapter::new().map_err(|e| e.to_string())?;
         // The same hidden-webview JavaScript fallback clip enrichment uses.
         #[cfg(not(feature = "headless"))]
-        let web = web.with_renderer(Arc::new(crate::enrich::render::WebviewRenderer::new(app.clone())));
+        let web = web.with_renderer(Arc::new(crate::enrich::render::WebviewRenderer::new(
+            app.clone(),
+        )));
         #[cfg(feature = "headless")]
         let _ = app;
         let x = XAdapter::new().map_err(|e| e.to_string())?;
         let books = author_adapter().map_err(|e| e.to_string())?;
-        Ok(Self { engine: Engine::new().with(x).with(feeds.clone()).with(books).with(web), feeds })
+        Ok(Self {
+            engine: Engine::new()
+                .with(x)
+                .with(feeds.clone())
+                .with(books)
+                .with(web),
+            feeds,
+        })
     }
 }
 
@@ -92,7 +107,10 @@ fn author_adapter() -> ingest::Result<AuthorAdapter> {
         .and_then(|b| ingest::Url::parse(&b).ok())
         .filter(|u| u.scheme() == "http" && u.host_str() == Some("127.0.0.1"))
     {
-        return AuthorAdapter::with_endpoints(ingest::authors::AuthorEndpoints::at(base), ingest::api::ApiLimits::default());
+        return AuthorAdapter::with_endpoints(
+            ingest::authors::AuthorEndpoints::at(base),
+            ingest::api::ApiLimits::default(),
+        );
     }
     AuthorAdapter::new()
 }
@@ -112,9 +130,15 @@ fn db_path(app: &AppHandle) -> Result<PathBuf> {
         }
         if crate::config::isolated_dev() {
             // A scratch vault run never touches the real app's feed.
-            return Ok(std::env::temp_dir().join("kintsugi-isolated-dev").join(DB_FILE));
+            return Ok(std::env::temp_dir()
+                .join("kintsugi-isolated-dev")
+                .join(DB_FILE));
         }
-        Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join(DB_FILE))
+        Ok(app
+            .path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join(DB_FILE))
     }
 }
 
@@ -139,7 +163,10 @@ impl Feed {
 
 fn with<T>(app: &AppHandle, f: impl FnOnce(&Store) -> Result<T>) -> Result<T> {
     let feed = app.state::<Feed>();
-    let store = feed.store(app)?.lock().map_err(|_| "the feed database is unavailable".to_string())?;
+    let store = feed
+        .store(app)?
+        .lock()
+        .map_err(|_| "the feed database is unavailable".to_string())?;
     f(&store)
 }
 
@@ -164,16 +191,28 @@ fn source_text(content: Option<String>) -> Option<String> {
 /// feed only carried an excerpt. Tried once per item; the longer text wins.
 async fn full_text(app: &AppHandle, item: &Item) -> Result<()> {
     let feed = app.state::<Feed>();
-    let (content, tried) = with(app, |s| Ok((s.content(item.id)?, s.full_text_tried(item.id)?)))?;
-    let short = content.as_deref().is_none_or(|c| c.chars().count() < EXCERPT_CHARS);
+    let (content, tried) = with(app, |s| {
+        Ok((s.content(item.id)?, s.full_text_tried(item.id)?))
+    })?;
+    let short = content
+        .as_deref()
+        .is_none_or(|c| c.chars().count() < EXCERPT_CHARS);
     // A page change's text is the change, and a book's is its listing: the
     // page behind either link isn't "the rest of the article".
-    let article = item.media == "article" && !matches!(item.source_kind, SourceKind::Page | SourceKind::Author);
+    let article = item.media == "article"
+        && !matches!(item.source_kind, SourceKind::Page | SourceKind::Author);
     let Some(url) = item.url.as_deref().filter(|_| short && !tried && article) else {
         return Ok(());
     };
-    let Ok(target) = Target::url(url) else { return Ok(()) };
-    let fetched = feed.ingest(app)?.engine.capture(&target, CaptureOptions::default()).await.ok();
+    let Ok(target) = Target::url(url) else {
+        return Ok(());
+    };
+    let fetched = feed
+        .ingest(app)?
+        .engine
+        .capture(&target, CaptureOptions::default())
+        .await
+        .ok();
     let longer = fetched
         .map(|page| page.body)
         .filter(|body| body.chars().count() > content.as_deref().map_or(0, |c| c.chars().count()));
@@ -196,16 +235,28 @@ pub(crate) fn search_changes(
 ) -> Result<(Vec<kintsugi_search::Doc>, Vec<String>)> {
     with(app, |s| {
         let live = s.search_stamps()?;
-        let ids: std::collections::HashSet<String> = live.iter().map(|(id, _)| search_id(*id)).collect();
-        let gone = indexed.keys().filter(|id| !ids.contains(*id)).cloned().collect();
+        let ids: std::collections::HashSet<String> =
+            live.iter().map(|(id, _)| search_id(*id)).collect();
+        let gone = indexed
+            .keys()
+            .filter(|id| !ids.contains(*id))
+            .cloned()
+            .collect();
         let mut docs = Vec::new();
         for (id, stamp) in live {
             let key = search_id(id);
             if indexed.get(&key) == Some(&stamp) {
                 continue;
             }
-            let Some([title, source, author, summary, content]) = s.search_text(id)? else { continue };
-            let body = [summary, content].into_iter().flatten().filter(|t| !t.trim().is_empty()).collect::<Vec<_>>().join("\n\n");
+            let Some([title, source, author, summary, content]) = s.search_text(id)? else {
+                continue;
+            };
+            let body = [summary, content]
+                .into_iter()
+                .flatten()
+                .filter(|t| !t.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n");
             docs.push(kintsugi_search::Doc {
                 id: key,
                 kind: Some(kintsugi_search::Kind::Feed),
@@ -237,10 +288,21 @@ pub(crate) struct Quotable {
 /// For Ideas (KI-39): a Feed item's text, so a quote from it can be checked.
 pub(crate) fn quotable(app: &AppHandle, id: i64) -> Result<Option<Quotable>> {
     with(app, |s| {
-        let Some([title, source, author, summary, content]) = s.search_text(id)? else { return Ok(None) };
+        let Some([title, source, author, summary, content]) = s.search_text(id)? else {
+            return Ok(None);
+        };
         let url = s.item(id).ok().and_then(|i| i.url);
-        let text = [title.clone(), summary, content].into_iter().flatten().collect::<Vec<_>>().join("\n\n");
-        Ok(Some(Quotable { title: title.unwrap_or_default(), source: source.or(author).unwrap_or_default(), url, text }))
+        let text = [title.clone(), summary, content]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        Ok(Some(Quotable {
+            title: title.unwrap_or_default(),
+            source: source.or(author).unwrap_or_default(),
+            url,
+            text,
+        }))
     })
 }
 
@@ -267,21 +329,35 @@ fn interval(kind: SourceKind) -> i64 {
 }
 
 fn retry_after(kind: SourceKind, failures: i64) -> i64 {
-    let cap = if matches!(kind, SourceKind::Youtube | SourceKind::X) { 60 * 60 } else { 24 * 60 * 60 };
+    let cap = if matches!(kind, SourceKind::Youtube | SourceKind::X) {
+        60 * 60
+    } else {
+        24 * 60 * 60
+    };
     (FIRST_RETRY << (failures.clamp(1, 16) - 1)).min(cap)
 }
 
 /// What the source health line says about a failure.
 fn describe(kind: SourceKind, error: ingest::Error) -> String {
     match (kind, error) {
-        (SourceKind::Youtube, ingest::Error::Status(status)) => format!("YouTube answered {status}; it does that sometimes, so Kintsugi keeps trying"),
+        (SourceKind::Youtube, ingest::Error::Status(status)) => {
+            format!("YouTube answered {status}; it does that sometimes, so Kintsugi keeps trying")
+        }
         (_, ingest::Error::Status(404)) => "not found (HTTP 404)".into(),
         (_, ingest::Error::Status(410)) => "the site says this feed is gone (HTTP 410)".into(),
         (_, ingest::Error::Status(status)) => format!("HTTP {status}"),
-        (SourceKind::X, ingest::Error::Unavailable) => "FxTwitter didn't answer; the account may be private or gone".into(),
-        (SourceKind::Author, ingest::Error::Unavailable) => "Google Books and Open Library didn't answer".into(),
-        (SourceKind::Page, ingest::Error::Unsupported) => "not a web page Kintsugi can watch (an image or a file?)".into(),
-        (SourceKind::Page, ingest::Error::Unavailable) => "couldn't read any text on that page".into(),
+        (SourceKind::X, ingest::Error::Unavailable) => {
+            "FxTwitter didn't answer; the account may be private or gone".into()
+        }
+        (SourceKind::Author, ingest::Error::Unavailable) => {
+            "Google Books and Open Library didn't answer".into()
+        }
+        (SourceKind::Page, ingest::Error::Unsupported) => {
+            "not a web page Kintsugi can watch (an image or a file?)".into()
+        }
+        (SourceKind::Page, ingest::Error::Unavailable) => {
+            "couldn't read any text on that page".into()
+        }
         (_, ingest::Error::Unavailable) => "couldn't reach it".into(),
         (_, ingest::Error::TimedOut) => "timed out".into(),
         (_, ingest::Error::TooLarge) => "too large to be a feed".into(),
@@ -307,13 +383,19 @@ fn new_item(item: ingest::Item) -> NewItem {
         content: Some(item.body).filter(|b| !b.trim().is_empty()),
         image: item.media.into_iter().find_map(|m| m.url),
         media,
-        published_at: item.published.and_then(|p| chrono::DateTime::parse_from_rfc3339(&p).ok()).map(|d| d.timestamp()),
+        published_at: item
+            .published
+            .and_then(|p| chrono::DateTime::parse_from_rfc3339(&p).ok())
+            .map(|d| d.timestamp()),
     }
 }
 
 /// Poll one source through the engine, record its health, store new entries.
 async fn poll(store: &Mutex<Store>, engine: &Engine, due: &Due) -> Polled {
-    let subscription = Subscription { url: due.url.clone(), cursor: due.cursor.clone() };
+    let subscription = Subscription {
+        url: due.url.clone(),
+        cursor: due.cursor.clone(),
+    };
     let source = match due.kind {
         SourceKind::X => ingest::SourceType::X,
         SourceKind::Page => ingest::SourceType::Web,
@@ -322,7 +404,9 @@ async fn poll(store: &Mutex<Store>, engine: &Engine, due: &Due) -> Polled {
     };
     let outcome = engine.poll(source, &subscription).await;
     let result: Result<usize> = (|| {
-        let store = store.lock().map_err(|_| "the feed database is unavailable".to_string())?;
+        let store = store
+            .lock()
+            .map_err(|_| "the feed database is unavailable".to_string())?;
         let now = now();
         match outcome {
             Ok(polled) => {
@@ -332,11 +416,18 @@ async fn poll(store: &Mutex<Store>, engine: &Engine, due: &Due) -> Polled {
                     // even if its date is older than the feed's 30 days (the
                     // author adapter never returns one twice).
                     for entry in &mut entries {
-                        entry.published_at = entry.published_at.filter(|p| now - p < store::EXPIRE_AFTER);
+                        entry.published_at =
+                            entry.published_at.filter(|p| now - p < store::EXPIRE_AFTER);
                     }
                 }
                 let added = store.insert_items(due.id, &entries, now, due.first)?;
-                store.record_success(due.id, now, polled.cursor.as_deref(), polled.source.as_ref(), now + interval(due.kind))?;
+                store.record_success(
+                    due.id,
+                    now,
+                    polled.cursor.as_deref(),
+                    polled.source.as_ref(),
+                    now + interval(due.kind),
+                )?;
                 Ok(added)
             }
             Err(error) => {
@@ -345,14 +436,28 @@ async fn poll(store: &Mutex<Store>, engine: &Engine, due: &Due) -> Polled {
                     ingest::Error::Status(status) => Some(status),
                     _ => None,
                 };
-                store.record_failure(due.id, now, status, &message, now + retry_after(due.kind, due.failures + 1))?;
+                store.record_failure(
+                    due.id,
+                    now,
+                    status,
+                    &message,
+                    now + retry_after(due.kind, due.failures + 1),
+                )?;
                 Err(message)
             }
         }
     })();
     match result {
-        Ok(added) => Polled { source_id: due.id, added, error: None },
-        Err(error) => Polled { source_id: due.id, added: 0, error: Some(error) },
+        Ok(added) => Polled {
+            source_id: due.id,
+            added,
+            error: None,
+        },
+        Err(error) => Polled {
+            source_id: due.id,
+            added: 0,
+            error: Some(error),
+        },
     }
 }
 
@@ -363,7 +468,9 @@ async fn poll_due(app: &AppHandle, all: bool, only: Option<i64>) -> Result<Vec<P
     let _pass = feed.polling.lock().await;
     let store = feed.store(app)?;
     let due = {
-        let store = store.lock().map_err(|_| "the feed database is unavailable".to_string())?;
+        let store = store
+            .lock()
+            .map_err(|_| "the feed database is unavailable".to_string())?;
         match only {
             Some(id) => vec![store.due_one(id)?],
             None => store.due(now(), all)?,
@@ -375,7 +482,10 @@ async fn poll_due(app: &AppHandle, all: bool, only: Option<i64>) -> Result<Vec<P
         .buffer_unordered(CONCURRENT_POLLS)
         .collect()
         .await;
-    let expired = store.lock().map_err(|_| "the feed database is unavailable".to_string())?.expire(now())?;
+    let expired = store
+        .lock()
+        .map_err(|_| "the feed database is unavailable".to_string())?
+        .expire(now())?;
     if !polled.is_empty() || expired > 0 {
         changed(app);
     }
@@ -426,9 +536,16 @@ async fn find_feed(feeds: &FeedAdapter, input: &str) -> Result<String> {
     }
 }
 
-async fn resolve(feeds: &FeedAdapter, input: Subscribe) -> Result<(String, SourceKind, Option<String>)> {
+async fn resolve(
+    feeds: &FeedAdapter,
+    input: Subscribe,
+) -> Result<(String, SourceKind, Option<String>)> {
     Ok(match input {
-        Subscribe::Url { url } if presets::x_link(&url).is_some() => (presets::x_link(&url).unwrap_or_default(), SourceKind::X, None),
+        Subscribe::Url { url } if presets::x_link(&url).is_some() => (
+            presets::x_link(&url).unwrap_or_default(),
+            SourceKind::X,
+            None,
+        ),
         Subscribe::Url { url } => {
             let url = find_feed(feeds, &url).await?;
             let kind = presets::kind_for_url(&url);
@@ -452,16 +569,24 @@ async fn resolve(feeds: &FeedAdapter, input: Subscribe) -> Result<(String, Sourc
             Youtube::Feed(url) => (url, SourceKind::Youtube, None),
             Youtube::Page(page) => {
                 let page = presets::checked_url(&page)?;
-                let id = feeds
-                    .youtube_channel(&page)
-                    .await
-                    .map_err(|_| "Couldn't read that channel's ID from YouTube; try its /channel/UC… URL".to_string())?;
+                let id = feeds.youtube_channel(&page).await.map_err(|_| {
+                    "Couldn't read that channel's ID from YouTube; try its /channel/UC… URL"
+                        .to_string()
+                })?;
                 (presets::youtube_feed(&id), SourceKind::Youtube, None)
             }
         },
-        Subscribe::Podcast { feed_url, title } => (presets::checked_url(&feed_url)?.to_string(), SourceKind::Podcast, title),
+        Subscribe::Podcast { feed_url, title } => (
+            presets::checked_url(&feed_url)?.to_string(),
+            SourceKind::Podcast,
+            title,
+        ),
         Subscribe::X { account } => (presets::x_account(&account)?, SourceKind::X, None),
-        Subscribe::Page { url } => (presets::checked_url(&url)?.to_string(), SourceKind::Page, None),
+        Subscribe::Page { url } => (
+            presets::checked_url(&url)?.to_string(),
+            SourceKind::Page,
+            None,
+        ),
         Subscribe::Author { name } => {
             let url = presets::author(&name)?;
             let name = ingest::authors::author_name(&url);
@@ -478,7 +603,13 @@ pub async fn feed_subscribe(app: AppHandle, input: Subscribe) -> Result<Subscrib
     let (url, kind, title) = resolve(&feeds, input).await?;
     let source = with(&app, |s| {
         let (source, _) = s.add_source(&url, kind, title.as_deref(), now())?;
-        s.log(&Event { at: now_ms(), kind: "subscribe".into(), source_id: Some(source.id), data: Some(json!({ "kind": kind })), ..Default::default() })?;
+        s.log(&Event {
+            at: now_ms(),
+            kind: "subscribe".into(),
+            source_id: Some(source.id),
+            data: Some(json!({ "kind": kind })),
+            ..Default::default()
+        })?;
         Ok(source)
     })?;
     let polled = poll_due(&app, true, Some(source.id)).await?;
@@ -494,7 +625,12 @@ pub async fn feed_subscribe(app: AppHandle, input: Subscribe) -> Result<Subscrib
 pub fn feed_unsubscribe(app: AppHandle, id: i64) -> Result<()> {
     with(&app, |s| {
         s.remove_source(id, now())?;
-        s.log(&Event { at: now_ms(), kind: "unsubscribe".into(), source_id: Some(id), ..Default::default() })
+        s.log(&Event {
+            at: now_ms(),
+            kind: "unsubscribe".into(),
+            source_id: Some(id),
+            ..Default::default()
+        })
     })?;
     changed(&app);
     Ok(())
@@ -504,7 +640,12 @@ pub fn feed_unsubscribe(app: AppHandle, id: i64) -> Result<()> {
 pub fn feed_mute(app: AppHandle, id: i64, muted: bool) -> Result<Source> {
     let source = with(&app, |s| {
         let source = s.set_muted(id, muted)?;
-        s.log(&Event { at: now_ms(), kind: if muted { "mute" } else { "unmute" }.into(), source_id: Some(id), ..Default::default() })?;
+        s.log(&Event {
+            at: now_ms(),
+            kind: if muted { "mute" } else { "unmute" }.into(),
+            source_id: Some(id),
+            ..Default::default()
+        })?;
         Ok(source)
     })?;
     if !muted {
@@ -526,7 +667,10 @@ pub async fn feed_podcast_search(app: AppHandle, term: String) -> Result<Vec<Pod
         return Ok(Vec::new());
     }
     let feeds = app.state::<Feed>().ingest(&app)?.feeds.clone();
-    feeds.search_podcasts(&term).await.map_err(|e| format!("Podcast search didn't answer ({e})"))
+    feeds
+        .search_podcasts(&term)
+        .await
+        .map_err(|e| format!("Podcast search didn't answer ({e})"))
 }
 
 // ── Commands: OPML ─────────────────────────────────────────────────────────
@@ -554,14 +698,25 @@ pub fn feed_opml_import(app: AppHandle, opml: String) -> Result<Imported> {
                 existing += 1;
                 continue;
             }
-            let (source, _) = s.add_source(&outline.url, outline.kind, outline.title.as_deref(), now())?;
+            let (source, _) =
+                s.add_source(&outline.url, outline.kind, outline.title.as_deref(), now())?;
             if outline.muted {
                 s.set_muted(source.id, true)?;
             }
-            s.log(&Event { at: now_ms(), kind: "subscribe".into(), source_id: Some(source.id), data: Some(json!({ "kind": outline.kind, "via": "opml" })), ..Default::default() })?;
+            s.log(&Event {
+                at: now_ms(),
+                kind: "subscribe".into(),
+                source_id: Some(source.id),
+                data: Some(json!({ "kind": outline.kind, "via": "opml" })),
+                ..Default::default()
+            })?;
             added += 1;
         }
-        Ok(Imported { added, existing, invalid })
+        Ok(Imported {
+            added,
+            existing,
+            invalid,
+        })
     })?;
     wake(&app);
     changed(&app);
@@ -586,8 +741,19 @@ pub fn feed_opml_export(app: AppHandle, path: String) -> Result<usize> {
 // ── Commands: items and actions ────────────────────────────────────────────
 
 #[tauri::command]
-pub fn feed_items(app: AppHandle, offset: Option<i64>, limit: Option<i64>, source: Option<i64>) -> Result<Page> {
-    with(&app, |s| s.items(offset.unwrap_or(0).max(0), limit.unwrap_or(40).clamp(1, 100), source))
+pub fn feed_items(
+    app: AppHandle,
+    offset: Option<i64>,
+    limit: Option<i64>,
+    source: Option<i64>,
+) -> Result<Page> {
+    with(&app, |s| {
+        s.items(
+            offset.unwrap_or(0).max(0),
+            limit.unwrap_or(40).clamp(1, 100),
+            source,
+        )
+    })
 }
 
 /// Where an action or impression happened: the list ("newest", or KI-32's
@@ -600,7 +766,10 @@ pub struct Place {
 }
 
 fn surface(place: &Place) -> Option<String> {
-    place.surface.clone().filter(|s| matches!(s.as_str(), "newest" | "picked" | "source"))
+    place
+        .surface
+        .clone()
+        .filter(|s| matches!(s.as_str(), "newest" | "picked" | "source"))
 }
 
 fn event(kind: &str, item: &Item, place: &Place) -> Event {
@@ -634,7 +803,12 @@ pub async fn feed_read(app: AppHandle, id: i64, place: Option<Place>) -> Result<
         Ok(item)
     })?;
     let _ = full_text(&app, &item).await;
-    with(&app, |s| Ok(Reading { text: source_text(s.content(id)?), item: s.item(id)? }))
+    with(&app, |s| {
+        Ok(Reading {
+            text: source_text(s.content(id)?),
+            item: s.item(id)?,
+        })
+    })
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
@@ -659,7 +833,9 @@ pub fn feed_act(app: AppHandle, id: i64, action: Action, place: Option<Place>) -
             Action::Like => ("like", s.set_liked(id, true, now())?),
             Action::Unlike => ("unlike", s.set_liked(id, false, now())?),
             Action::NotInterested => ("not_interested", s.set_dismissed(id, true, now())?),
-            Action::UndoNotInterested => ("undo_not_interested", s.set_dismissed(id, false, now())?),
+            Action::UndoNotInterested => {
+                ("undo_not_interested", s.set_dismissed(id, false, now())?)
+            }
             Action::OpenOriginal => ("open_original", before.clone()),
             Action::Discuss => ("discuss", before.clone()),
         };
@@ -696,7 +872,13 @@ pub fn note_version(item: &Item) -> String {
 
 /// Writes the note if it is still at `base` (`None`: overwrite on purpose),
 /// under the store's lock. Since phone API 6.
-pub fn note_checked(app: &AppHandle, id: i64, note: &str, base: Option<&str>, place: Place) -> Result<NoteWrite> {
+pub fn note_checked(
+    app: &AppHandle,
+    id: i64,
+    note: &str,
+    base: Option<&str>,
+    place: Place,
+) -> Result<NoteWrite> {
     if note.len() > 20_000 {
         return Err("that note is too long for a feed item".into());
     }
@@ -714,8 +896,17 @@ pub fn note_checked(app: &AppHandle, id: i64, note: &str, base: Option<&str>, pl
         }
         let item = s.set_note(id, note, now())?;
         if item.note != before.note {
-            let mut logged = event(if item.note.is_some() { "note" } else { "note_cleared" }, &before, &place);
-            logged.data = Some(json!({ "chars": item.note.as_deref().map_or(0, |n| n.chars().count()) }));
+            let mut logged = event(
+                if item.note.is_some() {
+                    "note"
+                } else {
+                    "note_cleared"
+                },
+                &before,
+                &place,
+            );
+            logged.data =
+                Some(json!({ "chars": item.note.as_deref().map_or(0, |n| n.chars().count()) }));
             s.log(&logged)?;
         }
         Ok(NoteWrite::Saved(item))
@@ -742,7 +933,14 @@ pub fn feed_impressions(app: AppHandle, impressions: Vec<Impression>) -> Result<
             .iter()
             .filter_map(|i| {
                 let item = s.item(i.id).ok()?;
-                let mut logged = event("impression", &item, &Place { surface: Some(i.surface.clone()), position: Some(i.position) });
+                let mut logged = event(
+                    "impression",
+                    &item,
+                    &Place {
+                        surface: Some(i.surface.clone()),
+                        position: Some(i.position),
+                    },
+                );
                 logged.at = at;
                 Some(logged)
             })
@@ -758,7 +956,8 @@ pub fn feed_impressions(app: AppHandle, impressions: Vec<Impression>) -> Result<
 #[tauri::command]
 pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> {
     let place = place.unwrap_or_default();
-    let (item, save_id, content) = with(&app, |s| Ok((s.item(id)?, s.save_id(id)?, s.content(id)?)))?;
+    let (item, save_id, content) =
+        with(&app, |s| Ok((s.item(id)?, s.save_id(id)?, s.content(id)?)))?;
     if item.saved_path.is_some() {
         return Ok(item);
     }
@@ -768,7 +967,11 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
         clip: vault::ClipCapture {
             url: item.url.clone(),
             // Without a link, the item's own words are what's worth keeping.
-            text: if item.url.is_none() { item.summary.clone().or_else(|| item.title.clone()) } else { None },
+            text: if item.url.is_none() {
+                item.summary.clone().or_else(|| item.title.clone())
+            } else {
+                None
+            },
             note: item.note.clone(),
             title: item.title.clone(),
             image: None,
@@ -778,7 +981,9 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
             via: vault::ClipVia::Feed,
         },
     };
-    let created = crate::clip_capture::create(&root, &crate::clip_capture::index_path(&app)?, &capture).map_err(|e| e.to_string())?;
+    let created =
+        crate::clip_capture::create(&root, &crate::clip_capture::index_path(&app)?, &capture)
+            .map_err(|e| e.to_string())?;
     if created.created {
         // What the feed already knows; enrichment fills in the rest.
         let update = vault::ClipUpdate {
@@ -810,26 +1015,67 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
 pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
     const BODY: &str = "It is easy to mistake speed for progress. The pieces that last are the ones somebody returned to, mended and kept. ";
     let sources = [
-        ("The Slow Workshop", "Mara Ito", &[
-            ("Mending as a design method", "Why the repaired bowl teaches more than the new one: kintsugi, visible repair and the honesty of seams."),
-            ("Gold in the cracks", "A potter on the economics of repair, and why the gold costs more than the bowl."),
-            ("The workbench diary", "Notes from a year of fixing things instead of replacing them."),
-        ][..]),
-        ("Quiet Web Weekly", "Ana Ruiz", &[
-            ("Small sites, long memories", "Personal websites outlive platforms when their owners tend them like gardens."),
-            ("Attention is the scarce material", "On reading slowly, and what the infinite feed costs a writer."),
-            ("RSS is still here", "A short history of feeds and the readers who never left them."),
-        ][..]),
-        ("Night Shift", "Dr. Lee", &[
-            ("Sleep and the tired mind", "What the research says about rest, memory and night-shift workers."),
-            ("Rain sounds and focus", "A field recording, and why weather makes good background for writing."),
-        ][..]),
+        (
+            "The Slow Workshop",
+            "Mara Ito",
+            &[
+                (
+                    "Mending as a design method",
+                    "Why the repaired bowl teaches more than the new one: kintsugi, visible repair and the honesty of seams.",
+                ),
+                (
+                    "Gold in the cracks",
+                    "A potter on the economics of repair, and why the gold costs more than the bowl.",
+                ),
+                (
+                    "The workbench diary",
+                    "Notes from a year of fixing things instead of replacing them.",
+                ),
+            ][..],
+        ),
+        (
+            "Quiet Web Weekly",
+            "Ana Ruiz",
+            &[
+                (
+                    "Small sites, long memories",
+                    "Personal websites outlive platforms when their owners tend them like gardens.",
+                ),
+                (
+                    "Attention is the scarce material",
+                    "On reading slowly, and what the infinite feed costs a writer.",
+                ),
+                (
+                    "RSS is still here",
+                    "A short history of feeds and the readers who never left them.",
+                ),
+            ][..],
+        ),
+        (
+            "Night Shift",
+            "Dr. Lee",
+            &[
+                (
+                    "Sleep and the tired mind",
+                    "What the research says about rest, memory and night-shift workers.",
+                ),
+                (
+                    "Rain sounds and focus",
+                    "A field recording, and why weather makes good background for writing.",
+                ),
+            ][..],
+        ),
     ];
     let now = now();
     let mut added = 0;
     with(app, |s| {
         for (n, (title, author, items)) in sources.iter().enumerate() {
-            let (source, _) = s.add_source(&format!("{base}/sample/feed-{n}.xml"), SourceKind::Feed, Some(title), now)?;
+            let (source, _) = s.add_source(
+                &format!("{base}/sample/feed-{n}.xml"),
+                SourceKind::Feed,
+                Some(title),
+                now,
+            )?;
             let entries: Vec<NewItem> = items
                 .iter()
                 .enumerate()

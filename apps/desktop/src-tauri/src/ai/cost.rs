@@ -34,22 +34,104 @@ pub struct Price {
     pub cache_write: f64,
 }
 
-const FREE: Price = Price { input: 0.0, output: 0.0, cache_read: 0.0, cache_write: 0.0 };
+const FREE: Price = Price {
+    input: 0.0,
+    output: 0.0,
+    cache_read: 0.0,
+    cache_write: 0.0,
+};
 /// For a paid model we don't recognize: deliberately on the expensive side.
-const UNKNOWN: Price = Price { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 };
+const UNKNOWN: Price = Price {
+    input: 5.0,
+    output: 25.0,
+    cache_read: 0.5,
+    cache_write: 6.25,
+};
 
 /// Model families, matched as substrings of the model id, first match wins.
 const FAMILIES: &[(&str, Price)] = &[
-    ("opus", Price { input: 5.0, output: 25.0, cache_read: 0.5, cache_write: 6.25 }),
-    ("sonnet", Price { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.75 }),
-    ("haiku", Price { input: 1.0, output: 5.0, cache_read: 0.1, cache_write: 1.25 }),
-    ("gemini-flash", Price { input: 0.3, output: 2.5, cache_read: 0.03, cache_write: 0.3 }),
-    ("-mini", Price { input: 0.25, output: 2.0, cache_read: 0.025, cache_write: 0.25 }),
-    ("gpt", Price { input: 1.25, output: 10.0, cache_read: 0.125, cache_write: 1.25 }),
+    (
+        "opus",
+        Price {
+            input: 5.0,
+            output: 25.0,
+            cache_read: 0.5,
+            cache_write: 6.25,
+        },
+    ),
+    (
+        "sonnet",
+        Price {
+            input: 3.0,
+            output: 15.0,
+            cache_read: 0.3,
+            cache_write: 3.75,
+        },
+    ),
+    (
+        "haiku",
+        Price {
+            input: 1.0,
+            output: 5.0,
+            cache_read: 0.1,
+            cache_write: 1.25,
+        },
+    ),
+    (
+        "gemini-flash",
+        Price {
+            input: 0.3,
+            output: 2.5,
+            cache_read: 0.03,
+            cache_write: 0.3,
+        },
+    ),
+    (
+        "-mini",
+        Price {
+            input: 0.25,
+            output: 2.0,
+            cache_read: 0.025,
+            cache_write: 0.25,
+        },
+    ),
+    (
+        "gpt",
+        Price {
+            input: 1.25,
+            output: 10.0,
+            cache_read: 0.125,
+            cache_write: 1.25,
+        },
+    ),
     // Open models, at OpenCode Zen's listed prices (opencode.ai, Console › Models).
-    ("glm-5.3-flash", Price { input: 0.15, output: 0.5, cache_read: 0.03, cache_write: 0.0 }),
-    ("glm", Price { input: 1.4, output: 4.4, cache_read: 0.26, cache_write: 0.0 }),
-    ("kimi", Price { input: 3.0, output: 15.0, cache_read: 0.3, cache_write: 3.0 }),
+    (
+        "glm-5.3-flash",
+        Price {
+            input: 0.15,
+            output: 0.5,
+            cache_read: 0.03,
+            cache_write: 0.0,
+        },
+    ),
+    (
+        "glm",
+        Price {
+            input: 1.4,
+            output: 4.4,
+            cache_read: 0.26,
+            cache_write: 0.0,
+        },
+    ),
+    (
+        "kimi",
+        Price {
+            input: 3.0,
+            output: 15.0,
+            cache_read: 0.3,
+            cache_write: 3.0,
+        },
+    ),
 ];
 
 /// The price of a model, and whether it's a guess.
@@ -145,10 +227,13 @@ impl State {
     }
 
     fn add(&mut self, charge: &Charge) {
-        let entry = self.by_task.entry(charge.task.clone()).or_insert_with(|| TaskSpend {
-            task: charge.task.clone(),
-            ..Default::default()
-        });
+        let entry = self
+            .by_task
+            .entry(charge.task.clone())
+            .or_insert_with(|| TaskSpend {
+                task: charge.task.clone(),
+                ..Default::default()
+            });
         entry.usd += charge.usd;
         entry.calls += 1;
         entry.usage.add(&charge.usage);
@@ -179,7 +264,12 @@ impl Meter {
             .and_then(|d| fs::read_to_string(d.join("settings.json")).ok())
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
-        let meter = Meter { dir, clock, settings: Mutex::new(settings), state: Mutex::default() };
+        let meter = Meter {
+            dir,
+            clock,
+            settings: Mutex::new(settings),
+            state: Mutex::default(),
+        };
         meter.reload(&mut meter.state.lock().unwrap());
         meter
     }
@@ -187,11 +277,21 @@ impl Meter {
     /// Sums this month's ledger lines. A torn last line is skipped.
     fn reload(&self, state: &mut State) {
         let month = (self.clock)();
-        *state = State { month: month.clone(), ..Default::default() };
-        let Some(text) = self.dir.as_ref().and_then(|d| fs::read_to_string(d.join("usage.jsonl")).ok()) else {
+        *state = State {
+            month: month.clone(),
+            ..Default::default()
+        };
+        let Some(text) = self
+            .dir
+            .as_ref()
+            .and_then(|d| fs::read_to_string(d.join("usage.jsonl")).ok())
+        else {
             return;
         };
-        for charge in text.lines().filter_map(|l| serde_json::from_str::<Charge>(l).ok()) {
+        for charge in text
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Charge>(l).ok())
+        {
             if charge.month == month {
                 state.add(&charge);
             }
@@ -237,7 +337,11 @@ impl Meter {
     /// May work start? Background work stops at the cap; foreground work
     /// (the owner is waiting) always may.
     pub fn allows(&self, background: bool) -> std::result::Result<(), CapReached> {
-        if background && self.cap_reached() { Err(CapReached) } else { Ok(()) }
+        if background && self.cap_reached() {
+            Err(CapReached)
+        } else {
+            Ok(())
+        }
     }
 
     /// Prices and records one call; returns its cost. A ledger that can't be
@@ -259,7 +363,10 @@ impl Meter {
         if let Some(dir) = &self.dir {
             let line = serde_json::to_string(&charge).unwrap_or_default();
             let _ = fs::create_dir_all(dir).and_then(|_| {
-                let mut file = OpenOptions::new().create(true).append(true).open(dir.join("usage.jsonl"))?;
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(dir.join("usage.jsonl"))?;
                 writeln!(file, "{line}")
             });
         }
@@ -277,7 +384,10 @@ impl Meter {
             cap_reached: cap.is_some_and(|c| spent >= c),
             estimated: state.estimated,
             by_task: state.by_task.values().cloned().collect(),
-            ledger: self.dir.as_ref().map(|d| d.join("usage.jsonl").to_string_lossy().into()),
+            ledger: self
+                .dir
+                .as_ref()
+                .map(|d| d.join("usage.jsonl").to_string_lossy().into()),
         }
     }
 
@@ -295,15 +405,29 @@ mod tests {
     use super::*;
 
     fn model(provider: &str, model: &str) -> ModelRef {
-        ModelRef { provider: provider.into(), model: model.into(), reasoning: None }
+        ModelRef {
+            provider: provider.into(),
+            model: model.into(),
+            reasoning: None,
+        }
     }
 
-    const MILLION_IN: Usage = Usage { input: 1_000_000, output: 0, cache_read: 0, cache_write: 0 };
+    const MILLION_IN: Usage = Usage {
+        input: 1_000_000,
+        output: 0,
+        cache_read: 0,
+        cache_write: 0,
+    };
 
     #[test]
     fn prices_by_family_with_free_subscriptions_and_a_high_default() {
         assert_eq!(price("anthropic", "claude-sonnet-5-5").0.input, 3.0);
-        assert_eq!(price("openrouter", "~anthropic/claude-haiku-latest").0.output, 5.0);
+        assert_eq!(
+            price("openrouter", "~anthropic/claude-haiku-latest")
+                .0
+                .output,
+            5.0
+        );
         assert_eq!(price("openai-codex", "gpt-6-luna"), (FREE, false));
         assert_eq!(price("zai", "glm-5.3"), (FREE, false));
         assert_eq!(price("opencode-go", "kimi-k3"), (FREE, false));
@@ -311,18 +435,34 @@ mod tests {
         assert_eq!(price("opencode", "glm-5.3").0.output, 4.4);
         assert_eq!(price("opencode", "claude-sonnet-5-5").0.input, 3.0);
         assert_eq!(price("openrouter", "mystery-model"), (UNKNOWN, true));
-        let usage = Usage { input: 1000, output: 2000, cache_read: 10_000, cache_write: 4000 };
+        let usage = Usage {
+            input: 1000,
+            output: 2000,
+            cache_read: 10_000,
+            cache_write: 4000,
+        };
         let cost = usd(&price("anthropic", "claude-sonnet-5-5").0, &usage);
-        assert!((cost - (0.003 + 0.03 + 0.003 + 0.015)).abs() < 1e-9, "{cost}");
+        assert!(
+            (cost - (0.003 + 0.03 + 0.003 + 0.015)).abs() < 1e-9,
+            "{cost}"
+        );
     }
 
     #[test]
     fn records_to_the_ledger_and_reloads_this_month_only() {
         let dir = tempfile::tempdir().unwrap();
         let meter = Meter::with_clock(Some(dir.path().into()), || "2026-11".into());
-        let spent = meter.record(Task::Chat, &model("anthropic", "claude-sonnet-5-5"), &MILLION_IN);
+        let spent = meter.record(
+            Task::Chat,
+            &model("anthropic", "claude-sonnet-5-5"),
+            &MILLION_IN,
+        );
         assert_eq!(spent, 3.0);
-        meter.record(Task::Triage, &model("anthropic", "claude-haiku-5-5"), &MILLION_IN);
+        meter.record(
+            Task::Triage,
+            &model("anthropic", "claude-haiku-5-5"),
+            &MILLION_IN,
+        );
         // A charge from last month and a torn line are ignored.
         let ledger = dir.path().join("usage.jsonl");
         let mut text = fs::read_to_string(&ledger).unwrap();
@@ -333,7 +473,14 @@ mod tests {
         let reopened = Meter::with_clock(Some(dir.path().into()), || "2026-11".into());
         let report = reopened.report();
         assert_eq!(report.spent_usd, 4.0);
-        assert_eq!(report.by_task.iter().map(|t| (t.task.as_str(), t.calls)).collect::<Vec<_>>(), [("chat", 1), ("triage", 1)]);
+        assert_eq!(
+            report
+                .by_task
+                .iter()
+                .map(|t| (t.task.as_str(), t.calls))
+                .collect::<Vec<_>>(),
+            [("chat", 1), ("triage", 1)]
+        );
         assert!(!report.estimated);
         let next_month = Meter::with_clock(Some(dir.path().into()), || "2026-12".into());
         assert_eq!(next_month.report().spent_usd, 0.0);
@@ -344,8 +491,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let meter = Meter::with_clock(Some(dir.path().into()), || "2026-11".into());
         assert_eq!(meter.allows(true), Ok(()));
-        meter.update_settings(|s| s.monthly_cap_usd = Some(3.0)).unwrap();
-        meter.record(Task::Chat, &model("anthropic", "claude-sonnet-5-5"), &MILLION_IN);
+        meter
+            .update_settings(|s| s.monthly_cap_usd = Some(3.0))
+            .unwrap();
+        meter.record(
+            Task::Chat,
+            &model("anthropic", "claude-sonnet-5-5"),
+            &MILLION_IN,
+        );
         assert!(meter.cap_reached());
         assert_eq!(meter.allows(true), Err(CapReached));
         assert_eq!(meter.allows(false), Ok(()));
@@ -353,14 +506,24 @@ mod tests {
         let reopened = Meter::with_clock(Some(dir.path().into()), || "2026-11".into());
         assert_eq!(reopened.settings().monthly_cap_usd, Some(3.0));
         assert!(reopened.report().cap_reached);
-        assert!(meter.update_settings(|s| s.monthly_cap_usd = Some(-1.0)).is_err());
-        assert!(meter.update_settings(|s| s.monthly_cap_usd = Some(f64::NAN)).is_err());
+        assert!(
+            meter
+                .update_settings(|s| s.monthly_cap_usd = Some(-1.0))
+                .is_err()
+        );
+        assert!(
+            meter
+                .update_settings(|s| s.monthly_cap_usd = Some(f64::NAN))
+                .is_err()
+        );
     }
 
     #[test]
     fn an_isolated_meter_writes_nothing() {
         let meter = Meter::with_clock(None, || "2026-11".into());
-        meter.update_settings(|s| s.monthly_cap_usd = Some(1.0)).unwrap();
+        meter
+            .update_settings(|s| s.monthly_cap_usd = Some(1.0))
+            .unwrap();
         meter.record(Task::Chat, &model("openrouter", "unknown"), &MILLION_IN);
         let report = meter.report();
         assert_eq!(report.spent_usd, 5.0);

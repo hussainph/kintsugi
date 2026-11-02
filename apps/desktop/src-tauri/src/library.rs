@@ -233,11 +233,9 @@ impl Index {
                         order.push(clip);
                     }
                 }
-                order.extend(
-                    self.clips
-                        .iter()
-                        .filter(|clip| !seen.contains(clip.preview.summary.path.as_str()) && lexical(clip)),
-                );
+                order.extend(self.clips.iter().filter(|clip| {
+                    !seen.contains(clip.preview.summary.path.as_str()) && lexical(clip)
+                }));
             }
             None => order.extend(self.clips.iter().filter(|clip| lexical(clip))),
         }
@@ -331,7 +329,9 @@ pub async fn clip_search(
 ) -> Result<ClipSearch> {
     let root = vault.root()?;
     let library = library.inner().clone();
-    let search = tauri::Manager::state::<crate::search::Search>(&app).inner().clone();
+    let search = tauri::Manager::state::<crate::search::Search>(&app)
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let ranked = query
             .as_deref()
@@ -672,25 +672,71 @@ mod tests {
         let newer = vault::clip_create(root, &newer).unwrap();
         let insomnia = vault::clip_create(root, &capture("Insomnia at bedtime")).unwrap();
         let unrelated = vault::clip_create(root, &capture("Kilns")).unwrap();
-        vault::clip_update(root, &insomnia, &vault::ClipUpdate { tags: Some(vec!["night".into()]), ..Default::default() }).unwrap();
+        vault::clip_update(
+            root,
+            &insomnia,
+            &vault::ClipUpdate {
+                tags: Some(vec!["night".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let library = Library::default();
-        let paths = |result: ClipSearch| result.clips.into_iter().map(|c| c.summary.path).collect::<Vec<_>>();
+        let paths = |result: ClipSearch| {
+            result
+                .clips
+                .into_iter()
+                .map(|c| c.summary.path)
+                .collect::<Vec<_>>()
+        };
 
         // Lexical alone: newest first, word matches only.
-        assert_eq!(paths(search(&library, root, "sleep", &[])), [newer.clone(), older.clone()]);
+        assert_eq!(
+            paths(search(&library, root, "sleep", &[])),
+            [newer.clone(), older.clone()]
+        );
         // Ranked: the order given, the meaning-only match included, and any
         // lexical match the ranking missed appended; unknown paths ignored.
-        let ranked = vec![older.clone(), insomnia.clone(), "inspiration/gone.md".into()];
-        let result = library.search_ranked(root, Some("sleep"), &[], None, None, Some(ranked.clone())).unwrap();
+        let ranked = vec![
+            older.clone(),
+            insomnia.clone(),
+            "inspiration/gone.md".into(),
+        ];
+        let result = library
+            .search_ranked(root, Some("sleep"), &[], None, None, Some(ranked.clone()))
+            .unwrap();
         assert_eq!(result.total, 3);
-        assert_eq!(paths(result), [older.clone(), insomnia.clone(), newer.clone()]);
+        assert_eq!(
+            paths(result),
+            [older.clone(), insomnia.clone(), newer.clone()]
+        );
         // Tags still filter, and pages slice the ranked order.
-        let tagged = library.search_ranked(root, Some("sleep"), &["night".into()], None, None, Some(ranked.clone())).unwrap();
+        let tagged = library
+            .search_ranked(
+                root,
+                Some("sleep"),
+                &["night".into()],
+                None,
+                None,
+                Some(ranked.clone()),
+            )
+            .unwrap();
         assert_eq!(paths(tagged), vec![insomnia.clone()]);
-        let page = library.search_ranked(root, Some("sleep"), &[], Some(1), Some(1), Some(ranked.clone())).unwrap();
+        let page = library
+            .search_ranked(
+                root,
+                Some("sleep"),
+                &[],
+                Some(1),
+                Some(1),
+                Some(ranked.clone()),
+            )
+            .unwrap();
         assert_eq!((page.total, paths(page)), (3, vec![insomnia.clone()]));
         // No query: newest first, the ranking unused.
-        let all = library.search_ranked(root, None, &[], None, None, Some(ranked)).unwrap();
+        let all = library
+            .search_ranked(root, None, &[], None, None, Some(ranked))
+            .unwrap();
         assert_eq!(all.total, 4);
         assert!(paths(all).contains(&unrelated));
     }

@@ -33,7 +33,11 @@ type Result<T> = std::result::Result<T, String>;
 
 impl Vault {
     pub fn root(&self) -> Result<PathBuf> {
-        self.0.lock().unwrap().clone().ok_or_else(|| "no vault open".into())
+        self.0
+            .lock()
+            .unwrap()
+            .clone()
+            .ok_or_else(|| "no vault open".into())
     }
 }
 
@@ -50,7 +54,11 @@ pub fn current(app: &AppHandle) -> Result<PathBuf> {
             return Err("scratch config must specify an existing vault".into());
         }
         None => {
-            let path = app.path().document_dir().map_err(|e| e.to_string())?.join("Kintsugi");
+            let path = app
+                .path()
+                .document_dir()
+                .map_err(|e| e.to_string())?
+                .join("Kintsugi");
             if !path.exists() {
                 fs::create_dir_all(&path).map_err(|e| e.to_string())?;
                 vault::write_atomic(&path.join("welcome.mdx"), WELCOME)?;
@@ -126,7 +134,12 @@ pub fn doc_write(
 
 /// Creates a draft in `dir` named after `title`; returns its path.
 #[tauri::command]
-pub fn doc_create(app: AppHandle, vault: State<Vault>, dir: String, title: String) -> Result<String> {
+pub fn doc_create(
+    app: AppHandle,
+    vault: State<Vault>,
+    dir: String,
+    title: String,
+) -> Result<String> {
     writing_path(&dir)?;
     let path = vault::create_doc(&vault.root()?, &dir, &title)?;
     references_changed(&app);
@@ -136,15 +149,28 @@ pub fn doc_create(app: AppHandle, vault: State<Vault>, dir: String, title: Strin
 #[tauri::command]
 pub fn folder_create(vault: State<Vault>, dir: String, name: String) -> Result<String> {
     writing_path(&dir)?;
-    writing_path(&std::path::Path::new(&dir).join(vault::slugify(&name)).to_string_lossy())?;
+    writing_path(
+        &std::path::Path::new(&dir)
+            .join(vault::slugify(&name))
+            .to_string_lossy(),
+    )?;
     vault::create_folder(&vault.root()?, &dir, &name)
 }
 
 /// Renames in place (same folder); returns the new path.
 #[tauri::command]
-pub fn entry_rename(app: AppHandle, vault: State<Vault>, path: String, name: String) -> Result<String> {
+pub fn entry_rename(
+    app: AppHandle,
+    vault: State<Vault>,
+    path: String,
+    name: String,
+) -> Result<String> {
     writing_path(&path)?;
-    writing_path(&std::path::Path::new(&path).with_file_name(&name).to_string_lossy())?;
+    writing_path(
+        &std::path::Path::new(&path)
+            .with_file_name(&name)
+            .to_string_lossy(),
+    )?;
     crate::blog::repo::refuse_mirror(&vault.root()?, &path)?;
     let renamed = vault::rename(&vault.root()?, &path, &name)?;
     // Kin's comment threads (KI-38) follow their document; best effort.
@@ -171,7 +197,8 @@ pub async fn links_plan(
     open: Option<OpenDoc>,
 ) -> Result<vault::RelinkPlan> {
     let root = vault.root()?;
-    let open: std::collections::HashMap<_, _> = open.into_iter().map(|d| (d.path, d.text)).collect();
+    let open: std::collections::HashMap<_, _> =
+        open.into_iter().map(|d| (d.path, d.text)).collect();
     tauri::async_runtime::spawn_blocking(move || {
         vault::relink_plan(&root, &from, &to, &open, crate::blog::repo::is_mirror)
     })
@@ -223,9 +250,13 @@ pub fn entry_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<
 /// must never request Automation permission, play a sound, or launch Finder.
 fn move_to_trash(targets: &[PathBuf]) -> Result<()> {
     #[cfg(feature = "headless")]
-    { crate::headless::trash(targets) }
+    {
+        crate::headless::trash(targets)
+    }
     #[cfg(not(feature = "headless"))]
-    { trash::delete_all(targets).map_err(|e| e.to_string()) }
+    {
+        trash::delete_all(targets).map_err(|e| e.to_string())
+    }
 }
 
 /// A single invalidation for the margin, document backlinks and Used in.
@@ -293,9 +324,16 @@ pub fn clip_update(
     tags: Option<Vec<String>>,
     note: Option<String>,
 ) -> Result<vault::Clip> {
-    let clip = vault::clip_update(&vault.root()?, &path, &vault::ClipUpdate {
-        title, tags, note, ..Default::default()
-    })?;
+    let clip = vault::clip_update(
+        &vault.root()?,
+        &path,
+        &vault::ClipUpdate {
+            title,
+            tags,
+            note,
+            ..Default::default()
+        },
+    )?;
     clips_changed(&app, &path);
     Ok(clip)
 }
@@ -318,7 +356,8 @@ pub fn clip_open_file(vault: State<Vault>, path: String) -> Result<()> {
     }
     #[cfg(not(feature = "headless"))]
     {
-        tauri_plugin_opener::open_path(&target, None::<&str>).map_err(|_| "could not open the file".into())
+        tauri_plugin_opener::open_path(&target, None::<&str>)
+            .map_err(|_| "could not open the file".into())
     }
 }
 
@@ -326,9 +365,10 @@ pub fn clip_open_file(vault: State<Vault>, path: String) -> Result<()> {
 #[tauri::command]
 pub fn clip_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<()> {
     crate::clip_capture::trash(
-        &vault.root()?, &crate::clip_capture::index_path(&app)?, &path, |targets| {
-            move_to_trash(targets)
-        },
+        &vault.root()?,
+        &crate::clip_capture::index_path(&app)?,
+        &path,
+        |targets| move_to_trash(targets),
     )?;
     clips_changed(&app, &path);
     Ok(())

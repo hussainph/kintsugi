@@ -25,8 +25,13 @@ struct Fonts {
 fn fonts() -> &'static Fonts {
     static FONTS: OnceLock<Fonts> = OnceLock::new();
     FONTS.get_or_init(|| {
-        let fonts: Vec<Font> = typst_assets::fonts().flat_map(|data| Font::iter(Bytes::new(data))).collect();
-        Fonts { book: LazyHash::new(FontBook::from_fonts(&fonts)), fonts }
+        let fonts: Vec<Font> = typst_assets::fonts()
+            .flat_map(|data| Font::iter(Bytes::new(data)))
+            .collect();
+        Fonts {
+            book: LazyHash::new(FontBook::from_fonts(&fonts)),
+            fonts,
+        }
     })
 }
 
@@ -57,7 +62,11 @@ impl World for Piece {
         self.main.id()
     }
     fn source(&self, id: FileId) -> FileResult<Source> {
-        if id == self.main.id() { Ok(self.main.clone()) } else { Err(FileError::AccessDenied) }
+        if id == self.main.id() {
+            Ok(self.main.clone())
+        } else {
+            Err(FileError::AccessDenied)
+        }
     }
     fn file(&self, id: FileId) -> FileResult<Bytes> {
         self.files.get(&id).cloned().ok_or(FileError::AccessDenied)
@@ -71,7 +80,11 @@ impl World for Piece {
 }
 
 fn describe(errors: &[SourceDiagnostic]) -> String {
-    let messages: Vec<String> = errors.iter().take(3).map(|e| e.message.to_string()).collect();
+    let messages: Vec<String> = errors
+        .iter()
+        .take(3)
+        .map(|e| e.message.to_string())
+        .collect();
     format!("The PDF couldn't be typeset: {}", messages.join("; "))
 }
 
@@ -87,17 +100,27 @@ pub fn typeset(source: &str, assets: Vec<(String, Vec<u8>)>) -> Result<PagedDocu
         files.insert(file_id(&format!("/assets/{name}"))?, Bytes::new(bytes));
     }
     let world = Piece { main, files };
-    typst::compile::<PagedDocument>(&world).output.map_err(|errors| describe(&errors))
+    typst::compile::<PagedDocument>(&world)
+        .output
+        .map_err(|errors| describe(&errors))
 }
 
 pub fn pdf(document: &PagedDocument) -> Result<Vec<u8>> {
-    let options = typst_pdf::PdfOptions { creator: typst::foundations::Smart::Custom(Some("Kintsugi".into())), ..Default::default() };
+    let options = typst_pdf::PdfOptions {
+        creator: typst::foundations::Smart::Custom(Some("Kintsugi".into())),
+        ..Default::default()
+    };
     typst_pdf::pdf(document, &options).map_err(|errors| describe(&errors))
 }
 
 /// The first `limit` pages as SVG, for the export dialog's preview.
 pub fn svg_pages(document: &PagedDocument, limit: usize) -> Vec<String> {
-    document.pages().iter().take(limit).map(|page| typst_svg::svg(page, &Default::default())).collect()
+    document
+        .pages()
+        .iter()
+        .take(limit)
+        .map(|page| typst_svg::svg(page, &Default::default()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -116,9 +139,10 @@ mod tests {
     /// A 1×1 PNG.
     fn png() -> Vec<u8> {
         vec![
-            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0,
-            0, 0x90, 0x77, 0x53, 0xde, 0, 0, 0, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0, 0, 0x03, 0x01,
-            0x01, 0, 0x18, 0xdd, 0x8d, 0xb0, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d, 0x49, 0x48, 0x44, 0x52,
+            0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 0x90, 0x77, 0x53, 0xde, 0, 0, 0, 0x0c, 0x49,
+            0x44, 0x41, 0x54, 0x08, 0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0, 0, 0x03, 0x01, 0x01, 0, 0x18,
+            0xdd, 0x8d, 0xb0, 0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
         ]
     }
 

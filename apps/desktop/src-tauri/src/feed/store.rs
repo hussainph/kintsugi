@@ -2,10 +2,10 @@
 //! and an append-only event log of every impression and action, so ranking
 //! (KI-32) can learn online and be evaluated offline from the same history.
 
+use kintsugi_ingest::SourceInfo;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::Serialize;
 use serde_json::Value;
-use kintsugi_ingest::SourceInfo;
 use std::path::Path;
 
 type Result<T> = std::result::Result<T, String>;
@@ -237,16 +237,20 @@ const SOURCE_COLUMNS: &str = "s.id, s.url, s.kind, s.title, s.site_url, s.image,
   s.last_fetch_at, s.last_success_at, s.last_status, s.last_error, s.failures, s.next_fetch_at,
   (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.dismissed_at IS NULL AND i.expired_at IS NULL)";
 
-const ITEM_COLUMNS: &str = "i.id, i.source_id, s.title, s.kind, i.url, i.title, i.author, i.summary,
+const ITEM_COLUMNS: &str =
+    "i.id, i.source_id, s.title, s.kind, i.url, i.title, i.author, i.summary,
   i.image, i.media, i.published_at, i.fetched_at, i.sort_at, i.liked_at IS NOT NULL, i.note,
   i.saved_path, i.dismissed_at IS NOT NULL, i.content IS NOT NULL AND i.content <> ''";
 
 /// In the feed: a live, unmuted source; not dismissed, not expired.
-const VISIBLE: &str = "s.removed_at IS NULL AND s.muted = 0 AND i.dismissed_at IS NULL AND i.expired_at IS NULL";
+const VISIBLE: &str =
+    "s.removed_at IS NULL AND s.muted = 0 AND i.dismissed_at IS NULL AND i.expired_at IS NULL";
 
 fn kind(row: &Row, index: usize) -> rusqlite::Result<SourceKind> {
     let text: String = row.get(index)?;
-    SourceKind::parse(&text).ok_or_else(|| rusqlite::Error::InvalidColumnType(index, "kind".into(), rusqlite::types::Type::Text))
+    SourceKind::parse(&text).ok_or_else(|| {
+        rusqlite::Error::InvalidColumnType(index, "kind".into(), rusqlite::types::Type::Text)
+    })
 }
 
 fn source_row(row: &Row) -> rusqlite::Result<Source> {
@@ -310,12 +314,16 @@ impl Store {
     }
 
     fn init(db: Connection) -> Result<Self> {
-        db.busy_timeout(std::time::Duration::from_secs(5)).map_err(err)?;
+        db.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(err)?;
         db.pragma_update(None, "journal_mode", "WAL").map_err(err)?;
         db.pragma_update(None, "foreign_keys", true).map_err(err)?;
-        let version: i64 = db.pragma_query_value(None, "user_version", |r| r.get(0)).map_err(err)?;
+        let version: i64 = db
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .map_err(err)?;
         if version == 0 {
-            db.execute_batch(&format!("BEGIN; {SCHEMA} PRAGMA user_version = 1; COMMIT;")).map_err(err)?;
+            db.execute_batch(&format!("BEGIN; {SCHEMA} PRAGMA user_version = 1; COMMIT;"))
+                .map_err(err)?;
         } else if version > 1 {
             return Err("the feed database was written by a newer Kintsugi".into());
         }
@@ -326,10 +334,20 @@ impl Store {
 
     /// Subscribing to a URL already followed (or unsubscribed earlier)
     /// revives that source rather than duplicating it.
-    pub fn add_source(&self, url: &str, kind: SourceKind, title: Option<&str>, now: i64) -> Result<(Source, bool)> {
+    pub fn add_source(
+        &self,
+        url: &str,
+        kind: SourceKind,
+        title: Option<&str>,
+        now: i64,
+    ) -> Result<(Source, bool)> {
         let existing: Option<(i64, Option<i64>)> = self
             .db
-            .query_row("SELECT id, removed_at FROM sources WHERE url = ?1", [url], |r| Ok((r.get(0)?, r.get(1)?)))
+            .query_row(
+                "SELECT id, removed_at FROM sources WHERE url = ?1",
+                [url],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
             .optional()
             .map_err(err)?;
         let (id, added) = match existing {
@@ -373,13 +391,20 @@ impl Store {
                  ORDER BY lower(COALESCE(s.title, s.url)), s.id"
             ))
             .map_err(err)?;
-        statement.query_map([], source_row).map_err(err)?.collect::<rusqlite::Result<_>>().map_err(err)
+        statement
+            .query_map([], source_row)
+            .map_err(err)?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(err)
     }
 
     pub fn remove_source(&self, id: i64, now: i64) -> Result<()> {
         let changed = self
             .db
-            .execute("UPDATE sources SET removed_at = ?2 WHERE id = ?1 AND removed_at IS NULL", params![id, now])
+            .execute(
+                "UPDATE sources SET removed_at = ?2 WHERE id = ?1 AND removed_at IS NULL",
+                params![id, now],
+            )
             .map_err(err)?;
         if changed == 0 {
             return Err("no such source".into());
@@ -425,12 +450,22 @@ impl Store {
     }
 
     pub fn due_one(&self, id: i64) -> Result<Due> {
-        self.due(0, true)?.into_iter().find(|d| d.id == id).ok_or_else(|| "no such source, or it is muted".into())
+        self.due(0, true)?
+            .into_iter()
+            .find(|d| d.id == id)
+            .ok_or_else(|| "no such source, or it is muted".into())
     }
 
     /// The metadata a fetch learned; existing titles the writer has are kept
     /// only when the feed offers none.
-    pub fn record_success(&self, id: i64, now: i64, cursor: Option<&str>, meta: Option<&SourceInfo>, next: i64) -> Result<()> {
+    pub fn record_success(
+        &self,
+        id: i64,
+        now: i64,
+        cursor: Option<&str>,
+        meta: Option<&SourceInfo>,
+        next: i64,
+    ) -> Result<()> {
         let meta = meta.cloned().unwrap_or_default();
         self.db
             .execute(
@@ -445,7 +480,14 @@ impl Store {
     }
 
     /// A failure never removes a source: it backs off and tries again.
-    pub fn record_failure(&self, id: i64, now: i64, status: Option<u16>, error: &str, next: i64) -> Result<()> {
+    pub fn record_failure(
+        &self,
+        id: i64,
+        now: i64,
+        status: Option<u16>,
+        error: &str,
+        next: i64,
+    ) -> Result<()> {
         self.db
             .execute(
                 "UPDATE sources SET last_fetch_at = ?2, last_status = ?3, last_error = ?4,
@@ -460,7 +502,13 @@ impl Store {
 
     /// Entries arrive newest first, as feeds list them. Returns how many are
     /// new to the feed. Known entries are refreshed unless they have expired.
-    pub fn insert_items(&self, source: i64, entries: &[NewItem], now: i64, first: bool) -> Result<usize> {
+    pub fn insert_items(
+        &self,
+        source: i64,
+        entries: &[NewItem],
+        now: i64,
+        first: bool,
+    ) -> Result<usize> {
         let tx = self.db.unchecked_transaction().map_err(err)?;
         let mut added = 0;
         let mut order: Vec<&NewItem> = entries.iter().take(MAX_ENTRIES_PER_POLL).collect();
@@ -469,7 +517,11 @@ impl Store {
         // Insert oldest first so ties on sort_at break by id, newest on top.
         for (rank, entry) in order.iter().enumerate().rev() {
             let known: bool = tx
-                .query_row("SELECT 1 FROM items WHERE source_id = ?1 AND guid = ?2", params![source, entry.guid], |_| Ok(true))
+                .query_row(
+                    "SELECT 1 FROM items WHERE source_id = ?1 AND guid = ?2",
+                    params![source, entry.guid],
+                    |_| Ok(true),
+                )
                 .optional()
                 .map_err(err)?
                 .unwrap_or(false);
@@ -548,7 +600,9 @@ impl Store {
                  FROM items i JOIN sources s ON s.id = i.source_id WHERE {VISIBLE} ORDER BY i.id"
             ))
             .map_err(err)?;
-        let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).map_err(err)?;
+        let rows = statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)
     }
 
@@ -567,33 +621,58 @@ impl Store {
     /// Readable text from the feed itself, for reading in the app and for a
     /// saved clip's source section.
     pub fn content(&self, id: i64) -> Result<Option<String>> {
-        self.db.query_row("SELECT content FROM items WHERE id = ?1", [id], |r| r.get(0)).map_err(err)
+        self.db
+            .query_row("SELECT content FROM items WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
+            .map_err(err)
     }
 
     pub fn set_liked(&self, id: i64, liked: bool, now: i64) -> Result<Item> {
-        self.update(id, "liked_at = CASE WHEN ?2 THEN COALESCE(liked_at, ?3) END", params![id, liked, now])
+        self.update(
+            id,
+            "liked_at = CASE WHEN ?2 THEN COALESCE(liked_at, ?3) END",
+            params![id, liked, now],
+        )
     }
 
     pub fn set_dismissed(&self, id: i64, dismissed: bool, now: i64) -> Result<Item> {
-        self.update(id, "dismissed_at = CASE WHEN ?2 THEN COALESCE(dismissed_at, ?3) END", params![id, dismissed, now])
+        self.update(
+            id,
+            "dismissed_at = CASE WHEN ?2 THEN COALESCE(dismissed_at, ?3) END",
+            params![id, dismissed, now],
+        )
     }
 
     /// An empty note clears it.
     pub fn set_note(&self, id: i64, note: &str, now: i64) -> Result<Item> {
         let note = Some(note.trim()).filter(|n| !n.is_empty());
-        self.update(id, "note = ?2, note_at = CASE WHEN ?2 IS NULL THEN NULL ELSE ?3 END", params![id, note, now])
+        self.update(
+            id,
+            "note = ?2, note_at = CASE WHEN ?2 IS NULL THEN NULL ELSE ?3 END",
+            params![id, note, now],
+        )
     }
 
     /// Full text from the ingest engine replaces the feed's excerpt.
     pub fn set_full_text(&self, id: i64, text: Option<&str>, now: i64) -> Result<()> {
         self.db
-            .execute("UPDATE items SET content = COALESCE(?2, content), full_text_at = ?3 WHERE id = ?1", params![id, text, now])
+            .execute(
+                "UPDATE items SET content = COALESCE(?2, content), full_text_at = ?3 WHERE id = ?1",
+                params![id, text, now],
+            )
             .map_err(err)?;
         Ok(())
     }
 
     pub fn full_text_tried(&self, id: i64) -> Result<bool> {
-        self.db.query_row("SELECT full_text_at IS NOT NULL FROM items WHERE id = ?1", [id], |r| r.get(0)).map_err(err)
+        self.db
+            .query_row(
+                "SELECT full_text_at IS NOT NULL FROM items WHERE id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .map_err(err)
     }
 
     pub fn set_saved(&self, id: i64, path: &str) -> Result<Item> {
@@ -604,7 +683,9 @@ impl Store {
     pub fn save_id(&self, id: i64) -> Result<String> {
         let existing: Option<String> = self
             .db
-            .query_row("SELECT save_id FROM items WHERE id = ?1", [id], |r| r.get(0))
+            .query_row("SELECT save_id FROM items WHERE id = ?1", [id], |r| {
+                r.get(0)
+            })
             .optional()
             .map_err(err)?
             .ok_or("no such feed item")?;
@@ -612,12 +693,20 @@ impl Store {
             return Ok(existing);
         }
         let fresh = uuid::Uuid::new_v4().to_string();
-        self.db.execute("UPDATE items SET save_id = ?2 WHERE id = ?1", params![id, fresh]).map_err(err)?;
+        self.db
+            .execute(
+                "UPDATE items SET save_id = ?2 WHERE id = ?1",
+                params![id, fresh],
+            )
+            .map_err(err)?;
         Ok(fresh)
     }
 
     fn update(&self, id: i64, set: &str, args: impl rusqlite::Params) -> Result<Item> {
-        let changed = self.db.execute(&format!("UPDATE items SET {set} WHERE id = ?1"), args).map_err(err)?;
+        let changed = self
+            .db
+            .execute(&format!("UPDATE items SET {set} WHERE id = ?1"), args)
+            .map_err(err)?;
         if changed == 0 {
             return Err("no such feed item".into());
         }
@@ -709,7 +798,14 @@ impl Store {
             .map_err(err)?;
         let rows = statement
             .query_map([limit as i64], |r| {
-                Ok(Acted { id: format!("feed:{}", r.get::<_, i64>(0)?), title: r.get(1)?, source: r.get(2)?, liked: r.get(3)?, saved: r.get(4)?, note: r.get(5)? })
+                Ok(Acted {
+                    id: format!("feed:{}", r.get::<_, i64>(0)?),
+                    title: r.get(1)?,
+                    source: r.get(2)?,
+                    liked: r.get(3)?,
+                    saved: r.get(4)?,
+                    note: r.get(5)?,
+                })
             })
             .map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)
@@ -720,7 +816,6 @@ impl Store {
         &self.db
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -745,17 +840,43 @@ mod tests {
     #[test]
     fn search_stamps_follow_text_and_visibility() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, Some("Example"), NOW).unwrap();
-        store.insert_items(source.id, &[entry("a", Some(1)), entry("b", Some(1))], NOW, true).unwrap();
+        let (source, _) = store
+            .add_source(
+                "https://example.com/feed",
+                SourceKind::Feed,
+                Some("Example"),
+                NOW,
+            )
+            .unwrap();
+        store
+            .insert_items(
+                source.id,
+                &[entry("a", Some(1)), entry("b", Some(1))],
+                NOW,
+                true,
+            )
+            .unwrap();
         let before = store.search_stamps().unwrap();
         assert_eq!(before.len(), 2);
-        let a = before.iter().map(|i| i.0).find(|id| store.item(*id).unwrap().title.as_deref() == Some("a")).unwrap();
+        let a = before
+            .iter()
+            .map(|i| i.0)
+            .find(|id| store.item(*id).unwrap().title.as_deref() == Some("a"))
+            .unwrap();
         let [title, from, _, _, content] = store.search_text(a).unwrap().unwrap();
-        assert_eq!((title.as_deref(), from.as_deref()), (Some("a"), Some("Example")));
+        assert_eq!(
+            (title.as_deref(), from.as_deref()),
+            (Some("a"), Some("Example"))
+        );
         assert_eq!(content.as_deref(), Some("Body of a"));
-        store.set_full_text(a, Some("A much longer body of a"), NOW + 1).unwrap();
+        store
+            .set_full_text(a, Some("A much longer body of a"), NOW + 1)
+            .unwrap();
         let after = store.search_stamps().unwrap();
-        assert_ne!(after.iter().find(|i| i.0 == a), before.iter().find(|i| i.0 == a));
+        assert_ne!(
+            after.iter().find(|i| i.0 == a),
+            before.iter().find(|i| i.0 == a)
+        );
         store.set_dismissed(a, true, NOW).unwrap();
         assert_eq!(store.search_stamps().unwrap().len(), 1);
         store.set_muted(source.id, true).unwrap();
@@ -765,14 +886,37 @@ mod tests {
     #[test]
     fn newest_first_and_known_entries_are_not_duplicated() {
         let store = Store::memory();
-        let (source, added) = store.add_source("https://example.com/feed", SourceKind::Feed, Some("Example"), NOW).unwrap();
+        let (source, added) = store
+            .add_source(
+                "https://example.com/feed",
+                SourceKind::Feed,
+                Some("Example"),
+                NOW,
+            )
+            .unwrap();
         assert!(added);
-        let entries = [entry("b", Some(2)), entry("a", Some(1)), entry("c", Some(3))];
-        assert_eq!(store.insert_items(source.id, &entries, NOW, true).unwrap(), 3);
-        assert_eq!(store.insert_items(source.id, &entries, NOW + 60, false).unwrap(), 0);
+        let entries = [
+            entry("b", Some(2)),
+            entry("a", Some(1)),
+            entry("c", Some(3)),
+        ];
+        assert_eq!(
+            store.insert_items(source.id, &entries, NOW, true).unwrap(),
+            3
+        );
+        assert_eq!(
+            store
+                .insert_items(source.id, &entries, NOW + 60, false)
+                .unwrap(),
+            0
+        );
         let page = store.items(0, 10, None).unwrap();
         assert_eq!(page.total, 3);
-        let titles: Vec<_> = page.items.iter().map(|i| i.title.clone().unwrap()).collect();
+        let titles: Vec<_> = page
+            .items
+            .iter()
+            .map(|i| i.title.clone().unwrap())
+            .collect();
         assert_eq!(titles, ["a", "b", "c"]);
         assert_eq!(page.items[0].source_title.as_deref(), Some("Example"));
         assert!(page.items[0].has_content);
@@ -781,61 +925,124 @@ mod tests {
     #[test]
     fn undated_entries_keep_feed_order() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, None, NOW).unwrap();
-        store.insert_items(source.id, &[entry("first", None), entry("second", None)], NOW, true).unwrap();
-        let titles: Vec<_> = store.items(0, 10, None).unwrap().items.into_iter().map(|i| i.title.unwrap()).collect();
+        let (source, _) = store
+            .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
+            .unwrap();
+        store
+            .insert_items(
+                source.id,
+                &[entry("first", None), entry("second", None)],
+                NOW,
+                true,
+            )
+            .unwrap();
+        let titles: Vec<_> = store
+            .items(0, 10, None)
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|i| i.title.unwrap())
+            .collect();
         assert_eq!(titles, ["first", "second"]);
     }
 
     #[test]
     fn back_catalogue_starts_expired_except_a_few_on_first_fetch() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/podcast", SourceKind::Podcast, None, NOW).unwrap();
-        let old: Vec<_> = (0..6).map(|n| entry(&format!("old{n}"), Some(100 + n))).collect();
+        let (source, _) = store
+            .add_source(
+                "https://example.com/podcast",
+                SourceKind::Podcast,
+                None,
+                NOW,
+            )
+            .unwrap();
+        let old: Vec<_> = (0..6)
+            .map(|n| entry(&format!("old{n}"), Some(100 + n)))
+            .collect();
         assert_eq!(store.insert_items(source.id, &old, NOW, true).unwrap(), 3);
         assert_eq!(store.items(0, 10, None).unwrap().total, 3);
         // Later polls never bring the rest back, and new old entries start expired.
-        assert_eq!(store.insert_items(source.id, &[entry("older", Some(200))], NOW, false).unwrap(), 0);
+        assert_eq!(
+            store
+                .insert_items(source.id, &[entry("older", Some(200))], NOW, false)
+                .unwrap(),
+            0
+        );
         assert_eq!(store.items(0, 10, None).unwrap().total, 3);
     }
 
     #[test]
     fn ignored_items_expire_after_thirty_days_but_acted_ones_stay() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, None, NOW).unwrap();
-        let entries: Vec<_> = ["ignored", "liked", "noted", "dismissed"].iter().map(|g| entry(g, Some(0))).collect();
+        let (source, _) = store
+            .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
+            .unwrap();
+        let entries: Vec<_> = ["ignored", "liked", "noted", "dismissed"]
+            .iter()
+            .map(|g| entry(g, Some(0)))
+            .collect();
         store.insert_items(source.id, &entries, NOW, true).unwrap();
-        let id = |title: &str| store.raw().query_row("SELECT id FROM items WHERE guid = ?1", [title], |r| r.get::<_, i64>(0)).unwrap();
+        let id = |title: &str| {
+            store
+                .raw()
+                .query_row("SELECT id FROM items WHERE guid = ?1", [title], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .unwrap()
+        };
         store.set_liked(id("liked"), true, NOW).unwrap();
         store.set_note(id("noted"), "Worth a post", NOW).unwrap();
         store.set_dismissed(id("dismissed"), true, NOW).unwrap();
         assert_eq!(store.expire(NOW + 29 * DAY).unwrap(), 0);
         assert_eq!(store.expire(NOW + 31 * DAY).unwrap(), 1);
-        let left: Vec<_> = store.items(0, 10, None).unwrap().items.into_iter().map(|i| i.title.unwrap()).collect();
+        let left: Vec<_> = store
+            .items(0, 10, None)
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|i| i.title.unwrap())
+            .collect();
         assert_eq!(left.len(), 2);
         assert!(left.contains(&"liked".to_string()) && left.contains(&"noted".to_string()));
         // The expired item's text is gone, and a later poll doesn't revive it.
         assert_eq!(store.content(id("ignored")).unwrap(), None);
         assert_eq!(store.content(id("dismissed")).unwrap(), None);
-        store.insert_items(source.id, &[entry("ignored", Some(0))], NOW + 32 * DAY, false).unwrap();
+        store
+            .insert_items(
+                source.id,
+                &[entry("ignored", Some(0))],
+                NOW + 32 * DAY,
+                false,
+            )
+            .unwrap();
         assert_eq!(store.items(0, 10, None).unwrap().total, 2);
     }
 
     #[test]
     fn muted_and_removed_sources_leave_the_feed() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, None, NOW).unwrap();
-        store.insert_items(source.id, &[entry("a", Some(0))], NOW, true).unwrap();
+        let (source, _) = store
+            .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
+            .unwrap();
+        store
+            .insert_items(source.id, &[entry("a", Some(0))], NOW, true)
+            .unwrap();
         assert!(store.set_muted(source.id, true).unwrap().muted);
         assert_eq!(store.items(0, 10, None).unwrap().total, 0);
-        assert!(store.due(NOW, true).unwrap().is_empty(), "muted sources aren't polled");
+        assert!(
+            store.due(NOW, true).unwrap().is_empty(),
+            "muted sources aren't polled"
+        );
         store.set_muted(source.id, false).unwrap();
         assert_eq!(store.items(0, 10, None).unwrap().total, 1);
         store.remove_source(source.id, NOW).unwrap();
         assert!(store.sources().unwrap().is_empty());
         assert_eq!(store.items(0, 10, None).unwrap().total, 0);
         // Subscribing again revives it with its history.
-        let (again, added) = store.add_source("https://example.com/feed", SourceKind::Feed, None, NOW).unwrap();
+        let (again, added) = store
+            .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
+            .unwrap();
         assert_eq!(again.id, source.id);
         assert!(added);
         assert_eq!(store.items(0, 10, None).unwrap().total, 1);
@@ -844,16 +1051,46 @@ mod tests {
     #[test]
     fn health_records_backoff_and_conditional_headers() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, None, NOW).unwrap();
+        let (source, _) = store
+            .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
+            .unwrap();
         assert!(store.due(NOW, false).unwrap()[0].first);
-        store.record_failure(source.id, NOW, Some(503), "HTTP 503", NOW + 300).unwrap();
+        store
+            .record_failure(source.id, NOW, Some(503), "HTTP 503", NOW + 300)
+            .unwrap();
         let failed = store.source(source.id).unwrap();
-        assert_eq!((failed.failures, failed.last_error.as_deref(), failed.last_status), (1, Some("HTTP 503"), Some(503)));
+        assert_eq!(
+            (
+                failed.failures,
+                failed.last_error.as_deref(),
+                failed.last_status
+            ),
+            (1, Some("HTTP 503"), Some(503))
+        );
         assert!(store.due(NOW + 10, false).unwrap().is_empty());
-        let meta = SourceInfo { title: Some("Example blog".into()), ..Default::default() };
-        store.record_success(source.id, NOW + 400, Some(r#"{"etag":"\"v1\""}"#), Some(&meta), NOW + 2200).unwrap();
+        let meta = SourceInfo {
+            title: Some("Example blog".into()),
+            ..Default::default()
+        };
+        store
+            .record_success(
+                source.id,
+                NOW + 400,
+                Some(r#"{"etag":"\"v1\""}"#),
+                Some(&meta),
+                NOW + 2200,
+            )
+            .unwrap();
         let healthy = store.source(source.id).unwrap();
-        assert_eq!((healthy.failures, healthy.last_error, healthy.last_status, healthy.title.as_deref()), (0, None, None, Some("Example blog")));
+        assert_eq!(
+            (
+                healthy.failures,
+                healthy.last_error,
+                healthy.last_status,
+                healthy.title.as_deref()
+            ),
+            (0, None, None, Some("Example blog"))
+        );
         let due = store.due(NOW + 2200, false).unwrap();
         assert_eq!(due[0].cursor.as_deref(), Some(r#"{"etag":"\"v1\""}"#));
         assert!(!due[0].first);
@@ -863,9 +1100,21 @@ mod tests {
     fn the_event_log_is_append_only() {
         let store = Store::memory();
         store
-            .log(&Event { at: 1, kind: "impression".into(), item_id: Some(7), surface: Some("newest".into()), position: Some(0), ..Default::default() })
+            .log(&Event {
+                at: 1,
+                kind: "impression".into(),
+                item_id: Some(7),
+                surface: Some("newest".into()),
+                position: Some(0),
+                ..Default::default()
+            })
             .unwrap();
-        assert!(store.raw().execute("UPDATE events SET kind = 'like'", []).is_err());
+        assert!(
+            store
+                .raw()
+                .execute("UPDATE events SET kind = 'like'", [])
+                .is_err()
+        );
         assert!(store.raw().execute("DELETE FROM events", []).is_err());
         assert_eq!(store.events().unwrap()[0].position, Some(0));
     }
@@ -873,17 +1122,37 @@ mod tests {
     #[test]
     fn full_text_is_fetched_once_and_survives_later_polls() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, None, NOW).unwrap();
-        store.insert_items(source.id, &[entry("a", Some(0))], NOW, true).unwrap();
+        let (source, _) = store
+            .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
+            .unwrap();
+        store
+            .insert_items(source.id, &[entry("a", Some(0))], NOW, true)
+            .unwrap();
         let id = store.items(0, 1, None).unwrap().items[0].id;
         assert!(!store.full_text_tried(id).unwrap());
-        store.set_full_text(id, Some("The whole article."), NOW).unwrap();
+        store
+            .set_full_text(id, Some("The whole article."), NOW)
+            .unwrap();
         assert!(store.full_text_tried(id).unwrap());
-        store.insert_items(source.id, &[entry("a", Some(0))], NOW + 60, false).unwrap();
-        assert_eq!(store.content(id).unwrap().as_deref(), Some("The whole article."));
+        store
+            .insert_items(source.id, &[entry("a", Some(0))], NOW + 60, false)
+            .unwrap();
+        assert_eq!(
+            store.content(id).unwrap().as_deref(),
+            Some("The whole article.")
+        );
         // A failed fetch keeps the feed's text but isn't retried.
-        store.insert_items(source.id, &[entry("b", Some(0))], NOW, false).unwrap();
-        let other = store.items(0, 2, None).unwrap().items.into_iter().find(|i| i.id != id).unwrap().id;
+        store
+            .insert_items(source.id, &[entry("b", Some(0))], NOW, false)
+            .unwrap();
+        let other = store
+            .items(0, 2, None)
+            .unwrap()
+            .items
+            .into_iter()
+            .find(|i| i.id != id)
+            .unwrap()
+            .id;
         store.set_full_text(other, None, NOW).unwrap();
         assert_eq!(store.content(other).unwrap().as_deref(), Some("Body of b"));
         assert!(store.full_text_tried(other).unwrap());
@@ -892,8 +1161,12 @@ mod tests {
     #[test]
     fn save_ids_are_stable() {
         let store = Store::memory();
-        let (source, _) = store.add_source("https://example.com/feed", SourceKind::Feed, None, NOW).unwrap();
-        store.insert_items(source.id, &[entry("a", Some(0))], NOW, true).unwrap();
+        let (source, _) = store
+            .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
+            .unwrap();
+        store
+            .insert_items(source.id, &[entry("a", Some(0))], NOW, true)
+            .unwrap();
         let id = store.items(0, 1, None).unwrap().items[0].id;
         let first = store.save_id(id).unwrap();
         assert_eq!(first.len(), 36);

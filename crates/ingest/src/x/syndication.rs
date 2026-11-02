@@ -9,7 +9,10 @@ use serde::Deserialize;
 
 pub(crate) async fn thread(client: &ApiClient, base: &Url, id: &str) -> Result<Thread> {
     let mut url = base.join("tweet-result").map_err(|_| Error::InvalidUrl)?;
-    url.query_pairs_mut().append_pair("id", id).append_pair("lang", "en").append_pair("token", &token(id));
+    url.query_pairs_mut()
+        .append_pair("id", id)
+        .append_pair("lang", "en")
+        .append_pair("token", &token(id));
     let body = client.get(url).await?;
     let tweet: Tweet = serde_json::from_slice(&body.bytes).map_err(|_| Error::Unavailable)?;
     if tweet.id_str.is_empty() || tweet.typename.as_deref() == Some("TweetTombstone") {
@@ -23,7 +26,10 @@ pub(crate) async fn thread(client: &ApiClient, base: &Url, id: &str) -> Result<T
         posts.push(Post::from(*parent));
     }
     posts.push(Post::from(tweet));
-    Ok(Thread { posts, complete: false })
+    Ok(Thread {
+        posts,
+        complete: false,
+    })
 }
 
 /// The token embeds compute: `(id / 1e15 * π)` in base 36 without zeros or
@@ -128,12 +134,17 @@ struct SynCard {
 impl From<Tweet> for Post {
     fn from(t: Tweet) -> Self {
         let mut text = match t.display_text_range {
-            Some((start, end)) if start <= end => t.text.chars().skip(start).take(end - start).collect(),
+            Some((start, end)) if start <= end => {
+                t.text.chars().skip(start).take(end - start).collect()
+            }
             _ => t.text.clone(),
         };
         for entity in &t.entities.urls {
             if !entity.url.is_empty() {
-                text = text.replace(&entity.url, entity.expanded_url.as_deref().unwrap_or(&entity.url));
+                text = text.replace(
+                    &entity.url,
+                    entity.expanded_url.as_deref().unwrap_or(&entity.url),
+                );
             }
         }
         for entity in &t.entities.media {
@@ -141,19 +152,32 @@ impl From<Tweet> for Post {
                 text = text.replace(&entity.url, "");
             }
         }
-        let text = text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
+        let text = text
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&");
         let media = t.media_details.into_iter().filter_map(media_item).collect();
         Post {
             id: t.id_str,
-            author: Author { name: t.user.name, handle: t.user.screen_name, avatar: t.user.profile_image_url_https },
+            author: Author {
+                name: t.user.name,
+                handle: t.user.screen_name,
+                avatar: t.user.profile_image_url_https,
+            },
             text: text.trim().to_string(),
             created: t.created_at,
             lang: t.lang,
             media,
-            quote: t.quoted_tweet.filter(|q| !q.id_str.is_empty()).map(|q| Box::new(Post::from(*q))),
+            quote: t
+                .quoted_tweet
+                .filter(|q| !q.id_str.is_empty())
+                .map(|q| Box::new(Post::from(*q))),
             card: t.card.and_then(card),
             article: None,
-            replying_to: t.in_reply_to_status_id_str.map(|id| ReplyTo { id, handle: t.in_reply_to_screen_name }),
+            replying_to: t.in_reply_to_status_id_str.map(|id| ReplyTo {
+                id,
+                handle: t.in_reply_to_screen_name,
+            }),
             reposted_by: None,
             stats: Stats {
                 likes: t.favorite_count,
@@ -175,7 +199,12 @@ fn media_item(m: MediaDetail) -> Option<PostMedia> {
     };
     let still = m.media_url_https;
     if kind == PostMediaKind::Photo {
-        return Some(PostMedia { kind, url: still, preview: None, alt: m.ext_alt_text });
+        return Some(PostMedia {
+            kind,
+            url: still,
+            preview: None,
+            alt: m.ext_alt_text,
+        });
     }
     let video = m
         .video_info
@@ -185,17 +214,33 @@ fn media_item(m: MediaDetail) -> Option<PostMedia> {
         .filter(|v| v.content_type.as_deref() == Some("video/mp4"))
         .max_by_key(|v| v.bitrate.unwrap_or(0))
         .and_then(|v| v.url);
-    Some(PostMedia { kind, url: video, preview: still, alt: m.ext_alt_text })
+    Some(PostMedia {
+        kind,
+        url: video,
+        preview: still,
+        alt: m.ext_alt_text,
+    })
 }
 
 /// Link cards carry their fields as `binding_values.<name>.string_value`.
 fn card(c: SynCard) -> Option<Card> {
-    let value = |name: &str| c.binding_values.get(name)?.get("string_value")?.as_str().map(str::to_string);
+    let value = |name: &str| {
+        c.binding_values
+            .get(name)?
+            .get("string_value")?
+            .as_str()
+            .map(str::to_string)
+    };
     let image = c
         .binding_values
         .get("thumbnail_image_large")
         .or_else(|| c.binding_values.get("summary_photo_image_large"))
         .and_then(|v| v.get("image_value")?.get("url")?.as_str())
         .map(str::to_string);
-    Some(Card { url: value("card_url")?, title: value("title"), description: value("description"), image })
+    Some(Card {
+        url: value("card_url")?,
+        title: value("title"),
+        description: value("description"),
+        image,
+    })
 }

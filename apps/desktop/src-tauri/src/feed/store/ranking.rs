@@ -59,8 +59,13 @@ impl Store {
 
     /// Every source ever followed: id, title (or URL), when it was added.
     pub fn rank_sources(&self) -> Result<Vec<(i64, String, i64)>> {
-        let mut statement = self.db.prepare("SELECT id, COALESCE(title, url), added_at FROM sources ORDER BY id").map_err(err)?;
-        let rows = statement.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).map_err(err)?;
+        let mut statement = self
+            .db
+            .prepare("SELECT id, COALESCE(title, url), added_at FROM sources ORDER BY id")
+            .map_err(err)?;
+        let rows = statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(err)?;
         rows.collect::<rusqlite::Result<_>>().map_err(err)
     }
 
@@ -100,8 +105,22 @@ mod tests {
     #[test]
     fn a_seeded_log_ranks_through_the_store() {
         let store = Store::memory();
-        let (pots, _) = store.add_source("https://pots.example/feed", SourceKind::Feed, Some("Pots"), NOW).unwrap();
-        let (ball, _) = store.add_source("https://ball.example/feed", SourceKind::Feed, Some("Ball"), NOW).unwrap();
+        let (pots, _) = store
+            .add_source(
+                "https://pots.example/feed",
+                SourceKind::Feed,
+                Some("Pots"),
+                NOW,
+            )
+            .unwrap();
+        let (ball, _) = store
+            .add_source(
+                "https://ball.example/feed",
+                SourceKind::Feed,
+                Some("Ball"),
+                NOW,
+            )
+            .unwrap();
         let entry = |guid: &str, title: &str, hours: i64| NewItem {
             guid: guid.into(),
             title: Some(title.into()),
@@ -110,41 +129,109 @@ mod tests {
             published_at: Some(NOW - hours * 3600),
             ..Default::default()
         };
-        store.insert_items(pots.id, &[entry("a", "Kiln glaze firing", 30), entry("b", "Porcelain glaze in the kiln", 20)], NOW, true).unwrap();
-        store.insert_items(ball.id, &[entry("c", "Striker transfer derby", 1)], NOW, true).unwrap();
+        store
+            .insert_items(
+                pots.id,
+                &[
+                    entry("a", "Kiln glaze firing", 30),
+                    entry("b", "Porcelain glaze in the kiln", 20),
+                ],
+                NOW,
+                true,
+            )
+            .unwrap();
+        store
+            .insert_items(
+                ball.id,
+                &[entry("c", "Striker transfer derby", 1)],
+                NOW,
+                true,
+            )
+            .unwrap();
         let rows = store.rank_rows().unwrap();
-        let id = |guid: &str| rows.iter().find(|r| r.title.starts_with(match guid { "a" => "Kiln", "b" => "Porcelain", _ => "Striker" })).unwrap().id;
+        let id = |guid: &str| {
+            rows.iter()
+                .find(|r| {
+                    r.title.starts_with(match guid {
+                        "a" => "Kiln",
+                        "b" => "Porcelain",
+                        _ => "Striker",
+                    })
+                })
+                .unwrap()
+                .id
+        };
         let log = |kind: &str, item: i64, data: Option<serde_json::Value>| {
-            store.log(&LogEvent { at: NOW * 1000 - 3_600_000, kind: kind.into(), item_id: Some(item), data, ..Default::default() }).unwrap()
+            store
+                .log(&LogEvent {
+                    at: NOW * 1000 - 3_600_000,
+                    kind: kind.into(),
+                    item_id: Some(item),
+                    data,
+                    ..Default::default()
+                })
+                .unwrap()
         };
         log("save", id("a"), None);
         log("kin_pick", id("c"), None);
         assert_eq!(store.events_after(1).unwrap().len(), 1);
         let events = store.events_after(0).unwrap();
-        assert_eq!((events[0].kind.as_str(), events[0].item), ("save", Some(id("a"))));
+        assert_eq!(
+            (events[0].kind.as_str(), events[0].item),
+            ("save", Some(id("a")))
+        );
 
         let mut world = World::default();
         for (sid, title, added) in store.rank_sources().unwrap() {
-            world.sources.insert(sid, Source { id: sid, title, added });
+            world.sources.insert(
+                sid,
+                Source {
+                    id: sid,
+                    title,
+                    added,
+                },
+            );
         }
         for row in &rows {
             assert!(row.visible && row.length > 0);
-            world.items.insert(row.id, kintsugi_rank::Item {
-                id: row.id,
-                source: row.source_id,
-                author: None,
-                title: row.title.clone(),
-                url: None,
-                topics: text::topics(&row.title, &row.text, &[]),
-                media: kintsugi_rank::Media::parse(&row.media),
-                published: row.sort_at,
-                length: row.length,
-                vector: text::hashed(&row.title, &row.text),
-            });
+            world.items.insert(
+                row.id,
+                kintsugi_rank::Item {
+                    id: row.id,
+                    source: row.source_id,
+                    author: None,
+                    title: row.title.clone(),
+                    url: None,
+                    topics: text::topics(&row.title, &row.text, &[]),
+                    media: kintsugi_rank::Media::parse(&row.media),
+                    published: row.sort_at,
+                    length: row.length,
+                    vector: text::hashed(&row.title, &row.text),
+                },
+            );
         }
         let ranker = Ranker::build(&world, &events, NOW * 1000);
-        let picks = ranker.pick(&world, &rows.iter().map(|r| r.id).collect::<Vec<_>>(), NOW * 1000, PickOptions { n: 2, explore: false, seed: 0 });
-        assert_eq!(picks.iter().map(|p| p.id).collect::<Vec<_>>(), [id("b"), id("c")]);
-        assert!(picks[0].reasons.iter().any(|r| r.key == format!("anchor:item:{}", id("a"))), "{:?}", picks[0].reasons);
+        let picks = ranker.pick(
+            &world,
+            &rows.iter().map(|r| r.id).collect::<Vec<_>>(),
+            NOW * 1000,
+            PickOptions {
+                n: 2,
+                explore: false,
+                seed: 0,
+            },
+        );
+        assert_eq!(
+            picks.iter().map(|p| p.id).collect::<Vec<_>>(),
+            [id("b"), id("c")]
+        );
+        assert!(
+            picks[0]
+                .reasons
+                .iter()
+                .any(|r| r.key == format!("anchor:item:{}", id("a"))),
+            "{:?}",
+            picks[0].reasons
+        );
     }
 }

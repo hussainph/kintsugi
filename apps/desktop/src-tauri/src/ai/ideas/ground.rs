@@ -93,11 +93,17 @@ pub fn parse(report: &str) -> Result<Vec<Candidate>, String> {
     let value = serde_json::from_str::<Value>(body).ok().or_else(|| {
         // Prose around the JSON: take the outermost array or object.
         let start = body.find(['[', '{'])?;
-        let close = if body[start..].starts_with('[') { ']' } else { '}' };
+        let close = if body[start..].starts_with('[') {
+            ']'
+        } else {
+            '}'
+        };
         let end = body.rfind(close)?;
         serde_json::from_str(&body[start..=end]).ok()
     });
-    let Some(value) = value else { return Err("The helper's report wasn't the JSON it was asked for.".into()) };
+    let Some(value) = value else {
+        return Err("The helper's report wasn't the JSON it was asked for.".into());
+    };
     let list = match value {
         Value::Array(items) => items,
         Value::Object(mut map) => match map.remove("ideas") {
@@ -107,7 +113,10 @@ pub fn parse(report: &str) -> Result<Vec<Candidate>, String> {
         },
         _ => return Err("The helper's report held no ideas.".into()),
     };
-    Ok(list.into_iter().filter_map(|v| serde_json::from_value(v).ok()).collect())
+    Ok(list
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect())
 }
 
 fn between<'a>(text: &'a str, open: &str, close: &str) -> Option<&'a str> {
@@ -155,8 +164,15 @@ pub fn normalize(text: &str) -> String {
 /// order.
 pub fn quoted_in(source: &str, quote: &str) -> bool {
     let source = normalize(source);
-    let quote = normalize(&quote.replace('\u{2026}', "...")).trim_matches('"').trim().to_string();
-    let parts: Vec<&str> = quote.split("...").map(|p| p.trim()).filter(|p| !p.is_empty()).collect();
+    let quote = normalize(&quote.replace('\u{2026}', "..."))
+        .trim_matches('"')
+        .trim()
+        .to_string();
+    let parts: Vec<&str> = quote
+        .split("...")
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
     if parts.is_empty() || parts.iter().map(|p| p.chars().count()).sum::<usize>() < MIN_QUOTE {
         return false;
     }
@@ -188,14 +204,20 @@ fn shorten(text: &str, max: usize) -> String {
         return text;
     }
     let cut: String = text.chars().take(max - 1).collect();
-    let cut = cut.rsplit_once(' ').map_or(cut.as_str(), |(head, _)| head).trim_end_matches([',', ';', ':', '.']);
+    let cut = cut
+        .rsplit_once(' ')
+        .map_or(cut.as_str(), |(head, _)| head)
+        .trim_end_matches([',', ';', ':', '.']);
     format!("{cut}…")
 }
 
 /// Draft prose has paragraphs, headings and lists; an idea's hunch is a
 /// sentence or two.
 fn reads_like_prose(text: &str) -> bool {
-    text.contains("\n\n") || text.lines().any(|l| l.trim_start().starts_with('#') || l.trim_start().starts_with("- "))
+    text.contains("\n\n")
+        || text
+            .lines()
+            .any(|l| l.trim_start().starts_with('#') || l.trim_start().starts_with("- "))
 }
 
 fn kind(kind: &str) -> String {
@@ -209,7 +231,12 @@ fn kind(kind: &str) -> String {
 
 /// Checks one candidate. `about_you` is USER.md: a reason's profile line is
 /// kept only if it really is one of its lines.
-pub fn check_one(c: Candidate, sources: &dyn Sources, about_you: &[String], footprint: &Footprint) -> Result<Content, String> {
+pub fn check_one(
+    c: Candidate,
+    sources: &dyn Sources,
+    about_you: &[String],
+    footprint: &Footprint,
+) -> Result<Content, String> {
     let title = clean(&c.title);
     if title.is_empty() {
         return Err("it had no title".into());
@@ -224,7 +251,12 @@ pub fn check_one(c: Candidate, sources: &dyn Sources, about_you: &[String], foot
     if hunch.chars().count() > MAX_HUNCH || reads_like_prose(&hunch) {
         return Err("its hunch read like draft prose".into());
     }
-    let observed: Vec<String> = c.observed.iter().map(|f| clean(f)).filter(|f| !f.is_empty()).collect();
+    let observed: Vec<String> = c
+        .observed
+        .iter()
+        .map(|f| clean(f))
+        .filter(|f| !f.is_empty())
+        .collect();
     if observed.is_empty() {
         return Err("it observed nothing checkable".into());
     }
@@ -232,35 +264,81 @@ pub fn check_one(c: Candidate, sources: &dyn Sources, about_you: &[String], foot
         return Err("an observation read like prose".into());
     }
     if c.quotes.len() < MIN_QUOTES {
-        return Err(format!("it quoted {} source(s); ideas need {MIN_QUOTES} to {MAX_QUOTES}", c.quotes.len()));
+        return Err(format!(
+            "it quoted {} source(s); ideas need {MIN_QUOTES} to {MAX_QUOTES}",
+            c.quotes.len()
+        ));
     }
     let mut quotes = Vec::new();
     for raw in c.quotes.iter().take(MAX_QUOTES) {
-        let text = raw.text.trim().trim_matches(['"', '\u{201c}', '\u{201d}']).trim().to_string();
+        let text = raw
+            .text
+            .trim()
+            .trim_matches(['"', '\u{201c}', '\u{201d}'])
+            .trim()
+            .to_string();
         let len = text.chars().count();
         if !(MIN_QUOTE..=MAX_QUOTE).contains(&len) {
-            return Err(format!("a quote from {} was too short or too long", raw.source.trim()));
+            return Err(format!(
+                "a quote from {} was too short or too long",
+                raw.source.trim()
+            ));
         }
         let Some(doc) = sources.get(&raw.source) else {
-            return Err(format!("it quoted {}, which isn't in the vault or the Feed", raw.source.trim()));
+            return Err(format!(
+                "it quoted {}, which isn't in the vault or the Feed",
+                raw.source.trim()
+            ));
         };
         if !quoted_in(&doc.text, &text) {
             return Err(format!("a quote isn't in {}", doc.id));
         }
-        quotes.push(Quote { source: doc.id, text, title: doc.title, origin: doc.origin, own: doc.own, link: doc.link });
+        quotes.push(Quote {
+            source: doc.id,
+            text,
+            title: doc.title,
+            origin: doc.origin,
+            own: doc.own,
+            link: doc.link,
+        });
     }
-    let profile: Vec<String> = about_you.iter().map(|l| normalize(l).to_lowercase()).collect();
+    let profile: Vec<String> = about_you
+        .iter()
+        .map(|l| normalize(l).to_lowercase())
+        .collect();
     let reasons = c
         .reasons
         .iter()
-        .map(|r| (clean(&r.text), r.profile_line.as_deref().map(str::trim).unwrap_or_default().to_string()))
+        .map(|r| {
+            (
+                clean(&r.text),
+                r.profile_line
+                    .as_deref()
+                    .map(str::trim)
+                    .unwrap_or_default()
+                    .to_string(),
+            )
+        })
         .filter(|(text, _)| !text.is_empty())
         .take(MAX_REASONS)
         .enumerate()
         .map(|(i, (text, line))| {
             let line = normalize(&line).to_lowercase();
-            let found = (!line.is_empty()).then(|| about_you.iter().zip(&profile).find(|(_, p)| **p == line || p.contains(&line)).map(|(l, _)| l.clone())).flatten();
-            Reason { id: format!("r{}", i + 1), text: shorten(&text, MAX_FACT), profile_line: found, removed: false }
+            let found = (!line.is_empty())
+                .then(|| {
+                    about_you
+                        .iter()
+                        .zip(&profile)
+                        .find(|(_, p)| **p == line || p.contains(&line))
+                        .map(|(l, _)| l.clone())
+                })
+                .flatten();
+            Reason {
+                id: format!("r{}", i + 1),
+                text: shorten(&text, MAX_FACT),
+                profile_line: found,
+                removed: false,
+            }
         })
         .collect();
     let steps = c
@@ -268,13 +346,35 @@ pub fn check_one(c: Candidate, sources: &dyn Sources, about_you: &[String], foot
         .iter()
         .filter(|s| !s.did.trim().is_empty())
         .take(MAX_STEPS)
-        .map(|s| Step { did: shorten(&s.did, MAX_STEP), found: s.found.as_deref().map(|f| shorten(f, MAX_STEP)).filter(|f| !f.is_empty()) })
+        .map(|s| Step {
+            did: shorten(&s.did, MAX_STEP),
+            found: s
+                .found
+                .as_deref()
+                .map(|f| shorten(f, MAX_STEP))
+                .filter(|f| !f.is_empty()),
+        })
         .collect();
-    let about = c.about.iter().filter_map(|p| sources.get(p)).filter(|d| !d.id.starts_with("feed:")).map(|d| d.id).collect();
-    let draft_title = Some(clean(&c.draft_title)).filter(|t| !t.is_empty() && t.chars().count() <= MAX_DRAFT_TITLE).unwrap_or_else(|| shorten(&title, 60));
+    let about = c
+        .about
+        .iter()
+        .filter_map(|p| sources.get(p))
+        .filter(|d| !d.id.starts_with("feed:"))
+        .map(|d| d.id)
+        .collect();
+    let draft_title = Some(clean(&c.draft_title))
+        .filter(|t| !t.is_empty() && t.chars().count() <= MAX_DRAFT_TITLE)
+        .unwrap_or_else(|| shorten(&title, 60));
     Ok(Content {
         kind: kind(&c.kind),
-        snippet: shorten(if c.snippet.trim().is_empty() { &observed[0] } else { &c.snippet }, MAX_SNIPPET),
+        snippet: shorten(
+            if c.snippet.trim().is_empty() {
+                &observed[0]
+            } else {
+                &c.snippet
+            },
+            MAX_SNIPPET,
+        ),
         title,
         draft_title,
         observed: observed.into_iter().take(MAX_FACTS).collect(),
@@ -288,13 +388,26 @@ pub fn check_one(c: Candidate, sources: &dyn Sources, about_you: &[String], foot
 }
 
 /// Checks a batch, keeping at most `max` ideas.
-pub fn check(candidates: Vec<Candidate>, sources: &dyn Sources, about_you: &[String], footprint: &Footprint, max: usize) -> Checked {
+pub fn check(
+    candidates: Vec<Candidate>,
+    sources: &dyn Sources,
+    about_you: &[String],
+    footprint: &Footprint,
+    max: usize,
+) -> Checked {
     let mut out = Checked::default();
     for c in candidates {
         let title = clean(&c.title);
         match check_one(c, sources, about_you, footprint) {
-            Ok(_) if out.accepted.len() >= max => out.dropped.push((title, format!("the batch already had {max}"))),
-            Ok(content) if out.accepted.iter().any(|a| a.title.eq_ignore_ascii_case(&content.title)) => {
+            Ok(_) if out.accepted.len() >= max => out
+                .dropped
+                .push((title, format!("the batch already had {max}"))),
+            Ok(content)
+                if out
+                    .accepted
+                    .iter()
+                    .any(|a| a.title.eq_ignore_ascii_case(&content.title)) =>
+            {
                 out.dropped.push((title, "it repeated another idea".into()))
             }
             Ok(content) => out.accepted.push(content),

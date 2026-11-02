@@ -12,19 +12,36 @@ fn url(s: &str) -> Url {
 }
 
 fn run<T>(f: impl std::future::Future<Output = T>) -> T {
-    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(f)
 }
 
 #[test]
 fn open_graph_wins_and_readable_markdown_omits_page_chrome() {
-    let page = extract::page(include_str!("../../fixtures/article.html"), &url("https://example.org/stories/sleep"));
+    let page = extract::page(
+        include_str!("../../fixtures/article.html"),
+        &url("https://example.org/stories/sleep"),
+    );
     assert_eq!(page.title.as_deref(), Some("Sleep & attention"));
     assert_eq!(page.author.as_deref(), Some("Jane Doe"));
     assert_eq!(page.site.as_deref(), Some("The Journal"));
     assert_eq!(page.description.as_deref(), Some("Why rest matters."));
-    assert_eq!(page.image_url.unwrap().as_str(), "https://example.org/images/sleep.jpg");
-    assert!(page.body.contains("A quiet *mind* needs rest."), "{}", page.body);
-    assert!(page.body.contains("A second paragraph & a little perspective."));
+    assert_eq!(
+        page.image_url.unwrap().as_str(),
+        "https://example.org/images/sleep.jpg"
+    );
+    assert!(
+        page.body.contains("A quiet *mind* needs rest."),
+        "{}",
+        page.body
+    );
+    assert!(
+        page.body
+            .contains("A second paragraph & a little perspective.")
+    );
     for unwanted in ["Menu", "Related", "TRACKING", "Secret", "Subscribe"] {
         assert!(!page.body.contains(unwanted), "{unwanted} in {}", page.body);
     }
@@ -42,14 +59,26 @@ fn a_real_article_becomes_structured_markdown_without_the_site_around_it() {
     assert_eq!(page.author.as_deref(), Some("Ada Byron"));
     assert_eq!(page.published.as_deref(), Some("2026-09-14T08:30:00Z"));
     assert_eq!(page.lang.as_deref(), Some("en"));
-    assert_eq!(page.canonical.unwrap().as_str(), "https://notes.example.org/2026/slow-software");
+    assert_eq!(
+        page.canonical.unwrap().as_str(),
+        "https://notes.example.org/2026/slow-software"
+    );
     let body = &page.body;
     assert!(body.contains("## What waiting looks like"), "{body}");
-    assert!(body.contains("[link one idea to another](https://notes.example.org/2026/plain-files)"), "{body}");
+    assert!(
+        body.contains("[link one idea to another](https://notes.example.org/2026/plain-files)"),
+        "{body}"
+    );
     assert!(body.contains("- It never interrupts a sentence."), "{body}");
     assert!(body.contains("> The best tool for thinking"), "{body}");
     assert!(body.contains("const pause = () => think();"), "{body}");
-    for unwanted in ["Popular posts", "Archive", "crypto newsletter", "All rights reserved", "analytics"] {
+    for unwanted in [
+        "Popular posts",
+        "Archive",
+        "crypto newsletter",
+        "All rights reserved",
+        "analytics",
+    ] {
         assert!(!body.contains(unwanted), "{unwanted} in {body}");
     }
 }
@@ -60,28 +89,59 @@ fn twitter_metadata_and_the_title_tag_are_fallbacks() {
     let page = extract::page(include_str!("../../fixtures/twitter.html"), &base);
     assert_eq!(page.title.as_deref(), Some("A small thought"));
     assert_eq!(page.author.as_deref(), Some("@writer"));
-    assert_eq!(page.image_url.unwrap().as_str(), "https://example.org/card.png");
-    assert!(page.body.contains("A small thought worth keeping."), "{}", page.body);
-    assert_eq!(extract::page("<title>Just &amp; a title</title>", &base).title.as_deref(), Some("Just & a title"));
+    assert_eq!(
+        page.image_url.unwrap().as_str(),
+        "https://example.org/card.png"
+    );
+    assert!(
+        page.body.contains("A small thought worth keeping."),
+        "{}",
+        page.body
+    );
+    assert_eq!(
+        extract::page("<title>Just &amp; a title</title>", &base)
+            .title
+            .as_deref(),
+        Some("Just & a title")
+    );
 }
 
 #[test]
 fn a_declared_canonical_on_another_host_is_ignored() {
     let html = r#"<link rel="canonical" href="https://victim.example/story"><p>Hi</p>"#;
-    assert!(extract::page(html, &url("https://attacker.example/a")).canonical.is_none());
+    assert!(
+        extract::page(html, &url("https://attacker.example/a"))
+            .canonical
+            .is_none()
+    );
     let html = r#"<meta property="og:url" content="/story"><p>Hi</p>"#;
-    assert_eq!(extract::page(html, &url("https://e.org/a#x")).canonical.unwrap().as_str(), "https://e.org/story");
+    assert_eq!(
+        extract::page(html, &url("https://e.org/a#x"))
+            .canonical
+            .unwrap()
+            .as_str(),
+        "https://e.org/story"
+    );
 }
 
 #[test]
 fn canonical_ids_drop_fragments_and_tracking_parameters() {
-    assert_eq!(canonical_url(&url("https://e.org/a?utm_source=x&id=2&fbclid=1#top")).as_str(), "https://e.org/a?id=2");
-    assert_eq!(canonical_url(&url("https://e.org/a?utm_medium=x")).as_str(), "https://e.org/a");
+    assert_eq!(
+        canonical_url(&url("https://e.org/a?utm_source=x&id=2&fbclid=1#top")).as_str(),
+        "https://e.org/a?id=2"
+    );
+    assert_eq!(
+        canonical_url(&url("https://e.org/a?utm_medium=x")).as_str(),
+        "https://e.org/a"
+    );
 }
 
 #[test]
 fn bodies_are_bounded_on_unicode_boundaries() {
-    let html = format!("<article><p>{}</p></article>", "界".repeat(crate::FULL_CHARS + 10_000));
+    let html = format!(
+        "<article><p>{}</p></article>",
+        "界".repeat(crate::FULL_CHARS + 10_000)
+    );
     let page = extract::page(&html, &url("https://example.org/"));
     let n = page.body.chars().count();
     assert!(n <= crate::FULL_CHARS && n > crate::FULL_CHARS - 100, "{n}");
@@ -89,7 +149,11 @@ fn bodies_are_bounded_on_unicode_boundaries() {
 
 #[test]
 fn deeply_nested_markup_does_not_exhaust_the_stack() {
-    let html = format!("<article><p>Readable.</p>{}Deep{}</article>", "<div>".repeat(2000), "</div>".repeat(2000));
+    let html = format!(
+        "<article><p>Readable.</p>{}Deep{}</article>",
+        "<div>".repeat(2000),
+        "</div>".repeat(2000)
+    );
     let page = extract::page(&html, &url("https://example.org/"));
     assert!(page.body.contains("Readable."), "{}", page.body);
 }
@@ -98,7 +162,10 @@ fn deeply_nested_markup_does_not_exhaust_the_stack() {
 fn embed_metadata_fills_gaps_without_overwriting_page_metadata() {
     let target = url("https://x.com/writer/status/1");
     let mut draft = Draft::new(target.clone());
-    draft.apply(extract::page("<meta property='og:title' content='Original'><body>Log in to continue</body>", &target));
+    draft.apply(extract::page(
+        "<meta property='og:title' content='Original'><body>Log in to continue</body>",
+        &target,
+    ));
     let embed = serde_json::from_str(include_str!("../../fixtures/oembed.json")).unwrap();
     oembed::merge(&mut draft, embed);
     assert_eq!(draft.title.as_deref(), Some("Original"));
@@ -111,7 +178,14 @@ fn embed_metadata_fills_gaps_without_overwriting_page_metadata() {
 
 #[test]
 fn only_exact_platform_hosts_get_embed_requests() {
-    for host in ["youtube.com", "youtu.be", "x.com", "bsky.app", "tiktok.com", "vimeo.com"] {
+    for host in [
+        "youtube.com",
+        "youtu.be",
+        "x.com",
+        "bsky.app",
+        "tiktok.com",
+        "vimeo.com",
+    ] {
         let endpoint = oembed::endpoint(&url(&format!("https://{host}/watch?v=1&list=2"))).unwrap();
         assert_eq!(
             endpoint.query_pairs().find(|(k, _)| k == "url").unwrap().1,
@@ -119,7 +193,12 @@ fn only_exact_platform_hosts_get_embed_requests() {
         );
     }
     assert!(oembed::endpoint(&url("https://youtube.com.evil.test/")).is_none());
-    for raw in ["file:///etc/passwd", "data:text/html,hi", "ftp://example.org", "https://secret@example.org"] {
+    for raw in [
+        "file:///etc/passwd",
+        "data:text/html,hi",
+        "ftp://example.org",
+        "https://secret@example.org",
+    ] {
         assert_eq!(web_url(raw), Err(Error::InvalidUrl));
         assert!(Target::url(raw).is_err());
     }
@@ -148,8 +227,16 @@ fn serve(routes: Vec<Route>) -> (String, std::thread::JoinHandle<()>) {
             let n = stream.read(&mut request).unwrap();
             let request = String::from_utf8_lossy(&request[..n]);
             assert!(request.starts_with(&format!("GET {target} ")), "{request}");
-            assert!(request.to_ascii_lowercase().contains("user-agent: mozilla/5.0"));
-            let _ = write!(stream, "{head}Content-Length: {}\r\nConnection: close\r\n\r\n", body.len());
+            assert!(
+                request
+                    .to_ascii_lowercase()
+                    .contains("user-agent: mozilla/5.0")
+            );
+            let _ = write!(
+                stream,
+                "{head}Content-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
             let _ = stream.write_all(&body);
         }
     });
@@ -171,8 +258,16 @@ fn capture(adapter: &WebAdapter, raw: &str, want_media: bool) -> Result<Item> {
 #[test]
 fn a_capture_normalizes_the_page_and_downloads_its_hero_image() {
     let (base, thread) = serve(vec![
-        ("/story?utm_source=feed", ok("html"), include_bytes!("../../fixtures/article.html").to_vec()),
-        ("/images/sleep.jpg", ok("png"), b"\x89PNG\r\n\x1a\nimage".to_vec()),
+        (
+            "/story?utm_source=feed",
+            ok("html"),
+            include_bytes!("../../fixtures/article.html").to_vec(),
+        ),
+        (
+            "/images/sleep.jpg",
+            ok("png"),
+            b"\x89PNG\r\n\x1a\nimage".to_vec(),
+        ),
     ]);
     let engine = Engine::new().with(WebAdapter::new().unwrap());
     let target = Target::url(&format!("{base}/story?utm_source=feed")).unwrap();
@@ -188,12 +283,19 @@ fn a_capture_normalizes_the_page_and_downloads_its_hero_image() {
     let image = item.primary_image().unwrap();
     assert_eq!(image.mime, "image/png");
     assert_eq!(image.bytes, b"\x89PNG\r\n\x1a\nimage");
-    assert_eq!(item.media[0].url.as_deref(), Some(format!("{base}/images/sleep.jpg").as_str()));
+    assert_eq!(
+        item.media[0].url.as_deref(),
+        Some(format!("{base}/images/sleep.jpg").as_str())
+    );
 }
 
 #[test]
 fn media_is_not_downloaded_unless_asked() {
-    let (base, thread) = serve(vec![("/", ok("html"), include_bytes!("../../fixtures/article.html").to_vec())]);
+    let (base, thread) = serve(vec![(
+        "/",
+        ok("html"),
+        include_bytes!("../../fixtures/article.html").to_vec(),
+    )]);
     let item = capture(&WebAdapter::new().unwrap(), &format!("{base}/"), false).unwrap();
     thread.join().unwrap();
     assert!(item.primary_image().is_none());
@@ -206,7 +308,10 @@ fn downloads_enforce_declared_and_streamed_size_limits() {
     for headers in ["Content-Length: 1000\r\n", ""] {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let target = url(&format!("http://{}/", listener.local_addr().unwrap()));
-        let response = format!("HTTP/1.1 200 OK\r\n{headers}Connection: close\r\n\r\n{}", "x".repeat(100));
+        let response = format!(
+            "HTTP/1.1 200 OK\r\n{headers}Connection: close\r\n\r\n{}",
+            "x".repeat(100)
+        );
         let thread = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
             let _ = stream.read(&mut [0; 2048]);
@@ -219,7 +324,11 @@ fn downloads_enforce_declared_and_streamed_size_limits() {
 
 #[test]
 fn redirects_cannot_escape_http_and_errors_do_not_echo_urls() {
-    let (base, thread) = serve(vec![("/", "HTTP/1.1 302 Found\r\nLocation: file:///etc/passwd\r\n", vec![])]);
+    let (base, thread) = serve(vec![(
+        "/",
+        "HTTP/1.1 302 Found\r\nLocation: file:///etc/passwd\r\n",
+        vec![],
+    )]);
     let error = capture(&WebAdapter::new().unwrap(), &format!("{base}/"), false).unwrap_err();
     thread.join().unwrap();
     // Reqwest may return the refused 302 rather than an error; either way
@@ -248,15 +357,23 @@ fn an_exhausted_deadline_keeps_the_collected_page() {
         let (mut stream, _) = listener.accept().unwrap();
         let _ = stream.read(&mut [0; 4096]);
         let body = include_bytes!("../../fixtures/article.html");
-        let _ = write!(stream, "{}Content-Length: {}\r\nConnection: close\r\n\r\n", ok("html"), body.len());
+        let _ = write!(
+            stream,
+            "{}Content-Length: {}\r\nConnection: close\r\n\r\n",
+            ok("html"),
+            body.len()
+        );
         let _ = stream.write_all(body);
         // The image request is accepted and never answered.
         let (stalled, _) = listener.accept().unwrap();
         std::thread::sleep(Duration::from_millis(1500));
         drop(stalled);
     });
-    let adapter =
-        WebAdapter::with_limits(Limits { deadline: Duration::from_millis(700), ..Limits::default() }).unwrap();
+    let adapter = WebAdapter::with_limits(Limits {
+        deadline: Duration::from_millis(700),
+        ..Limits::default()
+    })
+    .unwrap();
     let item = capture(&adapter, &format!("{base}/"), true).unwrap();
     thread.join().unwrap();
     assert_eq!(item.title.as_deref(), Some("Sleep & attention"));
@@ -275,7 +392,8 @@ impl Renderer for FakeRenderer {
         Box::pin(async move {
             assert!(timeout <= Limits::default().render_timeout);
             self.calls.lock().unwrap().push(url.path().to_string());
-            Rendered::parse(include_str!("../../fixtures/spa.rendered.json")).ok_or(Error::Unavailable)
+            Rendered::parse(include_str!("../../fixtures/spa.rendered.json"))
+                .ok_or(Error::Unavailable)
         })
     }
 }
@@ -283,7 +401,11 @@ impl Renderer for FakeRenderer {
 #[test]
 fn a_javascript_shell_falls_back_to_the_rendered_page() {
     let (base, thread) = serve(vec![
-        ("/app", ok("html"), include_bytes!("../../fixtures/spa.html").to_vec()),
+        (
+            "/app",
+            ok("html"),
+            include_bytes!("../../fixtures/spa.html").to_vec(),
+        ),
         ("/hero.png", ok("png"), b"\x89PNG\r\n\x1a\nhero".to_vec()),
     ]);
     let renderer = Arc::new(FakeRenderer::default());
@@ -298,13 +420,19 @@ fn a_javascript_shell_falls_back_to_the_rendered_page() {
     assert_eq!(item.published.as_deref(), Some("2026-10-01"));
     assert!(item.body.starts_with("## A page built in the browser"));
     assert!(item.body.contains("- Rendered locally"));
-    assert_eq!(item.primary_image().unwrap().bytes, b"\x89PNG\r\n\x1a\nhero");
+    assert_eq!(
+        item.primary_image().unwrap().bytes,
+        b"\x89PNG\r\n\x1a\nhero"
+    );
 }
 
 #[test]
 fn a_bot_wall_status_also_tries_the_renderer() {
-    let (base, thread) =
-        serve(vec![("/", "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\n", b"no bots".to_vec())]);
+    let (base, thread) = serve(vec![(
+        "/",
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\n",
+        b"no bots".to_vec(),
+    )]);
     let renderer = Arc::new(FakeRenderer::default());
     let adapter = WebAdapter::new().unwrap().with_renderer(renderer.clone());
     let item = capture(&adapter, &format!("{base}/"), false).unwrap();
@@ -312,15 +440,25 @@ fn a_bot_wall_status_also_tries_the_renderer() {
     assert_eq!(renderer.calls.lock().unwrap().len(), 1);
     assert_eq!(item.title.as_deref(), Some("A page built in the browser"));
     // Without a renderer the same page is simply unavailable.
-    let (base, thread) =
-        serve(vec![("/", "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\n", b"no bots".to_vec())]);
-    assert_eq!(capture(&WebAdapter::new().unwrap(), &format!("{base}/"), false), Err(Error::Unavailable));
+    let (base, thread) = serve(vec![(
+        "/",
+        "HTTP/1.1 403 Forbidden\r\nContent-Type: text/html\r\n",
+        b"no bots".to_vec(),
+    )]);
+    assert_eq!(
+        capture(&WebAdapter::new().unwrap(), &format!("{base}/"), false),
+        Err(Error::Unavailable)
+    );
     thread.join().unwrap();
 }
 
 #[test]
 fn readable_pages_embeds_and_images_never_render() {
-    let (base, thread) = serve(vec![("/", ok("html"), include_bytes!("../../fixtures/blog.html").to_vec())]);
+    let (base, thread) = serve(vec![(
+        "/",
+        ok("html"),
+        include_bytes!("../../fixtures/blog.html").to_vec(),
+    )]);
     let renderer = Arc::new(FakeRenderer::default());
     let adapter = WebAdapter::new().unwrap().with_renderer(renderer.clone());
     let item = capture(&adapter, &format!("{base}/"), false).unwrap();
@@ -351,7 +489,11 @@ fn a_failed_render_keeps_the_static_page() {
             Box::pin(async { Err(Error::TimedOut) })
         }
     }
-    let (base, thread) = serve(vec![("/", ok("html"), include_bytes!("../../fixtures/spa.html").to_vec())]);
+    let (base, thread) = serve(vec![(
+        "/",
+        ok("html"),
+        include_bytes!("../../fixtures/spa.html").to_vec(),
+    )]);
     let adapter = WebAdapter::new().unwrap().with_renderer(Arc::new(Broken));
     let item = capture(&adapter, &format!("{base}/"), false).unwrap();
     thread.join().unwrap();
@@ -365,6 +507,11 @@ fn live_article_and_video_metadata() {
     let adapter = WebAdapter::new().unwrap();
     let page = capture(&adapter, "https://example.com", false).unwrap();
     assert!(page.title.is_some());
-    let video = capture(&adapter, "https://www.youtube.com/watch?v=jNQXAC9IVRw", true).unwrap();
+    let video = capture(
+        &adapter,
+        "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+        true,
+    )
+    .unwrap();
     assert!(video.title.is_some());
 }

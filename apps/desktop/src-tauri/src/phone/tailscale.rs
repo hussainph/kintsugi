@@ -66,7 +66,11 @@ fn run(args: &[&str], timeout: Duration) -> Result<String> {
         }
         std::thread::sleep(Duration::from_millis(50));
     };
-    let output = format!("{}{}", stdout.join().unwrap_or_default(), stderr.join().unwrap_or_default());
+    let output = format!(
+        "{}{}",
+        stdout.join().unwrap_or_default(),
+        stderr.join().unwrap_or_default()
+    );
     match status {
         Some(status) if status.success() => Ok(output),
         _ => Err(output.trim().to_string()),
@@ -77,19 +81,30 @@ pub fn status() -> Tailnet {
     if cli().is_none() {
         return Tailnet::Missing;
     }
-    let Ok(out) = run(&["status", "--json", "--peers=false"], Duration::from_secs(5)) else {
+    let Ok(out) = run(
+        &["status", "--json", "--peers=false"],
+        Duration::from_secs(5),
+    ) else {
         return Tailnet::Down;
     };
     let Ok(json) = serde_json::from_str::<Value>(&out) else {
         return Tailnet::Down;
     };
     let state = json["BackendState"].as_str().unwrap_or_default();
-    let host = json["Self"]["DNSName"].as_str().unwrap_or_default().trim_end_matches('.');
+    let host = json["Self"]["DNSName"]
+        .as_str()
+        .unwrap_or_default()
+        .trim_end_matches('.');
     if state != "Running" || host.is_empty() {
         return Tailnet::Down;
     }
-    let https = json["CertDomains"].as_array().is_some_and(|d| !d.is_empty());
-    Tailnet::Up { host: host.into(), https }
+    let https = json["CertDomains"]
+        .as_array()
+        .is_some_and(|d| !d.is_empty());
+    Tailnet::Up {
+        host: host.into(),
+        https,
+    }
 }
 
 fn target(port: u16) -> String {
@@ -98,7 +113,8 @@ fn target(port: u16) -> String {
 
 /// Whether `tailscale serve` already forwards `port` to the local server.
 pub fn serving(port: u16) -> bool {
-    run(&["serve", "status", "--json"], Duration::from_secs(5)).is_ok_and(|out| out.contains(&target(port)))
+    run(&["serve", "status", "--json"], Duration::from_secs(5))
+        .is_ok_and(|out| out.contains(&target(port)))
 }
 
 /// Forwards `https://<host>:<port>` on the tailnet to `127.0.0.1:<port>`.
@@ -109,13 +125,22 @@ pub fn serve(port: u16) -> Result<()> {
         Duration::from_secs(15),
     )
     .map(drop)
-    .map_err(|out| match out.split_whitespace().find(|w| w.starts_with("https://login.tailscale.com")) {
-        Some(link) => format!("Turn on HTTPS for your tailnet, then try again: {link}"),
-        None if out.is_empty() => "tailscale serve didn't answer.".into(),
-        None => out,
+    .map_err(|out| {
+        match out
+            .split_whitespace()
+            .find(|w| w.starts_with("https://login.tailscale.com"))
+        {
+            Some(link) => format!("Turn on HTTPS for your tailnet, then try again: {link}"),
+            None if out.is_empty() => "tailscale serve didn't answer.".into(),
+            None => out,
+        }
     })
 }
 
 pub fn unserve(port: u16) -> Result<()> {
-    run(&["serve", &format!("--https={port}"), "off"], Duration::from_secs(5)).map(drop)
+    run(
+        &["serve", &format!("--https={port}"), "off"],
+        Duration::from_secs(5),
+    )
+    .map(drop)
 }

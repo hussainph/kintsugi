@@ -12,7 +12,10 @@
 /// rather than an invented tag.
 pub fn doc_tags(text: &str) -> Vec<String> {
     let mut out = Vec::new();
-    for tag in raw_tags(text.trim_start_matches('\u{feff}')).iter().filter_map(|t| normal_tag(t)) {
+    for tag in raw_tags(text.trim_start_matches('\u{feff}'))
+        .iter()
+        .filter_map(|t| normal_tag(t))
+    {
         if !out.contains(&tag) {
             out.push(tag);
         }
@@ -26,7 +29,12 @@ pub fn normal_tag(tag: &str) -> Option<String> {
     let words = tag
         .split_whitespace()
         .filter(|w| !w.chars().any(char::is_control));
-    let tag: String = words.collect::<Vec<_>>().join(" ").chars().take(64).collect();
+    let tag: String = words
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(64)
+        .collect();
     let tag = tag.trim_start_matches('#').trim().to_lowercase();
     (!tag.is_empty()).then_some(tag)
 }
@@ -156,13 +164,22 @@ mod tests {
     #[test]
     fn inline_lists_with_quotes_comments_and_hashes() {
         let text = "---\ntitle: \"tags: [fake]\"\ntags: [Writing, '#craft', \"two  words\", 'reader''s life', writing] # mine\n---\n\ntags: [body]\n";
-        assert_eq!(tags(text), ["writing", "craft", "two words", "reader's life"]);
+        assert_eq!(
+            tags(text),
+            ["writing", "craft", "two words", "reader's life"]
+        );
     }
 
     #[test]
     fn obsidian_block_lists_indented_or_flush() {
-        assert_eq!(tags("---\ntags:\n  - Essay\n  - \"a, b\"\ntitle: x\n---\n"), ["essay", "a, b"]);
-        assert_eq!(tags("---\r\ntags:\r\n- one\r\n- two\r\nstatus: draft\r\n---\r\n"), ["one", "two"]);
+        assert_eq!(
+            tags("---\ntags:\n  - Essay\n  - \"a, b\"\ntitle: x\n---\n"),
+            ["essay", "a, b"]
+        );
+        assert_eq!(
+            tags("---\r\ntags:\r\n- one\r\n- two\r\nstatus: draft\r\n---\r\n"),
+            ["one", "two"]
+        );
         // A nested map under tags isn't a tag.
         assert_eq!(tags("---\ntags:\n  - a\n  k: v\n---\n"), ["a"]);
     }

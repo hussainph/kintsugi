@@ -47,7 +47,11 @@ pub struct QuoteSource<'a> {
 pub fn quote_attribution(source: QuoteSource<'_>, passage: &str) -> QuoteAttribution {
     let passage = unquote(passage);
     let needle: String = normalize(&passage).chars().take(120).collect();
-    let found = if needle.chars().count() >= 8 { locate(source.text, &needle) } else { None };
+    let found = if needle.chars().count() >= 8 {
+        locate(source.text, &needle)
+    } else {
+        None
+    };
     let mut out = QuoteAttribution::default();
     let anchored = has_anchors(source.text);
     match found {
@@ -90,8 +94,15 @@ pub fn leading_passage(own_text: &str) -> Option<String> {
 
 #[derive(Debug, PartialEq)]
 enum Anchor {
-    Comment { by: String, link: Option<String> },
-    Time { label: String, link: String, by: Option<String> },
+    Comment {
+        by: String,
+        link: Option<String>,
+    },
+    Time {
+        label: String,
+        link: String,
+        by: Option<String>,
+    },
     Page(usize),
     None,
 }
@@ -119,11 +130,18 @@ fn locate(text: &str, needle: &str) -> Option<Anchor> {
             continue;
         }
         if let Some(t) = time {
-            return Some(Anchor::Time { label: t.label, link: t.link, by: t.speaker });
+            return Some(Anchor::Time {
+                label: t.label,
+                link: t.link,
+                by: t.speaker,
+            });
         }
         // A comment's text shares its heading's quote depth.
         if let Some(Some((by, link))) = comments.get(depth) {
-            return Some(Anchor::Comment { by: by.clone(), link: link.clone() });
+            return Some(Anchor::Comment {
+                by: by.clone(),
+                link: link.clone(),
+            });
         }
         return Some(page.map_or(Anchor::None, Anchor::Page));
     }
@@ -154,7 +172,10 @@ fn has_anchors(text: &str) -> bool {
 }
 
 fn page_marker(line: &str) -> Option<usize> {
-    line.strip_prefix("<!-- page ")?.strip_suffix(" -->")?.parse().ok()
+    line.strip_prefix("<!-- page ")?
+        .strip_suffix(" -->")?
+        .parse()
+        .ok()
 }
 
 /// `**name** · … · [link](<url>)`, as the HN and Reddit adapters write.
@@ -204,7 +225,12 @@ fn timestamp(block: &str) -> Option<Timestamp<'_>> {
         speaker = Some(unescape(&bold[..end]).trim().to_string()).filter(|s| !s.is_empty());
         text = bold[end + 3..].trim_start();
     }
-    Some(Timestamp { label: label.to_string(), link, speaker, rest: text })
+    Some(Timestamp {
+        label: label.to_string(),
+        link,
+        speaker,
+        rest: text,
+    })
 }
 
 /// The quote depth of a block (`> > text` is 2) and its text without the marks.
@@ -222,7 +248,9 @@ fn strip_quotes(block: &str) -> (usize, String) {
         .map(|line| {
             let mut line = line.trim_start();
             for _ in 0..depth {
-                line = line.strip_prefix('>').map_or(line, |l| l.strip_prefix(' ').unwrap_or(l));
+                line = line
+                    .strip_prefix('>')
+                    .map_or(line, |l| l.strip_prefix(' ').unwrap_or(l));
             }
             line
         })
@@ -267,7 +295,11 @@ fn normalize(text: &str) -> String {
         let after = &rest[open + 1..];
         match after.find("](").map(|close| (close, &after[close + 2..])) {
             Some((close, target)) if !after[..close].contains('[') => {
-                let end = if target.starts_with('<') { target.find(">)").map(|e| e + 2) } else { target.find(')').map(|e| e + 1) };
+                let end = if target.starts_with('<') {
+                    target.find(">)").map(|e| e + 2)
+                } else {
+                    target.find(')').map(|e| e + 1)
+                };
                 match end {
                     Some(end) => {
                         plain.push_str(&after[..close]);
@@ -297,7 +329,9 @@ fn normalize(text: &str) -> String {
 }
 
 fn web(raw: &str) -> Option<Url> {
-    Url::parse(raw).ok().filter(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
+    Url::parse(raw)
+        .ok()
+        .filter(|u| matches!(u.scheme(), "http" | "https") && u.host_str().is_some())
 }
 
 /// `url#:~:text=start,end` for the passage: the whole passage when it is
@@ -308,14 +342,21 @@ fn fragment(source: QuoteSource<'_>, passage: &str) -> Option<String> {
     }
     let mut url = web(source.url?)?;
     url.set_fragment(None);
-    let words: Vec<String> = unescape(passage).split_whitespace().map(str::to_string).collect();
+    let words: Vec<String> = unescape(passage)
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
     if words.is_empty() {
         return None;
     }
     let text = if words.len() <= 10 {
         encode(&words.join(" "))
     } else {
-        format!("{},{}", encode(&words[..5].join(" ")), encode(&words[words.len() - 5..].join(" ")))
+        format!(
+            "{},{}",
+            encode(&words[..5].join(" ")),
+            encode(&words[words.len() - 5..].join(" "))
+        )
     };
     Some(format!("{url}#:~:text={text}"))
 }
@@ -347,20 +388,41 @@ I've spent years on CRDTs. The hard part isn't the algorithm, it's the *product*
 Writing is where the system meets reality.";
 
     fn source(text: &str) -> QuoteSource<'_> {
-        QuoteSource { text, url: Some("https://news.ycombinator.com/item?id=9"), file: None, fragments: false }
+        QuoteSource {
+            text,
+            url: Some("https://news.ycombinator.com/item?id=9"),
+            file: None,
+            fragments: false,
+        }
     }
 
     #[test]
     fn a_comment_passage_names_its_author_not_the_poster() {
-        let reply = quote_attribution(source(THREAD), "> Thanks, Joseph! The # product\n> is the hard part.");
+        let reply = quote_attribution(
+            source(THREAD),
+            "> Thanks, Joseph! The # product\n> is the hard part.",
+        );
         assert_eq!(reply.by.as_deref(), Some("pvh"));
-        assert_eq!(reply.link.as_deref(), Some("https://news.ycombinator.com/item?id=2"));
-        let top = quote_attribution(source(THREAD), "the hard part isn’t the algorithm, it’s the product");
+        assert_eq!(
+            reply.link.as_deref(),
+            Some("https://news.ycombinator.com/item?id=2")
+        );
+        let top = quote_attribution(
+            source(THREAD),
+            "the hard part isn’t the algorithm, it’s the product",
+        );
         assert_eq!(top.by.as_deref(), Some("josephg"));
-        assert_eq!(top.link.as_deref(), Some("https://news.ycombinator.com/item?id=1"));
-        let reddit = quote_attribution(source(THREAD), "Writing is where the system meets reality.");
+        assert_eq!(
+            top.link.as_deref(),
+            Some("https://news.ycombinator.com/item?id=1")
+        );
+        let reddit =
+            quote_attribution(source(THREAD), "Writing is where the system meets reality.");
         assert_eq!(reddit.by.as_deref(), Some("u/theLightSlide"));
-        assert_eq!(quote_attribution(source(THREAD), "Words nobody wrote here at all."), QuoteAttribution::default());
+        assert_eq!(
+            quote_attribution(source(THREAD), "Words nobody wrote here at all."),
+            QuoteAttribution::default()
+        );
     }
 
     #[test]
@@ -369,7 +431,10 @@ Writing is where the system meets reality.";
 [14:48](<https://www.youtube.com/watch?v=abc&t=888s>) If it's clear and useless, it's useless.\n\n\
 [1:05:00](<https://pod.example/12.mp3#t=3900>) **Ken:** Gold makes the crack visible.";
         let talk = quote_attribution(source(text), "If it's clear and useless, it's useless.");
-        assert_eq!(talk.link.as_deref(), Some("https://www.youtube.com/watch?v=abc&t=888s"));
+        assert_eq!(
+            talk.link.as_deref(),
+            Some("https://www.youtube.com/watch?v=abc&t=888s")
+        );
         assert_eq!(talk.label.as_deref(), Some("14:48"));
         assert_eq!(talk.by, None);
         let pod = quote_attribution(source(text), "Gold makes the crack visible");
@@ -380,36 +445,86 @@ Writing is where the system meets reality.";
     #[test]
     fn a_pdf_passage_links_to_its_page() {
         let text = "<!-- page 1 -->\n\n## Local-first\n\nIntro text.\n\n<!-- page 3 -->\n\nWe call this type of software local-first software.";
-        let linked = QuoteSource { text, url: Some("https://e.org/paper.pdf#x"), file: Some("files/paper.pdf"), fragments: true };
-        let found = quote_attribution(linked, "We call this type of software local-first software.");
-        assert_eq!(found.link.as_deref(), Some("https://e.org/paper.pdf#page=3"));
+        let linked = QuoteSource {
+            text,
+            url: Some("https://e.org/paper.pdf#x"),
+            file: Some("files/paper.pdf"),
+            fragments: true,
+        };
+        let found = quote_attribution(
+            linked,
+            "We call this type of software local-first software.",
+        );
+        assert_eq!(
+            found.link.as_deref(),
+            Some("https://e.org/paper.pdf#page=3")
+        );
         assert_eq!(found.label.as_deref(), Some("p. 3"));
-        let saved = QuoteSource { url: None, ..linked };
-        assert_eq!(quote_attribution(saved, "intro text").link.as_deref(), Some("files/paper.pdf#page=1"));
+        let saved = QuoteSource {
+            url: None,
+            ..linked
+        };
+        assert_eq!(
+            quote_attribution(saved, "intro text").link.as_deref(),
+            Some("files/paper.pdf#page=1")
+        );
     }
 
     #[test]
     fn an_article_passage_gets_a_text_fragment() {
         let text = "Paul Graham writes.\n\nWriting about something, even something you know well, usually shows you that you didn't know it as well as you thought.";
-        let article = QuoteSource { text, url: Some("https://paulgraham.com/words.html"), file: None, fragments: true };
-        let long = quote_attribution(article, "Writing about something, even something you know well, usually shows you that you didn't know it as well as you thought.");
+        let article = QuoteSource {
+            text,
+            url: Some("https://paulgraham.com/words.html"),
+            file: None,
+            fragments: true,
+        };
+        let long = quote_attribution(
+            article,
+            "Writing about something, even something you know well, usually shows you that you didn't know it as well as you thought.",
+        );
         assert_eq!(
             long.link.as_deref(),
-            Some("https://paulgraham.com/words.html#:~:text=Writing%20about%20something%2C%20even%20something,as%20well%20as%20you%20thought.")
+            Some(
+                "https://paulgraham.com/words.html#:~:text=Writing%20about%20something%2C%20even%20something,as%20well%20as%20you%20thought."
+            )
         );
         let short = quote_attribution(article, "Paul Graham writes.");
-        assert_eq!(short.link.as_deref(), Some("https://paulgraham.com/words.html#:~:text=Paul%20Graham%20writes."));
+        assert_eq!(
+            short.link.as_deref(),
+            Some("https://paulgraham.com/words.html#:~:text=Paul%20Graham%20writes.")
+        );
         assert_eq!(short.by, None);
         // A post in a script-built app: no fragment.
-        assert_eq!(quote_attribution(QuoteSource { fragments: false, ..article }, "Paul Graham writes.").link, None);
+        assert_eq!(
+            quote_attribution(
+                QuoteSource {
+                    fragments: false,
+                    ..article
+                },
+                "Paul Graham writes."
+            )
+            .link,
+            None
+        );
         // Nothing fetched yet: the fragment still finds the passage on the page.
-        let bare = QuoteSource { text: "", ..article };
-        assert!(quote_attribution(bare, "Paul Graham writes.").link.is_some());
+        let bare = QuoteSource {
+            text: "",
+            ..article
+        };
+        assert!(
+            quote_attribution(bare, "Paul Graham writes.")
+                .link
+                .is_some()
+        );
     }
 
     #[test]
     fn the_leading_block_quote_is_the_passage() {
-        assert_eq!(leading_passage("\n> One\n> two\n\nMy note").as_deref(), Some("One\ntwo"));
+        assert_eq!(
+            leading_passage("\n> One\n> two\n\nMy note").as_deref(),
+            Some("One\ntwo")
+        );
         assert_eq!(leading_passage("My note\n\n> later quote"), None);
         assert_eq!(leading_passage("> \n>\n"), None);
     }

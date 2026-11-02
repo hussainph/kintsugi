@@ -13,14 +13,18 @@ fn q(text: &str) -> String {
 
 /// The vault path without its extension, as a wikilink writes it.
 fn stem(path: &str) -> &str {
-    path.strip_suffix(".mdx").or_else(|| path.strip_suffix(".md")).unwrap_or(path)
+    path.strip_suffix(".mdx")
+        .or_else(|| path.strip_suffix(".md"))
+        .unwrap_or(path)
 }
 
 /// Clips beside a draft: one per vault source, never the draft itself.
 pub fn clips(idea: &Idea, draft: Option<&str>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for quote in &idea.content.quotes {
-        if quote.source.starts_with("feed:") || draft.is_some_and(|d| stem(d) == stem(&quote.source)) {
+        if quote.source.starts_with("feed:")
+            || draft.is_some_and(|d| stem(d) == stem(&quote.source))
+        {
             continue;
         }
         let link = stem(&quote.source).to_string();
@@ -53,7 +57,11 @@ pub fn entry(idea: &Idea, offered: &str, draft: Option<&str>) -> String {
 
 /// A new draft: a working title, an empty body, the idea in frontmatter.
 pub fn new_draft(title: &str, idea: &Idea, offered: &str, path: &str) -> String {
-    format!("---\ntitle: {}\nstatus: draft\nideas:\n{}---\n\n", q(title), entry(idea, offered, Some(path)))
+    format!(
+        "---\ntitle: {}\nstatus: draft\nideas:\n{}---\n\n",
+        q(title),
+        entry(idea, offered, Some(path))
+    )
 }
 
 /// Adds the idea to a draft already started. Its body, other fields and
@@ -61,33 +69,60 @@ pub fn new_draft(title: &str, idea: &Idea, offered: &str, path: &str) -> String 
 /// changes nothing.
 pub fn attach(text: &str, idea: &Idea, offered: &str, path: &str) -> Result<String> {
     let entry = entry(idea, offered, Some(path));
-    let bom = if text.starts_with('\u{feff}') { "\u{feff}" } else { "" };
+    let bom = if text.starts_with('\u{feff}') {
+        "\u{feff}"
+    } else {
+        ""
+    };
     let text = &text[bom.len()..];
     let mut lines: Vec<&str> = text.split_inclusive('\n').collect();
     let opens = lines.first().is_some_and(|l| l.trim_end() == "---");
-    let close = opens.then(|| lines.iter().skip(1).position(|l| l.trim_end() == "---").map(|i| i + 1)).flatten();
+    let close = opens
+        .then(|| {
+            lines
+                .iter()
+                .skip(1)
+                .position(|l| l.trim_end() == "---")
+                .map(|i| i + 1)
+        })
+        .flatten();
     let Some(close) = close else {
         // No frontmatter (or an unfinished one): start a block above the body.
         if opens {
-            return Err("This draft's frontmatter isn't closed; fix it before adding an idea.".into());
+            return Err(
+                "This draft's frontmatter isn't closed; fix it before adding an idea.".into(),
+            );
         }
         return Ok(format!("{bom}---\nideas:\n{entry}---\n\n{text}"));
     };
     let block = &lines[1..close];
-    if block.iter().any(|l| l.trim() == format!("- id: {}", idea.id)) {
+    if block
+        .iter()
+        .any(|l| l.trim() == format!("- id: {}", idea.id))
+    {
         return Ok(format!("{bom}{text}"));
     }
-    match block.iter().position(|l| l.split(':').next().map(str::trim_end) == Some("ideas") && !l.starts_with(char::is_whitespace)) {
+    match block.iter().position(|l| {
+        l.split(':').next().map(str::trim_end) == Some("ideas")
+            && !l.starts_with(char::is_whitespace)
+    }) {
         Some(i) => {
             let at = i + 1;
-            let value = lines[at].split_once(':').map(|(_, v)| v.trim()).unwrap_or_default();
+            let value = lines[at]
+                .split_once(':')
+                .map(|(_, v)| v.trim())
+                .unwrap_or_default();
             if !value.is_empty() && value != "[]" {
                 return Err("This draft's ideas field isn't a list Kintsugi can add to.".into());
             }
             let replaced = "ideas:\n";
             lines[at] = replaced;
             // The list ends at the next line that isn't indented.
-            let end = (at + 1..close).find(|&j| !lines[j].starts_with(char::is_whitespace) && !lines[j].trim().is_empty()).unwrap_or(close);
+            let end = (at + 1..close)
+                .find(|&j| {
+                    !lines[j].starts_with(char::is_whitespace) && !lines[j].trim().is_empty()
+                })
+                .unwrap_or(close);
             let mut out: String = lines[..end].concat();
             if end > 0 && !lines[end - 1].ends_with('\n') {
                 out.push('\n');

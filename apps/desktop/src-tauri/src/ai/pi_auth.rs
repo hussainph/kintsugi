@@ -43,7 +43,10 @@ type Result<T> = std::result::Result<T, String>;
 pub enum Auth {
     ApiKey(String),
     /// An OAuth access token, plus the ChatGPT account id Codex requires.
-    Bearer { token: String, account_id: Option<String> },
+    Bearer {
+        token: String,
+        account_id: Option<String>,
+    },
 }
 
 pub use super::credentials::Kind;
@@ -52,7 +55,9 @@ use super::wire::{Provider, Wire};
 
 /// `$PI_CODING_AGENT_DIR` (with `~` expanded), else `~/.pi/agent`: Pi's own rule.
 pub fn agent_dir() -> Result<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or("HOME is not set")?;
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or("HOME is not set")?;
     Ok(match std::env::var("PI_CODING_AGENT_DIR") {
         Ok(dir) if dir == "~" => home,
         Ok(dir) if dir.starts_with("~/") => home.join(&dir[2..]),
@@ -68,7 +73,10 @@ pub struct Store {
 
 impl Store {
     pub fn new(dir: &Path) -> Self {
-        Self { path: dir.join(AUTH_FILE), read_only: false }
+        Self {
+            path: dir.join(AUTH_FILE),
+            read_only: false,
+        }
     }
 
     pub fn default_location() -> Result<Self> {
@@ -86,14 +94,19 @@ impl Store {
         };
         match serde_json::from_str(&text) {
             Ok(Value::Object(map)) => Ok(map),
-            _ => Err(format!("{} is not valid credentials JSON", self.path.display())),
+            _ => Err(format!(
+                "{} is not valid credentials JSON",
+                self.path.display()
+            )),
         }
     }
 
     /// Whole-file atomic replace, owner-only, like the `pi` CLI leaves it.
     fn write(&self, map: &Map<String, Value>) -> Result<()> {
         use std::os::unix::fs::OpenOptionsExt;
-        let tmp = self.path.with_file_name(format!(".{AUTH_FILE}.kintsugi-{}", std::process::id()));
+        let tmp = self
+            .path
+            .with_file_name(format!(".{AUTH_FILE}.kintsugi-{}", std::process::id()));
         let fail = |_| format!("could not write {}", self.path.display());
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -102,8 +115,11 @@ impl Store {
             .mode(0o600)
             .open(&tmp)
             .map_err(fail)?;
-        let bytes = serde_json::to_vec_pretty(map).map_err(|_| "could not encode credentials".to_string())?;
-        file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(fail)?;
+        let bytes = serde_json::to_vec_pretty(map)
+            .map_err(|_| "could not encode credentials".to_string())?;
+        file.write_all(&bytes)
+            .and_then(|_| file.sync_all())
+            .map_err(fail)?;
         fs::rename(&tmp, &self.path).map_err(fail)
     }
 
@@ -134,13 +150,17 @@ impl Store {
     /// What Pi holds for `provider`, without the secret. An expiring Codex
     /// login counts as usable where it can be refreshed (not read-only).
     pub fn lookup(&self, provider: &Provider) -> Result<Lookup> {
-        let Some(cred) = self.read()?.remove(provider.id) else { return Ok(Lookup::Missing) };
+        let Some(cred) = self.read()?.remove(provider.id) else {
+            return Ok(Lookup::Missing);
+        };
         Ok(match kind(&cred) {
             Some(Kind::ApiKey) if str_field(&cred, "key").is_some() => Lookup::Usable(Kind::ApiKey),
             // A Claude subscription login: Kintsugi only uses Anthropic API keys.
             Some(Kind::Oauth) if provider.wire == Wire::Anthropic => Lookup::Unsupported,
             Some(Kind::Oauth) if fresh(&cred) => Lookup::Usable(Kind::Oauth),
-            Some(Kind::Oauth) if !self.read_only && provider.id == "openai-codex" => Lookup::Usable(Kind::Oauth),
+            Some(Kind::Oauth) if !self.read_only && provider.id == "openai-codex" => {
+                Lookup::Usable(Kind::Oauth)
+            }
             Some(Kind::Oauth) => Lookup::Expired,
             _ => Lookup::Missing,
         })
@@ -149,11 +169,15 @@ impl Store {
     /// A usable credential for `provider`, refreshing an expiring OAuth token
     /// first. `None` when Pi holds nothing for it.
     pub async fn auth(&self, provider: &str) -> Result<Option<Auth>> {
-        let Some(cred) = self.read()?.remove(provider) else { return Ok(None) };
+        let Some(cred) = self.read()?.remove(provider) else {
+            return Ok(None);
+        };
         match kind(&cred) {
             Some(Kind::ApiKey) => Ok(str_field(&cred, "key").map(Auth::ApiKey)),
             Some(Kind::Oauth) if fresh(&cred) => Ok(Some(bearer(&cred)?)),
-            Some(Kind::Oauth) if self.read_only => Err("Pi login expired; refresh it outside headless mode".into()),
+            Some(Kind::Oauth) if self.read_only => {
+                Err("Pi login expired; refresh it outside headless mode".into())
+            }
             Some(Kind::Oauth) => self.refresh(provider).await.map(Some),
             None => Err(format!("unrecognised credential for {provider}")),
         }
@@ -162,7 +186,10 @@ impl Store {
     /// Refresh under Pi's lock, re-reading inside it: another process may
     /// already have refreshed, in which case its token is used as-is.
     async fn refresh(&self, provider: &str) -> Result<Auth> {
-        let store = Store { path: self.path.clone(), read_only: self.read_only };
+        let store = Store {
+            path: self.path.clone(),
+            read_only: self.read_only,
+        };
         let provider = provider.to_string();
         let (lock, mut map) = tokio::task::spawn_blocking(move || {
             let lock = store.lock()?;
@@ -171,17 +198,27 @@ impl Store {
         .await
         .map_err(|e| e.to_string())??;
 
-        let current = map.get(&provider).cloned().ok_or("credential disappeared during refresh")?;
+        let current = map
+            .get(&provider)
+            .cloned()
+            .ok_or("credential disappeared during refresh")?;
         if fresh(&current) {
             drop(lock);
             return bearer(&current);
         }
         let updated = match provider.as_str() {
             "openai-codex" => refresh_codex(&current).await?,
-            other => return Err(format!("Kintsugi can't refresh {other} logins yet; use an API key")),
+            other => {
+                return Err(format!(
+                    "Kintsugi can't refresh {other} logins yet; use an API key"
+                ));
+            }
         };
         map.insert(provider, updated.clone());
-        let store = Store { path: self.path.clone(), read_only: self.read_only };
+        let store = Store {
+            path: self.path.clone(),
+            read_only: self.read_only,
+        };
         tokio::task::spawn_blocking(move || {
             let result = store.write(&map);
             drop(lock);
@@ -210,11 +247,17 @@ fn kind(cred: &Value) -> Option<Kind> {
 }
 
 fn str_field(cred: &Value, key: &str) -> Option<String> {
-    cred.get(key)?.as_str().filter(|s| !s.is_empty()).map(String::from)
+    cred.get(key)?
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 fn fresh(cred: &Value) -> bool {
@@ -237,12 +280,17 @@ pub fn codex_account_id(access: &str) -> Option<String> {
         .decode(payload.trim_end_matches('='))
         .ok()?;
     let claims: Value = serde_json::from_slice(&bytes).ok()?;
-    claims.get(CODEX_JWT_CLAIM)?.get("chatgpt_account_id")?.as_str().map(String::from)
+    claims
+        .get(CODEX_JWT_CLAIM)?
+        .get("chatgpt_account_id")?
+        .as_str()
+        .map(String::from)
 }
 
 /// The same token request pi-ai's `openai-codex` OAuth flow makes.
 async fn refresh_codex(current: &Value) -> Result<Value> {
-    let refresh = str_field(current, "refresh").ok_or("Codex login has no refresh token; run `pi` and log in again")?;
+    let refresh = str_field(current, "refresh")
+        .ok_or("Codex login has no refresh token; run `pi` and log in again")?;
     let response = reqwest::Client::new()
         .post(CODEX_TOKEN_URL)
         .timeout(REFRESH_TIMEOUT)
@@ -256,9 +304,14 @@ async fn refresh_codex(current: &Value) -> Result<Value> {
         .map_err(|e| format!("Codex token refresh failed: {e}"))?;
     let status = response.status();
     if !status.is_success() {
-        return Err(format!("Codex token refresh failed ({status}); run `pi` and log in again"));
+        return Err(format!(
+            "Codex token refresh failed ({status}); run `pi` and log in again"
+        ));
     }
-    let json: Value = response.json().await.map_err(|_| "Codex token refresh returned bad JSON")?;
+    let json: Value = response
+        .json()
+        .await
+        .map_err(|_| "Codex token refresh returned bad JSON")?;
     let (Some(access), Some(refresh), Some(expires_in)) = (
         str_field(&json, "access_token"),
         str_field(&json, "refresh_token"),
@@ -291,7 +344,11 @@ mod tests {
     }
 
     fn block_on<F: std::future::Future>(f: F) -> F::Output {
-        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
     }
 
     #[test]
@@ -303,10 +360,16 @@ mod tests {
         }));
         let before = fs::read(dir.path().join(AUTH_FILE)).unwrap();
 
-        assert_eq!(block_on(store.auth("zai")).unwrap(), Some(Auth::ApiKey("k".into())));
+        assert_eq!(
+            block_on(store.auth("zai")).unwrap(),
+            Some(Auth::ApiKey("k".into()))
+        );
         assert_eq!(
             block_on(store.auth("openai-codex")).unwrap(),
-            Some(Auth::Bearer { token: "a".into(), account_id: Some("acct".into()) })
+            Some(Auth::Bearer {
+                token: "a".into(),
+                account_id: Some("acct".into())
+            })
         );
         assert_eq!(block_on(store.auth("missing")).unwrap(), None);
         assert_eq!(fs::read(dir.path().join(AUTH_FILE)).unwrap(), before);
@@ -320,7 +383,11 @@ mod tests {
         }));
         store.read_only = true;
         let before = fs::read(dir.path().join(AUTH_FILE)).unwrap();
-        assert!(block_on(store.auth("openai-codex")).unwrap_err().contains("outside headless"));
+        assert!(
+            block_on(store.auth("openai-codex"))
+                .unwrap_err()
+                .contains("outside headless")
+        );
         assert_eq!(fs::read(dir.path().join(AUTH_FILE)).unwrap(), before);
         assert!(!dir.path().join("auth.json.lock").exists());
     }
@@ -333,11 +400,17 @@ mod tests {
             "anthropic": { "type": "oauth", "access": "a", "refresh": "r", "expires": 0 },
             "openai-codex": { "type": "oauth", "access": "a", "refresh": "r", "expires": 0 },
         }));
-        assert_eq!(store.lookup(p("zai")).unwrap(), Lookup::Usable(Kind::ApiKey));
+        assert_eq!(
+            store.lookup(p("zai")).unwrap(),
+            Lookup::Usable(Kind::ApiKey)
+        );
         assert_eq!(store.lookup(p("anthropic")).unwrap(), Lookup::Unsupported);
         assert_eq!(store.lookup(p("openrouter")).unwrap(), Lookup::Missing);
         // Refreshable natively; expired where nothing may be written.
-        assert_eq!(store.lookup(p("openai-codex")).unwrap(), Lookup::Usable(Kind::Oauth));
+        assert_eq!(
+            store.lookup(p("openai-codex")).unwrap(),
+            Lookup::Usable(Kind::Oauth)
+        );
         store.read_only = true;
         assert_eq!(store.lookup(p("openai-codex")).unwrap(), Lookup::Expired);
     }
@@ -354,7 +427,10 @@ mod tests {
         // A lock whose holder died long ago is broken rather than waited on.
         fs::create_dir(&lock_path).unwrap();
         let old = SystemTime::now() - Duration::from_secs(120);
-        fs::File::open(&lock_path).unwrap().set_modified(old).unwrap();
+        fs::File::open(&lock_path)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
         let _second = store.lock().unwrap();
     }
 
@@ -363,12 +439,18 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let (dir, store) = store_with(json!({ "zai": { "type": "api_key", "key": "k" } }));
         let mut map = store.read().unwrap();
-        map.insert("openai-codex".into(), json!({ "type": "oauth", "access": "a" }));
+        map.insert(
+            "openai-codex".into(),
+            json!({ "type": "oauth", "access": "a" }),
+        );
         store.write(&map).unwrap();
         let reread = store.read().unwrap();
         assert_eq!(reread["zai"]["key"], "k");
         assert_eq!(reread["openai-codex"]["access"], "a");
-        let mode = fs::metadata(dir.path().join(AUTH_FILE)).unwrap().permissions().mode();
+        let mode = fs::metadata(dir.path().join(AUTH_FILE))
+            .unwrap()
+            .permissions()
+            .mode();
         assert_eq!(mode & 0o777, 0o600);
     }
 
@@ -384,7 +466,10 @@ mod tests {
     fn extracts_codex_account_id() {
         let claims = json!({ CODEX_JWT_CLAIM: { "chatgpt_account_id": "acct-123" } });
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string());
-        assert_eq!(codex_account_id(&format!("h.{payload}.s")), Some("acct-123".into()));
+        assert_eq!(
+            codex_account_id(&format!("h.{payload}.s")),
+            Some("acct-123".into())
+        );
         assert_eq!(codex_account_id("not-a-jwt"), None);
     }
 }

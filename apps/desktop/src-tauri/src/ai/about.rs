@@ -78,14 +78,28 @@ mod tests {
 
     #[test]
     fn owner_edits_deserialize_from_the_webview() {
-        let edits: Vec<Edit> = serde_json::from_str(r#"[{"op":"remove","old":"Likes kilns."},{"op":"add","text":"Hates kilns."}]"#).unwrap();
+        let edits: Vec<Edit> = serde_json::from_str(
+            r#"[{"op":"remove","old":"Likes kilns."},{"op":"add","text":"Hates kilns."}]"#,
+        )
+        .unwrap();
         let f = fixture();
         let store = f.store();
-        store.apply(File::User, &[Edit::Add { text: "Likes kilns.".into() }], Source::Owner).unwrap();
+        store
+            .apply(
+                File::User,
+                &[Edit::Add {
+                    text: "Likes kilns.".into(),
+                }],
+                Source::Owner,
+            )
+            .unwrap();
         store.apply(File::User, &edits, Source::Owner).unwrap();
         assert_eq!(store.entries(File::User), ["Hates kilns."]);
         let view = serde_json::to_value(store.view()).unwrap();
-        assert_eq!(view["files"][0]["entries"][0]["origin"]["source"]["kind"], "owner");
+        assert_eq!(
+            view["files"][0]["entries"][0]["origin"]["source"]["kind"],
+            "owner"
+        );
         assert_eq!(view["changes"][0]["ops"][0]["op"], "remove");
         assert_eq!(view["files"][1]["name"], "NOTES.md");
     }

@@ -2,7 +2,13 @@
 
 /// Collapses whitespace and bounds a metadata field. Empty becomes `None`.
 pub fn field(s: &str, limit: usize) -> Option<String> {
-    let text: String = s.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(limit).collect();
+    let text: String = s
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(limit)
+        .collect();
     (!text.is_empty()).then_some(text)
 }
 
@@ -34,9 +40,15 @@ fn bound(text: &str, limit: usize) -> String {
     };
     let head = &text[..cut];
     // Prefer a clean break in the last tenth rather than a half sentence.
-    let floor = head.char_indices().nth(limit - limit / 10).map_or(0, |(i, _)| i);
-    let end =
-        head.rfind("\n\n").filter(|&i| i >= floor).or_else(|| head.rfind('\n').filter(|&i| i >= floor)).unwrap_or(cut);
+    let floor = head
+        .char_indices()
+        .nth(limit - limit / 10)
+        .map_or(0, |(i, _)| i);
+    let end = head
+        .rfind("\n\n")
+        .filter(|&i| i >= floor)
+        .or_else(|| head.rfind('\n').filter(|&i| i >= floor))
+        .unwrap_or(cut);
     head[..end].trim_end().to_string()
 }
 
@@ -50,7 +62,9 @@ fn strip_data_images(line: &str) -> String {
             continue;
         };
         out.push_str(&rest[..open]);
-        rest = rest[start..].find(')').map_or("", |end| &rest[start + end + 1..]);
+        rest = rest[start..]
+            .find(')')
+            .map_or("", |end| &rest[start + end + 1..]);
     }
     out.push_str(rest);
     out
@@ -62,7 +76,10 @@ mod tests {
 
     #[test]
     fn bodies_are_tidied_and_bounded_on_unicode_boundaries() {
-        assert_eq!(body("# Title  \n\n\n\nText\nmore\n\n", 100), "# Title\n\nText\nmore");
+        assert_eq!(
+            body("# Title  \n\n\n\nText\nmore\n\n", 100),
+            "# Title\n\nText\nmore"
+        );
         let long = "界".repeat(30_000);
         let cut = body(&long, 20_000);
         assert_eq!(cut.chars().count(), 20_000);
@@ -73,10 +90,16 @@ mod tests {
     #[test]
     fn inline_data_images_are_dropped() {
         assert_eq!(
-            body("See ![chart](data:image/png;base64,AAAA) and ![x](https://e.org/x.png)", 100),
+            body(
+                "See ![chart](data:image/png;base64,AAAA) and ![x](https://e.org/x.png)",
+                100
+            ),
             "See  and ![x](https://e.org/x.png)"
         );
-        assert_eq!(body("[link](data:text/html,hi)", 100), "[link](data:text/html,hi)");
+        assert_eq!(
+            body("[link](data:text/html,hi)", 100),
+            "[link](data:text/html,hi)"
+        );
     }
 
     #[test]

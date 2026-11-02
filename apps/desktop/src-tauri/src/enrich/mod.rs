@@ -21,7 +21,10 @@ pub use worker::{Worker, start, wake};
 /// its JSON is refused. Headless runs have no webview, so they use static
 /// extraction only.
 fn ingest_engine(app: &crate::AppHandle) -> kintsugi_ingest::Result<kintsugi_ingest::Engine> {
-    use kintsugi_ingest::{podcast::PodcastAdapter, transcribe::SpeechAnalyzerTranscriber, web::WebAdapter, youtube::YouTubeAdapter};
+    use kintsugi_ingest::{
+        podcast::PodcastAdapter, transcribe::SpeechAnalyzerTranscriber, web::WebAdapter,
+        youtube::YouTubeAdapter,
+    };
     use std::sync::Arc;
     let web = WebAdapter::new()?;
     #[cfg(not(feature = "headless"))]
@@ -32,10 +35,14 @@ fn ingest_engine(app: &crate::AppHandle) -> kintsugi_ingest::Result<kintsugi_ing
     let youtube = YouTubeAdapter::new(tools.clone())?.with_fallback(Arc::new(WebAdapter::new()?));
     let mut podcast = PodcastAdapter::new()?;
     if let Some(helper) = crate::tools::transcriber_helper() {
-        podcast = podcast.with_transcriber(Arc::new(SpeechAnalyzerTranscriber::new(helper).with_consent(tools.clone())));
+        podcast = podcast.with_transcriber(Arc::new(
+            SpeechAnalyzerTranscriber::new(helper).with_consent(tools.clone()),
+        ));
     }
-    let reader = crate::tools::pdf_helper()
-        .map(|helper| Arc::new(kintsugi_ingest::pdf::PdfKitReader::new(helper)) as Arc<dyn kintsugi_ingest::pdf::PdfReader>);
+    let reader = crate::tools::pdf_helper().map(|helper| {
+        Arc::new(kintsugi_ingest::pdf::PdfKitReader::new(helper))
+            as Arc<dyn kintsugi_ingest::pdf::PdfReader>
+    });
     let pdf = kintsugi_ingest::pdf::PdfAdapter::new(reader)?
         .with_converter(Arc::new(kintsugi_ingest::pdf::Docling::new(tools.clone())));
     let mut engine = kintsugi_ingest::Engine::new()

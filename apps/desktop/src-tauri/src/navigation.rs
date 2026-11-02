@@ -6,8 +6,7 @@ pub fn allowed(url: &Url, dev_url: Option<&Url>) -> bool {
         return url.scheme() == dev.scheme() && url.origin() == dev.origin();
     }
     (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
-        || (matches!(url.scheme(), "http" | "https")
-            && url.host_str() == Some("tauri.localhost"))
+        || (matches!(url.scheme(), "http" | "https") && url.host_str() == Some("tauri.localhost"))
 }
 
 #[cfg(test)]
@@ -30,8 +29,14 @@ mod tests {
             assert!(!allowed(&Url::parse(target).unwrap(), Some(&dev)));
             assert!(!allowed(&Url::parse(target).unwrap(), None));
         }
-        assert!(allowed(&Url::parse("tauri://localhost/index.html").unwrap(), None));
-        assert!(allowed(&Url::parse("http://tauri.localhost/").unwrap(), None));
+        assert!(allowed(
+            &Url::parse("tauri://localhost/index.html").unwrap(),
+            None
+        ));
+        assert!(allowed(
+            &Url::parse("http://tauri.localhost/").unwrap(),
+            None
+        ));
         assert!(!allowed(&Url::parse("tauri://example.com/").unwrap(), None));
     }
 }

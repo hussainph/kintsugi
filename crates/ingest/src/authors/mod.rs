@@ -18,14 +18,18 @@
 //! a saved book goes to Inspiration through its link like any feed item.
 
 use crate::api::{ApiClient, ApiLimits};
-use crate::{Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaKind, Polled, Result, SourceInfo, SourceType, Subscription, Target, markdown, text};
+use crate::{
+    Adapter, BoxFuture, CaptureOptions, Error, Item, Media, MediaKind, Polled, Result, SourceInfo,
+    SourceType, Subscription, Target, markdown, text,
+};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-const USER_AGENT: &str = "Kintsugi/0.1 (personal reading app; +https://github.com/hussainph/kintsugi)";
+const USER_AGENT: &str =
+    "Kintsugi/0.1 (personal reading app; +https://github.com/hussainph/kintsugi)";
 /// Following an author shows this many of their latest books.
 pub const FIRST_POLL: usize = 3;
 /// Titles the cursor remembers, newest kept.
@@ -43,14 +47,20 @@ pub struct AuthorEndpoints {
 
 impl Default for AuthorEndpoints {
     fn default() -> Self {
-        Self { google: Url::parse("https://www.googleapis.com/").unwrap(), openlibrary: Url::parse("https://openlibrary.org/").unwrap() }
+        Self {
+            google: Url::parse("https://www.googleapis.com/").unwrap(),
+            openlibrary: Url::parse("https://openlibrary.org/").unwrap(),
+        }
     }
 }
 
 impl AuthorEndpoints {
     /// Both APIs at one base URL (a local fixture server).
     pub fn at(base: Url) -> Self {
-        Self { google: base.clone(), openlibrary: base }
+        Self {
+            google: base.clone(),
+            openlibrary: base,
+        }
     }
 }
 
@@ -89,20 +99,33 @@ impl AuthorAdapter {
     }
 
     pub fn with_endpoints(endpoints: AuthorEndpoints, limits: ApiLimits) -> Result<Self> {
-        Ok(Self { client: Arc::new(ApiClient::new(USER_AGENT, limits)?), endpoints })
+        Ok(Self {
+            client: Arc::new(ApiClient::new(USER_AGENT, limits)?),
+            endpoints,
+        })
     }
 
     /// The author's newest books, editions folded, newest first.
     pub async fn newest(&self, author: &str) -> Result<Vec<Book>> {
         let books = match self.google(author).await {
             Ok(books) => books,
-            Err(google) => self.openlibrary(author).await.map_err(|open| if google == Error::RateLimited { google } else { open })?,
+            Err(google) => self.openlibrary(author).await.map_err(|open| {
+                if google == Error::RateLimited {
+                    google
+                } else {
+                    open
+                }
+            })?,
         };
         Ok(fold(books.into_iter().filter(|b| by(author, b)).collect()))
     }
 
     async fn google(&self, author: &str) -> Result<Vec<Book>> {
-        let mut url = self.endpoints.google.join("books/v1/volumes").map_err(|_| Error::Setup)?;
+        let mut url = self
+            .endpoints
+            .google
+            .join("books/v1/volumes")
+            .map_err(|_| Error::Setup)?;
         url.query_pairs_mut()
             .append_pair("q", &format!("inauthor:\"{author}\""))
             .append_pair("orderBy", "newest")
@@ -112,7 +135,11 @@ impl AuthorAdapter {
     }
 
     async fn openlibrary(&self, author: &str) -> Result<Vec<Book>> {
-        let mut url = self.endpoints.openlibrary.join("search.json").map_err(|_| Error::Setup)?;
+        let mut url = self
+            .endpoints
+            .openlibrary
+            .join("search.json")
+            .map_err(|_| Error::Setup)?;
         url.query_pairs_mut()
             .append_pair("author", author)
             .append_pair("sort", "new")
@@ -138,8 +165,13 @@ impl Adapter for AuthorAdapter {
     fn poll<'a>(&'a self, subscription: &'a Subscription) -> BoxFuture<'a, Result<Polled>> {
         Box::pin(async move {
             let author = author_name(&subscription.url).ok_or(Error::InvalidUrl)?;
-            let books = tokio::time::timeout(self.client.limits.deadline, self.newest(&author)).await.map_err(|_| Error::TimedOut)??;
-            let previous: Option<Cursor> = subscription.cursor.as_deref().and_then(|c| serde_json::from_str(c).ok());
+            let books = tokio::time::timeout(self.client.limits.deadline, self.newest(&author))
+                .await
+                .map_err(|_| Error::TimedOut)??;
+            let previous: Option<Cursor> = subscription
+                .cursor
+                .as_deref()
+                .and_then(|c| serde_json::from_str(c).ok());
             let first = previous.is_none();
             let mut seen = previous.map(|c| c.seen).unwrap_or_default();
             let captured = crate::now();
@@ -157,8 +189,16 @@ impl Adapter for AuthorAdapter {
             if seen.len() > SEEN {
                 seen.drain(..seen.len() - SEEN);
             }
-            let source = SourceInfo { title: Some(author.clone()), url: Some(author_url(&author).unwrap_or_default()), image: None };
-            Ok(Polled { items, cursor: serde_json::to_string(&Cursor { seen }).ok(), source: Some(source) })
+            let source = SourceInfo {
+                title: Some(author.clone()),
+                url: Some(author_url(&author).unwrap_or_default()),
+                image: None,
+            };
+            Ok(Polled {
+                items,
+                cursor: serde_json::to_string(&Cursor { seen }).ok(),
+                source: Some(source),
+            })
         })
     }
 }
@@ -167,7 +207,9 @@ impl Adapter for AuthorAdapter {
 pub fn author_url(name: &str) -> Option<String> {
     let name = markdown::field(name, 200)?;
     let mut url = Url::parse(AUTHOR_PAGE).ok()?;
-    url.query_pairs_mut().append_pair("author", &name).append_pair("sort", "new");
+    url.query_pairs_mut()
+        .append_pair("author", &name)
+        .append_pair("sort", "new");
     Some(url.to_string())
 }
 
@@ -177,17 +219,26 @@ pub fn author_name(url: &str) -> Option<String> {
     if url.host_str() != Some("openlibrary.org") || url.path() != "/search" {
         return None;
     }
-    url.query_pairs().find(|(k, _)| k == "author").and_then(|(_, v)| markdown::field(&v, 200))
+    url.query_pairs()
+        .find(|(k, _)| k == "author")
+        .and_then(|(_, v)| markdown::field(&v, 200))
 }
 
 fn tokens(name: &str) -> Vec<String> {
-    name.to_lowercase().split(|c: char| !c.is_alphanumeric()).filter(|t| !t.is_empty()).map(str::to_string).collect()
+    name.to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 /// Whether a book is by the author: every word of the followed name longer
 /// than an initial appears in one of its authors' names.
 pub fn by(author: &str, book: &Book) -> bool {
-    let wanted: Vec<String> = tokens(author).into_iter().filter(|t| t.chars().count() > 1).collect();
+    let wanted: Vec<String> = tokens(author)
+        .into_iter()
+        .filter(|t| t.chars().count() > 1)
+        .collect();
     !wanted.is_empty()
         && book.authors.iter().any(|name| {
             let have = tokens(name);
@@ -215,8 +266,15 @@ fn fold(books: Vec<Book>) -> Vec<Book> {
             Some(known) => {
                 // The earliest edition stands for the book, so a reissue
                 // doesn't pass for a new one; the others fill its gaps.
-                let earlier = book.published.as_deref().is_some_and(|p| known.published.as_deref().is_none_or(|k| p < k));
-                let (mut first, other) = if earlier { (book, known.clone()) } else { (known.clone(), book) };
+                let earlier = book
+                    .published
+                    .as_deref()
+                    .is_some_and(|p| known.published.as_deref().is_none_or(|k| p < k));
+                let (mut first, other) = if earlier {
+                    (book, known.clone())
+                } else {
+                    (known.clone(), book)
+                };
                 first.description = first.description.or(other.description);
                 first.cover = first.cover.or(other.cover);
                 first.link = first.link.or(other.link);
@@ -226,7 +284,12 @@ fn fold(books: Vec<Book>) -> Vec<Book> {
             None => out.push(book),
         }
     }
-    out.sort_by(|a, b| b.published.as_deref().unwrap_or("").cmp(a.published.as_deref().unwrap_or("")));
+    out.sort_by(|a, b| {
+        b.published
+            .as_deref()
+            .unwrap_or("")
+            .cmp(a.published.as_deref().unwrap_or(""))
+    });
     out
 }
 
@@ -246,7 +309,11 @@ fn web(url: &str) -> Option<String> {
     let url = Url::parse(url).ok().filter(crate::web::allowed_url)?;
     let mut url = url;
     // Google serves covers over plain HTTP by default.
-    if url.scheme() == "http" && url.host_str().is_some_and(|h| h.ends_with("books.google.com") || h.ends_with("googleusercontent.com")) {
+    if url.scheme() == "http"
+        && url.host_str().is_some_and(|h| {
+            h.ends_with("books.google.com") || h.ends_with("googleusercontent.com")
+        })
+    {
         let _ = url.set_scheme("https");
     }
     Some(url.to_string())
@@ -261,7 +328,11 @@ fn item(author: &str, book: &Book, captured: &str) -> Item {
         Some(subtitle) => format!("{}: {subtitle}", book.title),
         None => book.title.clone(),
     };
-    let authors = if book.authors.is_empty() { author.to_string() } else { book.authors.join(", ") };
+    let authors = if book.authors.is_empty() {
+        author.to_string()
+    } else {
+        book.authors.join(", ")
+    };
     let mut facts = Vec::new();
     if let Some(publisher) = &book.publisher {
         facts.push(publisher.clone());
@@ -275,16 +346,30 @@ fn item(author: &str, book: &Book, captured: &str) -> Item {
     if let Some(isbn) = &book.isbn {
         facts.push(format!("ISBN {isbn}"));
     }
-    let mut body = format!("**{}** by {}", text::label(&title, 300), text::label(&authors, 300));
+    let mut body = format!(
+        "**{}** by {}",
+        text::label(&title, 300),
+        text::label(&authors, 300)
+    );
     if !facts.is_empty() {
-        body.push_str(&format!("\n\n{}", text::plain(&text::label(&facts.join(" · "), 400))));
+        body.push_str(&format!(
+            "\n\n{}",
+            text::plain(&text::label(&facts.join(" · "), 400))
+        ));
     }
     if let Some(description) = &book.description {
         body.push_str(&format!("\n\n{}", text::plain(description)));
     }
-    let source = if book.provider == "openlibrary" { "Open Library" } else { "Google Books" };
+    let source = if book.provider == "openlibrary" {
+        "Open Library"
+    } else {
+        "Google Books"
+    };
     if let Some(link) = &book.link {
-        body.push_str(&format!("\n\n[{source}]({})", link.replace('(', "%28").replace(')', "%29")));
+        body.push_str(&format!(
+            "\n\n[{source}]({})",
+            link.replace('(', "%28").replace(')', "%29")
+        ));
     }
     let mut extras = BTreeMap::new();
     extras.insert("extractor".into(), Value::from(book.provider));
@@ -302,10 +387,22 @@ fn item(author: &str, book: &Book, captured: &str) -> Item {
         title: markdown::field(&title, 500),
         author: markdown::field(&authors, 200),
         site: Some(source.into()),
-        description: book.description.as_deref().and_then(|d| bounded(d, DESCRIPTION_CHARS)),
+        description: book
+            .description
+            .as_deref()
+            .and_then(|d| bounded(d, DESCRIPTION_CHARS)),
         published: book.published.as_deref().and_then(published),
         captured: captured.into(),
-        media: book.cover.clone().map(|u| Media { kind: MediaKind::Image, url: Some(u), data: None }).into_iter().collect(),
+        media: book
+            .cover
+            .clone()
+            .map(|u| Media {
+                kind: MediaKind::Image,
+                url: Some(u),
+                data: None,
+            })
+            .into_iter()
+            .collect(),
         body: markdown::body(&body, crate::BODY_CHARS),
         extras,
     }
@@ -313,7 +410,14 @@ fn item(author: &str, book: &Book, captured: &str) -> Item {
 
 fn bounded(text: &str, limit: usize) -> Option<String> {
     let flat = markdown::field(text, limit + 1)?;
-    Some(if flat.chars().count() > limit { format!("{}…", flat.chars().take(limit).collect::<String>().trim_end()) } else { flat })
+    Some(if flat.chars().count() > limit {
+        format!(
+            "{}…",
+            flat.chars().take(limit).collect::<String>().trim_end()
+        )
+    } else {
+        flat
+    })
 }
 
 /// Google's descriptions may carry a little HTML (`<p>`, `<br>`, `<i>`).
@@ -321,7 +425,12 @@ fn strip_html(text: &str) -> String {
     if !text.contains('<') && !text.contains('&') {
         return text.to_string();
     }
-    let doc = dom_query::Document::from(text.replace("<br>", "\n").replace("<br/>", "\n").replace("</p>", "</p>\n").as_str());
+    let doc = dom_query::Document::from(
+        text.replace("<br>", "\n")
+            .replace("<br/>", "\n")
+            .replace("</p>", "</p>\n")
+            .as_str(),
+    );
     doc.select("script, style").remove();
     doc.select("body").text().to_string()
 }
@@ -377,18 +486,32 @@ pub fn google_books(bytes: &[u8]) -> Result<Vec<Book>> {
                 .find_map(|kind| info.industry_identifiers.iter().find(|i| i.kind == *kind))
                 .map(|i| i.identifier.clone())
                 .filter(|i| i.chars().all(|c| c.is_ascii_alphanumeric()));
-            let cover = info.image_links.as_ref().and_then(|l| l.get("thumbnail").or(l.get("smallThumbnail"))).and_then(|u| web(u));
+            let cover = info
+                .image_links
+                .as_ref()
+                .and_then(|l| l.get("thumbnail").or(l.get("smallThumbnail")))
+                .and_then(|u| web(u));
             Some(Book {
                 title: markdown::field(&info.title?, 300)?,
                 subtitle: info.subtitle.and_then(|s| markdown::field(&s, 300)),
-                authors: info.authors.iter().filter_map(|a| markdown::field(a, 200)).collect(),
+                authors: info
+                    .authors
+                    .iter()
+                    .filter_map(|a| markdown::field(a, 200))
+                    .collect(),
                 publisher: info.publisher.and_then(|p| markdown::field(&p, 200)),
                 published: info.published_date.and_then(|p| markdown::field(&p, 20)),
-                description: info.description.map(|d| strip_html(&d)).and_then(|d| Some(markdown::body(&d, 4_000)).filter(|d| !d.is_empty())),
+                description: info
+                    .description
+                    .map(|d| strip_html(&d))
+                    .and_then(|d| Some(markdown::body(&d, 4_000)).filter(|d| !d.is_empty())),
                 isbn,
                 pages: info.page_count.filter(|p| *p > 0),
                 cover,
-                link: info.canonical_volume_link.or(info.info_link).and_then(|u| web(&u)),
+                link: info
+                    .canonical_volume_link
+                    .or(info.info_link)
+                    .and_then(|u| web(&u)),
                 provider: "google-books",
             })
         })
@@ -421,22 +544,44 @@ struct OpenLibraryDoc {
 
 /// An Open Library `search.json` response.
 pub fn open_library(bytes: &[u8]) -> Result<Vec<Book>> {
-    let search: OpenLibrarySearch = serde_json::from_slice(bytes).map_err(|_| Error::Unavailable)?;
+    let search: OpenLibrarySearch =
+        serde_json::from_slice(bytes).map_err(|_| Error::Unavailable)?;
     Ok(search
         .docs
         .into_iter()
         .filter_map(|d| {
-            let key = d.key.filter(|k| k.starts_with("/works/") && k[7..].chars().all(|c| c.is_ascii_alphanumeric()));
+            let key = d.key.filter(|k| {
+                k.starts_with("/works/") && k[7..].chars().all(|c| c.is_ascii_alphanumeric())
+            });
             Some(Book {
                 title: markdown::field(&d.title?, 300)?,
                 subtitle: d.subtitle.and_then(|s| markdown::field(&s, 300)),
-                authors: d.author_name.iter().filter_map(|a| markdown::field(a, 200)).collect(),
+                authors: d
+                    .author_name
+                    .iter()
+                    .filter_map(|a| markdown::field(a, 200))
+                    .collect(),
                 publisher: d.publisher.first().and_then(|p| markdown::field(p, 200)),
-                published: d.first_publish_year.filter(|y| (1000..=9999).contains(y)).map(|y| y.to_string()),
-                description: d.first_sentence.first().and_then(|s| markdown::field(s, 2_000)),
-                isbn: d.isbn.iter().find(|i| i.len() == 13).or(d.isbn.first()).filter(|i| i.chars().all(|c| c.is_ascii_alphanumeric())).cloned(),
+                published: d
+                    .first_publish_year
+                    .filter(|y| (1000..=9999).contains(y))
+                    .map(|y| y.to_string()),
+                description: d
+                    .first_sentence
+                    .first()
+                    .and_then(|s| markdown::field(s, 2_000)),
+                isbn: d
+                    .isbn
+                    .iter()
+                    .find(|i| i.len() == 13)
+                    .or(d.isbn.first())
+                    .filter(|i| i.chars().all(|c| c.is_ascii_alphanumeric()))
+                    .cloned(),
                 pages: d.number_of_pages_median.filter(|p| *p > 0),
-                cover: d.cover_i.filter(|c| *c > 0).map(|c| format!("https://covers.openlibrary.org/b/id/{c}-M.jpg")),
+                cover: d
+                    .cover_i
+                    .filter(|c| *c > 0)
+                    .map(|c| format!("https://covers.openlibrary.org/b/id/{c}-M.jpg")),
                 link: key.map(|k| format!("https://openlibrary.org{k}")),
                 provider: "openlibrary",
             })
