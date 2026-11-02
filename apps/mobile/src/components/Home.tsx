@@ -1,10 +1,12 @@
 import { Offline, type Remote, Unpaired } from '@kintsugi/core/remote';
 import { randomUUID } from 'expo-crypto';
 import { router, Stack, useFocusEffect } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { WritingList } from '@/components/WritingList';
+import { syncInspiration, useInspiration } from '@/lib/clip-library';
 import type { Filter } from '@/lib/browse';
 import { captureTarget } from '@/lib/capture-input';
 import { library, useLibrary } from '@/lib/documents';
@@ -44,6 +46,7 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
   const captureDraft = useRef<{ text: string; id: string } | null>(null);
   const [query, setQuery] = useState('');
   const newEditor = useNewEditor();
+  const clipCount = useInspiration().clips.length;
 
   const fail = useCallback(
     (e: unknown) => {
@@ -68,6 +71,11 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
       setApi(hello.api);
       // Anything captured while the Mac was away goes now.
       if (pairing) await send(client, hello.api);
+      // The clip cards and their images are kept for browsing offline. A
+      // failure here (a note edit still waiting) shows in Inspiration.
+      await syncInspiration(client, hello.api).catch((e) => {
+        if (e instanceof Unpaired) throw e;
+      });
       setProblem(null);
     } catch (e) {
       fail(e);
@@ -204,6 +212,18 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
                 </Pressable>
               )}
             </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Inspiration, ${plural(clipCount, 'clip', 'clips')}`}
+              testID="open-inspiration"
+              onPress={() => router.push('/inspiration')}
+              style={({ pressed }) => [styles.row, { backgroundColor: pressed ? theme.border : theme.surface }]}
+            >
+              <SymbolView name="sparkles" size={17} tintColor={theme.muted} />
+              <Text style={[styles.rowTitle, { color: theme.text }]}>Inspiration</Text>
+              {clipCount > 0 && <Text style={[styles.rowNote, { color: theme.faint }]}>{clipCount}</Text>}
+              <SymbolView name="chevron.right" size={13} tintColor={theme.faint} />
+            </Pressable>
             {api > 0 && api < 2 && (
               <Text style={[styles.status, { color: theme.muted }]}>Update Kintsugi on your Mac to send inspiration clips.</Text>
             )}
@@ -240,4 +260,7 @@ const styles = StyleSheet.create({
   captureButton: { alignSelf: 'flex-end', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   captureButtonText: { fontSize: 15, fontWeight: '600' },
   status: { fontSize: 14, lineHeight: 19, paddingHorizontal: 4 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  rowTitle: { flex: 1, fontSize: 17 },
+  rowNote: { fontSize: 15 },
 });

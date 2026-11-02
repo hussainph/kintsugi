@@ -78,7 +78,10 @@ pub fn router(host: Host, token: &str) -> Router {
             "/v1/clips",
             get(clips).merge(post(create_clip).layer(DefaultBodyLimit::max(CLIP_BODY_LIMIT))),
         )
-        .route("/v1/clip", get(read_clip))
+        .route("/v1/clip", get(read_clip).put(write_clip_note))
+        .route("/v1/clip/image", get(clip_image))
+        .route("/v1/clip/source", get(clip_source))
+        .route("/v1/inspiration", get(inspiration))
         .layer(middleware::from_fn_with_state(ctx.clone(), authorize))
         .with_state(ctx)
 }
@@ -131,7 +134,9 @@ async fn hello(State(ctx): State<Ctx>) -> Reply<serde_json::Value> {
     let root = ctx.root()?;
     let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     // 4: clip captures accept files (PDFs and EPUBs).
-    Ok(Json(json!({ "app": "kintsugi", "api": 4, "vault": name })))
+    // 5: the phone browses inspiration: /v1/inspiration, clip images and
+    //    sources, and version-checked note edits (PUT /v1/clip).
+    Ok(Json(json!({ "app": "kintsugi", "api": 5, "vault": name })))
 }
 
 async fn tree(State(ctx): State<Ctx>) -> Reply<Vec<vault::Entry>> {
@@ -318,19 +323,121 @@ async fn clips(State(ctx): State<Ctx>) -> Reply<Vec<vault::ClipSummary>> {
     Ok(Json(vault::clip_list(&ctx.root()?)?))
 }
 
+/// The vault root and the requested path, once it names an existing clip:
+/// 400 for a missing or non-clip path, 404 for a clip that isn't there.
+fn existing_clip(ctx: &Ctx, query: Result<Query<PathQuery>, QueryRejection>) -> Result<(PathBuf, String), Error> {
+    let Query(q) = query.map_err(|_| Error(StatusCode::BAD_REQUEST, "A clip path is required.".into()))?;
+    let root = ctx.root()?;
+    if !vault::clip_path(&root, &q.path)?.is_file() {
+        return Err(not_found());
+    }
+    Ok((root, q.path))
+}
+
+fn not_found() -> Error {
+    Error(StatusCode::NOT_FOUND, "No clip exists at that path.".into())
+}
+
 async fn read_clip(
     State(ctx): State<Ctx>,
     query: Result<Query<PathQuery>, QueryRejection>,
 ) -> Reply<vault::Clip> {
-    let Query(q) = query.map_err(|_| Error(StatusCode::BAD_REQUEST, "A clip path is required.".into()))?;
-    let root = ctx.root()?;
-    if !vault::clip_path(&root, &q.path)?.is_file() {
-        return Err(Error(
-            StatusCode::NOT_FOUND,
-            "No clip exists at that path.".into(),
-        ));
+    let (root, path) = existing_clip(&ctx, query)?;
+    Ok(Json(vault::clip_read(&root, &path)?))
+}
+
+/// A clip with the version of its own text, as the phone keeps it offline.
+#[derive(Serialize)]
+struct PhoneClip {
+    #[serde(flatten)]
+    clip: vault::Clip,
+    version: String,
+}
+
+impl From<vault::Clip> for PhoneClip {
+    fn from(clip: vault::Clip) -> Self {
+        let version = vault::version(&clip.text);
+        PhoneClip { clip, version }
     }
-    Ok(Json(vault::clip_read(&root, &q.path)?))
+}
+
+/// Every clip's summary and own text, newest first: the phone's offline
+/// copy of the library. Extracted sources stay on the Mac. Since API 5.
+async fn inspiration(State(ctx): State<Ctx>) -> Reply<Vec<PhoneClip>> {
+    let root = ctx.root()?;
+    let clips = tokio::task::spawn_blocking(move || vault::clip_list_with_text(&root))
+        .await
+        .map_err(|_| Error(StatusCode::INTERNAL_SERVER_ERROR, "Couldn't list clips.".into()))??;
+    Ok(Json(clips.into_iter().map(PhoneClip::from).collect()))
+}
+
+/// The clip's primary image, for the phone's cards. Only a clip path is
+/// accepted; the image goes through the same checks as the Mac's library
+/// (`clip_image`). No image, or one that fails them, is 404. Since API 5.
+async fn clip_image(
+    State(ctx): State<Ctx>,
+    query: Result<Query<PathQuery>, QueryRejection>,
+) -> Result<Response, Error> {
+    let (root, path) = existing_clip(&ctx, query)?;
+    let (bytes, mime) = tokio::task::spawn_blocking(move || crate::library::primary_image_typed(&root, &path))
+        .await
+        .map_err(|_| Error(StatusCode::INTERNAL_SERVER_ERROR, "Couldn't read the clip image.".into()))?
+        .map_err(|_| Error(StatusCode::NOT_FOUND, "This clip has no image.".into()))?;
+    Ok((
+        [(header::CONTENT_TYPE, mime), (header::CACHE_CONTROL, "private, max-age=86400")],
+        bytes,
+    )
+        .into_response())
+}
+
+/// The clip's whole extracted source, fetched when the phone asks for it
+/// rather than kept there. `text` is null when there is none. Since API 5.
+async fn clip_source(
+    State(ctx): State<Ctx>,
+    query: Result<Query<PathQuery>, QueryRejection>,
+) -> Reply<serde_json::Value> {
+    let (root, path) = existing_clip(&ctx, query)?;
+    let text = tokio::task::spawn_blocking(move || vault::clip_full_source(&root, &path))
+        .await
+        .map_err(|_| Error(StatusCode::INTERNAL_SERVER_ERROR, "Couldn't read the clip source.".into()))??;
+    Ok(Json(json!({ "text": text })))
+}
+
+#[derive(Deserialize)]
+struct NoteBody {
+    path: String,
+    note: String,
+    /// The version of the own text the phone last read; omitted only to
+    /// overwrite on purpose.
+    base: Option<String>,
+}
+
+/// Replaces a clip's own text if it is still the one the phone read:
+/// `{ result: "saved", version, clip }`, or 409 with
+/// `{ result: "conflict", current: { text, version } }`. Since API 5.
+async fn write_clip_note(
+    State(ctx): State<Ctx>,
+    body: Result<Json<NoteBody>, JsonRejection>,
+) -> Result<Response, Error> {
+    // Serde's detailed rejection can echo a private input value.
+    let Json(body) = body.map_err(|e| Error(e.status(), "Invalid clip note JSON.".into()))?;
+    let root = ctx.root()?;
+    if !vault::clip_path(&root, &body.path)?.is_file() {
+        return Err(not_found());
+    }
+    let result = vault::clip_update_note(&root, &body.path, &body.note, body.base.as_deref())?;
+    Ok(match result {
+        vault::NoteWrite::Saved(clip) => {
+            (ctx.host.clip_changed)(body.path);
+            let saved = PhoneClip::from(clip);
+            (StatusCode::OK, Json(json!({ "result": "saved", "version": saved.version, "clip": saved }))).into_response()
+        }
+        vault::NoteWrite::Conflict(clip) => {
+            let version = vault::version(&clip.text);
+            let current = json!({ "text": clip.text, "version": version });
+            (StatusCode::CONFLICT, Json(json!({ "result": "conflict", "current": current }))).into_response()
+        }
+    })
 }
 
 #[cfg(test)]
@@ -571,7 +678,7 @@ mod tests {
             let body: serde_json::Value = response.json().await.unwrap();
             assert_eq!(
                 body,
-                json!({ "app": "kintsugi", "api": 4, "vault": root.file_name().unwrap().to_str().unwrap() })
+                json!({ "app": "kintsugi", "api": 5, "vault": root.file_name().unwrap().to_str().unwrap() })
             );
         });
     }
@@ -813,10 +920,88 @@ mod tests {
     }
 
     #[test]
+    fn the_phone_browses_clips_with_images_sources_and_checked_note_edits() {
+        with_server(async |base, http, root, _changes, clip_changes| {
+            let get = |path: &str| http.get(format!("{base}{path}")).bearer_auth(TOKEN).send();
+            let created: serde_json::Value = http
+                .post(format!("{base}/v1/clips"))
+                .bearer_auth(TOKEN)
+                .json(&json!({ "title": "Window light", "image": PNG, "imageType": "image/png", "note": "First note", "capturedAt": "2026-10-29T10:00", "via": "phone" }))
+                .send().await.unwrap().json().await.unwrap();
+            let path = created["path"].as_str().unwrap().to_string();
+            vault::clip_update(&root, &path, &vault::ClipUpdate { source: Some("The page, readable.".into()), ..Default::default() }).unwrap();
+            let bare = vault::clip_create(&root, &vault::ClipCapture {
+                url: None, text: Some("A bare thought".into()), note: None, title: None, image: None,
+                image_type: None, file: None, captured_at: "2026-10-28T10:00".into(), via: vault::ClipVia::Mac,
+            }).unwrap();
+            let query = |path: &str| format!("?path={}", path.replace('/', "%2F"));
+
+            let list: serde_json::Value = get("/v1/inspiration").await.unwrap().json().await.unwrap();
+            assert_eq!(list.as_array().unwrap().len(), 2);
+            assert_eq!(list[0]["path"], path);
+            assert_eq!(list[0]["text"], "First note");
+            assert_eq!(list[0]["version"], vault::version("First note"));
+            assert_eq!(list[0]["hasSource"], true);
+            assert!(list[0].get("source").is_none(), "extracted source stays on the Mac");
+
+            let image = get(&format!("/v1/clip/image{}", query(&path))).await.unwrap();
+            assert_eq!(image.status(), 200);
+            assert_eq!(image.headers()[header::CONTENT_TYPE], "image/png");
+            let bytes = image.bytes().await.unwrap();
+            assert_eq!(bytes.as_ref(), base64::engine::general_purpose::STANDARD.decode(PNG).unwrap());
+            assert_eq!(get(&format!("/v1/clip/image{}", query(&bare))).await.unwrap().status(), 404);
+            assert_eq!(get("/v1/clip/image?path=inspiration%2Fnope.md").await.unwrap().status(), 404);
+            assert_eq!(get("/v1/clip/image?path=drafts%2Fx.md").await.unwrap().status(), 400);
+            assert_eq!(get("/v1/clip/image").await.unwrap().status(), 400);
+
+            let source: serde_json::Value = get(&format!("/v1/clip/source{}", query(&path))).await.unwrap().json().await.unwrap();
+            assert_eq!(source["text"], "The page, readable.");
+            let none: serde_json::Value = get(&format!("/v1/clip/source{}", query(&bare))).await.unwrap().json().await.unwrap();
+            assert!(none["text"].is_null());
+
+            let base_version = vault::version("First note");
+            let saved = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+                .json(&json!({ "path": path, "note": "Second note", "base": base_version }))
+                .send().await.unwrap();
+            assert_eq!(saved.status(), 200);
+            let saved: serde_json::Value = saved.json().await.unwrap();
+            assert_eq!(saved["result"], "saved");
+            assert_eq!(saved["version"], vault::version("Second note"));
+            assert_eq!(saved["clip"]["text"], "Second note");
+            assert_eq!(clip_changes.lock().unwrap().last(), Some(&path));
+
+            let stale = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+                .json(&json!({ "path": path, "note": "Offline note", "base": base_version }))
+                .send().await.unwrap();
+            assert_eq!(stale.status(), 409);
+            let stale: serde_json::Value = stale.json().await.unwrap();
+            assert_eq!(stale["result"], "conflict");
+            assert_eq!(stale["current"]["text"], "Second note");
+            assert_eq!(vault::clip_read(&root, &path).unwrap().text, "Second note");
+            assert_eq!(vault::clip_full_source(&root, &path).unwrap().as_deref(), Some("The page, readable."));
+
+            let gone = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+                .json(&json!({ "path": "inspiration/nope.md", "note": "x" }))
+                .send().await.unwrap();
+            assert_eq!(gone.status(), 404);
+            let document = http.put(format!("{base}/v1/clip")).bearer_auth(TOKEN)
+                .json(&json!({ "path": "drafts/x.md", "note": "x" }))
+                .send().await.unwrap();
+            assert_eq!(document.status(), 400);
+        });
+    }
+
+    #[test]
     fn clips_require_pairing_before_parsing_or_mutating() {
         with_server(async |base, http, root, changes, clip_changes| {
             for token in [None, Some("WRONG-TOKEN")] {
-                for endpoint in ["/v1/clips", "/v1/clip?path=inspiration/nope.md"] {
+                for endpoint in [
+                    "/v1/clips",
+                    "/v1/clip?path=inspiration/nope.md",
+                    "/v1/inspiration",
+                    "/v1/clip/image?path=inspiration/nope.md",
+                    "/v1/clip/source?path=inspiration/nope.md",
+                ] {
                     let mut request = http.get(format!("{base}{endpoint}"));
                     if let Some(token) = token {
                         request = request.bearer_auth(token);

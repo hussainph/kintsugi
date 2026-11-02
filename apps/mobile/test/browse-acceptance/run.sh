@@ -4,6 +4,10 @@
 #
 #   UDID=<a dedicated simulator> APP=<built Kintsugi.app (Release)> ./run.sh
 #
+# ONLY=inspiration runs KI-3's InspirationTests instead of BrowseTests (after
+# the first-launch approval). They stop the Mac midway, through a file in
+# $WORK/control, to browse offline.
+#
 # It seeds a scratch vault under .headless/, serves the real phone API on it
 # (`phone_dev_server`, which refuses any vault outside .headless), installs
 # the app, pairs through the real deep link and runs BrowseTests. Screenshots
@@ -27,7 +31,11 @@ printf -- '---\ntitle: "Glaze chemistry"\nstatus: draft\ntags:\n  - craft\n  - f
   cargo test -q -p kintsugi phone_dev_server -- --ignored --nocapture >"$WORK/mac.log" 2>&1) &
 MAC=$!
 stop() { kill "$MAC" 2>/dev/null; lsof -ti "tcp:$PORT" -sTCP:LISTEN | xargs kill 2>/dev/null || true; }
-trap stop EXIT
+CONTROL="$WORK/control"; mkdir -p "$CONTROL"
+# A test asks for the Mac to go away by creating control/stop-mac.
+( until [ -e "$CONTROL/stop-mac" ]; do sleep 0.5; done; stop; touch "$CONTROL/mac-stopped" ) &
+WATCH=$!
+trap 'stop; kill "$WATCH" 2>/dev/null || true' EXIT
 until grep -q 'kintsugi://pair' "$WORK/mac.log" 2>/dev/null; do sleep 1; done
 
 xcrun simctl bootstatus "$UDID" -b >/dev/null
@@ -38,7 +46,14 @@ sleep 3
 xcrun simctl openurl "$UDID" "kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A$PORT&token=TEST-TOKEN"
 
 xcodegen generate --quiet --spec "$HERE/project.yml" --project "$WORK" --project-root "$HERE"
-TEST_RUNNER_SHOTS="$WORK/shots" xcodebuild test \
+ONLY_TESTING=()
+if [ "${ONLY:-}" = inspiration ]; then
+  ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests/test0ApproveOpen -only-testing:BrowseHarnessUITests/InspirationTests)
+else
+  ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests)
+fi
+TEST_RUNNER_SHOTS="$WORK/shots" TEST_RUNNER_VAULT="$VAULT" TEST_RUNNER_CONTROL="$CONTROL" xcodebuild test \
+  "${ONLY_TESTING[@]}" \
   -project "$WORK/BrowseHarness.xcodeproj" -scheme BrowseHarness \
   -destination "id=$UDID" -derivedDataPath "$WORK/DerivedData" \
   -resultBundlePath "$WORK/browse.xcresult" -parallel-testing-enabled NO \

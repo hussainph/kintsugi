@@ -18,6 +18,9 @@ export default function Layout() {
               <Stack.Screen name="index" />
               <Stack.Screen name="folder" />
               <Stack.Screen name="doc" />
+              <Stack.Screen name="inspiration" />
+              <Stack.Screen name="clip" />
+              <Stack.Screen name="clip-notes" />
               <Stack.Screen name="pair" options={{ presentation: 'modal', title: 'Pair with your Mac' }} />
             </Stack>
             {/* The one editor WebView, over the doc screen (KI-36). */}

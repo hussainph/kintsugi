@@ -82,6 +82,35 @@ test("reads a clip with a URL-encoded vault path", async (t) => {
   assert.equal(fetch.mock.callCount(), 1);
 });
 
+test("lists the phone's offline copy of the clips", async (t) => {
+  const clips = [{ ...summary, text: "My note.", hasSource: false, version: "0123456789abcdef" }];
+  mockResponse(t, "GET", "/v1/inspiration", clips);
+  assert.deepEqual(await remote(pairing).inspiration(), clips);
+});
+
+test("fetches a clip's full source on demand", async (t) => {
+  mockResponse(t, "GET", "/v1/clip/source?path=" + encodeURIComponent(summary.path), { text: "Whole source" });
+  assert.deepEqual(await remote(pairing).clipSource(summary.path), { text: "Whole source" });
+});
+
+test("a clip note edit carries its base and accepts the Mac's 409", async (t) => {
+  const conflict = { result: "conflict", current: { text: "Mac's note", version: "fedcba9876543210" } };
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(String(input), pairing.url + "/v1/clip");
+    assert.equal(init?.method, "PUT");
+    assert.equal(init?.body, JSON.stringify({ path: summary.path, note: "Mine", base: "0123456789abcdef" }));
+    return Response.json(conflict, { status: 409 });
+  });
+  assert.deepEqual(await remote(pairing).writeClipNote(summary.path, "Mine", "0123456789abcdef"), conflict);
+});
+
+test("a clip image is described for a native download, token in the header", () => {
+  assert.deepEqual(remote(pairing).clipImage("inspiration/a b.md"), {
+    url: pairing.url + "/v1/clip/image?path=inspiration%2Fa%20b.md",
+    headers: { Authorization: `Bearer ${pairing.token}` },
+  });
+});
+
 test("captures a clip with all supplied fields as authenticated JSON", async (t) => {
   const fullCapture: ClipCapture = {
     ...capture,

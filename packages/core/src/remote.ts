@@ -9,6 +9,14 @@ export type Saved = { result: "saved"; version: string } | { result: "conflict";
 /** A document with its text, as the phone keeps it offline. */
 export type Document = { path: string; text: string; version: string };
 export type Hello = { app: "kintsugi"; api: number; vault: string };
+/** A clip as the phone keeps it offline: its summary, own text, and the
+ *  version of that text (API 5). */
+export type PhoneClip = Clip & { version: string };
+export type NoteSaved =
+  | { result: "saved"; version: string; clip: PhoneClip }
+  | { result: "conflict"; current: Versioned };
+/** The first phone API with /v1/inspiration, clip images, sources and note edits. */
+export const INSPIRATION_API = 5;
 
 /** The Mac couldn't be reached: asleep, Kintsugi closed, or Tailscale off. */
 export class Offline extends Error {
@@ -127,6 +135,16 @@ export function remote({ url, token }: Pairing) {
     clip: (path: string) => call<Clip>("GET", "/v1/clip" + query(path)),
     captureClip: (capture: ClipCapture) =>
       call<{ path: string }>("POST", "/v1/clips", capture, [], capture.file ? FILE_TIMEOUT : TIMEOUT),
+    /** Every clip with its own text and version, for the phone's offline copy (API 5). */
+    inspiration: () => call<PhoneClip[]>("GET", "/v1/inspiration", undefined, [], FILE_TIMEOUT),
+    /** The clip's whole extracted source, or null (API 5). Fetched on demand, never kept. */
+    clipSource: (path: string) => call<{ text: string | null }>("GET", "/v1/clip/source" + query(path)),
+    /** Replaces the clip's own text if the Mac still has `base` (API 5). */
+    writeClipNote: (path: string, note: string, base: string) =>
+      call<NoteSaved>("PUT", "/v1/clip", { path, note, base }, [409]),
+    /** Where the clip's primary image is, for a native download straight to
+     *  disk (API 5). 404 means it has none. */
+    clipImage: (path: string) => ({ url: url + "/v1/clip/image" + query(path), headers: { Authorization: `Bearer ${token}` } }),
   };
 }
 
