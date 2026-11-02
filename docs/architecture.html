@@ -261,7 +261,7 @@
     </div>
     <div class="card">
       <h3>Where a login comes from</h3>
-      <p style="font-size:13.5px;margin:0">Kintsugi stores no keys of its own. It borrows a login, in this order: <b>OpenCode</b> (KI-48, in progress) → <b>Pi</b> → an environment variable. Three wire formats cover every provider: Anthropic, OpenAI chat, and ChatGPT's Codex backend (reverse-engineered). A Claude <i>subscription</i> login is refused; Anthropic needs an API key.</p>
+      <p style="font-size:13.5px;margin:0">Kintsugi stores no keys of its own. It borrows a login, in this order: <b>OpenCode</b> (KI-48, in progress) → <b>Pi</b> → an environment variable. Five wire formats, ported from Pi, cover the providers Pi supports (about 35): OpenAI chat completions, OpenAI Responses, ChatGPT's Codex backend, Anthropic Messages and Gemini. A model catalog generated from Pi's (<code>pnpm gen:models</code>) says which wire each model uses, and what it costs. A Claude <i>subscription</i> login is refused; Anthropic needs an API key.</p>
     </div>
     <div class="card">
       <h3>Built on the same engine</h3>
@@ -437,10 +437,10 @@ const D = [
   "About 270 lines, fully testable with a fake model, keys never leave Rust.",
   "Tools run one at a time; there's no context-size budget. Every provider quirk is ours to maintain.",
   "Medium"],
- ["watch","Kin","Three wire formats written by hand, including ChatGPT's private Codex backend",
-  "Routing everything through OpenRouter",
-  "Subscription logins (ChatGPT, Z.AI, now OpenCode Go) cost $0 extra.",
-  "The Codex backend is undocumented and can change without notice. About 880 lines to keep current.",
+ ["watch","Kin","Pi's wire formats ported by hand, including ChatGPT's private Codex backend (KI-60)",
+  "Routing everything through OpenRouter; embedding Pi's Node runtime",
+  "Any provider Pi supports, with Pi's per-model quirks and prices; subscription logins (ChatGPT, Z.AI, OpenCode Go, Copilot) cost $0 extra.",
+  "Pi's quirks change with Pi: a catalog refresh is one command, a new quirk is a port. The Codex backend is undocumented and can change without notice.",
   "Medium"],
  ["watch","Kin","Borrowing logins from Pi and OpenCode instead of storing keys",
   "Our own key field in Keychain",
