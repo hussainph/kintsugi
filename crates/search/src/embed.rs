@@ -1,14 +1,15 @@
 //! On-device text embeddings: model2vec static models (potion-base-8M by
-//! default), fetched once into app data and verified against pinned hashes.
+//! default), shipped inside the app and verified against pinned hashes.
 //!
 //! Model2vec embeds by looking up one vector per token and averaging, so a
 //! sentence costs microseconds on a laptop CPU and no network. The model is
-//! ~30 MB, downloaded the first time it's needed, never bundled.
+//! ~30 MB, bundled as a Tauri resource (`apps/desktop/src-tauri/resources/
+//! search-model/`, see `docs/search.md`); nothing is ever downloaded.
 
 use model2vec_rs::model::StaticModel;
 use sha1::Digest as _;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -27,7 +28,7 @@ pub struct Model2Vec {
 }
 
 impl Model2Vec {
-    /// Loads a verified model folder (see [`ensure`]).
+    /// Loads a model folder as it is (see [`ModelSpec::load`] to verify it).
     pub fn load(dir: &Path, id: &str) -> Result<Self> {
         let read = |name: &str| {
             fs::read(dir.join(name)).map_err(|_| format!("embedding model is missing {name}"))
@@ -60,8 +61,9 @@ impl Embedder for Model2Vec {
     }
 }
 
-/// A model on the Hugging Face Hub, pinned to one revision and verified file
-/// by file, so a changed or tampered upload is refused rather than loaded.
+/// A model from the Hugging Face Hub, pinned to one revision and verified
+/// file by file, so a damaged or swapped file is refused rather than loaded.
+/// `repo` and `revision` say where the bundled copy came from.
 pub struct ModelSpec {
     pub name: &'static str,
     pub repo: &'static str,
@@ -114,44 +116,27 @@ impl ModelSpec {
         format!("{}@{}", self.name, &self.revision[..12])
     }
 
-    /// Where this model lives under a models folder.
-    pub fn dir(&self, models: &Path) -> PathBuf {
-        models.join(format!("{}-{}", self.name, &self.revision[..12]))
+    /// True when every file in `dir` is present and matches its pinned hash.
+    pub fn verified(&self, dir: &Path) -> bool {
+        self.check(dir).is_ok()
     }
 
-    fn url(&self, file: &ModelFile) -> String {
-        format!(
-            "https://huggingface.co/{}/resolve/{}/{}",
-            self.repo, self.revision, file.name
-        )
-    }
-
-    /// True when every file is present and matches its pinned hash.
-    pub fn verified(&self, models: &Path) -> bool {
-        let dir = self.dir(models);
-        self.files
-            .iter()
-            .all(|file| fs::read(dir.join(file.name)).is_ok_and(|bytes| file.matches(&bytes)))
-    }
-
-    /// Loads the model, downloading any missing or damaged file first.
-    pub async fn ensure(&self, models: &Path, client: &reqwest::Client) -> Result<Model2Vec> {
-        let dir = self.dir(models);
-        fs::create_dir_all(&dir).map_err(|e| format!("could not create the model folder: {e}"))?;
+    fn check(&self, dir: &Path) -> Result<()> {
         for file in self.files {
-            let path = dir.join(file.name);
-            if fs::read(&path).is_ok_and(|bytes| file.matches(&bytes)) {
-                continue;
-            }
-            let bytes = download(client, &self.url(file), file.size).await?;
+            let bytes = fs::read(dir.join(file.name))
+                .map_err(|_| format!("the embedding model is missing {}", file.name))?;
             if !file.matches(&bytes) {
                 return Err(format!("{} failed verification", file.name));
             }
-            let part = dir.join(format!("{}.part", file.name));
-            fs::write(&part, &bytes).map_err(|e| format!("could not save {}: {e}", file.name))?;
-            fs::rename(&part, &path).map_err(|e| format!("could not save {}: {e}", file.name))?;
         }
-        Model2Vec::load(&dir, &self.id())
+        Ok(())
+    }
+
+    /// Loads the model from `dir` (the app's bundled copy), refusing it if
+    /// any file is missing or doesn't match its pinned hash.
+    pub fn load(&self, dir: &Path) -> Result<Model2Vec> {
+        self.check(dir)?;
+        Model2Vec::load(dir, &self.id())
     }
 }
 
@@ -170,22 +155,6 @@ impl ModelFile {
             Check::Sha256(expected) => hex(&sha2::Sha256::digest(bytes)) == expected,
         }
     }
-}
-
-async fn download(client: &reqwest::Client, url: &str, size: u64) -> Result<Vec<u8>> {
-    const FAILED: &str = "could not download the embedding model";
-    let mut response = client.get(url).send().await.map_err(|_| FAILED)?;
-    if !response.status().is_success() || response.content_length().is_some_and(|n| n != size) {
-        return Err(FAILED.into());
-    }
-    let mut bytes = Vec::with_capacity(size as usize);
-    while let Some(chunk) = response.chunk().await.map_err(|_| FAILED)? {
-        bytes.extend_from_slice(&chunk);
-        if bytes.len() as u64 > size {
-            return Err(FAILED.into());
-        }
-    }
-    Ok(bytes)
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -273,5 +242,16 @@ mod tests {
         };
         assert!(sha.matches(b"hello") && !sha.matches(b"hello!"));
         assert_eq!(POTION_BASE_8M.id(), "potion-base-8M@bf8b056651a2");
+    }
+
+    #[test]
+    fn a_missing_or_damaged_model_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = POTION_BASE_8M.load(dir.path()).err().unwrap();
+        assert_eq!(missing, "the embedding model is missing config.json");
+        std::fs::write(dir.path().join("config.json"), "{}").unwrap();
+        let damaged = POTION_BASE_8M.load(dir.path()).err().unwrap();
+        assert_eq!(damaged, "config.json failed verification");
+        assert!(!POTION_BASE_8M.verified(dir.path()));
     }
 }

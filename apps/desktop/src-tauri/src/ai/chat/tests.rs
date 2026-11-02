@@ -81,7 +81,8 @@ impl Model for Script {
 
 struct TestBrain {
     script: Arc<Script>,
-    vault: PathBuf,
+    /// The open vault; tests switch it.
+    vault: Mutex<PathBuf>,
     meter: Meter,
     events: Arc<Mutex<Vec<ChatEvent>>>,
     /// Jobs the finish hook saw, with their traces.
@@ -96,7 +97,7 @@ impl Brain for TestBrain {
     }
 
     fn vault(&self) -> Result<PathBuf> {
-        Ok(self.vault.clone())
+        Ok(self.vault.lock().unwrap().clone())
     }
 
     fn memory(&self, _vault: &Path) -> Memory {
@@ -159,7 +160,7 @@ fn fixture_in(
     let events: Arc<Mutex<Vec<ChatEvent>>> = Arc::default();
     let brain = TestBrain {
         script: script.clone(),
-        vault: vault.path().into(),
+        vault: Mutex::new(vault.path().into()),
         meter: Meter::with_clock(Some(ledger.path().into()), || "2026-11".into()),
         events: events.clone(),
         finished: Arc::default(),
@@ -725,9 +726,11 @@ fn jobs_survive_quitting_and_resume_on_start() {
         (job.attempts, job.result.as_deref()),
         (2, Some("Found two kilns."))
     );
-    // The table and the conversation live in app data.
+    // The table lives in app data, the conversation in the vault.
     assert!(data.path().join("jobs.json").is_file());
-    assert!(data.path().join("conversation/log.jsonl").is_file());
+    assert!(!data.path().join("conversation").exists());
+    let vault = f.engine.0.brain.vault().unwrap();
+    assert!(vault.join(".kintsugi/kin/log.jsonl").is_file());
 }
 
 #[test]
@@ -1161,5 +1164,154 @@ mod comment_threads {
         );
         assert!(last_user(&f.script.seen()[0]).starts_with(REVIEW_BRIEF));
         assert!(f.engine.review("drafts/tools.mdx", vec![], vec![]).is_err());
+    }
+}
+
+// --- One log per vault (KI-59) ----------------------------------------------
+
+mod vaults {
+    use super::*;
+    use std::fs;
+
+    fn open(f: &Fixture, vault: &Path) {
+        *f.engine.0.brain.vault.lock().unwrap() = vault.into();
+    }
+
+    fn texts(f: &Fixture) -> Vec<String> {
+        f.entries().into_iter().map(|e| e.text).collect()
+    }
+
+    /// A global log as the app kept it before KI-59.
+    fn old_global_log(data: &Path) -> Vec<u8> {
+        let dir = data.join("conversation");
+        let mut log = Log::open(Some(dir.clone()));
+        log.say("From before the update.", vec![]).unwrap();
+        log.mark_answered(1);
+        fs::read(dir.join("log.jsonl")).unwrap()
+    }
+
+    #[test]
+    fn a_fresh_install_starts_an_empty_log_in_the_vault() {
+        let data = tempfile::tempdir().unwrap();
+        let f = fixture_in(
+            Some(data.path().into()),
+            vec![answer("Hi.")],
+            Duration::ZERO,
+            FAST,
+        );
+        assert!(f.entries().is_empty());
+        f.engine.send("Hello", vec![]).unwrap();
+        f.wait_replies(1);
+        let vault = f.engine.0.brain.vault().unwrap();
+        let log = fs::read_to_string(vault.join(".kintsugi/kin/log.jsonl")).unwrap();
+        assert_eq!(log.lines().count(), 2);
+        assert!(!data.path().join("conversation").exists());
+    }
+
+    #[test]
+    fn the_old_log_moves_into_the_open_vault_and_the_next_one_starts_empty() {
+        let data = tempfile::tempdir().unwrap();
+        let bytes = old_global_log(data.path());
+        let f = fixture_in(Some(data.path().into()), vec![], Duration::ZERO, FAST);
+        assert_eq!(texts(&f), ["From before the update."]);
+        let first = f.engine.0.brain.vault().unwrap();
+        assert_eq!(
+            fs::read(first.join(".kintsugi/kin/log.jsonl")).unwrap(),
+            bytes
+        );
+        assert!(!data.path().join("conversation").exists());
+        assert!(!data.path().join("conversation.moving").exists());
+
+        // A second vault starts with nothing, and doesn't get the old log.
+        let second = scratch_vault();
+        open(&f, second.path());
+        assert!(f.entries().is_empty());
+        assert!(!second.path().join(".kintsugi/kin/log.jsonl").exists());
+    }
+
+    #[test]
+    fn a_move_cut_short_by_a_crash_finishes_on_the_next_launch() {
+        let data = tempfile::tempdir().unwrap();
+        let bytes = old_global_log(data.path());
+        // The crash left the old log claimed as a backup, nothing copied yet.
+        fs::rename(
+            data.path().join("conversation"),
+            data.path().join("conversation.moving"),
+        )
+        .unwrap();
+        let f = fixture_in(Some(data.path().into()), vec![], Duration::ZERO, FAST);
+        assert_eq!(texts(&f), ["From before the update."]);
+        let vault = f.engine.0.brain.vault().unwrap();
+        assert_eq!(
+            fs::read(vault.join(".kintsugi/kin/log.jsonl")).unwrap(),
+            bytes
+        );
+        assert!(!data.path().join("conversation.moving").exists());
+    }
+
+    #[test]
+    fn switching_vaults_switches_the_conversation() {
+        let f = fixture(vec![answer("About A."), answer("About B.")], Duration::ZERO);
+        let a = f.engine.0.brain.vault().unwrap();
+        f.engine.send("Kilns, in vault A", vec![]).unwrap();
+        f.wait_replies(1);
+
+        let b = scratch_vault();
+        open(&f, b.path());
+        assert!(f.entries().is_empty(), "vault B starts empty");
+        wait("the switch event", || {
+            f.events().iter().any(|e| matches!(e, ChatEvent::Switched))
+        });
+        f.engine.send("In vault B", vec![]).unwrap();
+        f.wait_replies(1);
+        assert_eq!(texts(&f), ["In vault B", "About B."]);
+        assert!(
+            f.engine.search("kilns", None, 10).is_empty(),
+            "history only sees the open vault"
+        );
+
+        open(&f, &a);
+        assert_eq!(texts(&f), ["Kilns, in vault A", "About A."]);
+        assert_eq!(
+            fs::read_to_string(b.path().join(".kintsugi/kin/log.jsonl"))
+                .unwrap()
+                .lines()
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn a_turn_running_when_the_vault_switches_finishes_in_its_own_vault() {
+        let f = fixture(
+            vec![answer("one two three four five six seven eight nine ten")],
+            Duration::from_millis(40),
+        );
+        let a = f.engine.0.brain.vault().unwrap();
+        f.engine.send("Slow question in A", vec![]).unwrap();
+        wait("Kin to start answering", || {
+            f.events().iter().any(|e| {
+                matches!(
+                    e,
+                    ChatEvent::Turn {
+                        event: KinEvent::Text { .. },
+                        ..
+                    }
+                )
+            })
+        });
+        let b = scratch_vault();
+        open(&f, b.path());
+        assert!(f.entries().is_empty());
+        wait("the cut-short reply to land in A", || {
+            fs::read_to_string(a.join(".kintsugi/kin/log.jsonl"))
+                .is_ok_and(|log| log.lines().count() == 2)
+        });
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(f.entries().is_empty(), "nothing of A's turn reached B");
+        open(&f, &a);
+        let entries = f.entries();
+        assert!(entries[1].interrupted, "{entries:?}");
+        assert!(f.engine.0.log.lock().unwrap().pending().is_empty());
     }
 }

@@ -110,7 +110,8 @@ function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
 /**
  * Kin everywhere: one avatar on every screen, opening one chat. Whatever is
  * on screen comes along as removable chips; the conversation shown is the
- * thread for what's on screen (a view of the one log), resumable later.
+ * thread for what's on screen (a view of the open vault's log), resumable
+ * later. Opening another vault shows that vault's conversation.
  * ⌘J toggles it; `discuss()` opens it with an item attached.
  */
 export function KinChat() {
@@ -198,6 +199,16 @@ export function KinChat() {
           return void reload();
         case "job":
           return setHelpers((list) => [event.job, ...list.filter((j) => j.id !== event.job.id)]);
+        case "switched":
+          // Each vault has its own conversation.
+          setLive(null);
+          setUnread(false);
+          setSummaryOpen(false);
+          setThreadsOpen(false);
+          // The new vault's thread for what's on screen, else everything.
+          if (openRef.current) showRef.current();
+          else setView(null);
+          return void reload();
       }
     });
     jobs.list().then(setHelpers).catch(() => {});

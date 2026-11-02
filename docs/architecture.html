@@ -80,12 +80,12 @@
 <body>
 <header class="top">
   <h1>How Kintsugi is built</h1>
-  <p class="lede">This page covers the whole system: what the parts are, how a turn, a capture, a search and a sync run, and every architectural decision made without asking you. Each decision carries my verdict and how hard it would be to undo. The decisions marked <span class="tag call">Your call</span> are the ones you should weigh in on.</p>
+  <p class="lede">This page covers the whole system: what the parts are, how a turn, a capture, a search and a sync run, and every architectural decision made without asking you. Each decision carries my verdict and how hard it would be to undo. The ones marked <span class="tag call">Your call</span> are tradeoffs you decided; see <a href="#ask">Your calls</a>.</p>
   <div class="legend">
     <div><span class="tag solid">Solid</span>a good choice; keep it</div>
     <div><span class="tag watch">Watch</span>fine for now, with a known cost</div>
     <div><span class="tag fix">Fix</span>a real bug or risk; should be ticketed</div>
-    <div><span class="tag call">Your call</span>a product tradeoff for you to decide</div>
+    <div><span class="tag call">Your call</span>a product tradeoff you decided</div>
   </div>
 </header>
 <nav><div class="in">
@@ -169,14 +169,14 @@
     <text x="936" y="66" font-size="14" font-weight="600">Your vault · source of truth</text>
     <text x="936" y="92" font-size="12.5" fill="#6b665d">Your writing as .md / .mdx files</text>
     <text x="936" y="112" font-size="12.5" fill="#6b665d">inspiration/  clips + sources</text>
-    <text x="936" y="132" font-size="12.5" fill="#6b665d">.kintsugi/  Kin memory, comments</text>
+    <text x="936" y="132" font-size="12.5" fill="#6b665d">.kintsugi/  Kin memory, comments, chat</text>
     <text x="936" y="152" font-size="12.5" fill="#6b665d">Readable in Obsidian or any editor</text>
     <text x="936" y="172" font-size="12.5" fill="#6b665d">Outside edits reload or merge (KI-49)</text>
     <rect x="920" y="210" width="240" height="120" rx="14" fill="#fff" stroke="#d9d1c2"/>
     <text x="936" y="236" font-size="14" font-weight="600">App data · rebuildable</text>
     <text x="936" y="262" font-size="12.5" fill="#6b665d">feed.sqlite, search index</text>
-    <text x="936" y="282" font-size="12.5" fill="#6b665d">Kin's conversation log, usage</text>
-    <text x="936" y="302" font-size="12.5" fill="#6b665d">downloaded tools, 30 MB model</text>
+    <text x="936" y="282" font-size="12.5" fill="#6b665d">Kin's usage and helper jobs</text>
+    <text x="936" y="302" font-size="12.5" fill="#6b665d">optional tools you agreed to</text>
     <rect x="920" y="350" width="240" height="110" rx="14" fill="#fff" stroke="#d9d1c2"/>
     <text x="936" y="376" font-size="14" font-weight="600">AI providers · your key</text>
     <text x="936" y="402" font-size="12.5" fill="#6b665d">OpenCode Go (KI-48), ChatGPT,</text>
@@ -204,7 +204,7 @@
     <div class="card"><div class="stat">~23k</div><div class="statl">lines of Rust in the app, plus the vault, ingest, search and rank crates</div></div>
     <div class="card"><div class="stat">96</div><div class="statl">backend commands, one list shared by the real app and the test bridge</div></div>
     <div class="card"><div class="stat">795</div><div class="statl">tests: 483 Rust, 265 TypeScript unit, 47 end-to-end in a headless browser</div></div>
-    <div class="card"><div class="stat">0</div><div class="statl">CI pipelines. Every check runs on this Mac, by sessions and by the board before merging</div></div>
+    <div class="card"><div class="stat">4</div><div class="statl">CI jobs on every PR (KI-55): TypeScript, Rust, the headless runtime and the packaged app</div></div>
   </div>
 </section>
 
@@ -212,7 +212,7 @@
 
 <section id="kin">
   <h2>Kin's harness</h2>
-  <p class="sub">Kin runs on a hand-written agent loop of about 270 lines of Rust, with no agent framework underneath. It asks the model, runs the tools it calls one at a time, and repeats until there's an answer. A chat engine around the loop gives you one running conversation instead of separate sessions.</p>
+  <p class="sub">Kin runs on a hand-written agent loop of about 270 lines of Rust, with no agent framework underneath. It asks the model, runs the tools it calls one at a time, and repeats until there's an answer. A chat engine around the loop gives you one running conversation per vault instead of separate sessions.</p>
 
   <h3 style="margin-top:8px">One chat turn, start to finish</h3>
   <div class="steps" style="margin-top:16px">
@@ -299,7 +299,7 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
       <h3>A search query</h3>
       <div class="flow" style="margin:8px 0">
         <div class="node"><b>Words</b>SQLite FTS5, stemmed; title ×4, tags ×2, body ×1</div><div class="arr">+</div>
-        <div class="node"><b>Meaning</b>model2vec, 256-dim, 30 MB model, cosine ≥ 0.3</div><div class="arr">→</div>
+        <div class="node"><b>Meaning</b>model2vec, 256-dim, 30 MB model shipped in the app, cosine ≥ 0.3</div><div class="arr">→</div>
         <div class="node"><b>Fuse</b>Σ 1/(60+rank) over both lists</div>
       </div>
       <p style="font-size:13.5px;margin:6px 0 0">The index re-syncs with the vault before every search. While the model is still loading, only word search runs. There's no vector database, because comparing every chunk is fast enough at one person's scale.</p>
@@ -321,14 +321,14 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
   inspiration/sources/*.txt  <span class="c">full long text (.txt so Obsidian won't see a duplicate)</span>
   hussain.ph/                <span class="c">read-only mirror of the blog, regenerated on publish</span>
   .kintsugi/agent/           <span class="c">USER.md, NOTES.md, skills/ (Kin's memory)</span>
-  .kintsugi/comments/        <span class="c">Kin's comment threads, one JSON per document</span></pre></div>
+  .kintsugi/comments/        <span class="c">Kin's comment threads, one JSON per document</span>
+  .kintsugi/kin/             <span class="c">Kin's conversation in this vault: log, thread summaries</span></pre></div>
     <div class="card"><h3>Outside it, in app data (all rebuildable)</h3><pre class="tree">~/Library/Application Support/dev.phalasiya.kintsugi/
   config.json                <span class="c">vault choice, phone token (plain text)</span>
   feed.sqlite                <span class="c">sources, items, append-only events</span>
   search/index.sqlite        <span class="c">chunks, word index, vectors</span>
-  search/models/             <span class="c">30 MB embedding model</span>
   tools/                     <span class="c">yt-dlp, Docling… only if you agree</span>
-  kin/conversation/          <span class="c">the one log, shared by every vault</span>
+  kin/jobs.json              <span class="c">helper jobs, shared by every vault</span>
   kin/usage.jsonl            <span class="c">cost of every AI call</span>
   kin/outputs/               <span class="c">long tool outputs</span>
   blog-published.json        <span class="c">what was published, by hash</span></pre></div>
@@ -371,17 +371,17 @@ score  = (1 − s)·cold + s·learned,   s = min(1, your actions / 30)</div>
 <div class="divider"></div>
 
 <section id="ask">
-  <h2>Decisions you should weigh in on</h2>
-  <p class="sub">I made these without asking. My default is listed first; reply with a number and a letter, e.g. "1a, 2b", to answer.</p>
-  <div class="q"><b>1 · When a note changes outside Kintsugi while it's open</b><div class="opts">(a) detect it, three-way merge like the phone does, and ask only on a collision · (b) detect it and ask every time · (c) leave as is (last save wins)</div></div>
-  <div class="q"><b>2 · The 30 MB search model downloads on first launch without asking</b><div class="opts">(a) keep it automatic, but say so in Settings and the privacy statement · (b) ask first, like the other optional tools · (c) ship it inside the app (+30 MB)</div></div>
-  <div class="q"><b>3 · Kin's conversation is one log across every vault</b><div class="opts">(a) one log per vault · (b) keep one global log (you only use one vault)</div></div>
-  <div class="q"><b>4 · Local models (Ollama) can't be chosen for Kin, though they can be configured</b><div class="opts">(a) allow them, labelled "may not handle tools well" · (b) keep them excluded</div></div>
-  <div class="q"><b>5 · No CI: every check runs on this Mac</b><div class="opts">(a) add a GitHub Actions macOS job for typecheck, unit tests and cargo test on each PR (free for public repos) · (b) keep everything local</div></div>
-  <div class="q"><b>6 · The phone editor</b><div class="opts">Your Expo Go test of KI-36 decides it: (a) the shared CodeMirror editor in a webview (one editor everywhere, slower on huge documents) · (b) keep a native text box and share only the logic</div></div>
+  <h2>Your calls</h2>
+  <p class="sub">The six decisions I had made without asking, with your answers (Nov 2).</p>
+  <div class="q"><b>1 · When a note changes outside Kintsugi while it's open</b><div class="opts">Answered (a): detect it, three-way merge like the phone does, and ask only on a collision. Built in KI-49.</div></div>
+  <div class="q"><b>2 · The 30 MB search model downloaded on first launch without asking</b><div class="opts">Answered (c): ship it inside the app. Built in KI-59; nothing downloads.</div></div>
+  <div class="q"><b>3 · Kin's conversation was one log across every vault</b><div class="opts">Answered (a), for now: one log per vault, in <code>.kintsugi/kin/</code>. Built in KI-59; the old log moved into the vault you had open.</div></div>
+  <div class="q"><b>4 · Local models (Ollama) can't be chosen for Kin, though they can be configured</b><div class="opts">Answered (b): keep them excluded. Nothing to build.</div></div>
+  <div class="q"><b>5 · No CI: every check ran on this Mac</b><div class="opts">Answered (a): GitHub Actions on every PR. Built in KI-55.</div></div>
+  <div class="q"><b>6 · The phone editor</b><div class="opts">Answered (a), behind a setting: KI-36 made the shared CodeMirror editor the phone's editor when New editor is on. It stays off by default until the device checklist in <code>docs/spikes/ki-28-phone-editor.md</code> is done.</div></div>
 </section>
 
-<p class="foot">Written from three independent code reads of <code>main</code> at a947a79, Nov 1. Line references and counts come from the source; a few points marked "inferred" in the research weren't run. Source: <code>docs/architecture.html</code>.</p>
+<p class="foot">Written from three independent code reads of <code>main</code> at a947a79, Nov 1. Line references and counts come from the source; a few points marked "inferred" in the research weren't run. Your calls and the decisions they settled updated Nov 2 (KI-59). Source: <code>docs/architecture.html</code>.</p>
 </main>
 
 <script>
@@ -412,25 +412,25 @@ const D = [
   "build.rs judges freshness by file time; on failure it writes a stub.",
   "After one failed Swift build the stub stays until the .swift file changes, so transcription, PDF or OCR silently stays off.",
   "Easy"],
- ["call","Search","The embedding model downloads at first launch without asking",
-  "Asking first, like the optional-tools manager does",
-  "Search should work without setup.",
-  "A 30 MB download from Hugging Face that the privacy statement doesn't mention. It's pinned and checksum-verified.",
+ ["call","Search","Decided (KI-59): the search model ships inside the app",
+  "Downloading it at first launch without asking (what it did before), or asking first like the optional tools",
+  "Your call 2: search works offline from the first launch, and nothing downloads. The files are pinned and checked by hash when they load.",
+  "The app is about 30 MB bigger, and the repository about 29 MB, once. MIT licensed; listed in THIRD_PARTY_NOTICES.md.",
   "Easy"],
- ["call","Kin","One conversation log for all vaults",
-  "A log per vault (memory and Ideas are already per-vault)",
-  "The product decision was one conversation everywhere.",
-  "If you ever open a second vault, Kin's history mixes the two.",
+ ["call","Kin","Decided (KI-59): one conversation log per vault, for now",
+  "One global log in app data, shared by every vault",
+  "Your call 3. Memory, Ideas and comment threads were already per vault. The old log moved into the vault open at the first launch after the update.",
+  "The log lives in the vault (.kintsugi/kin/), so it goes wherever the vault goes: git, iCloud, backups. Nothing shows two vaults' conversations together.",
   "Easy"],
- ["call","Kin","Local models are excluded from Kin",
-  "Allowing Ollama for chat",
-  "Small local models handle tool calls poorly.",
+ ["call","Kin","Decided: local models (Ollama) stay excluded from Kin",
+  "Allowing Ollama for chat, labelled \"may not handle tools well\"",
+  "Your call 4: no. Small local models handle tool calls poorly.",
   "There's no fully offline Kin, even though Ollama appears in the provider list.",
   "Easy"],
- ["call","Process","No CI; all checks run locally",
-  "A GitHub Actions macOS runner on PRs",
-  "Single owner, and the board verifies each PR merged with main before merging.",
-  "Verification competes with build sessions for this Mac's CPU, as the load spikes today showed. Nothing checks main independently.",
+ ["call","Process","Decided (KI-55): CI on every PR",
+  "Keeping every check on this Mac",
+  "Your call 5. Four GitHub Actions jobs: TypeScript, Rust, the headless runtime and a packaged-app smoke test. main requires them.",
+  "CI minutes, and macOS runners are slower than this Mac.",
   "Easy"],
  ["watch","Kin","Hand-written agent loop instead of a framework",
   "Vercel AI SDK, provider SDKs, LangChain",

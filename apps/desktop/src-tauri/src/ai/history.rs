@@ -1,5 +1,6 @@
-//! Kin's one conversation: a single append-only log in app data, never in
-//! the vault.
+//! Kin's conversation with one vault: a single append-only log, kept in
+//! the vault beside Kin's memory and comment threads (KI-59). Opening another
+//! vault opens its log; each vault has exactly one.
 //!
 //! The owner never tags or files anything. Each entry's **topic** is inferred
 //! from what was on screen and what was said; a "thread" ("the conversation
@@ -9,9 +10,12 @@
 //! Nothing here deletes or rewrites history: entries are only appended, and
 //! summaries are kept beside the log (`threads.json`), never instead of it.
 //!
-//! Files, in `<config>/kin/conversation/`:
+//! Files, in `<vault>/.kintsugi/kin/` ([`DIR`]):
 //! - `log.jsonl`: one [`Entry`] per line. A torn last line is skipped.
 //! - `threads.json`: summaries and the answered watermark ([`Meta`]).
+//!
+//! Before KI-59 there was one log for every vault in app data; [`migrate`]
+//! moves it into the vault that's open on the first launch after the update.
 
 use super::prompt::Chip;
 use chrono::{DateTime, FixedOffset, Local};
@@ -20,9 +24,28 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::{self, OpenOptions};
 use std::io::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+mod migrate;
+pub use migrate::{Migrated, migrate};
 
 type Result<T> = std::result::Result<T, String>;
+
+/// A vault's conversation log folder, relative to the vault.
+pub const DIR: &str = ".kintsugi/kin";
+
+/// `<vault>/.kintsugi/kin`, refusing links on the way, as the comment
+/// threads beside it do.
+pub fn vault_dir(root: &Path) -> Result<PathBuf> {
+    let mut at = root.to_path_buf();
+    for part in DIR.split('/') {
+        at.push(part);
+        if fs::symlink_metadata(&at).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Err(format!("{DIR}: links are not followed"));
+        }
+    }
+    Ok(at)
+}
 
 /// The topic of a turn with nothing on screen and nothing named.
 pub const GENERAL: &str = "";
@@ -175,7 +198,9 @@ pub struct Hit {
 }
 
 pub struct Log {
-    /// `None`: an isolated run that keeps everything in memory.
+    /// The vault this is the log of, if any.
+    vault: Option<PathBuf>,
+    /// `None`: kept in memory only.
     dir: Option<PathBuf>,
     entries: Vec<Entry>,
     meta: Meta,
@@ -231,9 +256,26 @@ impl Log {
             .and_then(|d| fs::read_to_string(d.join("threads.json")).ok())
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default();
-        let mut log = Log { dir, entries, meta };
+        let mut log = Log {
+            vault: None,
+            dir,
+            entries,
+            meta,
+        };
         log.rebuild();
         log
+    }
+
+    /// Opens a vault's log from `dir` (`None`: in memory).
+    pub fn open_for(vault: &Path, dir: Option<PathBuf>) -> Self {
+        let mut log = Log::open(dir);
+        log.vault = Some(vault.to_path_buf());
+        log
+    }
+
+    /// The vault this is the log of; `None` before any vault is known.
+    pub fn vault(&self) -> Option<&Path> {
+        self.vault.as_deref()
     }
 
     /// Thread counts come from the log itself, so a crash between writing

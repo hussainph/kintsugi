@@ -6,14 +6,16 @@
 // pass the navigation guard), and after the reloaded page renders the backend
 // prints KINTSUGI_SMOKE_READY and exits 0 (apps/desktop/src-tauri/src/smoke.rs).
 // A blank window, a blocked reload or a crash never prints the marker, so the
-// run times out and fails.
+// run times out and fails. It also checks that the search model ships inside
+// the bundle, byte for byte (KI-59), and that the app didn't refuse it.
 //
 //   node scripts/smoke-app.mjs [path/to/Kintsugi.app]
 //
 // It opens a real window, so it only runs where CI is set (the GitHub macOS
 // runner). Never run it on the owner's Mac.
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -36,6 +38,22 @@ const plist = spawnSync('plutil', ['-extract', 'CFBundleExecutable', 'raw', join
 if (plist.status !== 0) fail(`could not read the bundle's executable name: ${plist.stderr}`);
 const binary = join(app, 'Contents/MacOS', plist.stdout.trim());
 
+// The bundled search model: the files the app pins (crates/search/src/embed.rs).
+const sha = (algorithm, ...parts) => parts.reduce((h, p) => h.update(p), createHash(algorithm)).digest('hex');
+const MODEL = [
+  ['config.json', (b) => sha('sha1', `blob ${b.length}\0`, b), '7df26884a1aaaefbd7a30b37c32a25477cfb4c0e'],
+  ['tokenizer.json', (b) => sha('sha1', `blob ${b.length}\0`, b), '3e511f68ccf95c33b9ffd214a94c6d25bdb3034f'],
+  ['model.safetensors', (b) => sha('sha256', b), 'f65d0f325faadc1e121c319e2faa41170d3fa07d8c89abd48ca5358d9a223de2'],
+];
+const modelDir = join(app, 'Contents/Resources/search-model');
+for (const [name, hash, expected] of MODEL) {
+  const path = join(modelDir, name);
+  if (!existsSync(path)) fail(`the bundle has no ${path}`);
+  if (hash(readFileSync(path)) !== expected) fail(`${path} doesn't match its pinned hash`);
+}
+if (!existsSync(join(modelDir, 'LICENSE'))) fail('the bundled search model has no LICENSE');
+console.log('smoke: the search model ships in the bundle');
+
 const scratch = mkdtempSync(join(process.env.RUNNER_TEMP || tmpdir(), 'kintsugi-smoke-'));
 const [home, vault, config] = ['home', 'vault', 'config'].map((name) => join(scratch, name));
 mkdirSync(home);
@@ -55,8 +73,6 @@ const child = spawn(binary, [], {
     // Debug builds only: an isolated vault and config, never persisted.
     KINTSUGI_VAULT: vault,
     KINTSUGI_CONFIG_DIR: config,
-    // No model download; search is not under test here.
-    KINTSUGI_EMBEDDINGS: 'off',
   },
 });
 
@@ -88,6 +104,8 @@ child.on('exit', (code, signal) => {
   if (ready === null) fail(`the app exited (${signal ?? code}) without ${MARKER}. Its output:\n${output.slice(-8000)}`);
   if (!(ready > 0)) fail(`the app reported an empty page (rendered=${ready})`);
   if (code !== 0) fail(`the app printed ${MARKER} but exited with ${signal ?? code}`);
+  const refused = /^search: words only.*$/m.exec(output);
+  if (refused) fail(`the app couldn't load the bundled search model: ${refused[0]}`);
   console.log(output.split('\n').filter((line) => line.startsWith('smoke: ')).map((line) => `  app ${line}`).join('\n'));
   console.log('smoke: the packaged app rendered its vault, reloaded and exited cleanly');
 });

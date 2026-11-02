@@ -81,6 +81,8 @@ fn open(app: &AppHandle, path: &std::path::Path) -> Result<()> {
     crate::watch::start(app, path);
     crate::enrich::wake(app);
     crate::search::changed(app);
+    // Each vault has its own conversation with Kin.
+    crate::ai::chat::vault_changed(app);
     Ok(())
 }
 

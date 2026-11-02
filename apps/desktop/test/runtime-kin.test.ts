@@ -215,16 +215,47 @@ test("helper jobs run in the background and report back quietly", { timeout: 60_
   await panel().locator('[data-role="helper"]').getByText("You said: “", { exact: false }).waitFor();
   await shot("07-helper-report");
 
-  // Durable, in app data, never in the vault.
+  // The job table is durable in app data; the conversation is the vault's
+  // own, in .kintsugi/kin/ (KI-59), and nowhere else.
   // The report is logged before the job reads as finished (ai/chat.rs), so
   // the table can lag the message on screen: wait for it, don't assume it.
   const status = () => (JSON.parse(readFileSync(resolve(config, "kin/jobs.json"), "utf8")) as { id: string; status: string }[]).find((j) => j.id === job.id)?.status;
   for (const end = Date.now() + 30_000; status() !== "done" && Date.now() < end; ) await page.waitForTimeout(100);
   assert.equal(status(), "done");
-  const log = readFileSync(resolve(config, "kin/conversation/log.jsonl"), "utf8");
+  const kinDir = resolve(vault, ".kintsugi/kin");
+  const log = readFileSync(resolve(kinDir, "log.jsonl"), "utf8");
   assert.ok(log.includes("Is the gold metaphor overworked here?") && log.includes(`"job":"${job.id}"`));
-  assert.ok(existsSync(resolve(config, "kin/conversation/threads.json")));
+  assert.ok(existsSync(resolve(kinDir, "threads.json")));
+  assert.ok(!existsSync(resolve(config, "kin/conversation")), "no global log in app data");
   const walk = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(resolve(dir, e.name)) : [resolve(dir, e.name)]));
-  assert.ok(!walk(vault).some((f) => readFileSync(f).includes("Is the gold metaphor overworked")), "the vault holds no conversation");
+  const elsewhere = [...walk(vault).filter((f) => !f.startsWith(kinDir + "/")), ...walk(config)];
+  assert.ok(!elsewhere.some((f) => readFileSync(f).includes("Is the gold metaphor overworked")), "the conversation is only in .kintsugi/kin/");
+});
+
+test("opening another vault switches the conversation", { timeout: 60_000 }, async () => {
+  // Headless opens folders inside its scratch vault only: the second vault is nested.
+  const second = resolve(vault, "second-vault");
+  mkdirSync(second, { recursive: true });
+  const open = (path: string) =>
+    page.evaluate(
+      (path) =>
+        (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<string> } })
+          .__TAURI_INTERNALS__.invoke("vault_open", { path }),
+      path,
+    );
+  const entries = () => panel().locator("[data-role]");
+  await mine("Is the gold metaphor overworked here?").waitFor();
+
+  await open(second);
+  for (const end = Date.now() + 10_000; (await entries().count()) > 0 && Date.now() < end; ) await page.waitForTimeout(100);
+  assert.equal(await entries().count(), 0, "the other vault's conversation starts empty");
+  await shot("08-other-vault");
+  assert.ok(!existsSync(resolve(second, ".kintsugi/kin/log.jsonl")));
+
+  await open(vault);
+  await panel().getByRole("button", { name: "Conversation", exact: true }).click();
+  await page.getByRole("button", { name: /^Everything/ }).click();
+  await mine("Is the gold metaphor overworked here?").waitFor({ timeout: 10_000 });
+  await shot("09-back");
 });

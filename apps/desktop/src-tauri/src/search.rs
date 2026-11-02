@@ -3,9 +3,10 @@
 //!
 //! - The index is `<config>/search/index.sqlite`, never in the vault. An
 //!   isolated dev run without a scratch config dir keeps it in memory.
-//! - The embedding model is fetched once into `<config>/search/models/` and
-//!   verified; until it's there, search is words only. Headless runs skip it
-//!   unless `KINTSUGI_HEADLESS_EMBEDDINGS=1`.
+//! - The embedding model ships inside the app (a Tauri resource,
+//!   `search-model/`) and is verified before it loads; nothing is downloaded.
+//!   Until it has loaded, search is words only. Headless runs skip it unless
+//!   `KINTSUGI_HEADLESS_EMBEDDINGS=1`.
 //! - Every search first syncs the open vault from cheap file metadata, and
 //!   document saves and `clips:changed` refresh it in the background, so
 //!   results never wait on more than what just changed.
@@ -121,45 +122,62 @@ impl Search {
     }
 }
 
-/// Loads the embedding model in the background (downloading it once), then
-/// embeds whatever the index holds without vectors.
+/// The bundled model's folder inside the app's resources.
+const MODEL_RESOURCE: &str = "search-model";
+
+/// Where the bundled model is: the app's resources, or in a development
+/// build without them (headless runs, tests) the source tree.
+fn bundled_model(app: &AppHandle) -> Option<PathBuf> {
+    let bundled = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join(MODEL_RESOURCE))
+        .filter(|dir| dir.is_dir());
+    if bundled.is_some() || !cfg!(debug_assertions) {
+        return bundled;
+    }
+    Some(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(MODEL_RESOURCE),
+    )
+}
+
+/// Loads the bundled embedding model in the background, then embeds
+/// whatever the index holds without vectors.
 pub fn init(app: &AppHandle) {
     feed_changed(app);
     if !embeddings_enabled() {
         return;
     }
-    let Some(dir) = data_dir(app) else { return };
+    let Some(model_dir) = bundled_model(app) else {
+        eprintln!("search: words only (the embedding model isn't in this build)");
+        return;
+    };
     let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let client = match reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(10))
-            .build()
-        {
-            Ok(client) => client,
-            Err(_) => return,
-        };
-        let model = match search::POTION_BASE_8M
-            .ensure(&dir.join("models"), &client)
-            .await
-        {
+    tauri::async_runtime::spawn_blocking(move || {
+        // Verified file by file: a damaged copy is refused, not loaded.
+        let model = match search::POTION_BASE_8M.load(&model_dir) {
             Ok(model) => Arc::new(model),
             Err(error) => {
                 eprintln!("search: words only ({error})");
                 return;
             }
         };
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            let state = app.state::<Search>();
-            if state.with(&app, |index| index.set_embedder(model)).is_err() {
-                return;
-            }
-            // In batches, so searches can run between them.
-            while state
-                .with(&app, |index| index.embed_missing(512))
-                .is_ok_and(|n| n > 0)
-            {}
-        })
-        .await;
+        // Earlier versions downloaded the same model into app data.
+        if let Some(dir) = data_dir(&app) {
+            let _ = std::fs::remove_dir_all(dir.join("models"));
+        }
+        let state = app.state::<Search>();
+        if state.with(&app, |index| index.set_embedder(model)).is_err() {
+            return;
+        }
+        // In batches, so searches can run between them.
+        while state
+            .with(&app, |index| index.embed_missing(512))
+            .is_ok_and(|n| n > 0)
+        {}
     });
 }
 

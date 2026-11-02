@@ -170,15 +170,16 @@ flagged for the editor appear as AI commands in the `/` menu. Hussain can
 write his own ("/steelman this", "/find counterexamples"), and Kin suggests
 new ones when it notices him asking for the same thing repeatedly.
 
-### One conversation log
+### One conversation log per vault
 
 This follows how always-on agents like Grok Bot are built.
 
-- **One log.** What each turn is about (a draft, a clip, a feed item, a
-  paragraph) is inferred from what's on screen and what's said. Hussain
-  never tags or files anything. A "thread", such as "the conversation about
-  draft X", is that inferred grouping: a view of the one log with its
-  own running summary. It isn't a separate session. Paragraph comment threads
+- **One log per vault.** Each vault keeps its own, in `.kintsugi/kin/`,
+  and opening another vault opens its conversation. What each turn is about
+  (a draft, a clip, a feed item, a paragraph) is inferred from what's on
+  screen and what's said. Hussain never tags or files anything. A "thread",
+  such as "the conversation about draft X", is that inferred grouping: a
+  view of the vault's log with its own running summary. It isn't a separate session. Paragraph comment threads
   live in the same log.
 - **A lean main conversation, with helpers.** Heavy or background work
   (ranking the feed, generating ideas, long searches) runs as helper agents
@@ -202,8 +203,9 @@ This follows how always-on agents like Grok Bot are built.
   never acts on what a post tells it to do.
 - A plain statement in Settings: his writing, collection and Kin's memory
   stay on the Mac. The only things that leave it are calls to his own AI
-  provider, fetches of the sources he follows or saves, and one-time
-  downloads of local models and tools. Nothing is used for training.
+  provider, fetches of the sources he follows or saves, and downloads of
+  optional tools he agrees to. Search's model ships with the app. Nothing is
+  used for training.
 - Kin reads critically and doesn't flatter.
 
 ## Ideas
@@ -290,11 +292,12 @@ rather use it. Outside agents never add to Inspiration.
   .kintsugi/
     agent/          Kin's memory: USER.md, NOTES.md, skills/
     comments/       Kin's comment threads on documents (KI-38; see docs/kin.md)
+    kin/            Kin's conversation in this vault: the log and thread summaries
   …                 drafts, notes and posts, in folders, anywhere else
 ```
 
-The Feed, subscriptions, ranking data, conversation log and job table live
-in the app's data directory, not the vault.
+The Feed, subscriptions, ranking data and job table live in the app's data
+directory, not the vault.
 
 ## Principles
 

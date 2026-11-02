@@ -21,7 +21,7 @@ const BM25: &str = "bm25(fts, 4.0, 2.0, 1.0)";
 const LEXICAL_ROWS: usize = 2_000;
 /// Below this cosine, a vector match is noise rather than meaning.
 /// Calibrated on potion-base-8M: related short texts score 0.3–0.8,
-/// unrelated ones mostly under 0.2 (see the `live_potion_base_8m` test).
+/// unrelated ones mostly under 0.2 (see the `bundled_potion_base_8m` test).
 pub const MIN_SIMILARITY: f32 = 0.3;
 const EMBED_BATCH: usize = 256;
 

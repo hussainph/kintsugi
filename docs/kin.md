@@ -273,7 +273,7 @@ headings), `recent` (recently changed documents), the Feed's ranking tools
 `shortlist`, `similar_to`, `top_topics`, `taste_profile` and `explain`
 (compact JSON, ranked locally with no model calls; see
 [ranking.md](ranking.md)) and `history` (searches
-the whole conversation log, or reads around one entry with `{"around": seq}`). New tools join this
+the open vault's whole conversation log, or reads around one entry with `{"around": seq}`). New tools join this
 list, so the tool array (part of the cached prefix) never changes mid-turn.
 
 - `search` uses the app's shared index (`Tools::with_searcher`). Without
@@ -418,13 +418,34 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   removable chips. `discuss(chip)` from `src/lib/chat.ts` opens the chat with
   an item pinned first: clips use it, and the Feed's Discuss (KI-25) calls it
   with `{ kind: "feed", path: <item id>, label: <title> }`.
-- **One log.** `<config>/kin/conversation/log.jsonl`, append-only, never in
-  the vault and never shortened. Each owner message's topic is inferred: the
+- **One log per vault (KI-59).** `<vault>/.kintsugi/kin/log.jsonl`,
+  append-only and never shortened, beside `.kintsugi/comments/` and Kin's
+  memory. Hidden like them, so Kin's tools, search and the phone's library
+  never see it, and the watcher ignores it. Each owner message's topic is inferred: the
   first chip's subject (a paragraph belongs to its document), else a known
   thread the message names, else the previous topic if it was under 30
   minutes ago, else general. A thread is the entries sharing a topic, with a
-  running summary in `threads.json`; opening the chat on draft X shows X's
-  thread, and the next turn sends X's summary and recent exchanges.
+  running summary in `threads.json` (beside the log); opening the chat on
+  draft X shows X's thread, and the next turn sends X's summary and recent
+  exchanges.
+- **Switching vaults switches the conversation.** The engine opens the open
+  vault's log on first use after a switch (`vault_open` also asks it to at
+  once): the running turn and comment replies stop, the chat and comment
+  margins reload (`kin:chat` `switched`), and history, summaries and the
+  phone's routes all read the new vault's log. A turn, review or helper job
+  that finishes after the switch writes to the log of the vault it started
+  in. The job table and spend stay in app data, shared by every vault.
+- **Moving the old log (KI-59).** Before KI-59 one log in
+  `<config>/kin/conversation/` served every vault. The first time a log is
+  opened after the update, it moves into that vault (the one open, or last
+  used); other vaults start empty. `history::migrate` claims it by renaming
+  the folder to `conversation.moving/` (a backup no other vault picks up),
+  copies `threads.json` then `log.jsonl` into the vault atomically, reads
+  the copy back to check it starts with every byte of the old log, and only
+  then deletes the backup. A crash at any step leaves the old log whole and
+  the next launch finishes the move. A vault that already has a log of its
+  own is never overwritten: the old one is set aside as
+  `conversation.unmoved-<time>/` instead.
 - **Batching and interrupts.** Messages land in the log at once. Kin answers
   1.2 s after the last message, every waiting message in one turn. A keystroke
   (`kin_chat_typing`, throttled) or a new message cancels the running turn;
@@ -639,7 +660,7 @@ Kin runs on the Mac; the phone reads and asks through the phone API
 
 | Route | Command |
 | --- | --- |
-| `GET /v1/kin?before&limit` | `kin_chat_log` over every thread (limit 1–500, default 100) |
+| `GET /v1/kin?before&limit` | `kin_chat_log` over every thread of the open vault's log (limit 1–500, default 100) |
 | `POST /v1/kin {id, text, chips}` | `kin_chat_send`, once per `id`: `{entry, duplicate: false}`, or `{seq, duplicate: true}` for an id already sent. The last 500 ids are kept in `<config>/phone-kin-ids.json`, so a resend after a restart still lands once. Chips are `doc`, `clip`, `feed` or `idea` (others are 400) |
 | `POST /v1/kin/stop` | `kin_chat_stop` |
 | `GET /v1/kin/jobs` | `kin_jobs` |

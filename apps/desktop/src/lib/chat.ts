@@ -73,7 +73,9 @@ export type ChatEvent =
   | { type: "job"; job: Job }
   | { type: "commentStarted"; turn: string; path: string; comment: string | null }
   | { type: "commentEnded"; turn: string; path: string; comment: string | null }
-  | { type: "comments"; path: string };
+  | { type: "comments"; path: string }
+  /** Another vault was opened: its conversation replaces this one. */
+  | { type: "switched" };
 
 export const chat = {
   /** Lands in the log at once; Kin answers once he pauses. */

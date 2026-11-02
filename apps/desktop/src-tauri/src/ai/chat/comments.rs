@@ -190,12 +190,9 @@ fn remarks(text: &str, paragraphs: usize) -> Option<Vec<(usize, String)>> {
 
 impl<B: Brain> Engine<B> {
     fn topic_for(&self, doc: &str, chips: &[Chip]) -> Topic {
-        let topic =
-            self.0
-                .log
-                .lock()
-                .unwrap()
-                .infer("", chips, chrono::Local::now().fixed_offset());
+        let topic = self
+            .log()
+            .infer("", chips, chrono::Local::now().fixed_offset());
         if topic.key == doc {
             topic
         } else {
@@ -222,7 +219,7 @@ impl<B: Brain> Engine<B> {
             })
             .collect();
         drop(live);
-        let log = self.0.log.lock().unwrap();
+        let log = self.log();
         let threads = file
             .threads
             .into_iter()
@@ -264,12 +261,7 @@ impl<B: Brain> Engine<B> {
         };
         let chips = doc_chips(doc.trim(), chips);
         let topic = self.topic_for(doc.trim(), &chips);
-        let entry = self
-            .0
-            .log
-            .lock()
-            .unwrap()
-            .say_in(&thread.id, text, chips, &topic)?;
+        let entry = self.log().say_in(&thread.id, text, chips, &topic)?;
         self.emit(ChatEvent::Entry {
             entry: entry.clone(),
         });
@@ -302,7 +294,7 @@ impl<B: Brain> Engine<B> {
             return Err("That message is too long.".into());
         }
         if text.is_empty() {
-            let mut log = self.0.log.lock().unwrap();
+            let mut log = self.log();
             if log.comment_pending(id).is_empty() {
                 // Ask the last question again.
                 let Some(last) = log
@@ -332,7 +324,7 @@ impl<B: Brain> Engine<B> {
         }
         let chips = doc_chips(doc.trim(), chips);
         let topic = self.topic_for(doc, &chips);
-        let entry = self.0.log.lock().unwrap().say_in(id, text, chips, &topic)?;
+        let entry = self.log().say_in(id, text, chips, &topic)?;
         self.emit(ChatEvent::Entry {
             entry: entry.clone(),
         });
@@ -375,6 +367,14 @@ impl<B: Brain> Engine<B> {
         }
     }
 
+    /// Stops every comment reply and review (another vault was opened).
+    pub(super) fn stop_comments(&self) {
+        for run in self.0.comments.lock().unwrap().running.values_mut() {
+            run.again = false;
+            run.cancel.cancel();
+        }
+    }
+
     /// Answers what's waiting in a thread, or interrupts its running reply
     /// so the next one answers everything.
     fn comment_turn(&self, doc: &str, id: &str) {
@@ -384,7 +384,10 @@ impl<B: Brain> Engine<B> {
             run.cancel.cancel();
             return;
         }
-        let pending = self.0.log.lock().unwrap().comment_pending(id);
+        let (pending, vault) = {
+            let log = self.log();
+            (log.comment_pending(id), log.vault().map(Path::to_path_buf))
+        };
         if pending.is_empty() {
             return;
         }
@@ -412,9 +415,11 @@ impl<B: Brain> Engine<B> {
         });
         let engine = self.clone();
         let (doc, id) = (doc.to_string(), id.to_string());
-        async_runtime::spawn(
-            async move { engine.answer_comment(doc, id, turn, pending, cancel).await },
-        );
+        async_runtime::spawn(async move {
+            engine
+                .answer_comment(doc, id, turn, pending, vault, cancel)
+                .await
+        });
     }
 
     async fn answer_comment(
@@ -423,14 +428,10 @@ impl<B: Brain> Engine<B> {
         id: String,
         turn: String,
         pending: Vec<Entry>,
+        vault: Option<PathBuf>,
         cancel: Cancel,
     ) {
-        let history = self
-            .0
-            .log
-            .lock()
-            .unwrap()
-            .comment_context(&id, history::HISTORY_PAIRS);
+        let history = self.log().comment_context(&id, history::HISTORY_PAIRS);
         let chips = pending.last().map(|e| e.chips.clone()).unwrap_or_default();
         let said = pending
             .iter()
@@ -476,9 +477,11 @@ impl<B: Brain> Engine<B> {
                 ..base
             }),
         };
-        if let Some(draft) = draft
-            && let Ok(entry) = self.0.log.lock().unwrap().reply(Role::Kin, draft)
-        {
+        // Into the log of the vault the thread is in, even after a switch.
+        let (entry, live) = self.in_log(vault.as_deref(), |log| {
+            draft.and_then(|draft| log.reply(Role::Kin, draft).ok())
+        });
+        if let Some(entry) = entry.filter(|_| live) {
             self.emit(ChatEvent::Entry { entry });
         }
         let again = self
@@ -526,7 +529,13 @@ impl<B: Brain> Engine<B> {
             review: true,
             ..Draft::default()
         };
-        let entry = self.0.log.lock().unwrap().say_draft(draft, &topic)?;
+        let (entry, vault) = {
+            let mut log = self.log();
+            (
+                log.say_draft(draft, &topic)?,
+                log.vault().map(Path::to_path_buf),
+            )
+        };
         let turn = format!(
             "review-{}-{}",
             std::process::id(),
@@ -560,7 +569,16 @@ impl<B: Brain> Engine<B> {
         let (doc, request_seq) = (doc.to_string(), entry.seq);
         async_runtime::spawn(async move {
             engine
-                .answer_review(doc, label, paragraphs, chips, request_seq, turn, cancel)
+                .answer_review(
+                    doc,
+                    label,
+                    paragraphs,
+                    chips,
+                    request_seq,
+                    turn,
+                    vault,
+                    cancel,
+                )
                 .await
         });
         Ok(entry)
@@ -575,6 +593,7 @@ impl<B: Brain> Engine<B> {
         chips: Vec<Chip>,
         request: u64,
         turn: String,
+        vault: Option<PathBuf>,
         cancel: Cancel,
     ) {
         let ask = agent::Turn {
@@ -646,8 +665,9 @@ impl<B: Brain> Engine<B> {
             ),
         };
         let mut threads: Vec<(Stored, String)> = Vec::new();
+        // The vault the review started in, even if another is open now.
         if !comments.is_empty()
-            && let Ok(root) = self.0.brain.vault()
+            && let Some(root) = vault.clone()
         {
             let _live = self.0.comments.lock().unwrap();
             if let Ok(mut file) = store::load(&root, &doc) {
@@ -661,8 +681,8 @@ impl<B: Brain> Engine<B> {
                 }
             }
         }
-        {
-            let mut log = self.0.log.lock().unwrap();
+        let (entries, live) = self.in_log(vault.as_deref(), |log| {
+            let mut entries = Vec::new();
             for (thread, text) in &threads {
                 let draft = Draft {
                     text: text.clone(),
@@ -671,13 +691,13 @@ impl<B: Brain> Engine<B> {
                     comment: Some(thread.id.clone()),
                     ..Draft::default()
                 };
-                if let Ok(entry) = log.reply(Role::Kin, draft) {
-                    self.emit(ChatEvent::Entry { entry });
-                }
+                entries.extend(log.reply(Role::Kin, draft).ok());
             }
-            if let Ok(entry) = log.reply(Role::Kin, note) {
-                self.emit(ChatEvent::Entry { entry });
-            }
+            entries.extend(log.reply(Role::Kin, note).ok());
+            entries
+        });
+        for entry in entries.into_iter().filter(|_| live) {
+            self.emit(ChatEvent::Entry { entry });
         }
         self.0
             .comments
