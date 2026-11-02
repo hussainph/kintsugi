@@ -60,9 +60,10 @@ pub trait Brain: Send + Sync + 'static {
     type Model: Model + 'static;
     /// The model for a task, with credentials resolved.
     fn connect(&self, task: Task) -> impl Future<Output = Result<Self::Model>> + Send;
-    /// The model he picked for one conversation (KI-61), if any.
-    fn picked(&self, _topic: &str) -> Option<ModelRef> {
-        None
+    /// The model he picked for one conversation of a vault (KI-61), if
+    /// any: `models.json` beside that vault's log.
+    fn picked(&self, vault: &Path, topic: &str) -> Option<ModelRef> {
+        super::picks::get(&self.log_dir(vault)?, topic)
     }
     /// The model for a task, or `pick` while its provider is usable.
     fn connect_to(
@@ -512,8 +513,11 @@ impl<B: Brain> Engine<B> {
             history,
             recap,
         };
-        // The model he picked for this conversation, if any (KI-61).
-        let pick = self.0.brain.picked(&info.topic);
+        // The model he picked for this conversation, in the vault the turn
+        // started in, if any (KI-61).
+        let pick = vault
+            .as_deref()
+            .and_then(|vault| self.0.brain.picked(vault, &info.topic));
         let (streamed, result, _) = self
             .execute_as(&info.turn, &request, &cancel, true, pick)
             .await;
@@ -1033,11 +1037,6 @@ impl Brain for AppBrain {
 
     async fn connect(&self, task: Task) -> Result<Connected> {
         super::kin::connect(task).await
-    }
-
-    fn picked(&self, topic: &str) -> Option<ModelRef> {
-        let vault = crate::vault::current(&self.0).ok()?;
-        super::picks::get(&vault, topic)
     }
 
     async fn connect_to(&self, task: Task, pick: Option<ModelRef>) -> Result<Connected> {

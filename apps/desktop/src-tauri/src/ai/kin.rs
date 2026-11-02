@@ -315,8 +315,13 @@ pub struct ChatModel {
     pub resolved: Option<ModelRef>,
 }
 
-fn chat_model(vault: &std::path::Path, topic: String) -> Result<ChatModel> {
-    let chosen = picks::get(vault, &topic);
+/// The vault's conversation folder, where its log and picks live.
+fn conversation_dir(app: &AppHandle) -> Result<PathBuf> {
+    super::history::vault_dir(&crate::vault::current(app)?)
+}
+
+fn chat_model(dir: &std::path::Path, topic: String) -> Result<ChatModel> {
+    let chosen = picks::get(dir, &topic);
     let resolved = conversation_model(chosen.as_ref(), &shown_statuses()?, &meter().settings());
     Ok(ChatModel {
         topic,
@@ -328,11 +333,11 @@ fn chat_model(vault: &std::path::Path, topic: String) -> Result<ChatModel> {
 /// The model for the conversation `topic` (a thread's key, `""` for general).
 #[tauri::command]
 pub fn kin_chat_model(app: AppHandle, topic: String) -> Result<ChatModel> {
-    chat_model(&crate::vault::current(&app)?, topic)
+    chat_model(&conversation_dir(&app)?, topic)
 }
 
 /// Picks the model for the conversation `topic`, or (`None`) goes back to
-/// the chat default. Kept in the vault (`picks`).
+/// the chat default. Kept beside the vault's conversation log (`picks`).
 #[tauri::command]
 pub fn kin_chat_set_model(
     app: AppHandle,
@@ -344,9 +349,9 @@ pub fn kin_chat_set_model(
     {
         return Err(format!("unknown provider {}", m.provider));
     }
-    let vault = crate::vault::current(&app)?;
-    picks::set(&vault, &topic, model)?;
-    chat_model(&vault, topic)
+    let dir = conversation_dir(&app)?;
+    picks::set(&dir, &topic, model)?;
+    chat_model(&dir, topic)
 }
 
 #[cfg(test)]
