@@ -9,6 +9,7 @@
     "./publish": "./src/publish.ts",
     "./remote": "./src/remote.ts",
     "./references": "./src/references.ts",
+    "./sections": "./src/sections.ts",
     "./vault": "./src/vault.ts",
     "./books": "./src/books.ts",
     "./export": "./src/export.ts",

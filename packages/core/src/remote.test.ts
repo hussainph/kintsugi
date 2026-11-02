@@ -361,3 +361,67 @@ test("versions match kintsugi_vault::version", async () => {
   assert.equal(version("foobar"), "85944171f73967e8");
   assert.equal(version("Café — 🙂\n"), "c6a213f66a7e4fbb");
 });
+
+test("the Feed, Ideas and Kin go to their API 6 routes", async (t) => {
+  const place = { surface: "picked", position: 2 } as const;
+  const calls: [string, string, unknown][] = [];
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push([init!.method!, String(input).slice(pairing.url.length), init?.body === undefined ? undefined : JSON.parse(String(init.body))]);
+    return Response.json({});
+  });
+  const mac = remote(pairing);
+  await mac.feed();
+  await mac.feed(40, 20);
+  await mac.picked();
+  await mac.feedRead(7, place);
+  await mac.feedAct(7, "like", place);
+  await mac.feedSave(7);
+  await mac.feedImpressions([{ id: 7, position: 2, surface: "picked" }]);
+  await mac.feedEffect(7);
+  await mac.ideas();
+  await mac.moreIdeas();
+  await mac.adoptIdea("idea-1");
+  await mac.dismissIdea("idea-1", true);
+  await mac.ideaDiscussed("idea-1");
+  await mac.kin();
+  await mac.kin(12, 50);
+  await mac.kinSend("6d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", "Is this good?", [{ kind: "feed", path: "7", label: "Gold" }]);
+  await mac.kinStop();
+  await mac.kinJobs();
+  assert.deepEqual(calls, [
+    ["GET", "/v1/feed?offset=0&limit=40", undefined],
+    ["GET", "/v1/feed?offset=40&limit=20", undefined],
+    ["GET", "/v1/feed/picked", undefined],
+    ["POST", "/v1/feed/read", { id: 7, place }],
+    ["POST", "/v1/feed/act", { id: 7, action: "like", place }],
+    ["POST", "/v1/feed/save", { id: 7 }],
+    ["POST", "/v1/feed/impressions", { impressions: [{ id: 7, position: 2, surface: "picked" }] }],
+    ["GET", "/v1/feed/effect?id=7", undefined],
+    ["GET", "/v1/ideas", undefined],
+    ["POST", "/v1/ideas/more", {}],
+    ["POST", "/v1/ideas/adopt", { id: "idea-1" }],
+    ["POST", "/v1/ideas/dismiss", { id: "idea-1", undo: true }],
+    ["POST", "/v1/ideas/discussed", { id: "idea-1" }],
+    ["GET", "/v1/kin?limit=100", undefined],
+    ["GET", "/v1/kin?limit=50&before=12", undefined],
+    ["POST", "/v1/kin", { id: "6d329d64-6bda-4ca9-81d4-3a7e6fbcbcef", text: "Is this good?", chips: [{ kind: "feed", path: "7", label: "Gold" }] }],
+    ["POST", "/v1/kin/stop", {}],
+    ["GET", "/v1/kin/jobs", undefined],
+  ]);
+});
+
+test("a feed note carries its base and accepts the Mac's 409", async (t) => {
+  const conflict = { result: "conflict", current: { text: "Mac's note", version: "fedcba9876543210" } };
+  t.mock.method(globalThis, "fetch", async (input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(String(input), pairing.url + "/v1/feed/note");
+    assert.equal(init?.method, "PUT");
+    assert.equal(init?.body, JSON.stringify({ id: 7, note: "Mine", base: "0123456789abcdef" }));
+    return Response.json(conflict, { status: 409 });
+  });
+  assert.deepEqual(await remote(pairing).feedNote(7, "Mine", "0123456789abcdef"), conflict);
+});
+
+test("a Mac without the Feed answers 404 or 503 as an HttpError, not Offline", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({ error: "The Feed, Ideas and Kin need Kintsugi running on your Mac." }, { status: 503 }));
+  await assert.rejects(remote(pairing).feed(), (e) => e instanceof HttpError && e.status === 503 && /running on your Mac/.test(e.message));
+});

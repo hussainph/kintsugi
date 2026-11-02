@@ -13,6 +13,7 @@ import { library, useLibrary } from '@/lib/documents';
 import { unsent } from '@/lib/library';
 import { capture, heldForMacUpdate, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
 import { usePairing } from '@/lib/pairing';
+import { syncSections, useFeed, useIdeas } from '@/lib/sections-store';
 import { setNewEditor, useNewEditor } from '@/lib/settings';
 import { fonts, useTheme } from '@/theme';
 
@@ -47,6 +48,8 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
   const [query, setQuery] = useState('');
   const newEditor = useNewEditor();
   const clipCount = useInspiration().clips.length;
+  const feedCount = useFeed().items.length;
+  const ideaCount = useIdeas().ideas.filter((i) => !i.dismissed && i.stage !== 'faded').length;
 
   const fail = useCallback(
     (e: unknown) => {
@@ -76,6 +79,9 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
       await syncInspiration(client, hello.api).catch((e) => {
         if (e instanceof Unpaired) throw e;
       });
+      // Kin's messages, Feed actions and Ideas waiting here go, and the
+      // copies kept for offline catch up (API 6).
+      await syncSections(client, hello.api);
       setProblem(null);
     } catch (e) {
       fail(e);
@@ -212,18 +218,32 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
                 </Pressable>
               )}
             </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Inspiration, ${plural(clipCount, 'clip', 'clips')}`}
-              testID="open-inspiration"
-              onPress={() => router.push('/inspiration')}
-              style={({ pressed }) => [styles.row, { backgroundColor: pressed ? theme.border : theme.surface }]}
-            >
-              <SymbolView name="sparkles" size={17} tintColor={theme.muted} />
-              <Text style={[styles.rowTitle, { color: theme.text }]}>Inspiration</Text>
-              {clipCount > 0 && <Text style={[styles.rowNote, { color: theme.faint }]}>{clipCount}</Text>}
-              <SymbolView name="chevron.right" size={13} tintColor={theme.faint} />
-            </Pressable>
+            <View style={[styles.places, { backgroundColor: theme.surface }]}>
+              <Place
+                icon="dot.radiowaves.up.forward"
+                title="Feed"
+                count={feedCount}
+                label={`Feed, ${plural(feedCount, 'item', 'items')}`}
+                testID="open-feed"
+                onPress={() => router.push('/feed')}
+              />
+              <Place
+                icon="sparkles"
+                title="Inspiration"
+                count={clipCount}
+                label={`Inspiration, ${plural(clipCount, 'clip', 'clips')}`}
+                testID="open-inspiration"
+                onPress={() => router.push('/inspiration')}
+              />
+              <Place
+                icon="lightbulb"
+                title="Ideas"
+                count={ideaCount}
+                label={`Ideas, ${plural(ideaCount, 'idea', 'ideas')}`}
+                testID="open-ideas"
+                onPress={() => router.push('/ideas')}
+              />
+            </View>
             {api > 0 && api < 2 && (
               <Text style={[styles.status, { color: theme.muted }]}>Update Kintsugi on your Mac to send inspiration clips.</Text>
             )}
@@ -253,7 +273,27 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
   );
 }
 
+/** One of the places beside the writing: Feed, Inspiration, Ideas. */
+function Place({ icon, title, count, label, testID, onPress }: { icon: string; title: string; count: number; label: string; testID: string; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      testID={testID}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { backgroundColor: pressed ? theme.border : 'transparent' }]}
+    >
+      <SymbolView name={icon as never} size={17} tintColor={theme.muted} />
+      <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
+      {count > 0 && <Text style={[styles.rowNote, { color: theme.faint }]}>{count}</Text>}
+      <SymbolView name="chevron.right" size={13} tintColor={theme.faint} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  places: { borderRadius: 12, overflow: 'hidden' },
   header: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, gap: 10 },
   capture: { borderRadius: 14, padding: 12, gap: 10 },
   captureInput: { fontFamily: fonts.serif, fontSize: 18, lineHeight: 25, minHeight: 50, maxHeight: 200, padding: 0 },

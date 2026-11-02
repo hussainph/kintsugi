@@ -10,6 +10,7 @@ import { library, useDoc, useLibrary } from '@/lib/documents';
 import { editorSessions } from '@/lib/editor-session';
 import { docTitle, unsent } from '@/lib/library';
 import { usePairing } from '@/lib/pairing';
+import { useScreenContext } from '@/lib/screen-context';
 import { useNewEditor } from '@/lib/settings';
 import { fonts, useTheme } from '@/theme';
 
@@ -26,6 +27,8 @@ export default function DocScreen() {
   // A note started here is renamed after its first line once it's sent.
   const [path, setPath] = useState(params.path);
   const doc = useDoc(path);
+  // Kin's chat opens with this document attached.
+  useScreenContext(doc ? [{ kind: 'doc', path, label: docTitle(doc) }] : null);
   const { connection } = useLibrary();
   const { client, unpair } = usePairing();
   const theme = useTheme();

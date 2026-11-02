@@ -187,6 +187,44 @@ with surface `picked`. See [ranking.md](ranking.md).
 Page, Author), shows each one's health, mutes,
 fetches now, unfollows, and imports/exports OPML.
 
+## On the phone (KI-42)
+
+The phone reaches the Feed through the phone API (version 6,
+`apps/desktop/src-tauri/src/phone/sections.rs`; client methods in
+`packages/core/src/remote.ts`, types in `@kintsugi/core/sections`). Every
+route calls the same command as the Mac's webview (`phone/desk.rs`), so the
+events, ranking, captures and `feed:changed` are the Mac's own; the phone
+never ranks, fetches or calls a model.
+
+| Route | Command |
+| --- | --- |
+| `GET /v1/feed?offset&limit` | `feed_items` (limit 1–100, default 40) |
+| `GET /v1/feed/picked` | `feed_picked` |
+| `POST /v1/feed/read {id, place?}` | `feed_read` (an `open`; fetches the full text) |
+| `POST /v1/feed/act {id, action, place?}` | `feed_act` |
+| `PUT /v1/feed/note {id, note, base?, place?}` | `feed_note`, version-checked: `base` is `kintsugi_vault::version` of the note the phone started from (`""` for none). `{result: "saved", version, item}`, or 409 `{result: "conflict", current: {text, version}, item}` with nothing written |
+| `POST /v1/feed/save {id, place?}` | `feed_save` (already idempotent through its `save_id`) |
+| `POST /v1/feed/impressions {impressions}` | `feed_impressions` (at most 500) |
+| `GET /v1/feed/effect?id` | `feed_effect` |
+
+Unknown items and refusals are 400 with the command's message; an unknown
+action is 422. A server without the app behind it (the bare
+`phone_dev_server`) answers 503.
+
+**The phone app** (`apps/mobile/src/lib/feed.ts`, `app/feed.tsx`,
+`app/feed-item.tsx`, `components/FeedRow.tsx`): Picked for you (four, then
+"Show more", with Why this?) above the newest list, from a copy kept in the
+app's key-value store so it reads offline; an opened article's text is kept
+too (the latest 40). Like, save, note and Not interested apply at once and
+wait in order until the Mac takes them (`lib/waiting.ts`); a refusal the
+request can't recover from (400, 404, 413, 422) is dropped with the reason
+shown. Notes are version-checked: an edit elsewhere in the note merges
+(`merge3`), the same words changed on both sides ask which to keep. Shown
+items are logged as impressions (surface `picked` or `newest`, once per
+launch). A like shows what it changed (`feed_effect`) with Undo; Not
+interested has Undo. Discuss logs `discuss` and opens Kin with the item as a
+`feed` chip. Older Macs (before API 6) are told to update.
+
 ## Testing
 
 Rust unit tests use the ingest crate's fixtures (feeds, X, watched pages in

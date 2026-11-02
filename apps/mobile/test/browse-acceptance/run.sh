@@ -6,7 +6,12 @@
 #
 # ONLY=inspiration runs KI-3's InspirationTests instead of BrowseTests (after
 # the first-launch approval). They stop the Mac midway, through a file in
-# $WORK/control, to browse offline.
+# $WORK/control, to browse offline. ONLY=sections runs KI-42's SectionsTests
+# (the Feed, Kin and Ideas, then Kin without the Mac).
+#
+# The Mac is the whole headless app (`phone_dev_server` built with the
+# headless feature): the phone API plus a sample Feed, Ideas and Kin's
+# scripted mock model, so nothing reads a credential or leaves the machine.
 #
 # It seeds a scratch vault under .headless/, serves the real phone API on it
 # (`phone_dev_server`, which refuses any vault outside .headless), installs
@@ -28,9 +33,9 @@ node "$ROOT/scripts/seed-desktop.mjs" "$VAULT" >/dev/null
 printf -- '---\ntitle: "Glaze chemistry"\nstatus: draft\ntags:\n  - craft\n  - fire\n---\n\nNotes on glaze.\n' >"$VAULT/posts/series/glaze.md"
 
 (cd "$ROOT" && KINTSUGI_PHONE_DEV_PORT="$PORT" KINTSUGI_PHONE_DEV_VAULT="$VAULT" \
-  cargo test -q -p kintsugi phone_dev_server -- --ignored --nocapture >"$WORK/mac.log" 2>&1) &
+  cargo test -q -j "${JOBS:-1}" -p kintsugi --no-default-features --features headless phone_dev_server -- --ignored --nocapture >"$WORK/mac.log" 2>&1) &
 MAC=$!
-stop() { kill "$MAC" 2>/dev/null; lsof -ti "tcp:$PORT" -sTCP:LISTEN | xargs kill 2>/dev/null || true; }
+stop() { kill "$MAC" 2>/dev/null || true; lsof -ti "tcp:$PORT" -sTCP:LISTEN | xargs kill 2>/dev/null || true; }
 CONTROL="$WORK/control"; mkdir -p "$CONTROL"
 # A test asks for the Mac to go away by creating control/stop-mac.
 ( until [ -e "$CONTROL/stop-mac" ]; do sleep 0.5; done; stop; touch "$CONTROL/mac-stopped" ) &
@@ -47,7 +52,9 @@ xcrun simctl openurl "$UDID" "kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A$PORT
 
 xcodegen generate --quiet --spec "$HERE/project.yml" --project "$WORK" --project-root "$HERE"
 ONLY_TESTING=()
-if [ "${ONLY:-}" = inspiration ]; then
+if [ "${ONLY:-}" = sections ]; then
+  ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests/test0ApproveOpen -only-testing:BrowseHarnessUITests/SectionsTests)
+elif [ "${ONLY:-}" = inspiration ]; then
   ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests/test0ApproveOpen -only-testing:BrowseHarnessUITests/InspirationTests)
 else
   ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests)
@@ -56,7 +63,7 @@ TEST_RUNNER_SHOTS="$WORK/shots" TEST_RUNNER_VAULT="$VAULT" TEST_RUNNER_CONTROL="
   "${ONLY_TESTING[@]}" \
   -project "$WORK/BrowseHarness.xcodeproj" -scheme BrowseHarness \
   -destination "id=$UDID" -derivedDataPath "$WORK/DerivedData" \
-  -resultBundlePath "$WORK/browse.xcresult" -parallel-testing-enabled NO \
+  -resultBundlePath "$WORK/browse.xcresult" -parallel-testing-enabled NO -collect-test-diagnostics never \
   ${JOBS:+-jobs "$JOBS"} >"$WORK/xcodebuild.log" 2>&1 \
   || { grep -E "error|failed|XCTAssert" "$WORK/xcodebuild.log" | tail -20; exit 1; }
 grep -E "Test Case .* (passed|failed)" "$WORK/xcodebuild.log"

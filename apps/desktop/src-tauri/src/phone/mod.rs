@@ -1,6 +1,10 @@
 //! Phone access: the Kintsugi mobile app reads, edits and captures into this
 //! Mac's vault over Tailscale while Kintsugi is running here.
 
+mod desk;
+#[cfg(all(test, feature = "headless"))]
+mod dev;
+mod sections;
 mod server;
 mod tailscale;
 
@@ -74,6 +78,8 @@ fn host(app: &AppHandle) -> Result<Host> {
             let app = app.clone();
             move |path| vault::clips_changed(&app, &path)
         }),
+        sections: Some(Arc::new(desk::Desk(app.clone()))),
+        kin_ids: Some(crate::clip_capture::index_path(app)?.with_file_name("phone-kin-ids.json")),
     })
 }
 

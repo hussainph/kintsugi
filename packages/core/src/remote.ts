@@ -1,6 +1,23 @@
 /** A client for the phone API the desktop app serves over Tailscale.
  *  Mirrors apps/desktop/src-tauri/src/phone/server.rs. */
 import type { Clip, ClipCapture, ClipSummary } from "./clips";
+import type {
+  Adopted,
+  Chip,
+  Effect,
+  FeedAction,
+  FeedNoteSaved,
+  FeedPage,
+  IdeasView,
+  Impression,
+  Job,
+  KinPage,
+  KinSent,
+  Picked,
+  Place,
+  Reading,
+  FeedItem,
+} from "./sections";
 import type { Entry } from "./vault";
 
 export type Pairing = { url: string; token: string };
@@ -17,6 +34,8 @@ export type NoteSaved =
   | { result: "conflict"; current: Versioned };
 /** The first phone API with /v1/inspiration, clip images, sources and note edits. */
 export const INSPIRATION_API = 5;
+/** The first phone API with the Feed, Ideas and Kin (/v1/feed, /v1/ideas, /v1/kin). */
+export const SECTIONS_API = 6;
 
 /** The Mac couldn't be reached: asleep, Kintsugi closed, or Tailscale off. */
 export class Offline extends Error {
@@ -71,6 +90,8 @@ const TIMEOUT = 8000;
 /** A 50 MiB PDF takes a while over Tailscale or a phone connection; kept
  *  under the phone's 120-second delivery lease. */
 const FILE_TIMEOUT = 100_000;
+/** Reading an excerpt fetches the whole article on the Mac first. */
+const FULL_TEXT_TIMEOUT = 30_000;
 
 export function remote({ url, token }: Pairing) {
   async function call<T>(method: string, path: string, body?: unknown, accept: number[] = [], timeout = TIMEOUT): Promise<T> {
@@ -145,6 +166,32 @@ export function remote({ url, token }: Pairing) {
     /** Where the clip's primary image is, for a native download straight to
      *  disk (API 5). 404 means it has none. */
     clipImage: (path: string) => ({ url: url + "/v1/clip/image" + query(path), headers: { Authorization: `Bearer ${token}` } }),
+
+    // The Feed, Ideas and Kin (API 6). They live on the Mac, which does the
+    // ranking and all of Kin's work; the phone reads and asks.
+    feed: (offset = 0, limit = 40) => call<FeedPage>("GET", `/v1/feed?offset=${offset}&limit=${limit}`),
+    picked: () => call<Picked>("GET", "/v1/feed/picked"),
+    /** Logs an `open` and fetches the full article when the feed had an excerpt. */
+    feedRead: (id: number, place?: Place) => call<Reading>("POST", "/v1/feed/read", { id, place }, [], FULL_TEXT_TIMEOUT),
+    feedAct: (id: number, action: FeedAction, place?: Place) => call<FeedItem>("POST", "/v1/feed/act", { id, action, place }),
+    /** Writes the note only if the Mac's is still at `base`. */
+    feedNote: (id: number, note: string, base: string, place?: Place) =>
+      call<FeedNoteSaved>("PUT", "/v1/feed/note", { id, note, base, place }, [409]),
+    feedSave: (id: number, place?: Place) => call<FeedItem>("POST", "/v1/feed/save", { id, place }),
+    feedImpressions: (impressions: Impression[]) => call<object>("POST", "/v1/feed/impressions", { impressions }),
+    feedEffect: (id: number) => call<Effect>("GET", `/v1/feed/effect?id=${id}`),
+    ideas: () => call<IdeasView>("GET", "/v1/ideas"),
+    moreIdeas: () => call<IdeasView>("POST", "/v1/ideas/more", {}),
+    /** A new draft titled after the idea; adopting it again returns that draft. */
+    adoptIdea: (id: string, title?: string) => call<Adopted>("POST", "/v1/ideas/adopt", { id, title }),
+    dismissIdea: (id: string, undo = false) => call<IdeasView>("POST", "/v1/ideas/dismiss", { id, undo }),
+    ideaDiscussed: (id: string) => call<object>("POST", "/v1/ideas/discussed", { id }),
+    kin: (before?: number, limit = 100) =>
+      call<KinPage>("GET", `/v1/kin?limit=${limit}${before === undefined ? "" : `&before=${before}`}`),
+    /** `id` makes a resend (after an uncertain failure, or from the queue) land once. */
+    kinSend: (id: string, text: string, chips: Chip[] = []) => call<KinSent>("POST", "/v1/kin", { id, text, chips }),
+    kinStop: () => call<object>("POST", "/v1/kin/stop", {}),
+    kinJobs: () => call<Job[]>("GET", "/v1/kin/jobs"),
   };
 }
 

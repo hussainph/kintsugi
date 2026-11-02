@@ -288,6 +288,18 @@ pub fn run() -> Result<()> {
     Ok(())
 }
 
+/// The whole app on the scratch vault and config (`KINTSUGI_VAULT`,
+/// `KINTSUGI_CONFIG_DIR`) with Kin set up, and no webview bridge: what the
+/// phone dev server serves the phone API from. Polling, enrichment and the
+/// daily Ideas batch stay off.
+#[cfg(test)]
+pub(crate) fn phone_app() -> Result<tauri::App<Runtime>> {
+    let app = build_app(Clients::default())?;
+    crate::ai::init(app.handle());
+    crate::search::init(app.handle());
+    Ok(app)
+}
+
 fn build_app(clients: Clients) -> Result<tauri::App<Runtime>> {
     build_app_with_context(
         clients,

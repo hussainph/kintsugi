@@ -12,6 +12,9 @@ const palette = {
     primary: '#171717',
     onPrimary: '#fafafa',
     danger: '#dc2626',
+    /** Kin gold (KI-23): only for what Kin made. */
+    kin: '#b4852f',
+    kinInk: '#7d5f22',
   },
   dark: {
     background: '#0a0a0a',
@@ -23,6 +26,8 @@ const palette = {
     primary: '#e5e5e5',
     onPrimary: '#171717',
     danger: '#f87171',
+    kin: '#d8b45c',
+    kinInk: '#e0c27a',
   },
 };
 

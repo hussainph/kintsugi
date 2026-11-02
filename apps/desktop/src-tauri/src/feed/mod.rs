@@ -676,22 +676,49 @@ pub fn feed_act(app: AppHandle, id: i64, action: Action, place: Option<Place>) -
 /// The log records that a note was written, not its words.
 #[tauri::command]
 pub fn feed_note(app: AppHandle, id: i64, note: String, place: Option<Place>) -> Result<Item> {
+    match note_checked(&app, id, &note, None, place.unwrap_or_default())? {
+        NoteWrite::Saved(item) | NoteWrite::Conflict(item) => Ok(item),
+    }
+}
+
+/// A note written somewhere else first (the phone, offline), checked
+/// against the note it started from.
+pub enum NoteWrite {
+    Saved(Item),
+    /// The note changed since `base`; nothing was written.
+    Conflict(Item),
+}
+
+/// The version of an item's note, as `kintsugi_vault::version` (no note is "").
+pub fn note_version(item: &Item) -> String {
+    vault::version(item.note.as_deref().unwrap_or(""))
+}
+
+/// Writes the note if it is still at `base` (`None`: overwrite on purpose),
+/// under the store's lock. Since phone API 6.
+pub fn note_checked(app: &AppHandle, id: i64, note: &str, base: Option<&str>, place: Place) -> Result<NoteWrite> {
     if note.len() > 20_000 {
         return Err("that note is too long for a feed item".into());
     }
-    let place = place.unwrap_or_default();
-    with(&app, |s| {
+    with(app, |s| {
         let before = s.item(id)?;
+        if base.is_some_and(|b| b != note_version(&before)) {
+            // Already what the phone wanted: no conflict to show.
+            if before.note.as_deref().unwrap_or("").trim() == note.trim() {
+                return Ok(NoteWrite::Saved(before));
+            }
+            return Ok(NoteWrite::Conflict(before));
+        }
         if before.saved_path.is_some() {
             return Err("this item is saved; edit its note in Inspiration".into());
         }
-        let item = s.set_note(id, &note, now())?;
+        let item = s.set_note(id, note, now())?;
         if item.note != before.note {
             let mut logged = event(if item.note.is_some() { "note" } else { "note_cleared" }, &before, &place);
             logged.data = Some(json!({ "chars": item.note.as_deref().map_or(0, |n| n.chars().count()) }));
             s.log(&logged)?;
         }
-        Ok(item)
+        Ok(NoteWrite::Saved(item))
     })
 }
 
@@ -773,6 +800,57 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
         s.log(&logged)?;
         Ok(saved)
     })
+}
+
+/// A small sample Feed for driving the phone in the Simulator against a
+/// scratch vault (`phone_dev_server`): three sources and eight items with
+/// their whole text, so reading never fetches anything. Links point at
+/// `base` (the dev server itself), never the web. Headless builds only.
+#[cfg(all(test, feature = "headless"))]
+pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
+    const BODY: &str = "It is easy to mistake speed for progress. The pieces that last are the ones somebody returned to, mended and kept. ";
+    let sources = [
+        ("The Slow Workshop", "Mara Ito", &[
+            ("Mending as a design method", "Why the repaired bowl teaches more than the new one: kintsugi, visible repair and the honesty of seams."),
+            ("Gold in the cracks", "A potter on the economics of repair, and why the gold costs more than the bowl."),
+            ("The workbench diary", "Notes from a year of fixing things instead of replacing them."),
+        ][..]),
+        ("Quiet Web Weekly", "Ana Ruiz", &[
+            ("Small sites, long memories", "Personal websites outlive platforms when their owners tend them like gardens."),
+            ("Attention is the scarce material", "On reading slowly, and what the infinite feed costs a writer."),
+            ("RSS is still here", "A short history of feeds and the readers who never left them."),
+        ][..]),
+        ("Night Shift", "Dr. Lee", &[
+            ("Sleep and the tired mind", "What the research says about rest, memory and night-shift workers."),
+            ("Rain sounds and focus", "A field recording, and why weather makes good background for writing."),
+        ][..]),
+    ];
+    let now = now();
+    let mut added = 0;
+    with(app, |s| {
+        for (n, (title, author, items)) in sources.iter().enumerate() {
+            let (source, _) = s.add_source(&format!("{base}/sample/feed-{n}.xml"), SourceKind::Feed, Some(title), now)?;
+            let entries: Vec<NewItem> = items
+                .iter()
+                .enumerate()
+                .map(|(i, (title, summary))| NewItem {
+                    guid: format!("sample-{n}-{i}"),
+                    url: Some(format!("{base}/sample/{n}/{i}")),
+                    title: Some((*title).into()),
+                    author: Some((*author).into()),
+                    summary: Some((*summary).into()),
+                    content: Some(format!("{summary}\n\n{}", BODY.repeat(6))),
+                    image: None,
+                    media: "article",
+                    published_at: Some(now - (n as i64 * 3 + i as i64) * 3_600),
+                })
+                .collect();
+            added += s.insert_items(source.id, &entries, now, true)?;
+        }
+        Ok(())
+    })?;
+    changed(app);
+    Ok(added)
 }
 
 #[cfg(test)]

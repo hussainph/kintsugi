@@ -9,6 +9,7 @@ import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'r
 import { inspiration, useClip, useInspiration } from '@/lib/clip-library';
 import { clipUnsent } from '@/lib/inspiration';
 import { usePairing } from '@/lib/pairing';
+import { useScreenContext } from '@/lib/screen-context';
 import { useThumbnail } from '@/lib/thumbnail-store';
 import { fonts, useTheme } from '@/theme';
 
@@ -20,6 +21,7 @@ type Source = { state: 'idle' | 'loading' } | { state: 'shown'; text: string | n
 export default function ClipScreen() {
   const { path } = useLocalSearchParams<{ path: string }>();
   const local = useClip(path);
+  useScreenContext(local ? [{ kind: 'clip', path, label: local.clip.title || clipLabel(local.clip) }] : null);
   const { connection } = useInspiration();
   const { client, unpair } = usePairing();
   const theme = useTheme();
