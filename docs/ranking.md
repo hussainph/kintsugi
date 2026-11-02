@@ -131,7 +131,7 @@ compact JSON:
 
 `read feed:<id>` reads an item: title, source, author, URL, date, his
 actions and note, then its text. Discuss's `feed` chip reaches Kin as
-`feed:<id>`, so Kin reads the item, not just its title. `shortlist` and
+`feed:<id>`, so Kin reads the whole item, its text as well as its title. `shortlist` and
 `similar_to` results are logged as `kin_pick` events (surface `kin`,
 `data.tool`), which the ranker never learns from.
 

@@ -1,14 +1,12 @@
 # Vision
 
-Kintsugi is where scattered inspiration becomes writing.
+Kintsugi collects what Hussain reads and helps him turn it into writing.
 
-Everything Hussain reads, watches and hears (books, articles, posts on X and
-Reddit, Hacker News threads, blogs, podcasts, videos) flows through one
-place. The things worth keeping are kept. An agent, **Kin**, reads all of it
+Everything he reads, watches and hears (books, articles, posts on X and
+Reddit, Hacker News threads, blogs, podcasts, videos) comes into one
+place, and he saves the things worth keeping. An agent, **Kin**, reads all of it
 alongside him and helps turn it into finished pieces, without writing them
-for him. Kintsugi is the Japanese art of mending broken pottery with gold.
-Here the pieces are fragments of inspiration, and the gold is what connects
-them.
+for him.
 
 This document holds the product's shape and direction, as decided with the owner on
 2026-11-01. Contracts for built parts live beside it (`docs/writing.md`, `docs/inspiration.md`,
@@ -26,7 +24,7 @@ nothing is built for multi-user use, hosting or onboarding at scale.
 
 ## The shape
 
-Four places, and Kin everywhere:
+Kintsugi has four places, and Kin is in all of them:
 
 | Place | What it is | Who fills it |
 | --- | --- | --- |
@@ -35,7 +33,7 @@ Four places, and Kin everywhere:
 | **Ideas** | A few specific, grounded ideas a day about his writing and collection | Kin |
 | **Writing** | Notes, drafts and posts, on the Mac and the phone | **Hussain only** |
 
-**Kin** is a universal presence: one avatar on every screen, one chat that
+**Kin** is on every screen: one avatar, one chat that
 picks up whatever he's looking at, and comment threads in his drafts.
 
 ```
@@ -49,8 +47,8 @@ publishing a piece easier or more pleasant wins.
 
 ## Feed
 
-The Feed fills itself from sources Hussain chooses. Nothing in it is kept
-unless he keeps it.
+The Feed fills itself from sources Hussain chooses. Nothing in it is saved
+unless he saves it.
 
 - **Sources:** RSS/Atom first. One adapter covers blogs, YouTube channels,
   podcasts and Hacker News (via hnrss.org). Then X accounts (via the
@@ -72,8 +70,8 @@ unless he keeps it.
 
 ### Ranking without burning tokens
 
-Ranking is local machine learning, not LLM calls, borrowing the ideas that
-carry over from X's and TikTok's published recommenders to one person:
+Ranking uses local machine learning instead of LLM calls. It borrows the ideas
+from X's and TikTok's published recommenders that still work for one person:
 
 - Small on-device text embeddings (model2vec-class) for every item.
 - Taste vectors from liked and saved items (a long and a short half-life),
@@ -96,9 +94,9 @@ learn from its own choices.
 
 ## Inspiration
 
-Inspiration is curated and human-driven. Kin learns from it and never adds
-to it. Things arrive by Hussain's hand: saving from the Feed, the phone's
-share sheet, the Mac, a pasted link, a dropped file.
+Hussain curates Inspiration by hand. Kin learns from it and never adds
+to it. He adds things by saving from the Feed, the phone's
+share sheet, the Mac, a pasted link or a dropped file.
 
 - A clip is a plain Markdown file (see `docs/inspiration.md`): what was
   saved, readable source text for Kin, and his own words.
@@ -108,7 +106,7 @@ share sheet, the Mac, a pasted link, a dropped file.
   before the file format changes.
 - Each clip shows where it's been referenced in his writing.
 - Anything machine-made on a card (summary, transcript excerpt) is labelled.
-  Quotes are direct, not paraphrased, and link back to the passage or
+  Quotes are verbatim and link back to the passage or
   timestamp.
 
 ### Ingesting anything
@@ -128,9 +126,9 @@ adapters turn anything into clean Markdown with metadata and media.
 ## Kin
 
 Kin is the agent. It reads everything Hussain collects and writes, the same
-way he does, and helps. It never writes his prose. It has no "Muse"-style
-persona: it's called Kin ("your Kin"), and its look is something he
-customizes (designed in Paper).
+way he does, and helps him. It never writes his prose. It has no "Muse"-style
+persona. It's called Kin ("your Kin"), and he
+customizes its look (designed in Paper).
 
 ### Present everywhere
 
@@ -142,10 +140,10 @@ customizes (designed in Paper).
   the document and moving with the paragraph as it's edited. Anything it
   finds can be dragged in as a reference.
 
-### How it thinks: tools, not a knowledge dump
+### How it finds things
 
-Kin doesn't keep a wiki or a growing private knowledge base. It's very good
-at finding things: it searches the vault, Inspiration and the Feed with
+Kin doesn't keep a wiki or a growing private knowledge base. Instead it
+searches the vault, Inspiration and the Feed with
 coding-agent-style tools (search, read, list) and the ranking tools above,
 across as many calls as it needs. Its always-loaded context stays small.
 
@@ -160,7 +158,7 @@ Its memory is modelled on Hermes Agent: small, capped and visible, in
 | Conversation history | Every chat and comment thread | none | Through search only |
 
 Writes that would exceed a cap are rejected, so Kin has to consolidate
-rather than hoard. Changes apply automatically. **About you** shows the
+what it already has. Changes apply automatically. **About you** shows the
 current memory, where each line came from, a change log, and undo. Any chat
 can be marked "don't remember this."
 
@@ -170,21 +168,21 @@ flagged for the editor appear as AI commands in the `/` menu. Hussain can
 write his own ("/steelman this", "/find counterexamples"), and Kin suggests
 new ones when it notices him asking for the same thing repeatedly.
 
-### One conversation, underneath
+### One conversation log
 
-Following how always-on agents like Grok Bot are built:
+This follows how always-on agents like Grok Bot are built.
 
 - **One log.** What each turn is about (a draft, a clip, a feed item, a
   paragraph) is inferred from what's on screen and what's said. Hussain
   never tags or files anything. A "thread", such as "the conversation about
-  draft X", is just that inferred grouping, a view of the one log with its
-  own running summary, not a separate session. Paragraph comment threads
+  draft X", is that inferred grouping: a view of the one log with its
+  own running summary. It isn't a separate session. Paragraph comment threads
   live in the same log.
 - **A lean main conversation, with helpers.** Heavy or background work
   (ranking the feed, generating ideas, long searches) runs as helper agents
   with their own context, recorded in a local job table so they survive
   quitting the app. Each gets a clear brief plus About you and the notes
-  file, and reports back quietly.
+  file, and reports back to the log without interrupting him.
 - **Context engineering.** A fixed, cached prompt prefix; context chips as
   references Kin reads on demand rather than pasted text; tools loaded when
   needed; long outputs written to files. Summaries are made while Hussain is
@@ -204,7 +202,7 @@ Following how always-on agents like Grok Bot are built:
   stay on the Mac. The only things that leave it are calls to his own AI
   provider, fetches of the sources he follows or saves, and one-time
   downloads of local models and tools. Nothing is used for training.
-- Kin's stance is a critical reader, not a flatterer.
+- Kin reads critically and doesn't flatter.
 
 ## Ideas
 
@@ -229,7 +227,7 @@ what you published in March."
 
 ## Writing
 
-Writing is first-class on both the Mac and the phone.
+Writing works fully on both the Mac and the phone.
 
 - **The editor:** focused Markdown/MDX, with a Notion-style `/` menu for
   blocks and AI commands (skills), and `@` to reference clips, documents
@@ -252,7 +250,7 @@ to feel like a simple notes app.
   Inspiration on the phone keeps cards and thumbnails, with full sources
   fetched on demand.
 - It opens where he left off, with a fast way to start a new note (which
-  lands in `inbox/`). A note is just a document; there's no separate type.
+  lands in `inbox/`). A note is a document; there's no separate type.
 - **One editor.** The Mac's CodeMirror editor runs on the phone through
   Expo's web components, so `/`, `@` and Kin's comment threads behave the
   same on both devices. Native keyboard, selection and toolbar feel get
@@ -277,7 +275,7 @@ MDX is the source format. Each destination is an exporter.
 
 The vault is plain files, so Claude Code or any other agent can work with
 it. Kin's tools may also be exposed as an MCP server or CLI. This is a nice
-extra, not a priority: the goal is an internal agent good enough that he'd
+extra and a low priority. The goal is an internal agent good enough that he'd
 rather use it. Outside agents never add to Inspiration.
 
 ## Vault layout
@@ -302,7 +300,7 @@ in the app's data directory, not the vault.
   finished pieces.
 - **Kin helps; it doesn't ghostwrite.** It finds, connects, questions and
   suggests. Prose is Hussain's, apart from edits he explicitly asks for.
-- **Curated stays curated.** Only Hussain puts things in Inspiration and
+- **Hussain curates.** Only Hussain puts things in Inspiration and
   Writing.
 - **Plain files, local first.** One folder on disk is the source of truth.
 - **Capture is instant and never lost.** Save first, enrich later.
@@ -321,7 +319,7 @@ in the app's data directory, not the vault.
 - A Karpathy-style agent-written wiki. Kin finds things instead of
   compiling them.
 - Competing feature-for-feature with dedicated readers, feed apps or note
-  apps. The value is the loop between them.
+  apps. Kintsugi's value is in connecting them.
 
 ## References
 

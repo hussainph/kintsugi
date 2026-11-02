@@ -55,18 +55,18 @@ treat it as empty.
 
 ## Organizing
 
-Organizing is never a chore: nothing asks for a folder, tag or status, and
-untagged documents are first-class everywhere. Kin may later *suggest* tags,
+Organizing is optional: nothing asks for a folder, tag or status, and
+untagged documents work the same as tagged ones everywhere. Kin may later *suggest* tags,
 but it never applies one; only the writer edits `tags`.
 
 **On the Mac**
 
-- The document's tags sit quietly in the footer beside its status. **Tag**
+- The document's tags show in the footer beside its status. **Tag**
   (or **+**) adds one: type a new tag (commas separate several) or pick one in
   use. Each tag's **×** removes it. Mirrors show no tag controls.
 - The tag button beside the vault name in the sidebar filters the tree to
   documents carrying every chosen tag; folders without a match hide. The
-  chosen tags show as chips under the vault name; click one to let it go.
+  chosen tags show as chips under the vault name; click one to remove it.
   The filter resets when another vault opens.
 - In the ⌘P jump list, `#tag` keeps only documents with that tag (several
   `#tags` are ANDed) and the other words match titles and paths as before.

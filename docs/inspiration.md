@@ -1,16 +1,16 @@
 # Inspiration
 
-Kintsugi exists to make writing for the blog easy and delightful. Most
+Kintsugi is meant to make writing for the blog easy. Most
 finished pieces are published there. What a piece draws on can come from
 anywhere, but most often it's the writer's own work: earlier posts, drafts
 and notes in the vault, their projects. Outside inspiration matters too: a
 post, a blog, a video, a screenshot, a passing thought.
 
-So Kintsugi is a writing app with a mind attached. It captures anything
-worth keeping, from anywhere, and puts the writer's own work and the
-captured clips within reach while they write. Think myMind's effortless,
-image-forward library with Obsidian's plain files and links, in Kintsugi's
-quiet interface.
+So Kintsugi is a writing app that also collects inspiration. It captures
+anything worth keeping, from anywhere, and puts the writer's own work and the
+captured clips within reach while they write. It borrows myMind's
+image-forward library and Obsidian's plain files and links, in Kintsugi's
+minimal interface.
 
 This document is the contract the capture, library and editor work builds
 against. Change it in the same commit as the code that changes the contract.
@@ -26,9 +26,9 @@ against. Change it in the same commit as the code that changes the contract.
   opens in Obsidian, links and all.
 - **The writer's own work comes first.** References, search and the margin
   treat the vault's documents (published posts, drafts, notes) as first-class
-  sources alongside clips, never as an afterthought.
+  sources alongside clips.
 - **The AI never writes for you.** It organizes inspiration and surfaces it in
-  the margin. Your words stay yours.
+  the margin.
 
 ## Storage
 
@@ -168,7 +168,7 @@ in `YYYY-MM-DDTHH:MM` form. The receiver writes the clip at once:
 
 ### Books
 
-A book is saved by title or ISBN. The Mac's **Keep something › Find a
+A book is saved by title or ISBN. The Mac's **Add a clip › Find a
 book** searches Open Library (`book_search({ query })` →
 `{ key, url, title, authors, year, isbn, coverUrl, editions }[]`, see
 [ingest.md](ingest.md#books)) and saves the chosen book as a clip with its
@@ -185,7 +185,7 @@ description and publication details.
   outbox guarantees as text captures today.
 - **Phone app**: the existing capture box. Pasting a URL makes a clip.
 - **Mac**: paste or drop a URL, image, text, PDF or EPUB into the
-  Inspiration library, or choose a file in **Keep something**.
+  Inspiration library, or choose a file in **Add a clip**.
 - **Files from the phone**: share a PDF or EPUB (from Files, Safari,
   Books, Mail) into Kintsugi. The share extension queues it in the App Group
   without holding it in memory, and the app (not the extension's background
@@ -421,7 +421,7 @@ A view beside the editor, reached from the sidebar and with ⇧⌘I:
   reference this clip.
 - Paste or drop anywhere in the library to capture.
 
-### Library implementation and shared seams
+### Library implementation and shared interfaces
 
 `clip_search({ query?, tags?, offset?, limit? })` is the reusable desktop
 clip search command, including for the editor's `[[` picker. It returns
@@ -436,7 +436,7 @@ ranks them: clips with every word (by stem or prefix) or close in meaning
 come first, best first, and then any other substring match, newest first. So
 a clip found before is never lost, and clips that match only by meaning are
 added. If the index fails, the plain lexical order is used. Returned tags
-cover the whole vault, not just matching clips.
+cover the whole vault, including tags of clips that don't match.
 Pagination defaults to offset 0 and limit 60 (clamped to 1–120).
 
 The Rust index is cached per canonical vault root and invalidated per path by
@@ -455,7 +455,7 @@ only that clip's primary image. Rust validates the clip and its media path
 under `inspiration/media/`, rejects symlinks, non-regular files, unsupported
 extensions/signatures (including SVG) and files over 15 MiB. The frontend
 creates a short-lived Blob URL. No arbitrary vault path is exposed to the
-webview. Missing, corrupt or unsupported images get a quiet fallback.
+webview. Missing, corrupt or unsupported images show a placeholder, with no error.
 The window disables Tauri's native drag interception so HTML drops receive
 both Finder files and browser URLs/text. Clipboard and dropped files use
 `clip_create` with `via: mac`; there is no arbitrary local-file-read command.
@@ -466,7 +466,7 @@ detail view offers **Open PDF** / **Open book**.
 
 Paste/drop listeners are active only while the library is open, including its
 detail view. Pasting into an input or editable note remains normal editing;
-**Keep something** also accepts a link, text, an image, a PDF or an EPUB
+**Add a clip** also accepts a link, text, an image, a PDF or an EPUB
 explicitly, and finds books by title or ISBN. Whole
 HTTP(S) URLs become links; other text stays intact as a note. Each capture
 is persisted before the UI reports success. Title, quote/note and tag edits
@@ -540,7 +540,7 @@ newest first, from the phone's own copy (`apps/mobile/src/app/inspiration.tsx`):
   detail view shows the same attribution under the passage.
 - In the editor, wikilinks render as small inline chips (title and site);
   hovering shows the card; ⌘-click opens the clip.
-- **The margin**: a quiet right-hand panel listing what this document
+- **The margin**: a right-hand panel listing what this document
   references and what relates to the paragraph being written: the writer's
   own documents first, then clips. Drag one in to quote it.
 - Backlinks come from scanning documents for wikilinks; the library's
@@ -574,7 +574,7 @@ closed, and an empty margin takes no space.
 
 ### Updating links on rename
 
-Renaming a document or folder refreshes resolution, then quietly offers to
+Renaming a document or folder refreshes resolution, then offers to
 rewrite the links that pointed at it, Obsidian-style: a toast asks
 "Update N links in M notes?" with **Update** and **Not now**. Nothing is
 rewritten without that click (KI-13).

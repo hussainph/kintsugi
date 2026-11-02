@@ -2,7 +2,7 @@
 
 One local index finds things by words and by meaning. The Inspiration
 library, Kin's `search` tool and (once it lands) the Feed all use it. See
-"Ranking without burning tokens" and "How it thinks" in
+"Ranking without burning tokens" and "How it finds things" in
 [vision.md](vision.md). The engine is `crates/search` (`kintsugi-search`) and
 doesn't depend on Tauri. The app's side is `apps/desktop/src-tauri/src/search.rs`.
 
@@ -66,7 +66,7 @@ is vault-relative however it's written (`./posts`, `/posts/`, `posts`), and
 ## Storage and refresh
 
 - The index is `<app config>/search/index.sqlite` (WAL), never in the
-  vault. It only holds copies, so deleting it just means a rebuild.
+  vault. It only holds copies, so deleting it means a rebuild.
   Headless runs keep it in `$KINTSUGI_CONFIG_DIR/search/`. An isolated dev
   run (`KINTSUGI_VAULT`) without a config dir keeps it in memory.
   `PRAGMA user_version` is the schema version, and a mismatch rebuilds the

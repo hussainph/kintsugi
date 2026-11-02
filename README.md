@@ -1,6 +1,6 @@
 # Kintsugi
 
-Where scattered inspiration becomes writing. Kintsugi brings everything you read, watch and hear into one place: a feed of new work from sources you follow, and a curated library of what's worth keeping, all in a local vault of plain files. Kin, its agent, reads it all alongside you and offers ideas. Then you write: a focused Markdown and MDX editor on the Mac, and a phone app that works like a notes app. Kin finds, connects and suggests, but it never writes for you. See [docs/vision.md](docs/vision.md) for where it's going.
+Kintsugi brings everything you read, watch and hear into one place: a feed of new work from sources you follow, and a curated library of what's worth keeping, all in a local vault of plain files. Kin, its agent, reads it all alongside you and offers ideas. You write in a focused Markdown and MDX editor on the Mac, or in a phone app that works like a notes app. Kin finds, connects and suggests, but it never writes for you. See [docs/vision.md](docs/vision.md) for where it's going.
 
 Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by default `~/Documents/Kintsugi`). Each document's frontmatter holds a `status` of `draft` or `complete`, and any `tags` you like (`tags: [essay, craft]`; Obsidian's block lists work too). Organize in folders and tags when you want to; nothing asks you to. Add or remove a document's tags from the footer beside its status, filter the sidebar with the tag button beside the vault name, and type `#tag` in ⌘P to jump among tagged documents. See [docs/writing.md](docs/writing.md).
 
@@ -62,7 +62,7 @@ To pair the Simulator with a development build of the Mac app, turn on phone acc
 
 Agents must not put the Mac app, Device Hub or Simulator on the owner's
 screen. `pnpm desktop:headless` runs the real Rust command handlers on Tauri's
-`MockRuntime` — no OS runtime, native window, Dock icon or focus — beside the
+`MockRuntime` (no OS runtime, native window, Dock icon or focus) beside the
 Vite frontend. It creates a fresh, gitignored
 `.headless/run-<random>/{vault,config}` in this worktree, seeds the default
 vault, and prints a per-run URL shaped like
@@ -96,7 +96,7 @@ commands, and [docs/headless.md](docs/headless.md) for the transport.
 
 ## Releasing
 
-Releases are signed, notarized and published to [GitHub Releases](https://github.com/hussainph/kintsugi/releases). Installed copies check there at launch and every six hours, offer the update quietly, and restart only after your edits are saved.
+Releases are signed, notarized and published to [GitHub Releases](https://github.com/hussainph/kintsugi/releases). Installed copies check there at launch and every six hours, show a notice offering the update, and restart only after your edits are saved.
 
 1. Bump `version` in `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/package.json` and the root `Cargo.toml`.
 2. With `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `APPLE_ID` and `APPLE_PASSWORD` (an app-specific password) in the environment, the updater key at `~/.tauri/kintsugi-updater.key`, and the Developer ID identity in your keychain:

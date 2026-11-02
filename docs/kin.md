@@ -147,7 +147,7 @@ failed replies stay in the log but are never sent back to the model.
 ## Memory and skills
 
 Modelled on Hermes Agent (KI-30). Code: `ai/memory.rs` (the store) and
-`ai/about.rs` (commands and the snapshot seam).
+`ai/about.rs` (commands and the `snapshot` function).
 
 ```
 .kintsugi/agent/
@@ -252,7 +252,7 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   running summary in `threads.json`; opening the chat on draft X shows X's
   thread, and the next turn sends X's summary and recent exchanges.
 - **Batching and interrupts.** Messages land in the log at once. Kin answers
-  after 1.2 s of quiet, every waiting message in one turn. A keystroke
+  1.2 s after the last message, every waiting message in one turn. A keystroke
   (`kin_chat_typing`, throttled) or a new message cancels the running turn;
   its partial reply is logged as interrupted, and its messages are answered
   by the next turn, 3.5 s after typing stops or 1.2 s after the next message.
@@ -267,7 +267,7 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   five-minute check allows), with only its brief plus the memory snapshot
   (`about::snapshot`) in the prefix, and no memory-writing tools. Chat turns
   take a fresh snapshot and can update memory like any conversation. A job running when the app quit is queued again on start. It
-  reports back quietly as a helper entry in the log (a dot on the avatar, no
+  reports back as a helper entry in the log (a dot on the avatar, no
   popup). Feed ranking and Ideas are meant to use this. Helpers get 16k
   output tokens per call (chat turns 4k): a batch of ideas is long, and a
   reasoning model's thinking counts against the same budget. Each run's step
@@ -313,8 +313,8 @@ Ideas opens from the sidebar or ⇧⌘E.
 - **App data, not the vault.** `<config>/kin/ideas/<vault key>/ideas.json`
   (rewritten atomically) and `signals.jsonl` (append-only): dismissed (with
   optional reasons), undismissed, a reason removed or restored, adopted,
-  discussed, refined, refine undone, and faded (unused for a week, a faint
-  no). The next brief reads the newest 40 back.
+  discussed, refined, refine undone, and faded (unused for a week, a weak
+  negative signal). The next brief reads the newest 40 back.
 - **Fading** is computed: fresh for three days, thinner until day seven,
   then "faded this week" until day fourteen. Unused ideas are deleted after
   30 days. Adopted ideas never fade. Headless runs can move the clock with
@@ -417,7 +417,7 @@ Code: `packages/editor/src/anchors.ts` (anchoring, pure) and `comments.ts`
   (reply, Resolve/Reopen, Stop while Kin is replying, Ask again after a
   failed or stopped reply), and a comments bar under the editor with counts,
   *Show resolved*, the review action and the detached threads. Kin's
-  messages carry KI-23's Kin gold (`--kin`, `--kin-ink` in `@kintsugi/ui`) and
+  messages carry KI-23's Kin accent colour (`--kin`, `--kin-ink` in `@kintsugi/ui`) and
   the placeholder avatar (the host's `kinMark`; KI-41 replaces it).
 - **References.** Any `[[link]]` or vault path in Kin's reply is a chip:
   drag it into the draft (the same drop as the reference margin), tap `+` to
@@ -482,7 +482,7 @@ pairing, and hides while typing. Screens say what they show with
 item being read, an open idea. Tapping the avatar opens the chat
 (`app/kin.tsx`) with those as removable chips.
 
-- **Offline, honestly.** Messages are written to a queue on the phone first
+- **Offline.** Messages are written to a queue on the phone first
   (`lib/kin.ts`, with a UUID each) and sent in order when the Mac answers.
   While it doesn't, the chat says "Kin runs on your Mac, which isn't
   reachable", each waiting message says "Waiting for your Mac", and they go
