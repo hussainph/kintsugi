@@ -74,7 +74,7 @@ jobs:
       - name: DIAGNOSTIC (temporary) Vision helper on the runner
         run: |
           xcrun swiftc -O -parse-as-library crates/ingest/swift/vision.swift -o "$RUNNER_TEMP/kintsugi-vision"
-          "$RUNNER_TEMP/kintsugi-vision" crates/ingest/fixtures/image/seams.png; echo "exit $?"
+          "$RUNNER_TEMP/kintsugi-vision" crates/ingest/fixtures/image/seams.png && echo "exit 0" || echo "exit $?"
       - run: cargo test --workspace --locked --no-fail-fast -j $VOLLI_CONCURRENCY_HINT
       - run: cargo fmt --all --check
 
