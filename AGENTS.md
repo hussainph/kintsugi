@@ -20,6 +20,13 @@ ghostwrites: prose is his, apart from edits he explicitly asks for.
 - Product and contracts: `README.md`, `docs/vision.md`, `docs/inspiration.md`, `docs/feed.md`, `docs/publishing.md`, `docs/export.md`
 - Phone app conventions: `apps/mobile/AGENTS.md`
 
+## UI copy and labels (owner rule, strict)
+
+Read `docs/voice.md` before writing any user-facing text. In short:
+
+- **No eyebrow text, anywhere.** That covers the Mac app, the phone, the editor, the Lab, exports and docs pages. An eyebrow is a small uppercase or letter-spaced label above or beside a heading, card or section. If a group needs a name, use a normal sentence-case heading. Usually it needs none.
+- **Write copy plainly.** Say what the thing is or does in ordinary words. No poetic, mindful or marketing tone, no taglines, and no gold, seam or craft metaphors. Kin talks like a sharp, direct friend.
+
 ## Git hosting
 
 - The repository lives on **GitHub**: `github.com/hussainph/kintsugi`
