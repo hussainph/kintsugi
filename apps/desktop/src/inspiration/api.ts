@@ -31,17 +31,7 @@ export const clips = {
   openFile: (path: string) => invoke<void>("clip_open_file", { path }),
 };
 
-export function clipLabel(clip: Pick<ClipSummary, "title" | "url" | "kind">) {
-  return clip.title || clip.url || ({ image: "An image", note: "A thought", quote: "A passage", document: "A PDF", book: "A book", podcast: "A podcast episode" }[clip.kind as "image" | "note" | "quote" | "document" | "book" | "podcast"] ?? "Untitled clip");
-}
-
-export function clipSite(clip: Pick<ClipSummary, "site" | "url" | "kind">) {
-  if (clip.site) return clip.site;
-  try {
-    if (clip.url) return new URL(clip.url).hostname.replace(/^www\./, "");
-  } catch { /* A hand-edited clip may have an invalid URL. */ }
-  return ({ note: "Your thought", image: "Saved image", document: "PDF", book: "Book", podcast: "Podcast" } as Record<string, string>)[clip.kind] ?? "Saved passage";
-}
+export { clipLabel, clipSite } from "@kintsugi/core/clips";
 
 /** The kind of saved file, for actions like "Open PDF". */
 export function clipFileLabel(clip: Pick<ClipSummary, "file" | "kind">): "PDF" | "book" | null {
@@ -49,10 +39,4 @@ export function clipFileLabel(clip: Pick<ClipSummary, "file" | "kind">): "PDF" |
   return /\.pdf$/i.test(clip.file) || (clip.kind === "document" && !/\.epub$/i.test(clip.file)) ? "PDF" : "book";
 }
 
-/** Never hand a file/javascript URL from hand-edited frontmatter to the opener. */
-export function sourceUrl(value: string | null): string | null {
-  try {
-    const url = new URL(value ?? "");
-    return ["https:", "http:"].includes(url.protocol) ? url.href : null;
-  } catch { return null; }
-}
+export { sourceUrl } from "@kintsugi/core/clips";

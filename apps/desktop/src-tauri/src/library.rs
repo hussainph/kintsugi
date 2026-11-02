@@ -361,13 +361,19 @@ pub async fn clip_image(vault: State<'_, Vault>, path: String) -> Result<tauri::
 }
 
 fn primary_image(root: &Path, path: &str) -> Result<Vec<u8>> {
+    primary_image_typed(root, path).map(|(bytes, _)| bytes)
+}
+
+/// A clip's primary image and its MIME type, with every check `clip_image`
+/// makes. The phone API serves thumbnails through this too.
+pub(crate) fn primary_image_typed(root: &Path, path: &str) -> Result<(Vec<u8>, &'static str)> {
     let root = root
         .canonicalize()
         .map_err(|_| "could not open library vault")?;
     let clip = vault::clip_read(&root, path)?;
     let image = clip.summary.image.ok_or("clip has no primary image")?;
     let target = vault::clip_media_path(&root, path, &image)?;
-    read_raster(&target).map(|(bytes, _)| bytes)
+    read_raster(&target)
 }
 
 fn extension_mime(path: &Path) -> Result<&'static str> {

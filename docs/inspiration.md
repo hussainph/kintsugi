@@ -196,8 +196,9 @@ description and publication details.
 ### Phone API
 
 Added to the server in `apps/desktop/src-tauri/src/phone/server.rs` and its
-client in `packages/core/src/remote.ts`; `hello` reports `api: 4` (4 added
-file captures).
+client in `packages/core/src/remote.ts`; `hello` reports `api: 5` (4 added
+file captures, 5 the phone's library: `/v1/inspiration`, clip images and
+sources, and note edits).
 
 - `POST /v1/clips`: `{ id?, url?, text?, note?, title?, image?: base64, imageType?,
   file?: base64, fileType?, fileName?, capturedAt, via }` → `{ path }` with
@@ -226,9 +227,33 @@ file captures).
 - `GET /v1/clip?path=…` → the summary fields plus `text` (own text, without
   frontmatter or source) and `hasSource`. Extracted source is kept on disk,
   not sent to the phone. Missing clips return 404; non-clip paths return 400.
+- `GET /v1/inspiration` (API 5) → every clip as `/v1/clip` returns it (the
+  summary fields, own `text`, `hasSource`) plus `version`, the
+  `kintsugi_vault::version` of `text`. The phone's offline copy, in
+  `/v1/clips` order; extracted sources stay on the Mac
+  (`clip_list_with_text`).
+- `GET /v1/clip/image?path=…` (API 5) → the clip's primary image bytes with
+  its `Content-Type`, through the same checks as the desktop's `clip_image`
+  (only a clip path; `inspiration/media/` containment, no symlinks,
+  signature-checked raster types, at most 15 MiB). A clip without a usable
+  image is 404, as is a missing clip; a non-clip path is 400.
+- `GET /v1/clip/source?path=…` (API 5) → `{ text }`: the whole extracted
+  source (`clip_full_source`), or null. Fetched when the writer asks for it,
+  never kept on the phone.
+- `PUT /v1/clip` (API 5) `{ path, note, base? }` → replaces the clip's own
+  text (as `clip_update`'s `note`) only if its version is still `base`:
+  `{ result: "saved", version, clip }` with 200, or 409 with
+  `{ result: "conflict", current: { text, version } }` and nothing written
+  (`clip_update_note`, under the clip's lock). Omitting `base` overwrites on
+  purpose. The saved `text` may be tidied (surrounding blank lines trimmed,
+  a reserved boundary comment escaped). Missing clips are 404, non-clip
+  paths 400; a save emits `clips:changed`.
 
 The shared types live in `@kintsugi/core/clips`. The remote client exposes
-`captureClip(capture)`, `clips()` and `clip(path)`. Non-OK replies throw the
+`captureClip(capture)`, `clips()` and `clip(path)`, and from API 5
+`inspiration()`, `clipSource(path)`, `writeClipNote(path, note, base)` and
+`clipImage(path)` (the URL and `Authorization` header, for a native download
+straight to disk). Non-OK replies throw the
 exported `HttpError` from `@kintsugi/core/remote`, carrying numeric `status`
 and the server's message in `message` (a safe fallback if none was supplied).
 `isPermanentCaptureStatus(status)` is true only for **400, 413 and 422**:
@@ -464,6 +489,35 @@ an existing scratch vault (see README). This mode never reads or persists the
 normal app config, requires the specified folder to exist, and skips starting
 enrichment and phone services. Capture receipts also stay under the scratch
 vault's hidden `.kintsugi/` folder. Release builds ignore the variable.
+
+## Library (phone)
+
+**Inspiration** on the phone's home screen opens a grid of the same cards,
+newest first, from the phone's own copy (`apps/mobile/src/app/inspiration.tsx`):
+
+- **Offline first.** `Inspiration` (`apps/mobile/src/lib/inspiration.ts`)
+  keeps every clip's summary and own text in the app's key-value store,
+  synced from `/v1/inspiration` whenever the home screen or the library
+  loads. Card images are downloaded once into the app's Documents folder
+  (`thumbnails.ts`, `thumbnail-store.ts`, expo-file-system, in Expo Go) and
+  again only when a clip's `image` changes; images of clips gone from the
+  Mac are deleted, and a clip the Mac has no image for isn't asked again.
+  The full source is fetched only when **Show the source** is tapped.
+  A Mac before API 5 lists cards without notes or images.
+- **Search** matches every word, case-insensitively, against title,
+  summary, tags (`#tag`), site, author, link, kind and own text. The source
+  isn't on the phone, so it isn't searched there.
+- **Detail** (`app/clip.tsx`): the image, site and author, title, the
+  source link and the passage's deep link, the machine summary (labelled),
+  the owner's notes, tags, and the source on demand.
+- **Notes** (`app/clip-notes.tsx`) open in the same editor as documents
+  (the shared CodeMirror editor when it's on, else the text field). Edits
+  save on the phone at once and go with `PUT /v1/clip`, checked against the
+  version they started from: edits to different places merge (`merge3`), a
+  true collision asks which to keep, and a clip removed on the Mac while
+  edited keeps the words until discarded.
+- **The card** lives in one file, `apps/mobile/src/components/ClipCard.tsx`
+  (the Mac's card today), so KI-21's chosen shape replaces it in one place.
 
 ## Referencing in writing
 

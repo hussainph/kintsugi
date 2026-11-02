@@ -511,6 +511,13 @@ pub fn clip_read(root: &Path, path: &str) -> Result<Clip> {
 /// Newest first, with stable path ordering for equal capture times. A malformed
 /// file edited outside Kintsugi must not hide the rest of the library.
 pub fn clip_list(root: &Path) -> Result<Vec<ClipSummary>> {
+    Ok(clip_list_with_text(root)?.into_iter().map(|clip| clip.summary).collect())
+}
+
+/// Every clip with its own text, in [`clip_list`] order: the phone's offline
+/// copy of the library (cards, search and the owner's notes). The extracted
+/// source is read but never serialized.
+pub fn clip_list_with_text(root: &Path) -> Result<Vec<Clip>> {
     let dir = contained(root, Path::new(INSPIRATION))?;
     if !dir.exists() {
         return Ok(Vec::new());
@@ -526,13 +533,14 @@ pub fn clip_list(root: &Path) -> Result<Vec<ClipSummary>> {
             continue;
         }
         if let Ok(clip) = clip_read(root, &relative(root, &entry.path())) {
-            clips.push(clip.summary);
+            clips.push(clip);
         }
     }
     clips.sort_by(|a, b| {
-        b.captured
-            .cmp(&a.captured)
-            .then_with(|| a.path.cmp(&b.path))
+        b.summary
+            .captured
+            .cmp(&a.summary.captured)
+            .then_with(|| a.summary.path.cmp(&b.summary.path))
     });
     Ok(clips)
 }
@@ -968,6 +976,33 @@ pub fn clip_update(root: &Path, path: &str, patch: &ClipUpdate) -> Result<Clip> 
     let lock = clip_lock(root, path)?;
     let _guard = lock.lock().map_err(|_| "clip storage unavailable")?;
     update(root, path, patch)
+}
+
+/// The outcome of a version-checked note edit.
+#[derive(Debug)]
+pub enum NoteWrite {
+    /// Saved; the clip as it is now.
+    Saved(Clip),
+    /// The own text changed since `base`; nothing was written.
+    Conflict(Clip),
+}
+
+/// Replaces the clip's own text only if it is still the one the writer read
+/// (`base` is [`crate::version`] of [`Clip::text`]), so an edit made offline on
+/// the phone never silently overwrites one made on the Mac meanwhile. `None`
+/// overwrites on purpose. The check and the write share the clip's lock.
+pub fn clip_update_note(root: &Path, path: &str, note: &str, base: Option<&str>) -> Result<NoteWrite> {
+    let lock = clip_lock(root, path)?;
+    let _guard = lock.lock().map_err(|_| "clip storage unavailable")?;
+    let current = clip_read(root, path)?;
+    if base.is_some_and(|base| base != crate::version(&current.text)) {
+        return Ok(NoteWrite::Conflict(current));
+    }
+    if current.text == note.trim_matches(['\r', '\n']) {
+        return Ok(NoteWrite::Saved(current));
+    }
+    let patch = ClipUpdate { note: Some(note.to_string()), ..Default::default() };
+    update(root, path, &patch).map(NoteWrite::Saved)
 }
 
 /// Applies a worker's result without replacing a title that is already known

@@ -1037,3 +1037,33 @@ fn open_library_links_are_books() {
     assert_eq!(clip_guess_kind(Some("https://openlibrary.org/isbn/9780140328721"), None, false), ClipKind::Book);
     assert_eq!(clip_guess_kind(Some("https://openlibrary.org.evil.test/works/OL1W"), None, false), ClipKind::Link);
 }
+
+#[test]
+fn note_edits_are_version_checked_and_keep_the_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let path = clip_create(root, &capture("First thought")).unwrap();
+    clip_update(root, &path, &ClipUpdate { source: Some("Readable source".into()), ..Default::default() }).unwrap();
+    let read = clip_read(root, &path).unwrap();
+    let base = crate::version(&read.text);
+
+    let NoteWrite::Saved(saved) = clip_update_note(root, &path, "Second thought\n", Some(&base)).unwrap() else {
+        panic!("expected a save");
+    };
+    assert_eq!(saved.text, "Second thought");
+    assert_eq!(saved.source.as_deref(), Some("Readable source"));
+
+    // The phone's base is now stale: nothing is written, and it gets the Mac's copy.
+    let NoteWrite::Conflict(current) = clip_update_note(root, &path, "Offline thought", Some(&base)).unwrap() else {
+        panic!("expected a conflict");
+    };
+    assert_eq!(current.text, "Second thought");
+    assert_eq!(clip_read(root, &path).unwrap().text, "Second thought");
+
+    // Saving the text that is already there is a no-op save, whatever the base.
+    assert!(matches!(clip_update_note(root, &path, "Second thought", None).unwrap(), NoteWrite::Saved(_)));
+    let listed = clip_list_with_text(root).unwrap();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].text, "Second thought");
+    assert!(clip_update_note(root, "drafts/x.md", "x", None).is_err());
+}
