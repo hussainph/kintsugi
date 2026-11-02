@@ -28,11 +28,11 @@ export function Welcome() {
       contentContainerStyle={styles.content}
     >
       <Stack.Title large>Kintsugi</Stack.Title>
-      <Text style={[styles.step, { color: theme.muted }]}>On your Mac, click Connect your phone and scan the code.</Text>
+      <Text style={[styles.lead, { color: theme.text }]}>On your Mac, click Connect your phone and scan the code.</Text>
       <Pressable onPress={paste} style={[styles.button, { backgroundColor: theme.primary }]}>
         <Text style={[styles.buttonText, { color: theme.onPrimary }]}>Paste pairing link</Text>
       </Pressable>
-      {error && <Text style={[styles.step, { color: theme.danger }]}>{error}</Text>}
+      {error && <Text style={[styles.error, { color: theme.danger }]}>{error}</Text>}
       {__DEV__ && (
         // KI-36: try the new editor in Expo Go without a Mac. The notes stay
         // on this phone and go when you unpair (Home → ⋯ → Unpair).
@@ -46,7 +46,8 @@ export function Welcome() {
 
 const styles = StyleSheet.create({
   content: { padding: 20, gap: 12 },
-  step: { fontSize: 15, lineHeight: 21 },
+  lead: { fontSize: 17, lineHeight: 23 },
+  error: { fontSize: 15, lineHeight: 21 },
   button: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, marginTop: 4 },
   buttonText: { fontSize: 16, fontWeight: '600' },
   secondary: { borderWidth: 1 },
