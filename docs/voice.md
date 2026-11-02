@@ -1,6 +1,6 @@
 # Voice
 
-This is the owner's rule for every word Kintsugi shows: Mac app, phone app, editor, Lab, exports, Kin's replies, and these docs. The writing rules come from the `product-docs` skill (`~/.agents/skills/product-docs/references/voice.md`). Read it before you write copy.
+This is the owner's rule for every word Kintsugi shows: Mac app, phone app, editor, exports, Kin's replies, and these docs. The writing rules come from the `product-docs` skill (`~/.agents/skills/product-docs/references/voice.md`). Read it before you write copy.
 
 ## No eyebrow text
 

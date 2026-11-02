@@ -104,8 +104,8 @@ share sheet, the Mac, a pasted link, a dropped file.
   saved, readable source text for Kin, and his own words.
 - The direction is **bite-sized**: a tweet-sized card, with his thoughts as
   a thread of short dated notes rather than one long note, and the summary
-  and full source one tap away. The exact shape is being explored in the Lab
-  against real ingestions before the file format changes.
+  and full source one tap away. The owner designs the exact shape in Paper
+  before the file format changes.
 - Each clip shows where it's been referenced in his writing.
 - Anything machine-made on a card (summary, transcript excerpt) is labelled.
   Quotes are direct, not paraphrased, and link back to the passage or
@@ -130,7 +130,7 @@ adapters turn anything into clean Markdown with metadata and media.
 Kin is the agent. It reads everything Hussain collects and writes, the same
 way he does, and helps. It never writes his prose. It has no "Muse"-style
 persona: it's called Kin ("your Kin"), and its look is something he
-customizes (explored in the Lab).
+customizes (designed in Paper).
 
 ### Present everywhere
 
