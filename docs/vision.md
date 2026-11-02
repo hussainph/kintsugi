@@ -8,6 +8,8 @@ place, and he saves the things worth keeping. An agent, **Kin**, reads all of it
 alongside him and helps turn it into finished pieces, without writing them
 for him.
 
+Kintsugi is the Japanese art of mending broken pottery with gold. Here the pieces are fragments of inspiration, and the gold is what connects them. <!-- copy-lint-allow: the owner keeps the name's origin -->
+
 This document holds the product's shape and direction, as decided with the owner on
 2026-11-01. Contracts for built parts live beside it (`docs/writing.md`, `docs/inspiration.md`,
 `docs/ingest.md`, `docs/feed.md`, `docs/ranking.md`).
