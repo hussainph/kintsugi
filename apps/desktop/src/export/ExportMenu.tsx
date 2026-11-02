@@ -14,7 +14,7 @@ export function ExportMenu({ mirror }: { mirror: boolean }) {
   return (
     <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) exporting.settings().then(setSettings, (e) => toast.error(String(e))); }}>
       <PopoverTrigger asChild>
-        <button className="hover:text-foreground" title="Export (⌥⌘E)">Export…</button>
+        <button className="ki-footer-action" title="Export (⌥⌘E)">Export…</button>
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-64 p-1.5" aria-label="Export to">
         <div className="export-menu" role="menu">

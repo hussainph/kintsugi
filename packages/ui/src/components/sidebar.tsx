@@ -509,7 +509,7 @@ function SidebarMenuButton({
       data-slot="sidebar-menu-button"
       data-sidebar="menu-button"
       data-size={size}
-      data-active={isActive ? "" : undefined}
+      data-active={isActive ? "true" : undefined}
       className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
       {...props}
     />
@@ -671,7 +671,7 @@ function SidebarMenuSubButton({
       data-slot="sidebar-menu-sub-button"
       data-sidebar="menu-sub-button"
       data-size={size}
-      data-active={isActive ? "" : undefined}
+      data-active={isActive ? "true" : undefined}
       className={cn(
         "ui-part ui-option ki-sidebar-link flex min-w-0 justify-start overflow-hidden outline-none group-data-[collapsible=icon]:hidden disabled:pointer-events-none aria-disabled:pointer-events-none data-[size=sm]:text-(length:--size-xs) [&>span:last-child]:truncate [&>svg]:size-[1em] [&>svg]:shrink-0",
         className

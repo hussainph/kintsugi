@@ -96,10 +96,7 @@ export function Sidebar(props: Props) {
     const dir = entry.kind === "folder" ? entry.path : parentDir(entry.path);
     return (
       <ContextMenu>
-        <Tooltip>
-          <TooltipTrigger asChild><ContextMenuTrigger asChild>{row}</ContextMenuTrigger></TooltipTrigger>
-          <TooltipContent side="right">{entry.path}</TooltipContent>
-        </Tooltip>
+        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
         <ContextMenuContent className="w-52">
           <ContextMenuItem onSelect={() => props.onNewDoc(dir)}>
             New document<ContextMenuShortcut>⌘N</ContextMenuShortcut>
@@ -135,6 +132,7 @@ export function Sidebar(props: Props) {
                   onClick={() => props.onOpen(entry.path)}
                   onDoubleClick={() => setRenaming(entry.path)}
                   onKeyDown={keys(entry.path)}
+                  title={entry.path}
                 >
                   <FileText />
                   <span className="truncate">{displayName(entry)}</span>
@@ -180,21 +178,21 @@ export function Sidebar(props: Props) {
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} tooltip="Feed (⇧⌘F)">
+              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} title="Feed (⇧⌘F)">
                 <Rss />
                 <span>Feed</span>
                 <span className="ki-data ki-muted ml-auto">⇧⌘F</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} tooltip="Inspiration (⇧⌘I)">
+              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} title="Inspiration (⇧⌘I)">
                 <Bookmark />
                 <span>Inspiration</span>
                 <span className="ki-data ml-auto ki-muted">⇧⌘I</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} tooltip="Ideas from Kin (⇧⌘E)">
+              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} title="Ideas from Kin (⇧⌘E)">
                 <Lightbulb />
                 <span>Ideas</span>
                 <span className="ki-data ki-muted ml-auto">⇧⌘E</span>
@@ -239,13 +237,13 @@ export function Sidebar(props: Props) {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm" onClick={openAboutYou} tooltip="What Kin remembers about you">
+            <SidebarMenuButton size="sm" onClick={openAboutYou} title="What Kin remembers about you">
               <UserRound />
               <span>About you</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm" onClick={openSettings} tooltip="Settings (⌘,)">
+            <SidebarMenuButton size="sm" onClick={openSettings} title="Settings (⌘,)">
               <Settings />
               <span>Settings</span>
             </SidebarMenuButton>
