@@ -4,6 +4,13 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
+// Metro's transform cache lives in the machine-wide $TMPDIR/metro-cache and is
+// keyed by project-relative paths, so every checkout of this repo (main and
+// each worktree) shares entries. A cached transform of a "use dom" file carries
+// its absolute path, which then sent another checkout's export to the wrong
+// file (KI-53). Keying the cache by this checkout keeps each one separate.
+config.cacheVersion = `${config.cacheVersion ?? ''}:${__dirname}`;
+
 // Workspace packages (packages/editor) carry their own React devDependency,
 // which pnpm may resolve to a different patch than the app's. Two Reacts in
 // one bundle break hooks, so every import of these resolves from the app.
