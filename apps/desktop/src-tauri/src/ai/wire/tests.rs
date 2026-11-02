@@ -538,3 +538,18 @@ fn copilot_and_catalog_headers_are_sent() {
     assert!(head.contains("openai-intent: conversation-edits"));
     assert!(head.contains("authorization: bearer gho-token"));
 }
+
+#[test]
+fn a_copilot_login_names_its_own_api_host() {
+    let token = "tid=abc;exp=1800000000;proxy-ep=proxy.business.githubcopilot.com;st=dotcom";
+    assert_eq!(
+        copilot_base(token).as_deref(),
+        Some("https://api.business.githubcopilot.com")
+    );
+    let copilot = super::provider("github-copilot").unwrap();
+    let endpoint = Endpoint::new(copilot, "kimi-k3", Some(Auth::ApiKey(token.into())));
+    assert_eq!(endpoint.route.base_url, "https://api.business.githubcopilot.com");
+    // A token from the environment keeps the catalog's host.
+    let endpoint = Endpoint::new(copilot, "kimi-k3", Some(Auth::ApiKey("gho_plain".into())));
+    assert_eq!(endpoint.route.base_url, "https://api.individual.githubcopilot.com");
+}
