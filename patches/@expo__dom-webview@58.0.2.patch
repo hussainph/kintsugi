@@ -1,0 +1,55 @@
+diff --git a/build/DomWebView.js b/build/DomWebView.js
+index 9c61f8347f7bd96b51b5277df3e8bf3073aebc3f..da6c550ee53b4d168ca3983784cd7dca3622ca06 100644
+--- a/build/DomWebView.js
++++ b/build/DomWebView.js
+@@ -5,11 +5,20 @@ import { Image, View } from 'react-native';
+ import { webviewStyles } from './styles';
+ const { resolveAssetSource } = Image;
+ const NativeWebView = requireNativeViewManager('ExpoDomWebViewModule');
++// Kintsugi (KI-36): the DOM wrapper sends props from an effect that can run
++// before Fabric has mounted the native view, which rejected with "Unable to
++// find the 'DomWebView' view with tag" (a dev-overlay error; the props are
++// sent again on DOM_READY). Try once more after a frame, then let it go.
++function inject(viewRef, script) {
++  const attempt = () => viewRef.current?.injectJavaScript(script);
++  attempt()?.catch(() => requestAnimationFrame(() => void attempt()?.catch(() => {})));
++}
++
+ const WebView = /*#__PURE__*/ React.forwardRef(({ containerStyle, style, injectedJavaScriptObject, ...props }, ref)=>{
+     const viewRef = React.useRef(null);
+     React.useImperativeHandle(ref, ()=>({
+             scrollTo: (params)=>viewRef.current?.scrollTo(params),
+-            injectJavaScript: (script)=>viewRef.current?.injectJavaScript(script),
++            injectJavaScript: (script)=>inject(viewRef, script),
+             reload: ()=>viewRef.current?.reload()
+         }), []);
+     const webViewStyles = [
+diff --git a/src/DomWebView.tsx b/src/DomWebView.tsx
+index 3a07ac938325385dc7e314f0e6d557068bc6f622..16dbb855a093a6670f2063524f0b3db522927f06 100644
+--- a/src/DomWebView.tsx
++++ b/src/DomWebView.tsx
+@@ -15,6 +15,15 @@ const NativeWebView: React.ComponentType<
+   React.PropsWithoutRef<NativeWebViewProps> & React.RefAttributes<DomWebViewRef>
+ > = requireNativeViewManager('ExpoDomWebViewModule');
+ 
++// Kintsugi (KI-36): the DOM wrapper sends props from an effect that can run
++// before Fabric has mounted the native view, which rejected with "Unable to
++// find the 'DomWebView' view with tag" (a dev-overlay error; the props are
++// sent again on DOM_READY). Try once more after a frame, then let it go.
++function inject(viewRef: React.RefObject<DomWebViewRef | null>, script: string) {
++  const attempt = () => viewRef.current?.injectJavaScript(script) as unknown as Promise<void> | undefined;
++  attempt()?.catch(() => requestAnimationFrame(() => void attempt()?.catch(() => {})));
++}
++
+ const WebView = React.forwardRef<DomWebViewRef, DomWebViewProps>(
+   ({ containerStyle, style, injectedJavaScriptObject, ...props }, ref) => {
+     const viewRef = React.useRef<DomWebViewRef>(null);
+@@ -23,7 +32,7 @@ const WebView = React.forwardRef<DomWebViewRef, DomWebViewProps>(
+       ref,
+       () => ({
+         scrollTo: (params) => viewRef.current?.scrollTo(params),
+-        injectJavaScript: (script: string) => viewRef.current?.injectJavaScript(script),
++        injectJavaScript: (script: string) => inject(viewRef, script),
+         reload: () => viewRef.current?.reload(),
+       }),
+       []

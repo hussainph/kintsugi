@@ -4,7 +4,7 @@ import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { syntaxHighlighting } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
 import { search, searchKeymap } from "@codemirror/search";
-import { EditorSelection, EditorState, Transaction } from "@codemirror/state";
+import { EditorSelection, EditorState, Transaction, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { RefObject, useEffect, useRef } from "react";
 import { frontmatter } from "@kintsugi/core/frontmatter";
@@ -26,8 +26,10 @@ export type External = { path: string; text: string; seq: number };
 type Props = {
   path: string;
   text: string;
-  /** `external` is true when the change came in through the `external` prop. */
-  onChange: (path: string, text: string, external: boolean) => void;
+  /** `external` is true when the change came in through the `external` prop.
+   *  Each call reads the whole document; leave it out to read the text on
+   *  your own schedule from `viewRef` instead (the phone does). */
+  onChange?: (path: string, text: string, external: boolean) => void;
   external?: External | null;
   viewRef: RefObject<EditorView | null>;
   references?: References;
@@ -37,11 +39,16 @@ type Props = {
   commands?: Commands;
   /** Kin's comment threads on this document's paragraphs (KI-38). */
   comments?: Comments;
+  /** Added to each document's state when it is first opened, such as the
+   *  phone's keyboard settings. */
+  extensions?: Extension;
+  /** Focus the editor when a document opens (default true). */
+  focusOnOpen?: boolean;
 };
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, readOnly = false }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
@@ -53,6 +60,8 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
   commandsRef.current = commands;
   const commentsRef = useRef(comments);
   commentsRef.current = comments;
+  const extensionsRef = useRef(extensions);
+  extensionsRef.current = extensions;
 
   const create = (docPath: string, doc: string) =>
     EditorState.create({
@@ -75,10 +84,11 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         commentExtensions(() => commentsRef.current && { ...commentsRef.current, currentPath: docPath }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
-          if (!update.docChanged) return;
+          if (!update.docChanged || !onChangeRef.current) return;
           const fromElsewhere = update.transactions.some((tr) => tr.annotation(Transaction.remote));
           onChangeRef.current(docPath, update.state.doc.toString(), fromElsewhere);
         }),
+        extensionsRef.current,
       ],
     });
 
@@ -100,7 +110,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
     current.current = path;
     view.dispatch({ effects: refreshReferences.of(null) });
     referencesRef.current?.onParagraph?.(currentParagraph(view.state));
-    view.focus();
+    if (focusOnOpen) view.focus();
     // `text` only seeds a document the first time it is opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path]);

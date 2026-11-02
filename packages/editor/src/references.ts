@@ -1,8 +1,7 @@
 import { isolateHistory } from "@codemirror/commands";
-import { EditorSelection, EditorState, Prec, StateEffect, StateField, type Extension } from "@codemirror/state";
+import { EditorSelection, EditorState, Prec, RangeSetBuilder, StateEffect, StateField, type Extension, type Text, type Transaction } from "@codemirror/state";
 import { Decoration, EditorView, hoverTooltip, keymap, showTooltip, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view";
-import { attributedQuote, isReferenceContext, linkFor, parseWikilinks, resolveReference, searchReferences, type ReferenceSource, type Wikilink } from "@kintsugi/core/references";
-import { splitFrontmatter } from "@kintsugi/core/frontmatter";
+import { attributedQuote, ignoredSpans, isReferenceContext, linkFor, outside, resolveReference, searchReferences, wikilinksIn, yamlEnd, type ReferenceSource, type Span, type Wikilink } from "@kintsugi/core/references";
 import { element, hint, menuTheme, reveal } from "./menu.ts";
 
 /** Where Kin is asked in: the paragraph under the cursor once `@Kin` is gone
@@ -59,6 +58,81 @@ function pickerResults(sources: ReferenceSource[], query: string) {
   return [...documents.filter(titled), ...clips.filter(titled), ...documents.filter((s) => !titled(s)), ...clips.filter((s) => !titled(s))];
 }
 
+/** Where the document's links are, and which regions can't hold one
+ *  (YAML, code, comments): what `parseWikilinks` and `isReferenceContext`
+ *  would say about the whole text. Kept up to date per change without
+ *  re-reading the document, so typing in a long one stays cheap. */
+type ReferenceIndex = { yaml: number; ignored: Span[]; links: Wikilink[] };
+
+function indexText(text: string): ReferenceIndex {
+  const ignored = ignoredSpans(text);
+  return { yaml: yamlEnd(text), ignored, links: wikilinksIn(text, 0, ignored) };
+}
+
+// Characters that can open or close an ignored region (fences, inline code,
+// comments, escapes, block quotes around a fence) or change line endings.
+const structural = /[`~\\<>\r\uFEFF]/;
+
+/** The index after `tr`, or null when the change could move an ignored
+ *  region and the document has to be read again. A change elsewhere moves
+ *  the regions without changing them, and only the lines it touched can
+ *  gain or lose links. */
+export function updateIndex(index: ReferenceIndex, tr: Pick<Transaction, "changes" | "startState" | "newDoc">): ReferenceIndex | null {
+  const before = tr.startState.doc;
+  const after = tr.newDoc;
+  const touched: Span[] = [];
+  let local = true;
+  tr.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+    if (!local) return;
+    const first = before.lineAt(fromA);
+    // The first line can start YAML, and the YAML's lines can end it.
+    if (first.number === 1 || fromA <= index.yaml) return void (local = false);
+    if (structural.test(before.sliceString(first.from, before.lineAt(toA).to)) || structural.test(inserted.toString())) return void (local = false);
+    const from = after.lineAt(fromB).from;
+    const to = after.lineAt(toB).to;
+    const last = touched[touched.length - 1];
+    if (last && from <= last.to) last.to = Math.max(last.to, to);
+    else touched.push({ from, to });
+  });
+  if (!local) return null;
+  // An unclosed fence or comment runs on to the end, and keeps doing so.
+  const ignored = index.ignored.map((span) => ({ from: tr.changes.mapPos(span.from, 1), to: tr.changes.mapPos(span.to, span.to === before.length ? 1 : -1) }));
+  const links: Wikilink[] = [];
+  let next = 0;
+  const kept = index.links.map((link) => ({ ...link, from: tr.changes.mapPos(link.from, 1), to: tr.changes.mapPos(link.to, -1) }));
+  for (const range of touched) {
+    while (next < kept.length && kept[next].from < range.from) links.push(kept[next++]);
+    while (next < kept.length && kept[next].from <= range.to) next++;
+    links.push(...wikilinksIn(after.sliceString(range.from, range.to), range.from, ignored));
+  }
+  while (next < kept.length) links.push(kept[next++]);
+  return { yaml: index.yaml, ignored, links };
+}
+
+export const referenceIndex = StateField.define<ReferenceIndex>({
+  create: (state) => indexText(state.doc.toString()),
+  update: (index, tr) => (tr.docChanged ? updateIndex(index, tr) ?? indexText(tr.newDoc.toString()) : index),
+});
+
+/** The link at `pos`, if any. */
+function linkAt(links: readonly Wikilink[], pos: number): Wikilink | undefined {
+  const link = links[firstLinkFrom(links, pos)];
+  return link && link.from <= pos ? link : undefined;
+}
+
+/** Index of the first link ending at or after `pos`. Links are sorted and
+ *  don't overlap. */
+function firstLinkFrom(links: readonly Wikilink[], pos: number): number {
+  let lo = 0;
+  let hi = links.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (links[mid].to < pos) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
 function pickerAt(state: EditorState, config: References | undefined): Picker | null {
   if (!config || !state.selection.main.empty) return null;
   const head = state.selection.main.head;
@@ -68,7 +142,7 @@ function pickerAt(state: EditorState, config: References | undefined): Picker | 
   if (!match) return mentionAt(state, config, line.from, before);
   const from = line.from + match.index;
   const prefix = before.slice(0, match.index);
-  if ((prefix.match(/\\+$/)?.[0].length ?? 0) % 2 || !isReferenceContext(state.doc.toString(), from)) return null;
+  if ((prefix.match(/\\+$/)?.[0].length ?? 0) % 2 || !inReferenceContext(state, from)) return null;
   // Editing a complete link replaces the entire target, not just its prefix.
   const tail = state.sliceDoc(head, line.to);
   const closing = /^[^\[\]]*\]\]/.exec(tail);
@@ -86,7 +160,7 @@ function mentionAt(state: EditorState, config: References, lineFrom: number, bef
   const match = /(?:^|[\s([{"'“‘])@([^\s@\[\]|#][^@\[\]\n|#]{0,39})?$/u.exec(before);
   if (!match) return null;
   const from = lineFrom + match.index + match[0].indexOf("@");
-  if (!isReferenceContext(state.doc.toString(), from) || state.field(dismissedField, false) === from) return null;
+  if (!inReferenceContext(state, from) || state.field(dismissedField, false) === from) return null;
   const query = match[1] ?? "";
   const results = localResults(query, config);
   const kin = !!config.onKin && "kin".startsWith(query.toLocaleLowerCase());
@@ -314,32 +388,50 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
     destroy() { clearTimeout(this.timer); this.sequence++; }
   });
 
+  // Chips only for the lines on screen, so the work per keystroke doesn't
+  // grow with the document. Resolving a target is cached until the sources change.
   const chips = ViewPlugin.fromClass(class {
-    links: Wikilink[];
     decorations: DecorationSet;
+    sources: readonly ReferenceSource[] | null = null;
+    resolved = new Map<string, ReferenceSource | null>();
     constructor(view: EditorView) {
-      this.links = parseWikilinks(view.state.doc.toString());
       this.decorations = this.build(view);
+    }
+    resolve(target: string, sources: readonly ReferenceSource[]) {
+      if (sources !== this.sources) {
+        this.sources = sources;
+        this.resolved.clear();
+      }
+      let source = this.resolved.get(target);
+      if (source === undefined) this.resolved.set(target, (source = resolveReference(target, sources)));
+      return source;
     }
     build(view: EditorView): DecorationSet {
       const config = getConfig();
       if (!config) return Decoration.none;
-      return Decoration.set(this.links.flatMap((link) => {
-        if (view.state.selection.ranges.some((range) => range.from <= link.to && range.to >= link.from)) return [];
-        const source = resolveReference(link.target, config.sources);
-        return [Decoration.replace({ widget: new ReferenceChip(link, source) }).range(link.from, link.to)];
-      }));
+      const { links } = view.state.field(referenceIndex);
+      const ranges = view.state.selection.ranges;
+      const builder = new RangeSetBuilder<Decoration>();
+      let i = 0;
+      for (const visible of view.visibleRanges) {
+        i = Math.max(i, firstLinkFrom(links, visible.from));
+        for (; i < links.length && links[i].from <= visible.to; i++) {
+          const link = links[i];
+          if (ranges.some((range) => range.from <= link.to && range.to >= link.from)) continue;
+          builder.add(link.from, link.to, Decoration.replace({ widget: new ReferenceChip(link, this.resolve(link.target, config.sources)) }));
+        }
+      }
+      return builder.finish();
     }
     update(update: ViewUpdate) {
-      if (update.docChanged) this.links = parseWikilinks(update.state.doc.toString());
-      if (update.docChanged || update.selectionSet || update.transactions.some((tr) => tr.effects.some((effect) => effect.is(refreshReferences)))) this.decorations = this.build(update.view);
+      if (update.docChanged || update.selectionSet || update.viewportChanged || update.transactions.some((tr) => tr.effects.some((effect) => effect.is(refreshReferences)))) this.decorations = this.build(update.view);
     }
   }, { decorations: (plugin) => plugin.decorations });
 
   const hover = hoverTooltip((view, pos) => {
     const config = getConfig();
     if (!config || view.state.field(pickerField)) return null;
-    const link = view.plugin(chips)?.links.find((link) => pos >= link.from && pos <= link.to);
+    const link = linkAt(view.state.field(referenceIndex).links, pos);
     if (!link) return null;
     const source = resolveReference(link.target, config.sources);
     return {
@@ -388,7 +480,7 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
   }
 
   return [
-    dismissedField, pickerField, asyncSearch, chips, hover,
+    referenceIndex, dismissedField, pickerField, asyncSearch, chips, hover,
     Prec.highest(keymap.of([
       { key: "ArrowDown", run: (view) => move(view, 1) },
       { key: "ArrowUp", run: (view) => move(view, -1) },
@@ -402,7 +494,7 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
         const chip = (event.target as HTMLElement).closest<HTMLElement>("[data-reference-from]");
         const position = chip ? Number(chip.dataset.referenceFrom) : view.posAtCoords({ x: event.clientX, y: event.clientY });
         if (position == null || !getConfig()) return false;
-        const link = view.plugin(chips)?.links.find((link) => position >= link.from && position <= link.to);
+        const link = linkAt(view.state.field(referenceIndex).links, position);
         if (!link) return false;
         if (event.metaKey || event.ctrlKey) {
           const source = resolveReference(link.target, getConfig()!.sources);
@@ -452,9 +544,8 @@ export function currentParagraph(state: EditorState): string {
  *  surrounding whitespace; null on a blank line, in YAML or code. */
 export function paragraphRange(state: EditorState, pos = state.selection.main.head): { from: number; to: number } | null {
   const line = state.doc.lineAt(pos);
-  const text = state.doc.toString();
-  if (!isReferenceContext(text, pos) || !line.text.trim()) return null;
-  const bodyStart = splitFrontmatter(text).head.length;
+  if (!inReferenceContext(state, pos) || !line.text.trim()) return null;
+  const bodyStart = headLength(state.doc);
   const boundary = (text: string) => !text.trim() || /^ {0,3}(?:>\s*)*(`{3,}|~{3,})/.test(text);
   let first = line.number;
   let last = line.number;
@@ -462,8 +553,8 @@ export function paragraphRange(state: EditorState, pos = state.selection.main.he
   while (last < state.doc.lines && !boundary(state.doc.line(last + 1).text)) last++;
   let from = state.doc.line(first).from;
   let to = state.doc.line(last).to;
-  while (from < to && /\s/.test(text[from])) from++;
-  while (to > from && /\s/.test(text[to - 1])) to--;
+  while (from < to && /\s/.test(state.sliceDoc(from, from + 1))) from++;
+  while (to > from && /\s/.test(state.sliceDoc(to - 1, to))) to--;
   return from < to ? { from, to } : null;
 }
 
@@ -476,6 +567,24 @@ export function paragraphNear(state: EditorState, pos = state.selection.main.hea
     if (line.text.trim()) return paragraphRange(state, line.from);
   }
   return null;
+}
+
+/** `isReferenceContext` from the index, without reading the document. */
+function inReferenceContext(state: EditorState, pos: number): boolean {
+  const index = state.field(referenceIndex, false);
+  return index ? outside(index.ignored, pos) : isReferenceContext(state.doc.toString(), pos);
+}
+
+/** `splitFrontmatter(text).head.length`, reading only the frontmatter's lines. */
+function headLength(doc: Text): number {
+  if (doc.line(1).text.replace(/\r$/, "").trimEnd() !== "---") return 0;
+  for (let n = 2; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    if (line.text.replace(/\r$/, "").trimEnd() !== "---") continue;
+    if (n === doc.lines) return doc.length;
+    return doc.sliceString(line.to + 1, line.to + 2) === "\n" ? line.to + 2 : line.to + 1;
+  }
+  return 0;
 }
 
 const referenceTheme = EditorView.theme({

@@ -11,6 +11,7 @@ import { library, useLibrary } from '@/lib/documents';
 import { unsent } from '@/lib/library';
 import { capture, heldForMacUpdate, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
 import { usePairing } from '@/lib/pairing';
+import { setNewEditor, useNewEditor } from '@/lib/settings';
 import { fonts, useTheme } from '@/theme';
 
 /** Open where the owner left off, once per launch. */
@@ -42,6 +43,7 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
   const [saving, setSaving] = useState(false);
   const captureDraft = useRef<{ text: string; id: string } | null>(null);
   const [query, setQuery] = useState('');
+  const newEditor = useNewEditor();
 
   const fail = useCallback(
     (e: unknown) => {
@@ -152,6 +154,14 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon="square.and.pencil" accessibilityLabel="New note" onPress={newNote} />
         <Stack.Toolbar.Menu icon="ellipsis.circle">
+          <Stack.Toolbar.MenuAction
+            icon="character.cursor.ibeam"
+            isOn={newEditor}
+            subtitle="The Mac’s editor, being tried out"
+            onPress={() => setNewEditor(!newEditor)}
+          >
+            New editor
+          </Stack.Toolbar.MenuAction>
           <Stack.Toolbar.MenuAction
             icon="iphone.slash"
             destructive

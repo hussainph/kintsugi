@@ -4,12 +4,15 @@ import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
+import { usePairing } from '@/lib/pairing';
+import { startSample } from '@/lib/sample';
 import { fonts, useTheme } from '@/theme';
 
 /** Before pairing: how to connect to the Mac. */
 export function Welcome() {
   const theme = useTheme();
   const [error, setError] = useState<string | null>(null);
+  const { pair } = usePairing();
 
   const paste = async () => {
     const pairing = parsePairLink(await Clipboard.getStringAsync());
@@ -39,6 +42,13 @@ export function Welcome() {
         <Text style={[styles.buttonText, { color: theme.onPrimary }]}>Paste pairing link</Text>
       </Pressable>
       {error && <Text style={[styles.step, { color: theme.danger }]}>{error}</Text>}
+      {__DEV__ && (
+        // KI-36: try the new editor in Expo Go without a Mac. The notes stay
+        // on this phone and go when you unpair (Home → ⋯ → Unpair).
+        <Pressable accessibilityRole="button" onPress={() => startSample(pair)} style={[styles.button, styles.secondary, { borderColor: theme.border }]}>
+          <Text style={[styles.buttonText, { color: theme.text }]}>Try the editor on sample notes</Text>
+        </Pressable>
+      )}
     </ScrollView>
   );
 }
@@ -49,4 +59,5 @@ const styles = StyleSheet.create({
   step: { fontSize: 15, lineHeight: 21 },
   button: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, marginTop: 8 },
   buttonText: { fontSize: 16, fontWeight: '600' },
+  secondary: { borderWidth: 1 },
 });

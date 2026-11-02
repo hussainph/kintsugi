@@ -164,6 +164,11 @@ export class Library {
     return path;
   }
 
+  /** Drops a document from this phone only (the try-it samples). */
+  forget(path: string) {
+    if (this.docs.has(path)) this.remove(path);
+  }
+
   /** A note started here and left empty isn't worth keeping. */
   discardIfEmpty(path: string) {
     const doc = this.find(path);
