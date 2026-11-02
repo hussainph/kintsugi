@@ -183,3 +183,22 @@ Names with no direct free equivalent, and the glyph used instead:
 | `FileDiff` | `FileDiffIcon` |
 | `UserRound` | `UserCircleIcon` |
 | `MessagesSquare` | `MessageMultiple01Icon` |
+
+## Checking it
+
+With `pnpm desktop:headless` running, `KINTSUGI_THEME_URL='<printed URL>' node
+scripts/check-desktop-theme.mjs` opens the app in headless Chrome in light and
+dark. It checks the theme scope and color mode, that Timeless Sans and LT
+Superior Serif load, that page titles sit on the theme scale and that every
+icon on screen is Hugeicons, then saves screenshots of writing, the palette,
+Feed, Inspiration, capture, Ideas, Kin chat and Settings to
+`.headless/ki-20/desktop/`.
+
+Screenshots from the seeded scratch vault:
+
+| Light | Dark |
+| --- | --- |
+| ![Writing, light](review/ki-20/light-writing.png) | ![Writing, dark](review/ki-20/dark-writing.png) |
+| ![Inspiration, light](review/ki-20/light-inspiration.png) | ![Inspiration, dark](review/ki-20/dark-inspiration.png) |
+| ![Feed, light](review/ki-20/light-feed.png) | ![Feed, dark](review/ki-20/dark-feed.png) |
+| ![Kin chat, light](review/ki-20/light-kin.png) | ![Kin chat, dark](review/ki-20/dark-kin.png) |
