@@ -3,6 +3,7 @@
 //! the pairing token, so other local processes and web pages get nothing.
 //! Mirrored by packages/core/src/remote.ts.
 
+use super::sections::{self, Receipts, Sections};
 use crate::clip_capture;
 use axum::extract::rejection::{JsonRejection, QueryRejection};
 use axum::extract::{DefaultBodyLimit, Query, Request, State};
@@ -35,15 +36,22 @@ pub struct Host {
     pub root: Arc<dyn Fn() -> Result<PathBuf, String> + Send + Sync>,
     pub changed: Arc<dyn Fn(Changed) + Send + Sync>,
     pub clip_changed: Arc<dyn Fn(String) + Send + Sync>,
+    /// The Feed, Ideas and Kin (API 6); `None` where there is no app behind
+    /// the server, and those routes answer 503.
+    pub sections: Option<Arc<dyn Sections>>,
+    /// Where the phone's Kin message ids are remembered, so a message sent
+    /// again lands once; `None` keeps them in memory.
+    pub kin_ids: Option<PathBuf>,
 }
 
 #[derive(Clone)]
-struct Ctx {
-    host: Host,
+pub(super) struct Ctx {
+    pub(super) host: Host,
     token: Arc<str>,
+    pub(super) kin_sent: Arc<tokio::sync::Mutex<Receipts>>,
 }
 
-struct Error(StatusCode, String);
+pub(super) struct Error(pub(super) StatusCode, pub(super) String);
 
 impl From<String> for Error {
     fn from(message: String) -> Self {
@@ -66,7 +74,8 @@ impl Ctx {
 }
 
 pub fn router(host: Host, token: &str) -> Router {
-    let ctx = Ctx { host, token: token.into() };
+    let kin_sent = Arc::new(tokio::sync::Mutex::new(Receipts::open(host.kin_ids.clone())));
+    let ctx = Ctx { host, token: token.into(), kin_sent };
     Router::new()
         .route("/v1/hello", get(hello))
         .route("/v1/tree", get(tree))
@@ -82,6 +91,7 @@ pub fn router(host: Host, token: &str) -> Router {
         .route("/v1/clip/image", get(clip_image))
         .route("/v1/clip/source", get(clip_source))
         .route("/v1/inspiration", get(inspiration))
+        .merge(sections::routes())
         .layer(middleware::from_fn_with_state(ctx.clone(), authorize))
         .with_state(ctx)
 }
@@ -136,7 +146,8 @@ async fn hello(State(ctx): State<Ctx>) -> Reply<serde_json::Value> {
     // 4: clip captures accept files (PDFs and EPUBs).
     // 5: the phone browses inspiration: /v1/inspiration, clip images and
     //    sources, and version-checked note edits (PUT /v1/clip).
-    Ok(Json(json!({ "app": "kintsugi", "api": 5, "vault": name })))
+    // 6: the Feed, Ideas and Kin (`sections.rs`): /v1/feed…, /v1/ideas…, /v1/kin….
+    Ok(Json(json!({ "app": "kintsugi", "api": 6, "vault": name })))
 }
 
 async fn tree(State(ctx): State<Ctx>) -> Reply<Vec<vault::Entry>> {
@@ -441,11 +452,11 @@ async fn write_clip_note(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use std::sync::Mutex;
 
-    const TOKEN: &str = "TEST-TOKEN";
+    pub(in crate::phone) const TOKEN: &str = "TEST-TOKEN";
 
     fn clip_url(base: &str, path: &str) -> reqwest::Url {
         let mut url = reqwest::Url::parse(&format!("{base}/v1/clip")).unwrap();
@@ -461,6 +472,10 @@ mod tests {
     ///
     /// It listens on 127.0.0.1:47475 (KINTSUGI_PHONE_DEV_PORT) and prints the
     /// pair link; open it with `xcrun simctl openurl`. Stop it with Ctrl-C.
+    ///
+    /// Built with `--no-default-features --features headless`, the same name
+    /// serves the whole app instead (Feed, Ideas and Kin; see `phone/dev.rs`).
+    #[cfg(not(feature = "headless"))]
     #[test]
     #[ignore]
     fn phone_dev_server() {
@@ -478,6 +493,8 @@ mod tests {
             root: Arc::new(move || Ok(root.clone())),
             changed: Arc::new(|c| println!("changed: {}", c.path)),
             clip_changed: Arc::new(|path| println!("clip changed: {path}")),
+            sections: None,
+            kin_ids: None,
         };
         let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
         runtime.block_on(async {
@@ -489,6 +506,21 @@ mod tests {
 
     /// Serves a temp vault on a free port and runs `test` against it.
     fn with_server(
+        test: impl AsyncFnOnce(
+            String,
+            reqwest::Client,
+            PathBuf,
+            Arc<Mutex<Vec<Changed>>>,
+            Arc<Mutex<Vec<String>>>,
+        ),
+    ) {
+        with_sections(None, None, test)
+    }
+
+    /// The same, with the Feed, Ideas and Kin answered by `sections`.
+    pub(in crate::phone) fn with_sections(
+        sections: Option<Arc<dyn Sections>>,
+        kin_ids: Option<PathBuf>,
         test: impl AsyncFnOnce(
             String,
             reqwest::Client,
@@ -516,6 +548,8 @@ mod tests {
                 let changes = clip_changes.clone();
                 move |path| changes.lock().unwrap().push(path)
             }),
+            sections,
+            kin_ids,
         };
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -678,7 +712,7 @@ mod tests {
             let body: serde_json::Value = response.json().await.unwrap();
             assert_eq!(
                 body,
-                json!({ "app": "kintsugi", "api": 5, "vault": root.file_name().unwrap().to_str().unwrap() })
+                json!({ "app": "kintsugi", "api": 6, "vault": root.file_name().unwrap().to_str().unwrap() })
             );
         });
     }

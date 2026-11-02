@@ -457,6 +457,58 @@ Code: `packages/editor/src/anchors.ts` (anchoring, pure) and `comments.ts`
   paragraphs). `test/runtime-comments.test.ts` drives it all in headless
   Chromium.
 
+## On the phone (KI-42)
+
+Kin runs on the Mac; the phone reads and asks through the phone API
+(version 6, `phone/sections.rs`, each route the Mac's own command through
+`phone/desk.rs`). No key, model call or prompt is ever on the phone.
+
+| Route | Command |
+| --- | --- |
+| `GET /v1/kin?before&limit` | `kin_chat_log` over every thread (limit 1–500, default 100) |
+| `POST /v1/kin {id, text, chips}` | `kin_chat_send`, once per `id`: `{entry, duplicate: false}`, or `{seq, duplicate: true}` for an id already sent. The last 500 ids are kept in `<config>/phone-kin-ids.json`, so a resend after a restart still lands once. Chips are `doc`, `clip`, `feed` or `idea` (others are 400) |
+| `POST /v1/kin/stop` | `kin_chat_stop` |
+| `GET /v1/kin/jobs` | `kin_jobs` |
+| `GET /v1/ideas` | `ideas_list` |
+| `POST /v1/ideas/more` | `ideas_generate` (no focus): "Ask for more" |
+| `POST /v1/ideas/adopt {id, title?}` | `ideas_adopt` into a new draft; an idea already adopted answers with its draft, so a retried Adopt never makes a second one |
+| `POST /v1/ideas/dismiss {id, undo?}` | `ideas_dismiss` / `ideas_undismiss` |
+| `POST /v1/ideas/discussed {id}` | `ideas_discussed` |
+
+**The phone app.** One avatar (`components/KinAvatar.tsx`, the Mac's
+placeholder bowl) floats bottom right on every screen but the chat and
+pairing, and hides while typing. Screens say what they show with
+`useScreenContext` (`lib/screen-context.ts`): a document, a clip, a feed
+item being read, an open idea. Tapping the avatar opens the chat
+(`app/kin.tsx`) with those as removable chips.
+
+- **Offline, honestly.** Messages are written to a queue on the phone first
+  (`lib/kin.ts`, with a UUID each) and sent in order when the Mac answers.
+  While it doesn't, the chat says "Kin runs on your Mac, which isn't
+  reachable", each waiting message says "Waiting for your Mac", and they go
+  when it's back (the next sync from any screen). A message the Mac refuses
+  stays, marked, with Try again and Discard.
+- The conversation (the latest 100 entries, every thread, with thread labels
+  where the subject changes and paragraph comments tagged) and the jobs are
+  kept to read offline. While Kin is answering the chat asks every 1.5 s
+  (else every 6 s); replies arrive whole, not streamed. "Kin's jobs on your
+  Mac" lists running and recent helper jobs.
+- **Ideas** (`app/ideas.tsx`, `lib/ideas.ts`): the Ledger
+  (`components/ideas/Ledger.tsx`, the only layout-specific file;
+  `components/ideas/parts.tsx` serves any layout). A row opens in place:
+  what Kin noticed, its hunch, the quoted evidence (tap to open a document
+  or clip), how it got here and Why this?, then Adopt, Discuss and Dismiss
+  (with Undo). Adopt, Dismiss and Ask for more wait for the Mac like Kin's
+  messages; an adopted draft is fetched into the phone's library and opens.
+
+**Testing.** `cargo test -p kintsugi phone::` covers the routes against a
+stand-in app; with `--no-default-features --features headless`,
+`phone::dev::the_phone_reaches_the_real_feed_ideas_and_kin` drives them
+against the real app on a scratch vault with the mock model. The phone's
+stores are tested in `apps/mobile/src/lib/sections.test.ts`, and
+`apps/mobile/test/browse-acceptance/run.sh` with `ONLY=sections` runs the
+XCUITest (screenshots in `docs/screenshots/ki-42/`).
+
 ## Settings
 
 Settings (⌘, or the sidebar) shows the privacy statement, this month's

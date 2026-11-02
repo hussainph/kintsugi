@@ -196,9 +196,10 @@ description and publication details.
 ### Phone API
 
 Added to the server in `apps/desktop/src-tauri/src/phone/server.rs` and its
-client in `packages/core/src/remote.ts`; `hello` reports `api: 5` (4 added
+client in `packages/core/src/remote.ts`; `hello` reports `api: 6` (4 added
 file captures, 5 the phone's library: `/v1/inspiration`, clip images and
-sources, and note edits).
+sources, and note edits; 6 the Feed, Ideas and Kin, see `docs/feed.md` ›
+On the phone and `docs/kin.md` › On the phone).
 
 - `POST /v1/clips`: `{ id?, url?, text?, note?, title?, image?: base64, imageType?,
   file?: base64, fileType?, fileName?, capturedAt, via }` → `{ path }` with

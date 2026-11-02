@@ -182,6 +182,19 @@ xcrun simctl openurl "$UDID" 'kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A47475
 
 Stop that shell to take the "Mac" offline.
 
+For the Feed, Ideas and Kin (phone API 6), build the same test with the
+headless feature: it serves the whole app on the scratch vault, with a
+sample Feed and Kin's scripted mock model (`KINTSUGI_HEADLESS_KIN=mock` is
+set for you; no credentials, nothing leaves the machine). App data goes in
+`<vault>-config` (or `KINTSUGI_PHONE_DEV_CONFIG`), which must also be under
+`.headless`:
+
+```sh
+KINTSUGI_PHONE_DEV_VAULT="$PWD/.headless/phone-vault" \
+  cargo test -p kintsugi --no-default-features --features headless \
+  phone_dev_server -- --ignored --nocapture
+```
+
 `xcrun simctl` talks to CoreSimulator without showing a window. If Device Hub
 is already open on the owner's screen, leave it alone; don't activate it and
 don't use it to inspect the app. Use `simctl io … screenshot` for evidence.
