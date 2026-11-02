@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@kintsugi/ui/components/badge";
 import { Button } from "@kintsugi/ui/components/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { memory, MemoryEdit, MemoryFile, MemorySource, MemoryView, Origin } from "@/lib/kin";
@@ -116,13 +116,9 @@ export function AboutYou() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl" aria-label="About you">
+      <DialogContent aria-describedby={undefined} className="max-h-[85svh] overflow-y-auto sm:max-w-2xl" aria-label="About you">
         <DialogHeader>
           <DialogTitle>About you</DialogTitle>
-          <DialogDescription>
-            What Kin remembers, kept small on purpose. Kin updates it on its own as you talk; every change is listed below and can be undone. Mark
-            a chat “don’t remember this” and nothing from it is saved.
-          </DialogDescription>
         </DialogHeader>
 
         {view?.files.map((file) => (
@@ -196,7 +192,7 @@ export function AboutYou() {
             </h3>
             {view.skills.length === 0 ? (
               <p className="text-muted-foreground">
-                No skills yet. Kin writes one when you keep asking for the same thing; you can add your own as <code>skills/&lt;name&gt;/SKILL.md</code>.
+                No skills yet. Add one as <code>skills/&lt;name&gt;/SKILL.md</code>.
               </p>
             ) : (
               <ul className="divide-y">

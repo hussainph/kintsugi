@@ -4,7 +4,7 @@ import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@kintsugi/ui/components/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@kintsugi/ui/components/sheet";
 import { Switch } from "@kintsugi/ui/components/switch";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { feed, HN_LISTS, type HnList, type Podcast, type Source, type SourceKind, type Subscribe } from "./api";
@@ -159,7 +159,6 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
       <SheetContent side="right" className="flex w-[420px] flex-col gap-0 sm:max-w-[420px]" aria-describedby={undefined}>
         <SheetHeader className="pb-2">
           <SheetTitle>Following</SheetTitle>
-          <SheetDescription>Everything here fills your feed. Nothing is kept unless you save it.</SheetDescription>
         </SheetHeader>
 
         <form onSubmit={submit} className="space-y-3 px-4 pb-5" aria-label="Follow something">
@@ -190,7 +189,7 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                 <Input aria-label="Minimum points" inputMode="numeric" placeholder="Minimum points (optional)" value={points} onChange={(e) => setPoints(e.target.value.replace(/\D/g, ""))} className="h-9" />
                 <Button type="submit" disabled={!!busy}>{busy === "hn" ? "Following…" : "Follow"}</Button>
               </div>
-              <p className="text-xs text-muted-foreground">Through hnrss.org. Set minimum points to skip low-scoring stories.</p>
+              <p className="text-xs text-muted-foreground">Through hnrss.org.</p>
             </div>
           ) : (
             <div className="flex gap-2">
@@ -206,11 +205,11 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
               </Button>
             </div>
           )}
-          {tab === "url" && <p className="text-xs text-muted-foreground">RSS, Atom or JSON Feed. A page that links to its feed works too.</p>}
-          {tab === "youtube" && <p className="text-xs text-muted-foreground">New uploads arrive through the channel’s feed. YouTube sometimes stalls; Kintsugi keeps trying.</p>}
-          {tab === "x" && <p className="text-xs text-muted-foreground">Their own posts and threads, through FxTwitter. No X account needed; it’s best-effort.</p>}
-          {tab === "page" && <p className="text-xs text-muted-foreground">For pages without a feed. Kintsugi checks every few hours and posts what changed, ignoring dates and counters.</p>}
-          {tab === "author" && <p className="text-xs text-muted-foreground">New books arrive weekly, through Google Books and Open Library.</p>}
+          {tab === "url" && <p className="text-xs text-muted-foreground">RSS, Atom, JSON Feed, or a page that links to one.</p>}
+          {tab === "youtube" && <p className="text-xs text-muted-foreground">YouTube’s feeds sometimes stall; Kintsugi keeps trying.</p>}
+          {tab === "x" && <p className="text-xs text-muted-foreground">Through FxTwitter, best-effort. No X account needed.</p>}
+          {tab === "page" && <p className="text-xs text-muted-foreground">Checked every few hours. Dates and counters are ignored.</p>}
+          {tab === "author" && <p className="text-xs text-muted-foreground">Weekly, through Google Books and Open Library.</p>}
           {tab === "podcast" && podcasts && (
             <ul className="max-h-60 space-y-1 overflow-y-auto" aria-label="Podcasts found">
               {podcasts.length === 0 && <li className="py-2 text-xs text-muted-foreground">No podcasts with a public feed matched.</li>}

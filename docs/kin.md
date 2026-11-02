@@ -162,6 +162,13 @@ as `kin_set_model` takes it. Nothing in the answer is secret. `ai_providers`
 (Settings' list) keeps to the providers the default models use and any
 other with a credential.
 
+The model picker (`src/kin/ModelMenu.tsx`, KI-61) is built on it: the chat's
+composer and Settings' default models both list the usable providers'
+models, grouped by provider, each with its price per million tokens (input
+· output) and two capability icons (thinks, reads images). The webview
+hides Ollama (`shown()` in `src/lib/ai.ts`): Kin can still speak to a local
+server, but Kintsugi doesn't offer one.
+
 ## Credentials (KI-48)
 
 Code: `ai/credentials.rs` (the order), `ai/opencode_auth.rs`, `ai/pi_auth.rs`.
@@ -381,10 +388,26 @@ one; his edits pass the same caps and checks.
 ## Models per task
 
 `src/lib/models.json` lists preferences per task: `edit` and `complete`
-(the webview), and Kin's `chat`, `ideas` (strong) and `triage` (cheap). The
-first preference with usable credentials wins, unless the owner picks a
-model for a Kin task in Settings. A test checks every preference is in the
-catalog. Requests ask for at most the model's maximum output.
+(the webview), and Kin's `chat`, `ideas` and `triage`. Settings › Kin and
+models sets a default for each of the five (`kin_set_model`, kept in
+`<config>/kin/settings.json`); without one, or while the default's provider
+has no usable credential, the first usable preference wins
+(`ai::chosen_model`). The webview asks `ai_model_for(task)` before an edit,
+so a change in Settings applies to the next one. A test checks every
+preference is in the catalog. Requests ask for at most the model's maximum
+output.
+
+The first preferences (KI-61) are lighter than Kimi K3, which has OpenCode
+Go's smallest allowance ($15 a month at $3 / $15 per million tokens):
+Qwen3.7 Plus for chat, Ideas and edits ($60 a month at $0.40 / $1.60) and
+GLM-5.3-Flash for completions and triage ($60 a month at $0.15 / $0.50).
+
+**Per conversation.** The chat's model picker sets the model for one
+conversation (a thread's key, `""` for general): `kin_chat_model(topic)`
+and `kin_chat_set_model(topic, model | null)`, kept in the vault at
+`.kintsugi/kin/models.json` (`ai/picks.rs`), beside the conversation it
+belongs to, so it moves with the vault. A turn runs on its conversation's
+pick while that provider is usable, else on the chat default.
 
 ## Cost and the cap
 
@@ -706,8 +729,18 @@ XCUITest (screenshots in `docs/screenshots/ki-42/`).
 
 ## Settings
 
-Settings (⌘, or the sidebar) shows the privacy statement, this month's
-spend by task, the monthly cap, the model for each Kin task and, under AI
-providers, where each credential comes from (above, Credentials), for the
-providers the default models use and any other with a credential. ⇧⌘K opens a
-minimal developer panel to run one turn (with a "don't remember this" box).
+Settings is a page (`src/settings/`, KI-61). ⌘, or the sidebar opens it
+over the app, at the section last shown; Esc, ⌘[ or Back returns to where
+he was. Its sections:
+
+- **General**: the vault, and optional tools.
+- **Kin and models**: the default model for chat, Ideas, edits,
+  completions and Feed triage; this month's spend by task and the monthly
+  cap; About you and the developer panel.
+- **Providers**: where each credential comes from (above, Credentials),
+  for the providers the default models use and any other with a
+  credential.
+- **Phone**, **Blog**, **Export** and **Privacy** (the privacy statement).
+
+⇧⌘K opens a minimal developer panel to run one turn (with a "don't
+remember this" box).

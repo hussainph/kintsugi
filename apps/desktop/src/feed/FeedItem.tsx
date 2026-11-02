@@ -81,7 +81,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
     refreshPicked();
     if (liked) {
       toast("Liked", {
-        description: effect ? describeEffect(effect) : "A signal for Picked for you.",
+        description: effect ? describeEffect(effect) : undefined,
         action: {
           label: "Undo",
           onClick: () =>
@@ -123,7 +123,6 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
     onDismiss(next);
     refreshPicked();
     toast("Not interested", {
-      description: "Hidden. Picked for you counts this as a strong no.",
       action: {
         label: "Undo",
         onClick: () =>
@@ -250,7 +249,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
           size="sm"
           aria-pressed={noting || !!item.note}
           disabled={!!item.savedPath}
-          title={item.savedPath ? "Saved items keep their note in Inspiration" : undefined}
+          title={item.savedPath ? "The note is in Inspiration" : undefined}
           onClick={() => setNoting(true)}
         >
           <NotebookPen />
@@ -260,7 +259,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
           {item.savedPath ? <BookmarkCheck className="text-primary" /> : <BookmarkPlus />}
           {item.savedPath ? "Saved · Open" : busy === "save" ? "Saving…" : "Save"}
         </Button>
-        <Button variant="ghost" size="sm" onClick={discuss} title="Discuss with Kin">
+        <Button variant="ghost" size="sm" onClick={discuss}>
           <MessagesSquare />
           Discuss
         </Button>

@@ -74,8 +74,8 @@ pub fn usd(price: &Price, usage: &Usage) -> f64 {
 pub struct Settings {
     /// US dollars per calendar month; `None` means no cap.
     pub monthly_cap_usd: Option<f64>,
-    /// The owner's model for a task (`"chat"`, `"ideas"`, `"triage"`),
-    /// overriding the default preference list.
+    /// The owner's default model for a task (`"chat"`, `"ideas"`, `"edit"`,
+    /// `"complete"`, `"triage"`), overriding the preference list.
     #[serde(default)]
     pub models: BTreeMap<String, ModelRef>,
 }

@@ -87,12 +87,23 @@ struct TestBrain {
     events: Arc<Mutex<Vec<ChatEvent>>>,
     /// Jobs the finish hook saw, with their traces.
     finished: Arc<Mutex<Vec<(String, Trace)>>>,
+    /// Every model asked for: the task and the conversation's pick.
+    connected: Arc<Mutex<Vec<(Task, Option<ModelRef>)>>>,
 }
 
 impl Brain for TestBrain {
     type Model = Arc<Script>;
 
     async fn connect(&self, _task: Task) -> Result<Arc<Script>> {
+        Ok(self.script.clone())
+    }
+
+    fn picked(&self, topic: &str) -> Option<ModelRef> {
+        crate::ai::picks::get(&self.vault, topic)
+    }
+
+    async fn connect_to(&self, task: Task, pick: Option<ModelRef>) -> Result<Arc<Script>> {
+        self.connected.lock().unwrap().push((task, pick));
         Ok(self.script.clone())
     }
 
@@ -137,6 +148,7 @@ struct Fixture {
     engine: Engine<TestBrain>,
     script: Arc<Script>,
     events: Arc<Mutex<Vec<ChatEvent>>>,
+    connected: Arc<Mutex<Vec<(Task, Option<ModelRef>)>>>,
     _vault: tempfile::TempDir,
     _ledger: tempfile::TempDir,
 }
@@ -158,18 +170,21 @@ fn fixture_in(
     let ledger = tempfile::tempdir().unwrap();
     let script = Script::new(replies, delay);
     let events: Arc<Mutex<Vec<ChatEvent>>> = Arc::default();
+    let connected: Arc<Mutex<Vec<(Task, Option<ModelRef>)>>> = Arc::default();
     let brain = TestBrain {
         script: script.clone(),
         vault: Mutex::new(vault.path().into()),
         meter: Meter::with_clock(Some(ledger.path().into()), || "2026-11".into()),
         events: events.clone(),
         finished: Arc::default(),
+        connected: connected.clone(),
     };
     let engine = Engine::new(brain, dir, timing);
     Fixture {
         engine,
         script,
         events,
+        connected,
         _vault: vault,
         _ledger: ledger,
     }
@@ -363,6 +378,35 @@ fn stop_ends_the_turn_and_settles_its_messages() {
     assert!(f.engine.page(None, None, 10).pending.is_empty());
     std::thread::sleep(FAST.typing * 2);
     assert_eq!(f.script.seen().len(), 1, "no new turn after a stop");
+}
+
+#[test]
+fn a_conversation_runs_on_the_model_picked_for_it() {
+    let f = fixture(
+        vec![answer("On the light model."), answer("On the default.")],
+        Duration::ZERO,
+    );
+    let light = ModelRef {
+        provider: "opencode-go".into(),
+        model: "glm-5.3-flash".into(),
+        reasoning: None,
+    };
+    crate::ai::picks::set(f._vault.path(), "drafts/x.md", Some(light.clone())).unwrap();
+    f.engine
+        .send("Tighten this?", vec![doc("drafts/x.md", "Draft X")])
+        .unwrap();
+    f.wait_replies(1);
+    f.engine
+        .send(
+            "Unrelated: what's a kiln?",
+            vec![doc("drafts/y.md", "Draft Y")],
+        )
+        .unwrap();
+    f.wait_replies(2);
+    assert_eq!(
+        *f.connected.lock().unwrap(),
+        [(Task::Chat, Some(light)), (Task::Chat, None)]
+    );
 }
 
 #[test]

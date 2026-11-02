@@ -5,7 +5,7 @@ import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Rea
 import { toast } from "sonner";
 import type { Clip, ClipChanged, ClipEdit } from "@kintsugi/core/clips";
 import { Button } from "@kintsugi/ui/components/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
@@ -147,7 +147,7 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
           <div className="ki-stack-xs">
             <label htmlFor="clip-note" className="ki-field-label">Your notes</label>
             <Textarea id="clip-note" aria-describedby="clip-note-help" value={draft.note} onChange={(e) => edit("note", e.target.value)} onBlur={() => void save()} placeholder="A quote or a note…" className="ki-clip-note min-h-48 resize-y" />
-            <p id="clip-note-help" className="ki-text-xs ki-muted">Markdown. Editing this doesn’t change the saved source text.</p>
+            <p id="clip-note-help" className="ki-text-xs ki-muted">Markdown</p>
             {(clip.quoteBy || quoteAt) && <p className="ki-text-xs ki-muted" data-quote-origin>
               {clip.quoteBy && <>Quote by {clip.quoteBy}</>}
               {quoteAt && <>{clip.quoteBy && <span className="px-[var(--space-xs)]">·</span>}<button className="ki-source-link" onClick={() => openUrl(quoteAt).catch((e) => toast.error(String(e)))} title={quoteAt}>{quoteLinkLabel(quoteAt) === "source" ? "Open at the passage" : `Open at ${quoteLinkLabel(quoteAt)}`}</button></>}
@@ -155,11 +155,10 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
           </div>
           <div className="ki-stack-xs">
             <label htmlFor="clip-tags" className="ki-field-label">Tags</label>
-            <Input id="clip-tags" aria-describedby="clip-tags-help" placeholder="essays, design, to-read" value={draft.tags} onChange={(e) => edit("tags", e.target.value)} onBlur={() => void save()} />
-            <p id="clip-tags-help" className="ki-text-xs ki-muted">Separate tags with commas.</p>
+            <Input id="clip-tags" placeholder="essays, design, to-read" value={draft.tags} onChange={(e) => edit("tags", e.target.value)} onBlur={() => void save()} />
           </div>
           <section aria-label="Clip backlinks" data-clip-used-in={clip.path} className="ki-stack-s ki-divider-top pt-[var(--space-l)]">
-            {renderUsedIn ? renderUsedIn(clip) : <><h2 className="ki-text-s ki-medium">Used in</h2><p className="ki-text-s ki-muted">Documents that link to this clip show here.</p></>}
+            {renderUsedIn ? renderUsedIn(clip) : <><h2 className="ki-text-s ki-medium">Used in</h2><p className="ki-text-s ki-muted">Not referenced yet.</p></>}
           </section>
           <div className="flex items-center justify-between gap-[var(--space-m)]">
             <Button variant="ghost" size="sm" onClick={() => setConfirmTrash(true)}><Trash2 />Move to Trash</Button>
@@ -171,8 +170,8 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
         </div>
       </div>
       <Dialog open={confirmTrash} onOpenChange={(next) => { if (!trashing) setConfirmTrash(next); }}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Move this clip to Trash?</DialogTitle><DialogDescription>{clip.file ? "Its saved file and image go with it. You can recover them from the Mac’s Trash." : "Its saved image goes with it. You can recover both from the Mac’s Trash."}</DialogDescription></DialogHeader>
+        <DialogContent aria-describedby={undefined}>
+          <DialogHeader><DialogTitle>Move this clip to Trash?</DialogTitle></DialogHeader>
           <div className="flex justify-end gap-[var(--space-xs)]">
             <Button variant="ghost" disabled={trashing} onClick={() => setConfirmTrash(false)}>Cancel</Button>
             <Button variant="destructive" disabled={trashing} onClick={async () => {

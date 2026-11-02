@@ -80,6 +80,56 @@
   outline-offset: var(--space-xxs);
 }
 
+/* Settings (KI-61): a page over the app, its sections down the side. */
+.ki-settings { position: fixed; inset: 0; z-index: 30; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); color: var(--neutral-10); background: var(--neutral-1); }
+.ki-settings-nav { width: auto; box-shadow: inset calc(-1 * var(--border-s)) 0 0 var(--neutral-4-transparent); }
+.ki-settings-nav-header { padding-top: calc(var(--space-xl) + var(--space-xs)); }
+.ki-settings-main { position: relative; overflow-y: auto; padding: calc(var(--space-xxl) + var(--space-s)) var(--space-xl) var(--space-xxl); }
+.ki-settings-drag { position: absolute; inset: 0 0 auto; height: var(--space-xl); }
+.ki-settings-page { max-width: 40rem; margin-inline: auto; }
+.ki-settings-heading { font-family: var(--font-ui); font-weight: var(--weight-ui-medium); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); color: var(--neutral-10); }
+.ki-settings-group { border-radius: var(--radius-m); background: var(--neutral-2); box-shadow: var(--border-shadow-s); }
+.ki-settings-group > ul { margin: 0; padding: 0; list-style: none; }
+.ki-settings-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-m); min-height: calc(var(--space-xl) + var(--space-s)); padding: var(--space-s) var(--space-m); }
+.ki-settings-group :is(.ki-settings-row, li) + :is(.ki-settings-row, li) { box-shadow: inset 0 var(--border-s) 0 var(--neutral-4-transparent); }
+.ki-settings-row-block { flex-direction: column; align-items: stretch; gap: var(--space-xs); }
+.ki-settings-row-wide { flex-wrap: wrap; }
+.ki-settings-row-wide > .ki-settings-control { flex: 1 1 20rem; }
+.ki-settings-row-sub { min-height: 0; padding-block: var(--space-xxs); }
+.ki-settings-row-sub .ki-settings-label { color: var(--neutral-7); }
+.ki-settings-label { display: flex; min-width: 0; flex-direction: column; gap: var(--space-xxs); }
+.ki-settings-note { font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); color: var(--neutral-7); overflow-wrap: anywhere; text-wrap: pretty; }
+.ki-settings-control { display: flex; flex-shrink: 0; align-items: center; justify-content: flex-end; }
+.ki-settings-inline { display: flex; align-items: center; gap: var(--space-xs); }
+.ki-settings-row-wide .ki-settings-inline { width: 100%; }
+.ki-settings-end { align-self: flex-end; }
+.ki-settings-cap { width: 7rem; }
+.ki-settings-pairing { align-items: center; }
+.ki-settings-prose { max-width: 36rem; color: var(--neutral-10); text-wrap: pretty; }
+.ki-settings [data-reached] [data-slot="meter-indicator"], .ki-settings [data-reached] .ui-range-fill { background: var(--error); }
+
+/* The model picker (KI-61): a compact trigger in the chat's composer, a
+   select-like one in Settings, and a filterable menu grouped by provider. */
+.ki-model-trigger { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: var(--space-xxs); border: 0; border-radius: var(--radius-s); font-family: var(--font-ui); color: var(--neutral-10); background: transparent; transition: background-color var(--motion-duration) var(--motion-easing), color var(--motion-duration) var(--motion-easing); }
+.ki-model-trigger:disabled { color: var(--neutral-6); }
+.ki-model-trigger-compact { padding: var(--space-xxs) var(--space-xs); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); color: var(--neutral-7); }
+.ki-model-trigger-compact:hover:not(:disabled), .ki-model-trigger-compact[data-popup-open] { color: var(--neutral-10); background: var(--neutral-3); }
+.ki-model-trigger-field { width: 15rem; justify-content: space-between; padding: var(--space-xs) var(--space-s); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); background: var(--neutral-1); box-shadow: 0 0 0 var(--border-s) var(--neutral-4); }
+.ki-model-trigger-field:hover:not(:disabled), .ki-model-trigger-field[data-popup-open] { box-shadow: 0 0 0 var(--border-s) var(--neutral-6); }
+.ki-model-trigger:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
+.ki-model-chevron { width: 1em; height: 1em; flex-shrink: 0; color: var(--neutral-7); }
+.ki-model-menu.ui-menu-detailed { width: min(24rem, var(--available-width, 100vw)); max-height: min(28rem, var(--available-height, 28rem)); display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.ki-model-filter { margin: var(--space-xs); width: auto; }
+.ki-model-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-xxs) var(--space-xxs); }
+.ki-model-group { color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-model-option { display: grid !important; grid-template-columns: 1em minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-xs); }
+.ki-model-check { display: flex; grid-column: 1; }
+.ki-model-check svg { width: 1em; height: 1em; }
+.ki-model-name { grid-column: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ki-model-badges { grid-column: 3; display: inline-flex; gap: var(--space-xxs); color: var(--neutral-6); }
+.ki-model-badges svg { width: 0.875em; height: 0.875em; }
+.ki-model-price { grid-column: 4; font-family: var(--font-data); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-variant-numeric: tabular-nums; color: var(--neutral-7); white-space: nowrap; }
+
 /* The headless transport uses a real native <dialog>, inside the theme scope,
    rather than an unobservable browser prompt. Keep its keyboard contract. */
 [data-headless-dialog] { margin: auto; min-width: min(360px, calc(100vw - var(--space-xl))); max-width: min(560px, calc(100vw - var(--space-xl))); max-height: calc(100vh - var(--space-xl)); overflow: auto; padding: var(--space-l); border: 0; border-radius: var(--radius-m); color: var(--neutral-10); background: var(--neutral-1); box-shadow: var(--border-shadow-s), var(--shadow-l); font-family: var(--font-ui); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); font-weight: var(--weight-ui-regular); text-wrap: pretty; }
@@ -93,6 +143,6 @@
 [data-headless-dialog] :is(input, button):focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ki-chevron, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-footer-action, [data-headless-dialog] button { transition: none; }
+  .ki-chevron, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-footer-action, .ki-model-trigger, [data-headless-dialog] button { transition: none; }
   .ki-clip-card:active, .ki-refine-choice:active { transform: none; }
 }

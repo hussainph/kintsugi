@@ -6,9 +6,12 @@ import { Button } from "@kintsugi/ui/components/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@kintsugi/ui/components/popover";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import { cn } from "@kintsugi/ui/lib/utils";
+import { models as listModels, type ProviderModels } from "@/lib/ai";
+import { kin, type ChatModel } from "@/lib/kin";
 import { chat, type ChatEvent, type Entry, type Job, jobs, onDiscuss, onOpenKin, onScreenChanged, type Page, screenChips, type Topic } from "@/lib/chat";
 import { type Chip, chipKey, chipTitle, mergeChips, snippet, throttle } from "@/lib/chips";
 import { KinAvatar } from "./Avatar";
+import { ModelMenu } from "./ModelMenu";
 
 const EMPTY: Page = { entries: [], threads: [], pending: [], running: null };
 const ACTIVE: Job["status"][] = ["queued", "running", "waiting"];
@@ -129,6 +132,8 @@ export function KinChat() {
   const [unread, setUnread] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [threadsOpen, setThreadsOpen] = useState(false);
+  const [providers, setProviders] = useState<ProviderModels[] | null>(null);
+  const [model, setModel] = useState<ChatModel | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
   const openRef = useRef(open);
@@ -171,6 +176,30 @@ export function KinChat() {
   useEffect(() => {
     if (open) void reload();
   }, [open, view, reload]);
+
+  // The conversation a message sent now belongs to: the thread shown, else
+  // the one for what's on screen. Its model is picked per conversation.
+  const conversation = view ?? topic?.key ?? "";
+  useEffect(() => {
+    if (!open) return;
+    listModels().then(setProviders).catch(() => setProviders([]));
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    let current = true;
+    kin.chatModel(conversation).then((m) => current && setModel(m)).catch(() => current && setModel(null));
+    return () => {
+      current = false;
+    };
+  }, [open, conversation]);
+
+  const pickModel = async (next: ChatModel["chosen"]) => {
+    try {
+      setModel(await kin.setChatModel(conversation, next));
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
 
   // The conversation's events: new entries, Kin streaming, helpers.
   useEffect(() => {
@@ -348,7 +377,8 @@ export function KinChat() {
           role="dialog"
           aria-label="Kin"
           onKeyDown={(e) => {
-            if (e.key === "Escape") {
+            // A menu's Esc (in a portal, outside this panel) closes only the menu.
+            if (e.key === "Escape" && e.currentTarget.contains(e.target as Node)) {
               e.stopPropagation();
               close();
             }
@@ -361,14 +391,14 @@ export function KinChat() {
               <PopoverTrigger asChild>
                 <Button variant="ghost" size="sm" className="min-w-0 flex-1 justify-start gap-1 px-1.5 font-normal" aria-label="Conversation">
                   <span className="truncate text-sm" data-thread={view ?? "*"}>
-                    {view === null ? "Everything" : `About ${threadLabel}`}
+                    {view === null ? "Everything" : view === "" ? threadLabel : `About ${threadLabel}`}
                   </span>
                   <ChevronDown className="shrink-0 opacity-50" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="max-h-80 w-72 overflow-y-auto p-1">
                 <button type="button" className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted" onClick={() => { setView(null); setThreadsOpen(false); }}>
-                  Everything <span className="text-xs text-muted-foreground">· the whole conversation</span>
+                  Everything
                 </button>
                 {page.threads.map((t) => (
                   <button key={t.key || "*general"} type="button" className="w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted" onClick={() => { setView(t.key); setThreadsOpen(false); }}>
@@ -391,10 +421,8 @@ export function KinChat() {
           )}
 
           <div ref={scroller} className="inspiration-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4" aria-label="Conversation" aria-live="polite">
-            {!page.entries.length && !live && (
-              <p className="pt-10 text-center text-sm text-muted-foreground">
-                {view ? `No messages about ${threadLabel} yet.` : "Ask Kin about what’s on screen, or anything else."}
-              </p>
+            {!page.entries.length && !live && view && (
+              <p className="pt-10 text-center text-sm text-muted-foreground">No messages about {threadLabel} yet.</p>
             )}
             {page.entries.map((entry) => {
               const divider = view === null && entry.topic !== lastTopic;
@@ -479,6 +507,18 @@ export function KinChat() {
                   <Square className="size-3 fill-current" />
                 </Button>
               ) : null}
+            </div>
+            <div className="mt-1 flex items-center" data-testid="chat-model">
+              <ModelMenu
+                look="compact"
+                providers={providers}
+                chosen={model?.chosen ?? null}
+                current={model?.resolved ?? null}
+                onChange={(next) => void pickModel(next)}
+                label="Model"
+                automatic="Default"
+                disabled={!model}
+              />
             </div>
           </div>
         </section>

@@ -1,25 +1,18 @@
-import { ModelRef, providers, ProviderStatus } from "./ai";
-import preferences from "./models.json";
+import { invoke } from "@tauri-apps/api/core";
+import type { ModelRef } from "./ai";
 
 /** What a model is used for decides how fast and how strong it needs to be. */
 export type Task = "edit" | "complete";
 
-/** First usable entry wins. Edits want quality; completions want speed.
- *  Shared with Rust (`ai::model_for`), so background work picks the same model. */
-const PREFERENCES: Record<Task, ModelRef[]> = preferences;
-
-/** Mirrors `ai::usable` in src-tauri/src/ai/mod.rs. */
-const usable = (p: ProviderStatus) => !["none", "unsupported_login", "expired_login", "local"].includes(p.auth);
-
-let cached: Promise<ProviderStatus[]> | null = null;
-
+/**
+ * The model for an edit or a completion: the default chosen in Settings
+ * while its provider has a credential, else the first usable entry of
+ * `models.json` (shared with Rust's `ai::chosen_model`, so background work
+ * picks the same way). Asked fresh each time, so a change in Settings
+ * applies to the next edit.
+ */
 export async function modelFor(task: Task): Promise<ModelRef> {
-  cached ??= providers();
-  const ready = new Set((await cached).filter(usable).map((p) => p.id));
-  const model = PREFERENCES[task].find((m) => ready.has(m.provider));
-  if (!model) {
-    cached = null;
-    throw new Error("No AI provider is set up. Log in with OpenCode (or Pi), or add an API key, then try again.");
-  }
+  const model = await invoke<ModelRef | null>("ai_model_for", { task });
+  if (!model) throw new Error("No AI provider is set up. Log in with OpenCode (or Pi), or add an API key, then try again.");
   return model;
 }

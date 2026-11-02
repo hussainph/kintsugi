@@ -12,7 +12,8 @@ import {
   RotateLeft01Icon, RssIcon, Search01Icon, Settings01Icon, Settings02Icon,
   SidebarLeft01Icon, SidebarRight01Icon, SlidersHorizontalIcon, SmartPhone01Icon,
   SparklesIcon, SquareIcon, Sword01Icon, Tag01Icon, Tick02Icon, Undo02Icon,
-  Upload01Icon, UserCircleIcon, Video01Icon, ViewOffIcon,
+  Upload01Icon, UserCircleIcon, Video01Icon, ViewOffIcon, Brain02Icon, Key01Icon,
+  Globe02Icon, LockIcon, FileExportIcon,
   TriangleAlertIcon as WarningGlyph, OctagonXIcon as ErrorGlyph,
 } from "@hugeicons/core-free-icons";
 
@@ -44,26 +45,31 @@ export const Bookmark = glyph(Bookmark01Icon);
 export const BookmarkCheck = glyph(BookmarkCheck01Icon);
 export const BookmarkPlus = glyph(BookmarkAdd01Icon);
 export const BookOpen = glyph(BookOpen01Icon);
+export const Brain = glyph(Brain02Icon);
 export const Check = glyph(Tick02Icon);
 export const ChevronDown = glyph(ArrowDown01Icon);
 export const ChevronRight = glyph(ArrowRight01Icon);
 export const Compass = glyph(CompassIcon);
 export const Copy = glyph(Copy01Icon);
 export const Download = glyph(Download01Icon);
+export const FileExport = glyph(FileExportIcon);
 export const EyeOff = glyph(ViewOffIcon);
 export const FileDiff = glyph(FileDiffIcon);
 export const FilePlus = glyph(FileAddIcon);
 export const FileText = glyph(File01Icon);
 export const Folder = glyph(Folder01Icon);
 export const FolderPlus = glyph(FolderAddIcon);
+export const Globe = glyph(Globe02Icon);
 export const Headphones = glyph(HeadphonesIcon);
 export const Heart = glyph(FavouriteIcon);
 export const ImageIcon = glyph(Image01Icon);
 export const ImageOff = glyph(ImageOffIcon);
 export const ImagePlus = glyph(ImageAdd01Icon);
 export const Info = glyph(InformationCircleIcon);
+export const Key = glyph(Key01Icon);
 export const Lightbulb = glyph(BulbIcon);
 export const Loader2 = glyph(Loading03Icon);
+export const Lock = glyph(LockIcon);
 export const MessageCircle = glyph(BubbleChatIcon);
 export const MessagesSquare = glyph(MessageMultiple01Icon);
 export const Newspaper = glyph(NewsIcon);

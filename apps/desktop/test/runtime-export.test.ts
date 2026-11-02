@@ -138,14 +138,15 @@ after(async () => {
   }
 });
 
-test("Settings → Export picks the menu's destinations and words the statement", { timeout: 120_000 }, async () => {
+test("Settings › Export picks the menu's destinations and words the statement", { timeout: 120_000 }, async () => {
   page = await context.newPage();
   await page.goto(url);
   await page.locator(`[title="${DOC}"]`).click();
   await page.locator(`[title="${DOC}"][data-active="true"]`).waitFor();
 
   await page.keyboard.press("Meta+,");
-  const settings = page.getByRole("dialog", { name: "Settings" });
+  const settings = page.getByRole("region", { name: "Settings" });
+  await settings.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Export" }).click();
   const destinations = settings.getByRole("list", { name: "Export destinations" });
   // Loaded from the backend: the switches turn on once the settings arrive.
   await destinations.locator('[role="switch"][aria-checked="true"]').nth(3).waitFor();

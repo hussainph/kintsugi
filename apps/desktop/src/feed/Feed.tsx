@@ -140,7 +140,6 @@ export function Feed({ picked }: Props) {
   };
 
   const failing = sources.filter((s) => s.lastError && !s.muted).length;
-  const live = sources.filter((s) => !s.muted).length;
 
   return (
     <section className="relative flex h-full min-h-0 flex-col" aria-label="Feed">
@@ -149,20 +148,13 @@ export function Feed({ picked }: Props) {
           <header className="mb-6 flex items-start justify-between gap-5">
             <div>
               <h1 className="ki-title">Feed</h1>
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                {sources.length ? (
-                  <>
-                    New from {live} {live === 1 ? "source" : "sources"} you follow.
-                    {failing > 0 && (
-                      <button type="button" className="ml-1 text-destructive underline-offset-2 hover:underline" onClick={() => setManaging(true)}>
-                        {failing} {failing === 1 ? "needs" : "need"} attention.
-                      </button>
-                    )}
-                  </>
-                ) : (
-                  "New work from the people and places you follow."
-                )}
-              </p>
+              {failing > 0 && (
+                <p className="mt-1.5 text-xs">
+                  <button type="button" className="text-destructive underline-offset-2 hover:underline" onClick={() => setManaging(true)}>
+                    {failing} {failing === 1 ? "source needs" : "sources need"} attention
+                  </button>
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-1">
               {sources.length > 0 && (
@@ -198,7 +190,7 @@ export function Feed({ picked }: Props) {
               ))}
               <div ref={sentinel} className="h-px" />
               {page.items.length >= page.total && page.total > 0 && (
-                <p className="pt-6 text-center text-xs text-muted-foreground/70">That’s everything. Items you don’t act on are removed after 30 days.</p>
+                <p className="pt-6 text-center text-xs text-muted-foreground/70">Items you don’t act on are removed after 30 days.</p>
               )}
             </div>
           ) : (
@@ -206,11 +198,6 @@ export function Feed({ picked }: Props) {
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <Rss className="mb-6 size-7 stroke-1 text-muted-foreground/40" />
                 <h2 className="ki-prose-title">{sources.length ? "Nothing new yet." : "You’re not following anything yet."}</h2>
-                <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
-                  {sources.length
-                    ? "New posts, videos and episodes show up here when they’re published."
-                    : "Follow blogs, YouTube channels, podcasts or Hacker News. Save the items you want to keep to Inspiration."}
-                </p>
                 <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => setManaging(true)}>
                   {sources.length ? "See what you follow" : "Follow something"}
                 </Button>

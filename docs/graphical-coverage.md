@@ -86,9 +86,11 @@ variant, mode, part and state of each one against its captured specification
 Base UI's non-visual helpers `CSPProvider`, `DirectionProvider`, `mergeProps`
 and `useRender` are re-exported unchanged.
 
-Only `Toggle` (Inspiration tag filters) is used directly by a screen today. The
-rest are ready to import; they are covered by the specification tests, not yet
-by a rendered screen.
+Used directly by screens: `Toggle` (Inspiration tag filters), `Menu` with its
+filter parts (the model picker in Kin's chat and Settings), `Meter` (the
+monthly cap in Settings), `SelectField` and `Checkbox` (the Kin developer
+panel). The rest are ready to import; they are covered by the specification
+tests, not yet by a rendered screen.
 
 ## Shared components
 
@@ -130,7 +132,10 @@ Sonner or native behavior.
 | Phone dialog, headless dialogs | Converted |
 | Feed, sources, picked | Themed through the semantic aliases; type sizes moved onto the theme scale; page title uses `ki-title` |
 | Ideas (ledger, beside, cards) | Themed through the semantic aliases; the Kin accent now reads `--kin` / `--kin-ink` |
-| Kin chat, About you, Settings | Themed through the semantic aliases; Settings got no other changes |
+| Settings (KI-61) | A page of its own, converted to `ki-settings-*` roles; model pickers are `Menu` |
+| Kin chat model picker | `Menu` with `ki-model-*` roles |
+| Kin chat, About you | Themed through the semantic aliases |
+| Kin developer panel | `SelectField` and `Checkbox` |
 | Publish and Export dialogs | Dialog chrome moved to theme tokens; the warning color is `--warning` |
 | Comments in the editor | Themed through the editor theme |
 
@@ -142,9 +147,6 @@ Sonner or native behavior.
 - The Publish preview and the Export page previews keep their own type and
   white page background on purpose: they show the blog and the exported file.
 - Kin's avatar keeps its fixed accent stroke (`#d4a53c`); it is artwork.
-- Settings and the Kin developer panel use native `<select>` and checkbox
-  elements. Settings is about to become a full page, so they weren't swapped
-  for `Select` and `Checkbox` here.
 - The kit's alternate icon families (Central, Phosphor, filled Lucide artwork
   tables) stay in the vendored source but are never selected by this theme.
 - The theme's tracking for `xxs` text is +0.005em. No screen uses `xxs` text as

@@ -51,7 +51,6 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
         aria-expanded={open}
         onClick={() => setOpen(!open)}
         aria-label={`${label} beside this draft`}
-        title="Kin’s ideas for this draft. They’re never added to the text."
         className="flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-xs whitespace-nowrap text-muted-foreground shadow-xs backdrop-blur hover:text-foreground"
       >
         <Lightbulb className="size-3.5 text-[var(--seam-ink)]" />
@@ -88,7 +87,7 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
               </button>
             </div>
           ))}
-          <p className="text-xs text-muted-foreground">Saved in the file’s frontmatter, not in the text. Clips are saved as wikilinks.</p>
+          <p className="text-xs text-muted-foreground">Kept in the frontmatter, not the text.</p>
         </aside>
       )}
     </div>

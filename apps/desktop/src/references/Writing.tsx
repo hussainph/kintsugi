@@ -228,7 +228,7 @@ function ClipCard({ root, source, onClose, onQuote, onReference, onOpenDoc }: { 
   }, [source.path]);
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" onOpenAutoFocus={(event) => { event.preventDefault(); referenceButton.current?.focus(); }} onCloseAutoFocus={(event) => event.preventDefault()}>
     <DialogTitle>{source.title}</DialogTitle>
-    <DialogDescription>{source.site || "Inspiration"}{clip?.author ? ` · ${clip.author}` : ""}</DialogDescription>
+    <DialogDescription>{source.site || "Inspiration"}{clip?.author ? ` · ${clip.author}` : ""}</DialogDescription>{/* copy-lint-allow: the clip's source and author, not an explanation */}
     {source.image && <img src={source.image} alt="" className="max-h-60 w-full rounded-(--radius-s) object-cover" />}
     {source.summary && <p className="ki-text-s ki-muted">{source.summary}</p>}
     {error ? <p className="ki-text-s ki-error" role="alert">{error}</p> : <p role={!clip ? "status" : undefined} className="ki-prose whitespace-pre-wrap select-text">{clip ? clip.text || "No passage captured." : "Opening…"}</p>}

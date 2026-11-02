@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { parseIsbn, isbnUrl } from "@kintsugi/core/books";
 import { Button } from "@kintsugi/ui/components/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import type { DesktopClipCapture } from "@kintsugi/core/clips";
@@ -34,10 +34,9 @@ export function CaptureDialog({ open, onClose, capture }: { open: boolean; onClo
   };
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) close(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>{books ? "Add a book" : "Add a clip"}</DialogTitle>
-          <DialogDescription>{books ? "Search by title, author or ISBN." : "Paste a link or some text, or add an image, PDF or EPUB."}</DialogDescription>
         </DialogHeader>
         {books ? <BookSearch saving={saving} setSaving={setSaving} capture={capture} onSaved={close} onBack={() => setBooks(false)} /> : <>
           <Textarea autoFocus aria-label="URL or text to capture" placeholder="A link, a quote or a note" className="min-h-36 resize-y select-text" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => {
@@ -46,7 +45,7 @@ export function CaptureDialog({ open, onClose, capture }: { open: boolean; onClo
           <div className="flex items-center justify-between gap-[var(--space-s)]">
             <input ref={picker} type="file" accept={FILE_ACCEPT} className="hidden" aria-label="Choose an image, PDF or EPUB" onChange={(e) => setFile(e.target.files?.[0])} />
             <div className="flex min-w-0 items-center">
-              <Button variant="ghost" onClick={() => picker.current?.click()} className="min-w-0" title="An image, a PDF or an EPUB"><Paperclip /><span className="truncate">{file?.name ?? "Add a file"}</span></Button>
+              <Button variant="ghost" onClick={() => picker.current?.click()} className="min-w-0"><Paperclip /><span className="truncate">{file?.name ?? "Add a file"}</span></Button>
               {!file && <Button variant="ghost" onClick={() => setBooks(true)}><BookOpen />Find a book</Button>}
             </div>
             <Button disabled={saving || (!text.trim() && !file)} onClick={save}>{saving ? "Saving…" : "Save"}</Button>
@@ -106,7 +105,7 @@ function BookSearch({ saving, setSaving, capture, onSaved, onBack }: { saving: b
       <ul aria-label="Books" className="space-y-0.5">
         {showIsbn && <li><button type="button" disabled={saving} onClick={() => void keep(bookCapture({ url: isbnUrl(isbn) }))} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50">
           <Cover />
-          <span className="min-w-0"><span className="block truncate text-sm">Save ISBN {isbn}</span><span className="block truncate text-xs text-muted-foreground">Details are filled in from Open Library</span></span>
+          <span className="min-w-0"><span className="block truncate text-sm">Save ISBN {isbn}</span><span className="block truncate text-xs text-muted-foreground">From Open Library</span></span>
         </button></li>}
         {hits.map((hit) => <li key={hit.key}><button type="button" disabled={saving} onClick={() => void keep(bookCapture(hit))} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50">
           <Cover url={hit.coverUrl} />
@@ -117,7 +116,7 @@ function BookSearch({ saving, setSaving, capture, onSaved, onBack }: { saving: b
         searching ? "Looking…"
           : results?.error ? results.error
           : results && results.query === term && !hits.length ? (isbn ? "Open Library doesn’t have it. You can still save the ISBN." : "No books found. Try fewer words, or an ISBN.")
-          : !term ? "Results come from Open Library. Choose a book to save it." : ""
+          : !term ? "From Open Library." : ""
       }</p>
     </div>
     <div className="flex items-center justify-between gap-3">

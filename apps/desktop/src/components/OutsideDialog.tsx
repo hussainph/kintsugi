@@ -28,11 +28,7 @@ export function OutsideDialog({ collision, onChoose }: Props) {
       <DialogContent className="sm:max-w-md" showCloseButton={false} onEscapeKeyDown={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{gone ? `“${file}” was moved or deleted in another app` : `“${file}” changed in another app`}</DialogTitle>
-          <DialogDescription>
-            {gone
-              ? "You have changes here that aren’t saved. Keep them to save the document again where it was, or close it and lose them."
-              : "You changed the same lines here before saving, so the two versions can’t be combined. Nothing has been saved over either one."}
-          </DialogDescription>
+          <DialogDescription>{gone ? "Your changes here aren’t saved." : "Both versions changed the same lines. Neither has been overwritten."}</DialogDescription>{/* copy-lint-allow: what's at stake (unsaved or both kept) isn't visible */}
         </DialogHeader>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={() => onChoose("disk")}>

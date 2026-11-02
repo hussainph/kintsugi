@@ -24,12 +24,11 @@ export const SCOPE = [
 
 /**
  * Where the over-explaining rule only reports (`pnpm lint:copy --report
- * verbose`) and doesn't fail yet. It is on everywhere else, starting with
- * apps/mobile; a later ticket sweeps the Mac and turns it on there.
+ * verbose`) and doesn't fail yet. It is on everywhere else: the phone app
+ * and, since KI-61, the Mac app.
  */
 export const REPORT_ONLY = [
-  [/^apps\/desktop\//, 'over-explaining', 'the Mac app has not been swept yet'],
-  [/^packages\//, 'over-explaining', 'shared packages are the Mac app\'s UI'],
+  [/^packages\//, 'over-explaining', 'shared packages have not been swept yet'],
 ];
 export const reportOnly = (path, rule) => REPORT_ONLY.some(([re, r]) => r === rule && re.test(path));
 

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { DESTINATIONS, LINKEDIN_FOLD, LINKEDIN_LIMIT, exportName, preparePiece, render, type Destination, type ExportInput, type Piece, type Rendered } from "@kintsugi/core/export";
 import { localDate } from "@kintsugi/core/publish";
 import { Button } from "@kintsugi/ui/components/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Switch } from "@kintsugi/ui/components/switch";
 import { blog, openPublish } from "@/lib/blog";
 import { exporting, statementFor, type ExportSettings } from "@/lib/exporting";
@@ -171,10 +171,9 @@ export function Export({ root, path, viewRef, flush }: Props) {
 
   return (
     <Dialog open={phase.kind !== "closed"} onOpenChange={(next) => { if (!next) close(); }}>
-      <DialogContent className="publish-dialog export-dialog sm:max-w-3xl" onCloseAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent aria-describedby={undefined} className="publish-dialog export-dialog sm:max-w-3xl" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>Export</DialogTitle>
-          <DialogDescription>{current?.hint ?? "Export this document as a file or as text."}</DialogDescription>
         </DialogHeader>
 
         <div className="publish-bar">

@@ -49,6 +49,9 @@ type Props = {
   onTrash: (path: string) => void;
   phoneOn: boolean;
   onPhone: () => void;
+  settingsOpen?: boolean;
+  /** Settings covers the app: nothing here takes focus or clicks. */
+  inert?: boolean;
   /** Show only documents carrying every one of these tags. Kept here when
    *  the parent doesn't hold it (the Lab's previews). */
   tagFilter?: string[];
@@ -171,7 +174,7 @@ export function Sidebar(props: Props) {
   };
 
   return (
-    <SidebarRoot>
+    <SidebarRoot inert={props.inert}>
       {/* Room for the traffic lights; the whole strip drags the window. */}
       <SidebarHeader className="h-10" data-tauri-drag-region />
       <SidebarContent>
@@ -243,7 +246,7 @@ export function Sidebar(props: Props) {
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton size="sm" onClick={openSettings} title="Settings (⌘,)">
+            <SidebarMenuButton size="sm" isActive={props.settingsOpen} onClick={() => openSettings()} title="Settings (⌘,)">
               <Settings />
               <span>Settings</span>
             </SidebarMenuButton>

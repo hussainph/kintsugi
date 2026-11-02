@@ -115,14 +115,15 @@ test('over-explaining: lengths by role, narration, and sentence counts', () => {
   assert.equal(wordCount('Remove {…} from the context'), 5);
 });
 
-test('over-explaining fails on the phone and only reports on the Mac', () => {
+test('over-explaining fails on the phone and the Mac, and only reports in packages', () => {
   const source = read('fail/explaining.tsx');
   const phone = lintSource('apps/mobile/src/app/x.tsx', source).filter((f) => f.rule === 'over-explaining');
   const mac = lintSource('apps/desktop/src/x.tsx', source).filter((f) => f.rule === 'over-explaining');
   const pkg = lintSource('packages/ui/src/x.tsx', source).filter((f) => f.rule === 'over-explaining');
   assert.ok(phone.length > 0 && phone.every((f) => !f.report));
   assert.equal(mac.length, phone.length);
-  assert.ok(mac.every((f) => f.report) && pkg.every((f) => f.report));
+  assert.ok(mac.every((f) => !f.report), 'on for the Mac app (KI-61)');
+  assert.ok(pkg.length > 0 && pkg.every((f) => f.report));
   // Other rules still fail on the Mac.
   assert.ok(lintSource('apps/desktop/src/x.tsx', read('fail/copy.tsx')).every((f) => !f.report));
   // Docs and Rust aren't UI strings: no over-explaining there.
