@@ -29,7 +29,7 @@ const PREAMBLE = `#set page(paper: "a4", margin: (x: 2.6cm, top: 2.6cm, bottom: 
 #set figure(supplement: "Fig.", gap: 0.8em)
 #show figure.caption: set text(size: 0.88em, fill: luma(80))
 #set table(stroke: 0.4pt + luma(200), inset: 6pt)
-#let callout(label, body) = block(width: 100%, inset: 10pt, radius: 4pt, stroke: 0.5pt + luma(190), fill: luma(248))[#text(size: 0.8em, weight: "semibold", tracking: 0.04em, fill: luma(90), upper(label)) #v(0.2em, weak: true) #body]
+#let callout(label, body) = block(width: 100%, inset: 10pt, radius: 4pt, stroke: 0.5pt + luma(190), fill: luma(248))[#text(weight: "semibold", label) #v(0.2em, weak: true) #body]
 #let codeblock(label, code) = block(width: 100%, inset: 9pt, radius: 4pt, fill: luma(246), breakable: true)[#if label != "" { text(size: 0.75em, fill: luma(110), font: "DejaVu Sans Mono", label); v(0.1em) } #code]
 #let fig(path, alt, caption) = figure(layout(size => { let natural = measure(image(path)).width; image(path, alt: alt, width: calc.min(natural, size.width)) }), caption: caption)
 `;
@@ -60,7 +60,7 @@ export function renderTypst(piece: Piece, _context: RenderContext): Rendered {
       case "p": return inline(b.c);
       case "h": return `#heading(level: ${Math.min(b.level, 6)})[${inline(b.c)}]`;
       case "quote": return `#quote[${blocks(b.c)}]`;
-      case "callout": return `#callout(${str(b.kind)})[${blocks(b.c)}]`;
+      case "callout": return `#callout(${str(b.kind[0].toUpperCase() + b.kind.slice(1))})[${blocks(b.c)}]`;
       case "list": {
         const tight = b.items.every((item) => item.c.length <= 1);
         const items = b.items.map((item) => {

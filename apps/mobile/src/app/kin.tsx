@@ -123,7 +123,7 @@ export default function KinScreen() {
             <View style={styles.empty}>
               <KinMark size={56} />
               <Text style={[styles.emptyText, { color: theme.muted }]}>
-                Ask Kin about anything you’re reading or writing. It finds and connects; the writing stays yours.
+                Ask Kin about anything you’re reading or writing. Kin finds and connects things, and never writes your text for you.
               </Text>
             </View>
           )}
@@ -227,18 +227,20 @@ function Message({ item, theme }: { item: Shown; theme: Theme }) {
       {entry.role === 'owner' ? (
         <View style={styles.ownerRow}>
           <View style={[styles.owner, { backgroundColor: theme.surface }]}>
-            {entry.comment && <Text style={[styles.tag, { color: theme.faint }]}>Comment on a paragraph</Text>}
             <Chips chips={entry.chips ?? []} theme={theme} />
             <Text selectable style={[styles.ownerText, { color: theme.text }]}>{entry.text}</Text>
           </View>
+          {entry.comment && <Text style={[styles.meta, { color: theme.faint }]}>In a paragraph’s comments</Text>}
         </View>
       ) : (
         <View style={styles.kinRow} accessible accessibilityLabel={`Kin: ${entry.text}`}>
           <View style={[styles.rule, { backgroundColor: theme.kin }]} />
           <View style={styles.kinBody}>
-            {entry.role === 'helper' && <Text style={[styles.tag, { color: theme.kinInk }]}>From a helper</Text>}
-            {entry.comment && <Text style={[styles.tag, { color: theme.faint }]}>Comment on a paragraph</Text>}
-            <Text selectable style={[styles.kinText, { color: theme.text }]}>{entry.text || (entry.error ? '' : '…')}</Text>
+            <Text selectable style={[styles.kinText, { color: theme.text }]}>
+              {entry.role === 'helper' && <Text style={[styles.helper, { color: theme.kinInk }]}>From a helper: </Text>}
+              {entry.text || (entry.error ? '' : '…')}
+            </Text>
+            {entry.comment && <Text style={[styles.meta, { color: theme.faint }]}>In a paragraph’s comments</Text>}
             {entry.interrupted && <Text style={[styles.meta, { color: theme.faint }]}>Interrupted</Text>}
             {entry.error && <Text style={[styles.meta, { color: theme.danger }]}>{entry.error}</Text>}
           </View>
@@ -292,7 +294,7 @@ const styles = StyleSheet.create({
   listContent: { padding: 16, gap: 14, paddingBottom: 24 },
   empty: { alignItems: 'center', gap: 14, paddingTop: 60, paddingHorizontal: 24 },
   emptyText: { fontSize: 15, lineHeight: 21, textAlign: 'center' },
-  thread: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center', marginTop: 6 },
+  thread: { fontSize: 13, textAlign: 'center', marginTop: 6 },
   ownerRow: { alignItems: 'flex-end', gap: 4 },
   owner: { maxWidth: '85%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, gap: 6 },
   ownerText: { fontSize: 16, lineHeight: 22 },
@@ -300,7 +302,7 @@ const styles = StyleSheet.create({
   rule: { width: 2, borderRadius: 1 },
   kinBody: { flex: 1, gap: 4 },
   kinText: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 25 },
-  tag: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5 },
+  helper: { fontWeight: '600' },
   meta: { fontSize: 12 },
   metaAction: { fontSize: 12, fontWeight: '600' },
   refused: { flexDirection: 'row', gap: 12, alignItems: 'center' },
@@ -309,7 +311,7 @@ const styles = StyleSheet.create({
   inlineChip: { fontSize: 12, borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, maxWidth: 220 },
   jobs: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10, gap: 8 },
   jobsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  label: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6 },
+  label: { fontSize: 15, fontWeight: '600' },
   job: { gap: 2 },
   jobTitle: { fontSize: 15 },
   composer: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12, paddingTop: 8, gap: 8 },

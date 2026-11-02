@@ -13,7 +13,7 @@ export function useCapture(onCaptured: () => void) {
   const capture = useCallback(async (value: DesktopClipCapture) => {
     const path = await clips.create(value);
     callback.current();
-    toast.success("Saved to inspiration");
+    toast.success("Saved to Inspiration");
     return path;
   }, []);
 

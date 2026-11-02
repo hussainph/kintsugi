@@ -24,13 +24,6 @@ export type IdeasModel = {
   openDraft: (path: string) => void;
 };
 
-const kindLabel: Record<string, string> = {
-  gap: 'A gap',
-  tension: 'A tension',
-  stalled: 'Stalled',
-  connection: 'A connection',
-};
-
 /** Adopted, adopting, refining: a few muted words. */
 export function Status({ idea }: { idea: LocalIdea }) {
   const theme = useTheme();
@@ -43,10 +36,9 @@ export function Detail({ idea, model }: { idea: LocalIdea; model: IdeasModel }) 
   const [how, setHow] = useState(false);
   return (
     <View style={styles.detail}>
-      {kindLabel[idea.kind] && <Text style={[styles.label, { color: theme.faint }]}>{kindLabel[idea.kind]}</Text>}
       {idea.observed.length > 0 && (
         <View style={styles.block}>
-          <Text style={[styles.label, { color: theme.faint }]}>What Kin noticed</Text>
+          <Text style={[styles.label, { color: theme.text }]}>What Kin noticed</Text>
           {idea.observed.map((o, i) => (
             <Text key={i} style={[styles.text, { color: theme.text }]}>
               {o}
@@ -59,7 +51,7 @@ export function Detail({ idea, model }: { idea: LocalIdea; model: IdeasModel }) 
         <Text style={[styles.hunch, { color: theme.text }]}>{idea.hunch}</Text>
       </View>
       <View style={styles.block}>
-        <Text style={[styles.label, { color: theme.faint }]}>Evidence</Text>
+        <Text style={[styles.label, { color: theme.text }]}>Evidence</Text>
         {evidence(idea).map((q) => (
           <Quote key={q.source} quote={q} theme={theme} onOpen={q.source.startsWith('feed:') ? undefined : () => model.openDraft(q.source)} />
         ))}
@@ -67,7 +59,7 @@ export function Detail({ idea, model }: { idea: LocalIdea; model: IdeasModel }) 
       {idea.steps.length > 0 && (
         <View style={styles.block}>
           <Pressable accessibilityRole="button" onPress={() => setHow(!how)}>
-            <Text style={[styles.link, { color: theme.muted }]}>{how ? 'Hide how Kin got here' : 'How Kin got here'}</Text>
+            <Text style={[styles.link, { color: theme.muted }]}>{how ? 'Hide how Kin found this' : 'How Kin found this'}</Text>
           </Pressable>
           {how &&
             idea.steps.map((s, i) => (
@@ -80,7 +72,7 @@ export function Detail({ idea, model }: { idea: LocalIdea; model: IdeasModel }) 
       )}
       {idea.reasons.filter((r) => !r.removed).length > 0 && (
         <View style={styles.block}>
-          <Text style={[styles.label, { color: theme.faint }]}>Why this?</Text>
+          <Text style={[styles.label, { color: theme.text }]}>Why this?</Text>
           {idea.reasons
             .filter((r) => !r.removed)
             .map((r) => (
@@ -156,7 +148,7 @@ const styles = StyleSheet.create({
   status: { fontSize: 13 },
   detail: { gap: 16, paddingBottom: 8 },
   block: { gap: 6 },
-  label: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6 },
+  label: { fontSize: 15, fontWeight: '600' },
   text: { fontSize: 15, lineHeight: 21 },
   hunch: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 25 },
   quote: { borderLeftWidth: 2, paddingLeft: 10, gap: 2, paddingVertical: 2 },

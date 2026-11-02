@@ -76,7 +76,7 @@ const afterPaint = (fn: () => void) => requestAnimationFrame(() => setTimeout(fn
 
 const sources: References['sources'] = [
   { kind: 'document', path: 'drafts/on-writing.mdx', title: 'On writing in the margins' },
-  { kind: 'document', path: 'posts/kintsugi.mdx', title: 'Kintsugi: mending with gold' },
+  { kind: 'document', path: 'posts/kintsugi.mdx', title: 'About Kintsugi' },
   { kind: 'document', path: 'notes/phone-editor.md', title: 'Phone editor notes' },
 ] as References['sources'];
 

@@ -41,12 +41,15 @@ export const ACTIONS: Action[] = [
   },
 ];
 
-/** The writer's voice comes first; these are the tells that make prose read
- *  as generated, so the editor must never introduce them. */
+/** The tells that make prose read as generated, so the editor must never
+ *  introduce them. The line names the banned words, hence the allow. */
+const NEVER = `Never introduce: em dashes, "not X, but Y" or "it's not just X, it's Y" constructions, lists of three for rhythm, rhetorical questions, or words like delve, tapestry, testament, crucial, seamless, elevate, unlock, landscape.`; // copy-lint-allow: tells the model which slop words and patterns to avoid
+
+/** The writer's voice comes first. */
 const EDITOR = `You are a careful editor helping a writer revise their own prose.
 The writing is theirs. Keep their voice, vocabulary, tone and point of view, and change only what the instruction asks for.
 Never add new ideas, claims, examples or flourishes.
-Never introduce: em dashes, "not X, but Y" or "it's not just X, it's Y" constructions, lists of three for rhythm, rhetorical questions, or words like delve, tapestry, testament, crucial, seamless, elevate, unlock, landscape.
+${NEVER}
 Keep any Markdown or MDX syntax in the passage exactly as it is, and match its punctuation style (straight or curly quotes and apostrophes).`;
 
 const REWRITE = `${EDITOR}

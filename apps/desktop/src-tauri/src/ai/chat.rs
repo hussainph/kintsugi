@@ -642,7 +642,7 @@ impl<B: Brain> Engine<B> {
 fn brief(job: &Job) -> String {
     format!(
         "You're working as one of Kin's helpers, in the background, with your own context. Hussain isn't watching; \
-         your report goes quietly into his conversation with Kin for later.\n\nBrief ({}):\n{}\n\n\
+         your report is added to his conversation with Kin for him to read later.\n\nBrief ({}):\n{}\n\n\
          Work it through with your tools, then report back as the brief asks; if it doesn't say how, briefly: what you found, with paths. \
          Say plainly what you couldn't do.",
         job.kind, job.brief

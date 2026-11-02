@@ -23,7 +23,7 @@ final class InspirationTests: XCTestCase {
     entry.tap()
 
     XCTAssertTrue(card("Why we sleep").waitForExistence(timeout: 15))
-    XCTAssertTrue(card("A thought").exists, "the note clip has no card")
+    XCTAssertTrue(card("A note").exists, "the note clip has no card")
     // Images arrive in the background.
     sleep(4)
     shot("02-grid")
@@ -48,7 +48,7 @@ final class InspirationTests: XCTestCase {
     // Detail: source link, summary, notes and the source on demand.
     tap(card("Why we sleep"))
     XCTAssertTrue(app.links["Open the source"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Summary · machine-made")).firstMatch.exists, "the summary isn’t labelled machine-made")
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "AI summary")).firstMatch.exists, "the summary isn’t labelled machine-made")
     XCTAssertTrue(notesValue().contains("tired mind"), "the clip’s notes aren’t shown")
     shot("04-detail")
     app.swipeUp()

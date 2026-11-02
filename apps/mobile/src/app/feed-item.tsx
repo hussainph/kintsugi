@@ -120,7 +120,7 @@ export default function FeedItemScreen() {
         )}
         {saved && item.savedPath && <Text style={[styles.small, { color: theme.muted }]}>In Inspiration. Its note is edited there now.</Text>}
 
-        <Text style={[styles.label, { color: theme.faint }]}>Your note</Text>
+        <Text style={[styles.label, { color: theme.text }]}>Your note</Text>
         {conflict ? (
           <View style={[styles.conflict, { backgroundColor: theme.surface }]}>
             <Text style={[styles.body, { color: theme.text }]}>
@@ -146,7 +146,7 @@ export default function FeedItemScreen() {
               feed.note(id, next, place);
               setTyped((n) => n + 1);
             }}
-            placeholder={saved ? '' : 'A thought about this…'}
+            placeholder={saved ? '' : 'Add a note…'}
             placeholderTextColor={theme.faint}
             multiline
             accessibilityLabel="Your note"
@@ -208,7 +208,7 @@ const styles = StyleSheet.create({
   action: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   actionText: { fontSize: 14, fontWeight: '500' },
   small: { fontSize: 13, lineHeight: 18 },
-  label: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 8 },
+  label: { fontSize: 17, fontWeight: '600', marginTop: 8 },
   note: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 24, borderRadius: 12, padding: 12, minHeight: 70 },
   conflict: { borderRadius: 12, padding: 12, gap: 8 },
   choices: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end' },

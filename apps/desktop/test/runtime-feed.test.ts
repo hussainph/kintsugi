@@ -144,7 +144,7 @@ async function follow(tab: string, value: string, expect: RegExp) {
 
 test("follow sources and read them newest first", { timeout: TIMEOUT }, async () => {
   await page.getByRole("button", { name: "Feed" }).first().click();
-  await page.getByText("Follow a few good sources.").waitFor();
+  await page.getByText("You’re not following anything yet.").waitFor();
   await shot("01-empty");
 
   await page.getByRole("button", { name: "Follow something" }).click();

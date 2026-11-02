@@ -198,18 +198,18 @@ export function Feed({ picked }: Props) {
               ))}
               <div ref={sentinel} className="h-px" />
               {page.items.length >= page.total && page.total > 0 && (
-                <p className="pt-6 text-center text-[11px] text-muted-foreground/70">That’s everything. Items you don’t act on leave after 30 days.</p>
+                <p className="pt-6 text-center text-[11px] text-muted-foreground/70">That’s everything. Items you don’t act on are removed after 30 days.</p>
               )}
             </div>
           ) : (
             !loading && (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <Rss className="mb-6 size-7 stroke-1 text-muted-foreground/40" />
-                <h2 className="font-[family-name:var(--font-prose)] text-2xl">{sources.length ? "Nothing new just yet." : "Follow a few good sources."}</h2>
+                <h2 className="font-[family-name:var(--font-prose)] text-2xl">{sources.length ? "Nothing new yet." : "You’re not following anything yet."}</h2>
                 <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
                   {sources.length
-                    ? "New posts, videos and episodes land here as they’re published."
-                    : "Blogs, YouTube channels, podcasts, Hacker News. What’s worth keeping, you save to Inspiration."}
+                    ? "New posts, videos and episodes show up here when they’re published."
+                    : "Follow blogs, YouTube channels, podcasts or Hacker News. Save the items you want to keep to Inspiration."}
                 </p>
                 <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => setManaging(true)}>
                   {sources.length ? "See what you follow" : "Follow something"}

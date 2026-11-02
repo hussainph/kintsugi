@@ -682,7 +682,7 @@ const commentTheme = EditorView.theme({
   ".cm-comment-thread": { padding: "10px 12px", display: "flex", flexDirection: "column", gap: "8px" },
   ".cm-comment-thread + .cm-comment-thread": { borderTop: "1px solid var(--border)" },
   ".cm-comment-header": { display: "flex", alignItems: "center", gap: "8px" },
-  ".cm-comment-title": { flex: "1", fontSize: "11px", fontWeight: "500", letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted-foreground)" },
+  ".cm-comment-title": { flex: "1", fontSize: "13px", fontWeight: "500", color: "var(--foreground)" },
   ".cm-comment-close": { border: "none", background: "none", color: "var(--muted-foreground)", fontSize: "16px", lineHeight: "1", cursor: "pointer", padding: "2px 4px" },
   ".cm-comment-action": { font: "inherit", fontSize: "12px", color: "var(--primary)", background: "none", border: "none", padding: "2px 0", cursor: "pointer" },
   ".cm-comment-action:focus-visible, .cm-comment-close:focus-visible": { outline: "2px solid var(--primary)", outlineOffset: "2px" },

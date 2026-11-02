@@ -94,8 +94,8 @@ fn doc_chips(doc: &str, chips: Vec<Chip>) -> Vec<Chip> {
 fn note(doc: &str, chips: &[Chip]) -> String {
     let lines = chips.iter().find_map(|c| c.lines).map(|[a, b]| if a == b { format!(", line {a}") } else { format!(", lines {a}-{b}") }).unwrap_or_default();
     format!(
-        "{COMMENT_NOTE} of {doc}{lines}: the paragraph chip below. Reply the way a reviewer does in the margin: brief and specific, \
-         a few sentences. Never write or rewrite his prose, not even as an example: question, point, find. Name anything you found \
+        "{COMMENT_NOTE} of {doc}{lines}: the paragraph chip below. Reply the way a reviewer does in the margin: brief, specific and plain, \
+         a few sentences, no praise. Never write or rewrite his prose, not even as an example: question, point, find. Name anything you found \
          as a [[path]] link so he can drag it into the draft.)"
     )
 }
@@ -104,7 +104,8 @@ fn review_brief(doc: &str, label: &str, paragraphs: &[Paragraph]) -> String {
     let mut out = format!(
         "{REVIEW_BRIEF}: {doc} (\"{label}\"). Read it first with the read tool. Then pick the few paragraphs (at most five) that most \
          need a reviewer's note: an unclear claim, a missing source, a weak step in the argument, something his own writing or clips \
-         contradict or support. Search his writing and clips where it helps, and name what you find as [[path]] links.\n\
+         contradict or support. Search his writing and clips where it helps, and name what you find as [[path]] links. \
+         Keep each note short and plain, with no praise.\n\
          Never write or rewrite his prose, not even as an example: question, point, find.\n\
          Answer with only a JSON array between <comments> tags, one object per note: \
          <comments>[{{\"paragraph\": 2, \"comment\": \"…\"}}]</comments>. \"paragraph\" is a number from the list below.\n\nParagraphs:\n"

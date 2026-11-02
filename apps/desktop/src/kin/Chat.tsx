@@ -54,7 +54,7 @@ function ChipView({ chip, onRemove }: { chip: Chip; onRemove?: () => void }) {
 
 /** A message from a paragraph's comment thread, which lives in this log too (KI-38). */
 function CommentTag() {
-  return <span className="block text-[10px] tracking-wide text-muted-foreground uppercase" data-comment-tag>Comment on a paragraph</span>;
+  return <span className="block text-xs text-muted-foreground" data-comment-tag>In a paragraph’s comments</span>;
 }
 
 function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
@@ -62,8 +62,8 @@ function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
   if (entry.role === "owner") {
     return (
       <div className="flex flex-col items-end gap-1" data-entry={entry.seq} data-role="owner">
-        {entry.comment && <CommentTag />}
         <p className="max-w-[85%] rounded-2xl rounded-br-md bg-muted px-3 py-2 text-sm whitespace-pre-wrap select-text">{entry.text}</p>
+        {entry.comment && <CommentTag />}
         {(entry.chips?.length || waiting) && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-1">
             {entry.chips?.map((c) => <ChipView key={chipKey(c)} chip={c} />)}
@@ -82,24 +82,26 @@ function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
         onClick={() => setExpanded((e) => !e)}
         className="w-full rounded-lg border border-dashed px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted/40"
       >
-        <span className="mb-1 block text-[10px] tracking-wide uppercase">Helper report</span>
-        <span className={cn("block whitespace-pre-wrap select-text", !expanded && "line-clamp-3")}>{entry.text}</span>
+        <span className={cn("block whitespace-pre-wrap select-text", !expanded && "line-clamp-3")}>
+          <span className="font-medium text-foreground/70">From a helper: </span>
+          {entry.text}
+        </span>
       </button>
     );
   }
   return (
     <div className="flex gap-2" data-entry={entry.seq} data-role="kin" data-comment={entry.comment}>
       <KinAvatar className="mt-0.5 size-5 shrink-0" />
-      <div className="min-w-0">
-        {entry.comment && <CommentTag />}
+      <div className="min-w-0 space-y-1">
         {entry.error ? (
           <p className="text-sm text-destructive" role="alert">Kin couldn’t answer: {entry.error}</p>
         ) : (
           <p className="min-w-0 text-sm leading-relaxed whitespace-pre-wrap select-text">
             {entry.text}
-            {entry.interrupted && <span className="ml-1 text-xs text-muted-foreground" data-interrupted>— interrupted</span>}
+            {entry.interrupted && <span className="ml-1 text-xs text-muted-foreground" data-interrupted>(interrupted)</span>}
           </p>
         )}
+        {entry.comment && <CommentTag />}
       </div>
     </div>
   );
@@ -380,7 +382,7 @@ export function KinChat() {
           <div ref={scroller} className="inspiration-scroll min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4" aria-label="Conversation" aria-live="polite">
             {!page.entries.length && !live && (
               <p className="pt-10 text-center text-sm text-muted-foreground">
-                {view ? `Nothing said about ${threadLabel} yet. Ask away.` : "Ask Kin about what’s on screen, or anything."}
+                {view ? `No messages about ${threadLabel} yet.` : "Ask Kin about what’s on screen, or anything else."}
               </p>
             )}
             {page.entries.map((entry) => {
@@ -390,7 +392,7 @@ export function KinChat() {
               return (
                 <div key={entry.seq} className="space-y-4">
                   {divider && (
-                    <p className="text-center text-[10px] tracking-wide text-muted-foreground uppercase">About {label}</p>
+                    <p className="text-center text-xs text-muted-foreground">About {label}</p>
                   )}
                   <Message entry={entry} waiting={page.pending.includes(entry.seq) && !answering.has(entry.seq)} />
                 </div>
@@ -410,7 +412,7 @@ export function KinChat() {
                 </div>
               </div>
             )}
-            {!live && page.pending.length > 0 && <p className="text-xs text-muted-foreground" data-listening>Kin is listening…</p>}
+            {!live && page.pending.length > 0 && <p className="text-xs text-muted-foreground" data-listening>Waiting for Kin…</p>}
           </div>
 
           {working.length > 0 && (

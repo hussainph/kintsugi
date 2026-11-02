@@ -30,7 +30,7 @@ const section = (n: number) => `## Section ${n}
 
 The quick brown fox jumps over the lazy dog while the writer, half awake on
 the train, tries to remember what the paragraph was meant to say. Line ${n}
-links to [[Kintsugi: mending with gold]] and has some *emphasis*, some
+links to [[About Kintsugi]] and has some *emphasis*, some
 **strong text** and a bit of \`code\` so the highlighter has work to do.
 
 Second paragraph of section ${n}: a phone editor has to stay quick when the

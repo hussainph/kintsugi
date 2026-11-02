@@ -35,7 +35,7 @@ export const menuTheme = EditorView.theme({
   ".cm-kintsugi-menu-option": { display: "flex", alignItems: "center", gap: "10px", padding: "8px", borderRadius: "4px", cursor: "pointer", minWidth: "0" },
   '.cm-kintsugi-menu-option[aria-selected="true"]': { backgroundColor: "var(--muted)" },
   "@media (hover: hover)": { ".cm-kintsugi-menu-option:hover": { backgroundColor: "var(--muted)" } },
-  ".cm-kintsugi-menu-group": { padding: "8px 8px 4px", fontSize: "10px", fontWeight: "500", letterSpacing: ".04em", textTransform: "uppercase", color: "var(--muted-foreground)" },
+  ".cm-kintsugi-menu-group": { padding: "8px 8px 4px", fontSize: "13px", fontWeight: "600", color: "var(--foreground)" },
   ".cm-kintsugi-menu-icon": { width: "28px", height: "28px", flexShrink: "0", display: "grid", placeItems: "center", borderRadius: "5px", border: "1px solid var(--border)", color: "var(--muted-foreground)", fontSize: "11px", fontFamily: "var(--font-mono, ui-monospace, monospace)", backgroundColor: "var(--background)" },
   ".cm-kintsugi-menu-labels": { minWidth: "0", flex: "1" },
   ".cm-kintsugi-menu-title": { fontWeight: "500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },

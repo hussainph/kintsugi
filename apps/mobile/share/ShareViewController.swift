@@ -408,8 +408,8 @@ private struct CaptureSheet: View {
             .background(surface, in: RoundedRectangle(cornerRadius: 14))
 
             VStack(alignment: .leading, spacing: 8) {
-              Text("A note, if you like").font(.subheadline).foregroundStyle(muted)
-              TextField("What caught your attention?", text: $model.note, axis: .vertical)
+              Text("Note (optional)").font(.subheadline).foregroundStyle(muted)
+              TextField("Add a note", text: $model.note, axis: .vertical)
                 .font(.system(.body, design: .serif)).lineLimit(3...6)
                 .padding(14).background(surface, in: RoundedRectangle(cornerRadius: 12))
                 .disabled(model.saving)

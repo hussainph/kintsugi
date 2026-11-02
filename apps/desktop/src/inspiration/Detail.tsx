@@ -68,8 +68,8 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
         }
         changed.current();
       } catch (e) {
-        if (mounted.current) setStatus("Not saved — try again");
-        toast.error(`Could not save clip: ${String(e)}`);
+        if (mounted.current) setStatus("Not saved. Try again.");
+        toast.error(`Couldn’t save the clip: ${String(e)}`);
       }
     });
     return queue.current;
@@ -113,7 +113,7 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
   useScreenContext("clip", chip ? () => [chip] : null, [chip?.path, chip?.label]);
 
   if (!clip) return <div className="flex flex-1 flex-col items-center justify-center gap-4 text-sm text-muted-foreground">
-    <p role={error ? "alert" : "status"}>{error || "Opening inspiration…"}</p>
+    <p role={error ? "alert" : "status"}>{error || "Opening clip…"}</p>
     <div className="flex gap-2"><Button variant="ghost" onClick={onClose}>Back to library</Button>{error && <Button variant="outline" onClick={load}>Try again</Button>}</div>
   </div>;
 
@@ -124,7 +124,7 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
   return (
     <div className="inspiration-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain pb-12">
       <div className="mb-8 flex items-center justify-between gap-3">
-        <Button autoFocus variant="ghost" className="-ml-2 text-muted-foreground" onClick={async () => { await save(); if (!Object.keys(edits.current).length) onClose(); }}><ArrowLeft />All inspiration</Button>
+        <Button autoFocus variant="ghost" className="-ml-2 text-muted-foreground" onClick={async () => { await save(); if (!Object.keys(edits.current).length) onClose(); }}><ArrowLeft />Inspiration</Button>
         <div className="flex items-center gap-3">
           <span className={`text-xs ${status.startsWith("Not saved") ? "text-destructive" : "text-muted-foreground"}`} role="status">{status}</span>
           <Button variant="outline" size="sm" onClick={() => discuss({ kind: "clip", path: clip.path, label: clip.title || clipLabel(clip) })}><MessageCircle />Discuss</Button>
@@ -144,21 +144,21 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
             </div>}
           </div>
           <div className="space-y-3">
-            <label htmlFor="clip-note" className="text-xs text-muted-foreground">Your words</label>
-            <Textarea id="clip-note" value={draft.note} onChange={(e) => edit("note", e.target.value)} onBlur={() => void save()} placeholder="A passage to remember, or a thought of your own…" className="min-h-48 resize-y border-0 bg-muted/35 px-4 py-3 font-[family-name:var(--font-prose)] text-base! leading-relaxed shadow-none focus-visible:ring-1" />
-            <p className="text-[11px] text-muted-foreground">Quote and note, in Markdown. The source text stays untouched.</p>
+            <label htmlFor="clip-note" className="text-sm font-medium">Your notes</label>
+            <Textarea id="clip-note" value={draft.note} onChange={(e) => edit("note", e.target.value)} onBlur={() => void save()} placeholder="A quote or a note…" className="min-h-48 resize-y border-0 bg-muted/35 px-4 py-3 font-[family-name:var(--font-prose)] text-base! leading-relaxed shadow-none focus-visible:ring-1" />
+            <p className="text-[11px] text-muted-foreground">Markdown. Editing this doesn’t change the saved source text.</p>
             {(clip.quoteBy || quoteAt) && <p className="text-xs text-muted-foreground" data-quote-origin>
-              The passage: {clip.quoteBy && <>— {clip.quoteBy}</>}
+              {clip.quoteBy && <>Quote by {clip.quoteBy}</>}
               {quoteAt && <>{clip.quoteBy && <span className="px-1.5 opacity-40">·</span>}<button className="underline decoration-border underline-offset-4 hover:text-foreground" onClick={() => openUrl(quoteAt).catch((e) => toast.error(String(e)))} title={quoteAt}>{quoteLinkLabel(quoteAt) === "source" ? "Open at the passage" : `Open at ${quoteLinkLabel(quoteAt)}`}</button></>}
             </p>}
           </div>
           <div className="space-y-2">
-            <label htmlFor="clip-tags" className="text-xs text-muted-foreground">Tags</label>
-            <Input id="clip-tags" placeholder="attention, craft, things to revisit" value={draft.tags} onChange={(e) => edit("tags", e.target.value)} onBlur={() => void save()} className="border-0 bg-muted/35 shadow-none" />
+            <label htmlFor="clip-tags" className="text-sm font-medium">Tags</label>
+            <Input id="clip-tags" placeholder="essays, design, to-read" value={draft.tags} onChange={(e) => edit("tags", e.target.value)} onBlur={() => void save()} className="border-0 bg-muted/35 shadow-none" />
             <p className="text-[11px] text-muted-foreground">Separate tags with commas.</p>
           </div>
           <section aria-label="Clip backlinks" data-clip-used-in={clip.path} className="space-y-3 border-t pt-6">
-            {renderUsedIn ? renderUsedIn(clip) : <><h2 className="text-xs text-muted-foreground">Used in</h2><p className="text-sm text-muted-foreground/70">References from your writing will appear here.</p></>}
+            {renderUsedIn ? renderUsedIn(clip) : <><h2 className="text-sm font-medium">Used in</h2><p className="text-sm text-muted-foreground/70">Documents that link to this clip show here.</p></>}
           </section>
           <div className="flex items-center justify-between gap-4">
             <Button variant="ghost" size="sm" onClick={() => setConfirmTrash(true)} className="text-muted-foreground"><Trash2 />Move to Trash</Button>
@@ -173,7 +173,7 @@ export function Detail({ ref, path, onClose, onChanged, renderUsedIn }: Props) {
         <DialogContent className="motion-reduce:animate-none">
           <DialogHeader><DialogTitle>Move this clip to Trash?</DialogTitle><DialogDescription>{clip.file ? "Its saved file and image go with it. You can recover them from the Mac’s Trash." : "Its saved image goes with it. You can recover both from the Mac’s Trash."}</DialogDescription></DialogHeader>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" disabled={trashing} onClick={() => setConfirmTrash(false)}>Keep it</Button>
+            <Button variant="ghost" disabled={trashing} onClick={() => setConfirmTrash(false)}>Cancel</Button>
             <Button variant="destructive" disabled={trashing} onClick={async () => {
               setTrashing(true);
               await save();

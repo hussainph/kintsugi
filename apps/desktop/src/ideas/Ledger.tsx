@@ -10,7 +10,7 @@
 import { cn } from "@kintsugi/ui/lib/utils";
 import type { Listed } from "./api";
 import { count, opacity } from "./model";
-import { AskForMore, Detail, DismissedRow, FadedList, JobLine, KinMark, Label, serif, Status } from "./parts";
+import { AskForMore, Detail, DismissedRow, FadedList, JobLine, Heading, KinMark, serif, Status } from "./parts";
 import type { IdeasModel } from "./useIdeas";
 
 function Row({ idea, model, n, onOpenDoc }: { idea: Listed; model: IdeasModel; n: number; onOpenDoc: (path: string) => void }) {
@@ -67,7 +67,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
                 {live ? `${count(live)} from Kin today` : "Nothing new from Kin today"} · {model.view?.today ?? ""}
               </KinMark>
             </p>
-            <p className="text-sm text-muted-foreground">Ignore any of them. Unused ideas fade after a week.</p>
+            <p className="text-sm text-muted-foreground">Ignore the ones you don’t want. Unused ideas fade after a week.</p>
           </>
         )}
         <JobLine model={model} />
@@ -84,7 +84,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
           <p className="text-sm text-muted-foreground">
             {model.filter
               ? "Kin can look through your writing and collection for what bears on it."
-              : "Kin offers a few each day, grounded in your writing and what you've saved."}
+              : "Kin suggests a few each day, based on your writing and what you've saved."}
           </p>
         </div>
       )}
@@ -98,7 +98,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
       )}
       {earlier.length > 0 && (
         <>
-          <Label className="mt-10 mb-1">{today.length ? "Earlier" : "This week"}</Label>
+          <Heading className="mt-10 mb-2">{today.length ? "Earlier" : "This week"}</Heading>
           <ol className="divide-y border-y" aria-label="Earlier">
             {earlier.map((idea, i) => (
               <Row key={idea.id} idea={idea} model={model} n={today.length + i + 1} onOpenDoc={onOpenDoc} />

@@ -31,7 +31,7 @@ pre { background: var(--wash); border-radius: 8px; padding: .9em 1.1em; overflow
 blockquote { margin-left: 0; padding-left: 1.1em; border-left: 1px solid var(--rule); color: var(--muted); }
 aside.callout { border: 1px solid var(--rule); border-radius: 8px; padding: .9em 1.1em; }
 aside.callout > :last-child, blockquote > :last-child, li > :last-child { margin-bottom: 0; }
-.callout-label { font: 600 11px ui-sans-serif, -apple-system, system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: .3em; }
+.callout-label { font-weight: 600; margin-bottom: .3em; }
 figure { margin-left: 0; margin-right: 0; }
 figure img { display: block; max-width: 100%; height: auto; margin: 0 auto; border-radius: 4px; }
 img { max-width: 100%; }
@@ -84,7 +84,7 @@ export function renderHtml(piece: Piece, context: RenderContext): Rendered {
         return `<h${level}>${inline(b.c)}</h${level}>`;
       }
       case "quote": return `<blockquote>\n${blocks(b.c)}\n</blockquote>`;
-      case "callout": return `<aside class="callout callout-${b.kind}">\n<div class="callout-label">${b.kind}</div>\n${blocks(b.c)}\n</aside>`;
+      case "callout": return `<aside class="callout callout-${b.kind}">\n<div class="callout-label">${b.kind[0].toUpperCase()}${b.kind.slice(1)}</div>\n${blocks(b.c)}\n</aside>`;
       case "list": {
         const tag = b.ordered ? "ol" : "ul";
         const start = b.ordered && b.start !== 1 ? ` start="${b.start}"` : "";

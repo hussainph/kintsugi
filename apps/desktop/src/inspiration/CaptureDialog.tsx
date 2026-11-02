@@ -36,11 +36,11 @@ export function CaptureDialog({ open, onClose, capture }: { open: boolean; onClo
     <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) close(); }}>
       <DialogContent className="sm:max-w-md motion-reduce:animate-none">
         <DialogHeader>
-          <DialogTitle>{books ? "Keep a book" : "Keep a little inspiration"}</DialogTitle>
-          <DialogDescription>{books ? "Find it by title, author or ISBN." : "A link, a passage, an image, a PDF, or a thought of your own."}</DialogDescription>
+          <DialogTitle>{books ? "Add a book" : "Add a clip"}</DialogTitle>
+          <DialogDescription>{books ? "Search by title, author or ISBN." : "Paste a link or some text, or add an image, PDF or EPUB."}</DialogDescription>
         </DialogHeader>
         {books ? <BookSearch saving={saving} setSaving={setSaving} capture={capture} onSaved={close} onBack={() => setBooks(false)} /> : <>
-          <Textarea autoFocus aria-label="URL or text to capture" placeholder="What would you like to keep?" className="min-h-36 resize-y select-text" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => {
+          <Textarea autoFocus aria-label="URL or text to capture" placeholder="A link, a quote or a note" className="min-h-36 resize-y select-text" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => {
             if (e.metaKey && e.key === "Enter") { e.preventDefault(); void save(); }
           }} />
           <div className="flex items-center justify-between gap-3">
@@ -49,7 +49,7 @@ export function CaptureDialog({ open, onClose, capture }: { open: boolean; onClo
               <Button variant="ghost" onClick={() => picker.current?.click()} className="min-w-0 text-muted-foreground" title="An image, a PDF or an EPUB"><Paperclip /><span className="truncate">{file?.name ?? "Add a file"}</span></Button>
               {!file && <Button variant="ghost" onClick={() => setBooks(true)} className="text-muted-foreground"><BookOpen />Find a book</Button>}
             </div>
-            <Button disabled={saving || (!text.trim() && !file)} onClick={save}>{saving ? "Saving…" : "Keep it"}</Button>
+            <Button disabled={saving || (!text.trim() && !file)} onClick={save}>{saving ? "Saving…" : "Save"}</Button>
           </div>
         </>}
       </DialogContent>
@@ -106,7 +106,7 @@ function BookSearch({ saving, setSaving, capture, onSaved, onBack }: { saving: b
       <ul aria-label="Books" className="space-y-0.5">
         {showIsbn && <li><button type="button" disabled={saving} onClick={() => void keep(bookCapture({ url: isbnUrl(isbn) }))} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50">
           <Cover />
-          <span className="min-w-0"><span className="block truncate text-sm">Keep ISBN {isbn}</span><span className="block truncate text-xs text-muted-foreground">Details arrive from Open Library</span></span>
+          <span className="min-w-0"><span className="block truncate text-sm">Save ISBN {isbn}</span><span className="block truncate text-xs text-muted-foreground">Details are filled in from Open Library</span></span>
         </button></li>}
         {hits.map((hit) => <li key={hit.key}><button type="button" disabled={saving} onClick={() => void keep(bookCapture(hit))} className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-none hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50">
           <Cover url={hit.coverUrl} />
@@ -116,12 +116,12 @@ function BookSearch({ saving, setSaving, capture, onSaved, onBack }: { saving: b
       <p role="status" className="px-2 py-3 text-xs text-muted-foreground">{
         searching ? "Looking…"
           : results?.error ? results.error
-          : results && results.query === term && !hits.length ? (isbn ? "Not in the catalog yet, but you can keep the ISBN." : "No books found. Try fewer words, or an ISBN.")
-          : !term ? "From Open Library. Choose a book to keep it." : ""
+          : results && results.query === term && !hits.length ? (isbn ? "Open Library doesn’t have it. You can still save the ISBN." : "No books found. Try fewer words, or an ISBN.")
+          : !term ? "Results come from Open Library. Choose a book to save it." : ""
       }</p>
     </div>
     <div className="flex items-center justify-between gap-3">
-      <Button variant="ghost" onClick={onBack} disabled={saving} className="-ml-2 text-muted-foreground"><ArrowLeft />Something else</Button>
+      <Button variant="ghost" onClick={onBack} disabled={saving} className="-ml-2 text-muted-foreground"><ArrowLeft />Back</Button>
       {saving && <span className="text-xs text-muted-foreground" role="status">Saving…</span>}
     </div>
   </>;

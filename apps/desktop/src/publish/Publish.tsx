@@ -193,7 +193,7 @@ export function Publish({ root, path, viewRef, flush }: Props) {
             </div>
 
             <ul className="publish-checks" aria-label="Checks">
-              {plan.checks.length === 0 && <li data-level="ok"><CheckIcon size={14} /> Ready: no broken links, images or components.</li>}
+              {plan.checks.length === 0 && <li data-level="ok"><CheckIcon size={14} /> Ready. No broken links, images or components.</li>}
               {plan.checks.map((c, i) => (
                 <li key={i} data-level={c.level}>
                   {c.level === "error" ? <AlertCircle size={14} /> : c.level === "warning" ? <AlertTriangle size={14} /> : <Info size={14} />}
