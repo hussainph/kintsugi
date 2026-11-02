@@ -33,22 +33,28 @@ final class InspirationTests: XCTestCase {
     tap(search)
     search.typeText("repair")
     XCTAssertTrue(card("Golden joinery").waitForExistence(timeout: 10))
+    // Only its note says “repair”.
+    XCTAssertTrue(card("A post that vanished").exists, "own text isn’t searched")
     XCTAssertFalse(card("Why we sleep").exists, "a clip without “repair” passed the search")
     shot("03-search-repair")
-    search.typeText(" bowl")
-    XCTAssertTrue(card("Golden joinery").waitForExistence(timeout: 5), "own text isn’t searched")
-    if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+    // Clear the search, then close it (iOS 26+ shows a round close button).
+    if search.buttons["Clear text"].exists { search.buttons["Clear text"].tap() }
+    for close in ["Cancel", "Close"] where app.buttons[close].exists {
+      app.buttons[close].tap()
+      break
+    }
     XCTAssertTrue(card("Why we sleep").waitForExistence(timeout: 10))
 
     // Detail: source link, summary, notes and the source on demand.
     tap(card("Why we sleep"))
-    XCTAssertTrue(app.buttons["Open the source"].waitForExistence(timeout: 10))
-    XCTAssertTrue(app.staticTexts["Summary · machine-made"].exists)
-    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "tired mind")).firstMatch.exists)
+    XCTAssertTrue(app.links["Open the source"].waitForExistence(timeout: 10))
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Summary · machine-made")).firstMatch.exists, "the summary isn’t labelled machine-made")
+    XCTAssertTrue(notesValue().contains("tired mind"), "the clip’s notes aren’t shown")
     shot("04-detail")
     app.swipeUp()
     tap(app.buttons["Show the source"])
-    let source = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "night-shift workers")).firstMatch
+    // Selectable text may surface as a text view rather than static text.
+    let source = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", "night-shift workers", "night-shift workers")).firstMatch
     XCTAssertTrue(source.waitForExistence(timeout: 10), "the source never came from the Mac")
     shot("05-source-on-demand")
     app.swipeDown()
@@ -70,7 +76,7 @@ final class InspirationTests: XCTestCase {
     let saved = try String(contentsOf: clip, encoding: .utf8)
     XCTAssertTrue(saved.contains("night-shift workers"), "the note edit lost the clip’s source")
     XCTAssertTrue(saved.contains("tired mind"), "the note edit lost the earlier note")
-    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "on the train")).firstMatch.waitForExistence(timeout: 5))
+    XCTAssertTrue(wait(timeout: 5) { self.notesValue().contains("on the train") }, "the detail doesn’t show the edit")
     shot("07-detail-after-edit")
   }
 
@@ -94,6 +100,12 @@ final class InspirationTests: XCTestCase {
     tap(app.buttons["Show the source"])
     XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "The source is kept on your Mac")).firstMatch.waitForExistence(timeout: 15))
     shot("09-detail-offline")
+  }
+
+  /// The notes on the detail screen, read through their button's value.
+  private func notesValue() -> String {
+    let notes = app.buttons["Edit your notes"]
+    return notes.waitForExistence(timeout: 5) ? (notes.value as? String ?? "") : ""
   }
 
   /// A card is read as "Open <title, link or kind>".
