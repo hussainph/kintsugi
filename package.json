@@ -10,8 +10,12 @@
     "ios": "pnpm --filter @kintsugi/mobile ios",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r --workspace-concurrency=${VOLLI_CONCURRENCY_HINT:-1} typecheck",
-    "test": "cargo test --workspace -j ${VOLLI_CONCURRENCY_HINT:-1} && pnpm --filter @kintsugi/core test && pnpm --filter @kintsugi/editor test && pnpm --filter @kintsugi/desktop test:references && pnpm --filter @kintsugi/desktop test",
-    "release:desktop": "node scripts/release-desktop.mjs"
+    "lint": "pnpm lint:copy && pnpm --filter @kintsugi/mobile lint",
+    "test": "node --test scripts/lint-copy.test.mjs && pnpm lint:copy && cargo test --workspace -j ${VOLLI_CONCURRENCY_HINT:-1} && pnpm --filter @kintsugi/core test && pnpm --filter @kintsugi/editor test && pnpm --filter @kintsugi/desktop test:references && pnpm --filter @kintsugi/desktop test",
+    "release:desktop": "node scripts/release-desktop.mjs",
+    "lint:copy": "node scripts/lint-copy.mjs",
+    "copy:inventory": "node scripts/copy-inventory.mjs",
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true"
   },
   "packageManager": "pnpm@9.12.0",
   "pnpm": {
@@ -19,5 +23,8 @@
       "@expo/dom-webview@58.0.2": "patches/@expo__dom-webview@58.0.2.patch",
       "@expo/cli@58.1.17": "patches/@expo__cli@58.1.17.patch"
     }
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
   }
 }

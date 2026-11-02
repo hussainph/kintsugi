@@ -27,6 +27,17 @@ Read `docs/voice.md` before writing any user-facing text. In short:
 
 - **No eyebrow text, anywhere.** That covers the Mac app, the phone, the editor, exports and docs pages. An eyebrow is a small uppercase or letter-spaced label above or beside a heading, card or section. If a group needs a name, use a normal sentence-case heading. Usually it needs none.
 - **Write copy plainly.** Say what the thing is or does in ordinary words. No poetic, mindful or marketing tone, no taglines, and no gold, seam or craft metaphors. Kin talks like a sharp, direct friend.
+- **`pnpm lint:copy` enforces both.** It checks UI strings, the Rust prompts and errors, and `docs/`, and runs on staged files in the pre-commit hook (`.githooks/pre-commit`, installed by `pnpm install`). `pnpm copy:inventory` prints every user-facing string by screen. A line that must keep its wording can carry `copy-lint-allow: <reason>`; use it rarely.
+
+## Checks
+
+Run the ones your change touches before opening a PR:
+
+- `pnpm lint:copy` (copy and eyebrows; also part of `pnpm lint` and `pnpm test`)
+- `pnpm typecheck`
+- `pnpm test` (the copy linter's tests, Rust, core, editor and desktop unit tests)
+- `pnpm --filter @kintsugi/mobile test` and `npx expo lint` in `apps/mobile` (or `pnpm lint`)
+- `pnpm test:headless` for the desktop runtime suite and the headless Rust build
 
 ## Git hosting
 
