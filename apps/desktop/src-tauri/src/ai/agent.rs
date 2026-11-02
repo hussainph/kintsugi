@@ -1250,7 +1250,6 @@ pub(crate) mod tests {
             assert_eq!(requests.len(), 2);
             assert_eq!(requests[0].0, "Bearer test-key");
             assert_eq!(requests[0].1["tools"][0]["function"]["name"], "search");
-            assert_eq!(requests[0].1["store"], false);
             let messages = requests[1].1["messages"].as_array().unwrap();
             assert_eq!(
                 messages[2]["tool_calls"][0]["function"]["arguments"],

@@ -92,8 +92,8 @@ fn input(ex: &Exchange) -> Vec<Value> {
             Item::Assistant { text, calls } => {
                 if !text.is_empty() {
                     input.push(json!({
-                        "type": "message", "role": "assistant", "status": "completed",
-                        "content": [{ "type": "output_text", "text": text, "annotations": [] }],
+                        "type": "message", "role": "assistant",
+                        "content": [{ "type": "output_text", "text": text }],
                     }));
                 }
                 input.extend(calls.iter().map(|c| {
@@ -192,8 +192,10 @@ pub(super) fn body(route: &Route, auth: Option<&Auth>, ex: &Exchange) -> Value {
             body["reasoning"] = json!({ "effort": off });
         }
     }
-    if reasons && route.is("xai") {
-        // xAI returns encrypted reasoning only when asked, thinking or not.
+    if reasons {
+        // Encrypted reasoning comes back only when asked for (xAI always
+        // asks, Pi says): asked for whenever the model reasons, so a step's
+        // reasoning goes back with the next one even at the default effort.
         body["include"] = json!(["reasoning.encrypted_content"]);
     }
     body
@@ -357,7 +359,16 @@ impl Decode for Decoder {
         self.done
     }
 
-    fn finish(self: Box<Self>) -> Reply {
+    fn ended(&self) -> bool {
+        self.done
+    }
+
+    fn finish(self: Box<Self>) -> Result<Reply> {
+        if let Some(reason) = self.reply.stop_reason.as_deref()
+            && matches!(reason, "content_filter" | "failed" | "cancelled")
+        {
+            super::refused(reason)?;
+        }
         let mut reply = self.reply;
         let mut reasoning = self.reasoning;
         reasoning.sort_by_key(|(i, _)| *i);
@@ -375,7 +386,7 @@ impl Decode for Decoder {
         if reply.stop_reason.as_deref() == Some("completed") && !reply.calls.is_empty() {
             reply.stop_reason = Some("tool_calls".into());
         }
-        reply
+        Ok(reply)
     }
 }
 

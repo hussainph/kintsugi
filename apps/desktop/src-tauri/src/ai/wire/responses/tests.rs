@@ -109,7 +109,8 @@ fn reasoning_goes_back_verbatim_before_the_steps_items() {
         &thinking(ex.clone(), "off"),
     );
     assert_eq!(off["reasoning"], json!({ "effort": "none" }));
-    assert!(off.get("include").is_none());
+    // Encrypted reasoning is always asked of a reasoning model.
+    assert_eq!(off["include"], json!(["reasoning.encrypted_content"]));
     // The other wires never see it.
     let chat_route = route("cerebras", "gpt-oss-120b");
     let compat = crate::ai::wire::chat::Compat::of(&chat_route, "gpt-oss-120b");

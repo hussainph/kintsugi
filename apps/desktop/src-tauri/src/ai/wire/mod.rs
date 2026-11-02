@@ -509,9 +509,20 @@ pub(crate) async fn send_with(
 pub(crate) trait Decode: Send {
     /// Feeds one event; returns any text to show now.
     fn feed(&mut self, event: Option<&str>, data: &str) -> Result<Option<String>>;
-    /// The stream said it is finished.
+    /// The stream said it is finished: stop reading.
     fn done(&self) -> bool;
-    fn finish(self: Box<Self>) -> Reply;
+    /// The reply is whole: the stream ended the way the wire ends a reply
+    /// (a finish reason, a terminal event). A stream cut off before that is
+    /// a failure, never a short answer with half a tool call.
+    fn ended(&self) -> bool;
+    /// The reply, or why the model stopped without one (a refusal, a
+    /// content filter).
+    fn finish(self: Box<Self>) -> Result<Reply>;
+}
+
+/// A stop reason that means the model gave up rather than answered.
+fn refused(reason: &str) -> Result<()> {
+    Err(format!("The model stopped without answering ({reason})."))
 }
 
 /// Builds one wire's request: the HTTP request with its body and auth.
@@ -551,11 +562,18 @@ fn common_headers(
         builder = builder.header("x-opencode-session", session_id(ex));
     }
     if route.is("github-copilot") {
-        // Pi's `github-copilot-headers.ts`.
-        let initiator = match ex.items.last() {
-            Some(Item::User(_)) => "user",
-            _ => "agent",
-        };
+        // Pi's `github-copilot-headers.ts`: a request the owner started
+        // is "user", the agent's own follow-ups "agent" (Copilot bills
+        // them differently). Kin's wrap-up and empty-reply notes are user
+        // messages, but follow tool results or an empty reply.
+        let n = ex.items.len();
+        let owner = matches!(ex.items.last(), Some(Item::User(_)))
+            && !ex.items.iter().any(|i| matches!(i, Item::Results(_)))
+            && !matches!(
+                n.checked_sub(2).map(|i| &ex.items[i]),
+                Some(Item::Assistant { text, calls }) if text.is_empty() && calls.is_empty()
+            );
+        let initiator = if owner { "user" } else { "agent" };
         builder = builder
             .header("X-Initiator", initiator)
             .header("Openai-Intent", "conversation-edits");
@@ -643,7 +661,12 @@ async fn send_once(
             on_text(&text);
         }
     }
-    Ok(decoder.finish())
+    if !decoder.ended() {
+        return Err(Failure::transient(format!(
+            "{name}: the reply was cut off before it finished"
+        )));
+    }
+    decoder.finish().map_err(Failure::fatal)
 }
 
 /// One request and its reply as shapes only, never content: what the
@@ -681,8 +704,7 @@ fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
         .trim()
         .parse::<f64>()
         .ok()
-        .filter(|s| s.is_finite() && *s >= 0.0)
-        .map(Duration::from_secs_f64)
+        .and_then(|s| Duration::try_from_secs_f64(s).ok())
 }
 
 /// A stable session id: requests sharing a model and a fixed prefix (Kin's
@@ -773,7 +795,7 @@ impl Calls {
             .map(|(i, c)| ToolCall {
                 // Every call needs an id to pair it with its result.
                 id: if c.id.is_empty() {
-                    format!("call_{i}")
+                    made_up_id("call", i)
                 } else {
                     c.id
                 },
@@ -782,6 +804,14 @@ impl Calls {
             })
             .collect()
     }
+}
+
+/// An id for a call the provider sent without one: unique in the process,
+/// so ids never repeat across a turn's steps.
+fn made_up_id(prefix: &str, index: usize) -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    format!("{prefix}_{index}_{}", NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
 /// The reasoning items of one wire, from an [`Item::Reasoning`]: the values

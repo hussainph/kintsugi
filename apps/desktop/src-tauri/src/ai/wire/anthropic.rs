@@ -32,6 +32,11 @@ pub(super) fn request(
     auth: Option<&Auth>,
     ex: &Exchange,
 ) -> Result<(reqwest::RequestBuilder, Box<dyn Decode>)> {
+    if let Some(Auth::ApiKey(key)) = auth
+        && key.contains("sk-ant-oat")
+    {
+        return Err("That Anthropic key is a Claude subscription token, which Kintsugi doesn't use. Use an Anthropic API key.".into());
+    }
     let (body, betas) = body(route, ex);
     let mut builder = client
         .post(format!("{}/v1/messages", route.base_url))
@@ -351,13 +356,22 @@ impl Decode for Decoder {
         self.done
     }
 
-    fn finish(self: Box<Self>) -> Reply {
+    fn ended(&self) -> bool {
+        self.done || self.reply.stop_reason.is_some()
+    }
+
+    fn finish(self: Box<Self>) -> Result<Reply> {
+        if let Some(reason) = self.reply.stop_reason.as_deref()
+            && matches!(reason, "refusal" | "sensitive")
+        {
+            super::refused(reason)?;
+        }
         let mut reply = self.reply;
         let mut thinking = self.thinking;
         thinking.sort_by_key(|(i, _)| *i);
         reply.reasoning = thinking.into_iter().map(|(_, b)| b).collect();
         reply.calls = self.calls.finish();
-        reply
+        Ok(reply)
     }
 }
 

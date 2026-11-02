@@ -30,7 +30,8 @@ pub(crate) fn decode(mut decoder: Box<dyn Decode>, stream: &str) -> (Reply, Stri
             break;
         }
     }
-    (decoder.finish(), text)
+    assert!(decoder.ended(), "the stream should have ended");
+    (decoder.finish().unwrap(), text)
 }
 
 /// The first error a stream reports.

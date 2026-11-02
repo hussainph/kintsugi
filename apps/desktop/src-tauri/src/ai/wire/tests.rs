@@ -559,3 +559,55 @@ fn a_copilot_login_names_its_own_api_host() {
         "https://api.individual.githubcopilot.com"
     );
 }
+
+#[test]
+fn a_cut_off_stream_is_a_failure_retried_only_before_any_output() {
+    let closed = |events: Vec<String>| Reply_::Stream {
+        events,
+        stall: false,
+    };
+    let (result, text, requests) = call(vec![closed(vec![]), answer("Whole.")]);
+    assert_eq!(result.unwrap().text, "Whole.");
+    assert_eq!((text.as_str(), requests), ("Whole.", 2));
+    let (result, text, requests) = call(vec![closed(vec![text_event("Hal")]), answer("no")]);
+    assert!(result.unwrap_err().contains("cut off"));
+    assert_eq!((text.as_str(), requests), ("Hal", 1));
+}
+
+#[test]
+fn refusals_and_subscription_tokens_are_errors() {
+    let items = sample_items();
+    let ex = exchange("claude-haiku-4-5", &items, &[]);
+    let refusal = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":3}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"refusal\"}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
+    let (result, _, _) = send_to(
+        "anthropic",
+        key("sk-ant-api"),
+        &ex,
+        vec![Reply_::Raw(refusal.into())],
+    );
+    assert!(result.unwrap_err().contains("refusal"));
+    let (result, _, requests) = send_to("anthropic", key("sk-ant-oat01-x"), &ex, vec![]);
+    assert!(result.unwrap_err().contains("subscription token"));
+    assert!(requests.is_empty());
+    let filtered = "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\ndata: [DONE]\n\n";
+    let items = vec![Item::User("hi".into())];
+    let (result, _, _) = send_to(
+        "ollama",
+        None,
+        &exchange("m", &items, &[]),
+        vec![Reply_::Raw(filtered.into())],
+    );
+    assert!(result.unwrap_err().contains("content_filter"));
+}
+
+#[test]
+fn an_unlisted_mistral_model_still_reaches_v1() {
+    assert_eq!(
+        route("mistral", "next-year-model").base_url,
+        "https://api.mistral.ai/v1"
+    );
+    // A huge Retry-After is just ignored.
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(reqwest::header::RETRY_AFTER, "1e300".parse().unwrap());
+    assert_eq!(retry_after(&headers), None);
+}

@@ -88,6 +88,9 @@ impl Compat {
         let deepseek = id == "deepseek" || has("deepseek.com");
         let grok = id == "xai" || has("api.x.ai");
         let opencode = id.starts_with("opencode") || has("opencode.ai");
+        // A server on this Mac (Ollama, llama.cpp, LM Studio) takes the
+        // older field and nothing OpenAI-only.
+        let local = route.provider.keyless || has("localhost") || has("127.0.0.1");
         let non_standard = nvidia
             || cerebras
             || grok
@@ -98,7 +101,8 @@ impl Compat {
             || moonshot
             || opencode
             || ant_ling
-            || mistral;
+            || mistral
+            || local;
         let use_max_tokens = has("chutes.ai")
             || deepseek
             || moonshot
@@ -106,7 +110,8 @@ impl Compat {
             || nvidia
             || ant_ling
             || zai
-            || mistral;
+            || mistral
+            || local;
         let dev_role_model =
             openrouter && (model_id.starts_with("anthropic/") || model_id.starts_with("openai/"));
         let flag = |name: &str, detected: bool| route.flag(name).unwrap_or(detected);
@@ -771,7 +776,16 @@ impl Decode for Decoder {
         self.done
     }
 
-    fn finish(self: Box<Self>) -> Reply {
+    fn ended(&self) -> bool {
+        self.done || self.reply.stop_reason.is_some()
+    }
+
+    fn finish(self: Box<Self>) -> Result<Reply> {
+        if let Some(reason) = self.reply.stop_reason.as_deref()
+            && matches!(reason, "content_filter" | "error" | "network_error")
+        {
+            super::refused(reason)?;
+        }
         let mut reply = self.reply;
         if !self.details.is_empty() {
             reply
@@ -787,7 +801,7 @@ impl Decode for Decoder {
             reply.stop_reason = Some("tool_calls".into());
         }
         reply.calls = self.calls.finish();
-        reply
+        Ok(reply)
     }
 }
 

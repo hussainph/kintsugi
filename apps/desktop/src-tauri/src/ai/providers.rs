@@ -145,7 +145,7 @@ pub const PROVIDERS: &[Provider] = &[
     p(
         "mistral",
         "Mistral",
-        "https://api.mistral.ai",
+        "https://api.mistral.ai/v1",
         OpenAiChat,
         &["MISTRAL_API_KEY"],
     ),

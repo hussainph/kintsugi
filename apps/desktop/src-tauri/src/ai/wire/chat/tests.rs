@@ -250,7 +250,8 @@ fn quirks_per_provider_follow_pi() {
     );
     assert_eq!(local["reasoning_effort"], "low");
     assert_eq!(local["messages"][0]["role"], "system");
-    assert_eq!(local["max_completion_tokens"], 100);
+    assert_eq!(local["max_tokens"], 100);
+    assert!(local.get("store").is_none());
     assert_eq!(local["stream_options"]["include_usage"], true);
 }
 
@@ -336,5 +337,8 @@ fn malformed_arguments_are_kept_as_a_string() {
     let stream = "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"name\":\"read\",\"arguments\":\"{oops\"}}]}}]}\n\ndata: [DONE]\n\n";
     let (reply, _) = decode(Box::new(Decoder::default()), stream);
     assert_eq!(reply.calls[0].arguments, json!("{oops"));
-    assert_eq!(reply.calls[0].id, "call_0");
+    assert!(reply.calls[0].id.starts_with("call_0_"));
+    // Made-up ids never repeat across a turn's steps.
+    let (again, _) = decode(Box::new(Decoder::default()), stream);
+    assert_ne!(again.calls[0].id, reply.calls[0].id);
 }
