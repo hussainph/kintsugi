@@ -18,5 +18,10 @@
     "lab:shots": "pnpm lab:boot",
     "release:desktop": "node scripts/release-desktop.mjs"
   },
-  "packageManager": "pnpm@9.12.0"
+  "packageManager": "pnpm@9.12.0",
+  "pnpm": {
+    "patchedDependencies": {
+      "@expo/dom-webview@58.0.2": "patches/@expo__dom-webview@58.0.2.patch"
+    }
+  }
 }

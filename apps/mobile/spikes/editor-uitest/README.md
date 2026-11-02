@@ -23,3 +23,13 @@ TEST_RUNNER_SPIKE_OUT="$PWD/.headless/spike-out" xcodebuild test-without-buildin
 Screenshots and a `.log` of the on-screen metrics line land in
 `.headless/spike-out/`. Switch appearance with
 `xcrun simctl ui "$UDID" appearance dark`.
+
+## KI-36: the phone editor (`PhoneEditorTests`)
+
+Pair the debug build with a scratch `phone_dev_server` vault first
+(`testPair`; see `AGENTS.md`). `testNewEditor` turns on Home → ⋯ → New
+editor and walks through typing, the keyboard toolbar, the `[[` picker,
+switching documents and a new note. `testSyncedTextArrives` and
+`testCollisionBanner` need the shell to edit the vault (and stop and restart
+the server) while they wait. `testExpoGo` drives the same editor in Expo Go
+(installed on the simulator, Metro running) on the sample notes.

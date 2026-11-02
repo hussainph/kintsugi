@@ -70,11 +70,11 @@ export function searchReferences(query: string, sources: readonly ReferenceSourc
   }).sort((a, b) => Number(a.kind === "clip") - Number(b.kind === "clip") || a.title.localeCompare(b.title) || a.path.localeCompare(b.path));
 }
 
-type Span = { from: number; to: number };
+export type Span = { from: number; to: number };
 
 /** Leading YAML is not prose, even while its closing delimiter is unfinished.
  *  Keep offsets in the original text (including an optional UTF-8 BOM). */
-function yamlEnd(text: string): number {
+export function yamlEnd(text: string): number {
   const lines = text.split("\n");
   if (lines[0].replace(/^\uFEFF/, "").trimEnd() !== "---") return 0;
   let offset = lines[0].length + 1;
@@ -107,9 +107,10 @@ function fenceLine(line: string, listIndent: number): { text: string; indent: nu
   return marker ? { text: line.slice(marker[0].length), indent: spaces + marker[0].length } : { text: line, indent: 0 };
 }
 
-/** Markdown regions that must not become references. Offsets are UTF-16,
- *  shared by JavaScript strings and CodeMirror. */
-function ignoredSpans(text: string): Span[] {
+/** Markdown regions that must not become references, sorted. Offsets are
+ *  UTF-16, shared by JavaScript strings and CodeMirror. They don't overlap,
+ *  and leading YAML, when present, starts the first one. */
+export function ignoredSpans(text: string): Span[] {
   const spans: Span[] = [];
   const pos = yamlEnd(text);
   if (pos) spans.push({ from: 0, to: pos });
@@ -161,26 +162,58 @@ function ignoredSpans(text: string): Span[] {
       i = close + delimiter.length;
     } else i = end;
   }
-  return spans.sort((a, b) => a.from - b.from);
+  // A comment can hold a whole fence; merge so the spans don't overlap.
+  const merged: Span[] = [];
+  for (const span of spans.sort((a, b) => a.from - b.from)) {
+    const last = merged[merged.length - 1];
+    if (last && span.from < last.to) last.to = Math.max(last.to, span.to);
+    else merged.push({ ...span });
+  }
+  return merged;
 }
 
 /** Whether a new [[ picker can open at this position (outside code/YAML). */
 export function isReferenceContext(text: string, position: number): boolean {
-  return !ignoredSpans(text).some((span) => position >= span.from && position < span.to);
+  return outside(ignoredSpans(text), position);
+}
+
+/** Whether `position` is outside every span (see `ignoredSpans`). */
+export function outside(ignored: readonly Span[], position: number): boolean {
+  const span = ignored[firstSpanEndingAfter(ignored, position)];
+  return !span || position < span.from;
+}
+
+/** Index of the first span whose end is past `position`. Spans are sorted
+ *  and don't overlap, so their ends are sorted too. */
+function firstSpanEndingAfter(spans: readonly Span[], position: number): number {
+  let lo = 0;
+  let hi = spans.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (spans[mid].to <= position) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** Only real prose links: not YAML, fenced/inline code, HTML comments or
  *  escaped brackets. `target` retains a heading; resolution strips it. */
 export function parseWikilinks(text: string): Wikilink[] {
-  const ignored = ignoredSpans(text);
+  return wikilinksIn(text, 0, ignoredSpans(text));
+}
+
+/** The links in `text`, a stretch of a document that starts at `offset`,
+ *  given the document's ignored spans. Escapes are only seen inside `text`,
+ *  so a stretch should start at a line. Positions are document offsets. */
+export function wikilinksIn(text: string, offset: number, ignored: readonly Span[]): Wikilink[] {
   const links: Wikilink[] = [];
   const pattern = /\[\[([^\[\]\r\n]+)\]\]/g;
-  let region = 0;
+  let region = firstSpanEndingAfter(ignored, offset);
   for (const match of text.matchAll(pattern)) {
-    const from = match.index;
+    const from = offset + match.index;
     const to = from + match[0].length;
     while (region < ignored.length && ignored[region].to <= from) region++;
-    if (escaped(text, from) || escaped(text, to - 2) || (region < ignored.length && ignored[region].from < to)) continue;
+    if (escaped(text, match.index) || escaped(text, match.index + match[0].length - 2) || (region < ignored.length && ignored[region].from < to)) continue;
     const [destination, ...alias] = match[1].split("|");
     const target = (alias.length ? destination.replace(/\\$/, "") : destination).trim();
     if (target && target !== "#") links.push({ from, to, target, ...(alias.length ? { alias: alias.join("|").trim() } : {}) });

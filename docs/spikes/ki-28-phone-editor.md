@@ -132,3 +132,91 @@ See `apps/mobile/spikes/editor-uitest/README.md`. Build the debug app per
 Each new `n` mounts a fresh WebView.
 
 Screenshots are in `docs/spikes/ki-28/`.
+
+## KI-36: the phone editor, built (behind a setting)
+
+The shared editor is now the phone's editor when **Home → ⋯ → New editor**
+is on. It is **off by default**; the plain text field is unchanged and stays
+the default until the device checklist below has been done.
+
+What each spike condition became:
+
+1. **Native keyboard toolbar.** `modules/keyboard` (a small Expo module) makes
+   the toolbar (Undo, Redo, `[[`, hide keyboard) the editor WebView's real
+   `inputAccessoryView`, so it is part of the keyboard and counted in its
+   height. The editor's height comes from `react-native-keyboard-controller`
+   events, so the caret stays above the keyboard as its height changes
+   (predictions bar). In Expo Go, where the module isn't built in, the same
+   buttons ride on the keyboard through keyboard-controller's
+   `KeyboardStickyView`. The module also lets a new note raise the keyboard
+   without a tap (as `keyboardDisplayRequiresUserAction={false}` does in
+   react-native-webview); in Expo Go the keyboard waits for a tap.
+2. **Keyboard text features.** `Editor` takes an `extensions` prop; the phone
+   passes autocorrect, auto-capitalisation and spellcheck. (Also
+   `focusOnOpen`, so opening a note doesn't raise the keyboard.)
+3. **One warm WebView.** `EditorHost` mounts the DOM component once in the
+   root layout and lays it over the doc screen; documents switch by props, each
+   keeping its own state and undo history. Props-to-painted when opening a
+   document: **55–120 ms** (Simulator, debug), against 1.5–7 s for a fresh
+   WebView in the spike. The screen shows a plain preview of the text while it
+   slides in and out, so there's no blank or spinner.
+   *Bundle:* not trimmed. The DOM bundle is 1.26 MB minified; most of it is
+   react-dom and CodeMirror. The HTML/CSS/JavaScript grammars (~250 KB of
+   source) come in through `@codemirror/lang-markdown`, which builds its HTML
+   support at module level, so they can't be dropped without forking it. With
+   the WebView started once at launch, the bundle's cost is paid once.
+4. **Text to storage.** The editor sends its text debounced (400 ms, and at
+   once on blur, leaving, or the app going away) with the text it started from,
+   and `Library.edit` folds it into anything that arrived meanwhile (KI-27).
+   Synced text comes back in as one undoable change; KI-27's collision banner
+   sits above the editor.
+5. **Phone `[[` picker.** Full width, 44 pt rows, "Tap a document to link it"
+   instead of the keyboard hints, and it no longer keeps a stale height.
+6. **Per-keystroke cost.** `packages/editor` keeps an incremental index of
+   links and ignored regions (YAML, code, comments) instead of re-reading the
+   whole document on every change; chips are built for the visible lines only;
+   `currentParagraph` no longer serialises the document; `onChange` is
+   optional, and the phone doesn't pass it. Property test:
+   `packages/editor/test/index.test.ts`.
+
+   The 100k-word book, typing at the end in the spike screen (Simulator,
+   debug build, XCUITest real keystrokes; ms from input to painted frame):
+
+   | | keys p50 / p95 | 200-insert bench p50 / p95 |
+   | --- | --- | --- |
+   | main (before), two runs | 42 / 77, 56 / 75 | 30 / 45, 29 / 38 |
+   | KI-36 (after), two runs | 20 / 43, 20 / 40 | 18 / 27, 18 / 30 |
+
+   The 10k-word essay was already about one frame and stays so (22 / 27 →
+   21 / 23). `packages/editor/bench` is a browser version of the same bench
+   for the Mac editor (`vite --config packages/editor/bench/vite.config.mjs`,
+   then `?doc=huge`).
+
+Also fixed: the dev-only "Unable to find the 'DomWebView' view with tag"
+error. Expo's DOM wrapper sends props from an effect that can run before
+Fabric has mounted the native view; `patches/@expo__dom-webview@58.0.2.patch`
+tries once more a frame later, then lets it go (the page asks for its props
+again when it loads).
+
+Screenshots are in `docs/spikes/ki-36/`; the UI tests are
+`apps/mobile/spikes/editor-uitest/Tests/PhoneEditorTests.swift`.
+
+### Device checklist (before the new editor becomes the default)
+
+On a real iPhone, with **New editor** on:
+
+- [ ] Autocorrect actually corrects ("teh" → "the"), predictions follow the
+      word being typed, and sentences auto-capitalise.
+- [ ] Dictation inserts text where the caret is, and the text is saved.
+- [ ] Shake to undo and three-finger swipe undo/redo work, alongside the
+      toolbar's Undo/Redo.
+- [ ] A tap puts the caret under the finger; double tap and long press select;
+      the caret never hides under the keyboard or its toolbar.
+- [ ] Flinging through a long document feels smooth; typing in "The book"
+      (100k words) keeps up.
+- [ ] Opening a note feels instant, and a new note opens with the keyboard up.
+- [ ] `[[` picker rows are easy to hit; the chosen link is inserted.
+- [ ] iPhone Duo: folded, open, partly open and in Split View, the editor fills
+      its space and the toolbar sits on the keyboard.
+- [ ] Edits made on the Mac while the note is open appear in place, and a
+      true collision shows the "Which version should stay?" banner.

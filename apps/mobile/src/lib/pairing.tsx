@@ -4,6 +4,7 @@ import { createContext, type ReactNode, useContext, useEffect, useMemo, useState
 import { Alert } from 'react-native';
 
 import { KintsugiCapture as Capture } from '../../modules/capture';
+import { endSample, isSample } from './sample';
 
 const KEY = 'kintsugi.pairing';
 
@@ -55,6 +56,7 @@ export function PairingProvider({ children }: { children: ReactNode }) {
         try {
           Capture?.setPairing(null);
           SecureStore.setItem(KEY, '');
+          if (isSample(pairing)) endSample();
           setPairing(null);
         } catch (error) {
           Alert.alert('Couldn’t unpair this phone', String(error));
