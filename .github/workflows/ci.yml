@@ -71,23 +71,21 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - name: DIAGNOSTIC (temporary) Vision helper on the runner
-        run: |
-          xcrun swiftc -O -parse-as-library crates/ingest/swift/vision.swift -o "$RUNNER_TEMP/kintsugi-vision"
-          "$RUNNER_TEMP/kintsugi-vision" crates/ingest/fixtures/image/seams.png && echo "exit 0" || echo "exit $?"
-      - run: cargo test --workspace --locked --no-fail-fast -j $VOLLI_CONCURRENCY_HINT
+      # Apple Vision can't run in GitHub's macOS VMs: the helper builds, but
+      # every request fails ("could not read the image", exit 5).
+      - run: >
+          cargo test --workspace --locked --no-fail-fast -j $VOLLI_CONCURRENCY_HINT
+          -- --skip image::tests::vision_helper_reads_the_fixture
       - run: cargo fmt --all --check
 
+  # macOS, like the app: on Linux the headless build works, but outside-edit
+  # detection and drag-and-drop behave differently and 9 tests fail.
   runtime:
     name: Runtime (headless)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: xcode-27
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
-      - name: Tauri's Linux build dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev > /dev/null
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -104,7 +102,7 @@ jobs:
       - name: Build the headless backend
         run: cargo build -p kintsugi --bin kintsugi --no-default-features --features headless --locked -j $VOLLI_CONCURRENCY_HINT
       - name: Playwright Chromium
-        run: pnpm --filter @kintsugi/desktop exec playwright install --with-deps chromium-headless-shell
+        run: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell
       - run: pnpm --filter @kintsugi/desktop test:runtime
       - if: failure()
         uses: actions/upload-artifact@v4

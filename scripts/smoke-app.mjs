@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 // CI's packaged-app smoke test (KI-55). Launches a built Kintsugi.app on a
 // scratch HOME, config and seeded vault with KINTSUGI_SMOKE=1, and passes only
-// when the real webview rendered the app: the frontend loads the vault, calls
-// `app_ready`, and the backend prints KINTSUGI_SMOKE_READY and exits 0
-// (apps/desktop/src-tauri/src/smoke.rs). A blank window or a crash never
-// prints the marker, so the run times out and fails.
+// when the real webview rendered the app: the frontend loads the vault and
+// calls `app_ready`, the app asks for one reload (the app's own origin has to
+// pass the navigation guard), and after the reloaded page renders the backend
+// prints KINTSUGI_SMOKE_READY and exits 0 (apps/desktop/src-tauri/src/smoke.rs).
+// A blank window, a blocked reload or a crash never prints the marker, so the
+// run times out and fails.
 //
 //   node scripts/smoke-app.mjs [path/to/Kintsugi.app]
 //
@@ -82,8 +84,10 @@ const timer = setTimeout(() => {
 
 child.on('exit', (code, signal) => {
   clearTimeout(timer);
+  if (!/^smoke: first render/m.test(output)) fail(`the app never reported its first render. Its output:\n${output.slice(-8000)}`);
   if (ready === null) fail(`the app exited (${signal ?? code}) without ${MARKER}. Its output:\n${output.slice(-8000)}`);
   if (!(ready > 0)) fail(`the app reported an empty page (rendered=${ready})`);
   if (code !== 0) fail(`the app printed ${MARKER} but exited with ${signal ?? code}`);
-  console.log('smoke: the packaged app rendered its vault and exited cleanly');
+  console.log(output.split('\n').filter((line) => line.startsWith('smoke: ')).map((line) => `  app ${line}`).join('\n'));
+  console.log('smoke: the packaged app rendered its vault, reloaded and exited cleanly');
 });

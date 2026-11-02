@@ -101,8 +101,8 @@ GitHub Actions runs `.github/workflows/ci.yml` on every pull request and every p
 | Job | Runner | What it runs |
 | --- | --- | --- |
 | TypeScript | Ubuntu | `pnpm install --frozen-lockfile`, `pnpm typecheck`, the unit tests (scripts, core, editor, desktop, mobile), `expo lint`, the phone's `export:check` and `pnpm lint:copy` |
-| Rust | macOS (Xcode 27) | `cargo test --workspace`, then `cargo fmt --check` |
-| Runtime (headless) | Ubuntu | `cargo test -p kintsugi --no-default-features --features headless`, then `pnpm --filter @kintsugi/desktop test:runtime` in headless Chromium |
+| Rust | macOS (Xcode 27) | `cargo test --workspace`, then `cargo fmt --check`. Apple Vision doesn't work in GitHub's macOS VMs, so the Vision helper's fixture test is skipped there. |
+| Runtime (headless) | macOS (Xcode 27) | `cargo test -p kintsugi --no-default-features --features headless`, then `pnpm --filter @kintsugi/desktop test:runtime` in headless Chromium |
 | Packaged app | macOS (Xcode 27) | Builds a debug `Kintsugi.app` with `pnpm tauri build --debug --bundles app` and launches it on a scratch home, config and vault. It passes when the app's real webview has loaded the vault: with `KINTSUGI_SMOKE=1` the frontend calls `app_ready` and the app prints `KINTSUGI_SMOKE_READY` and quits (`scripts/smoke-app.mjs`). |
 
 `.github/workflows/phone.yml` builds the phone app in Release for the iOS Simulator. It runs nightly, on demand and on pull requests that touch the phone app, and isn't required.
