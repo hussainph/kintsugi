@@ -548,8 +548,14 @@ fn a_copilot_login_names_its_own_api_host() {
     );
     let copilot = super::provider("github-copilot").unwrap();
     let endpoint = Endpoint::new(copilot, "kimi-k3", Some(Auth::ApiKey(token.into())));
-    assert_eq!(endpoint.route.base_url, "https://api.business.githubcopilot.com");
+    assert_eq!(
+        endpoint.route.base_url,
+        "https://api.business.githubcopilot.com"
+    );
     // A token from the environment keeps the catalog's host.
     let endpoint = Endpoint::new(copilot, "kimi-k3", Some(Auth::ApiKey("gho_plain".into())));
-    assert_eq!(endpoint.route.base_url, "https://api.individual.githubcopilot.com");
+    assert_eq!(
+        endpoint.route.base_url,
+        "https://api.individual.githubcopilot.com"
+    );
 }
