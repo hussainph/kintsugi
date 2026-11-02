@@ -1,0 +1,6 @@
+data: {"candidates": [{"content": {"parts": [{"text": "Looking for kiln notes.","thought": true}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 640,"totalTokenCount": 700,"thoughtsTokenCount": 60},"modelVersion": "gemini-3.1-pro","responseId": "r1"}
+
+data: {"candidates": [{"content": {"parts": [{"text": "Searching.","thoughtSignature": "Q2lRQjRY"}],"role": "model"},"index": 0}],"usageMetadata": {"promptTokenCount": 640,"candidatesTokenCount": 3,"totalTokenCount": 703,"thoughtsTokenCount": 60},"modelVersion": "gemini-3.1-pro","responseId": "r1"}
+
+data: {"candidates": [{"content": {"parts": [{"functionCall": {"name": "search","args": {"query": "kiln"},"id": "fc-77"},"thoughtSignature": "Q2lVQmNm"}],"role": "model"},"finishReason": "STOP","index": 0}],"usageMetadata": {"promptTokenCount": 640,"candidatesTokenCount": 20,"totalTokenCount": 920,"cachedContentTokenCount": 512,"thoughtsTokenCount": 260},"modelVersion": "gemini-3.1-pro","responseId": "r1"}
+

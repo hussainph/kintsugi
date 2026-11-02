@@ -16,15 +16,10 @@ dropping any request in flight. The loop is independent of Tauri and runs
 against any `agent::Model`, so tests use a scripted model and a local mock
 HTTP provider.
 
-All three wire formats carry tool calls: Anthropic Messages, OpenAI-style
-chat completions (OpenAI, OpenRouter, Z.AI, Ollama) and the ChatGPT Codex
-Responses backend. The Codex backend runs with `store: false`, so it keeps
-nothing between requests: Kintsugi asks for `include:
-["reasoning.encrypted_content"]` and sends each step's `reasoning` items back,
-verbatim and before that step's function calls, on every later request of
-the turn (as pi-ai does). Across turns only the visible text is sent.
-Keys are resolved in Rust (below, Credentials) and never
-reach the webview.
+Every wire format carries tool calls and streams text (below, Providers
+and wire formats). A step's reasoning is sent back within the turn, in the
+form its wire needs; across turns only the visible text is sent. Keys are
+resolved in Rust (below, Credentials) and never reach the webview.
 
 Every model call (`wire::send`, Kin's steps and the webview's `ai_stream`)
 gives up after 120 s with nothing from the provider, before the response
@@ -33,6 +28,132 @@ a lost connection or such a stall is tried again up to three times, waiting
 1, 2 then 4 s (or the provider's `Retry-After`, up to 20 s; a longer one
 fails the call), but only while no text has streamed: once the owner has
 seen part of a reply, a failure ends the step rather than repeating it.
+
+## Providers and wire formats (KI-60)
+
+Code: `ai/providers.rs` (the providers), `ai/catalog.rs` (the models),
+`ai/wire/` (one module per wire format). Kin supports the providers Pi
+supports, over the wire formats Pi uses, ported from Pi's source
+(`@earendil-works/pi-ai` 1.5.0, `packages/ai/src/api/`) without running Pi:
+
+| Wire (Pi's API id) | Module | Used by |
+| --- | --- | --- |
+| Chat completions (`openai-completions`) | `wire/chat.rs` | OpenRouter, Groq, Cerebras, Mistral, DeepSeek, Z.AI, Together, Fireworks, Moonshot, Kimi For Coding, Hugging Face, NVIDIA, Baseten, Ant Ling, Xiaomi, the Qwen and Xiaomi token plans, OpenCode's open models, Copilot's, and any OpenAI-compatible server |
+| Responses (`openai-responses`) | `wire/responses.rs` | OpenAI, xAI, Meta, OpenCode's GPT and Grok models, Copilot's GPT models |
+| Codex Responses (`openai-codex-responses`) | `wire/responses.rs` | ChatGPT (Codex) |
+| Anthropic Messages (`anthropic-messages`) | `wire/anthropic.rs` | Anthropic, MiniMax, Vercel AI Gateway, OpenRouter's, OpenCode's, Fireworks' and Copilot's Claude models |
+| Gemini (`google-generative-ai`, `google-vertex`) | `wire/google.rs` | Google Gemini, Vertex AI (API key), OpenCode's Gemini models |
+
+The catalog names each model's wire and base URL, so one provider can use
+several: OpenCode serves Claude over Messages, GPT over Responses, Gemini
+over Gemini and the rest over chat completions, as Pi does. A model the
+catalog doesn't list uses its provider's default wire and URL. Mistral's
+own API is its chat completions with Mistral's quirks (Pi served it that way
+until March 2026; its native module posts to the same endpoint).
+
+Each wire follows Pi's per-model quirks, read from the catalog's `compat`
+and `thinkingLevelMap` (Pi's `detectCompat` fills the gaps from the provider
+and URL):
+
+- **Chat completions.** The max-tokens field (`max_tokens` or
+  `max_completion_tokens`), `store: false`, the system or developer role,
+  `strict` on tools, how thinking is asked for (`reasoning_effort`,
+  `thinking: {type}` for DeepSeek and Z.AI, `reasoning: {effort}` for
+  OpenRouter, `enable_thinking`, `reasoning: {enabled}` for Together, chat
+  template arguments), Z.AI's `tool_stream`, session headers (OpenRouter's
+  `x-session-id`, `session_id`/`x-session-affinity` where Pi sends them),
+  cache markers on OpenRouter's Claude models. Streamed reasoning
+  (`reasoning_content`, `reasoning`, OpenRouter's `reasoning_details`) goes
+  back on the step's assistant message; DeepSeek-style models get an empty
+  `reasoning_content` on every other one. Mistral gets nine-character tool
+  call ids, named tool results and its thinking chunks.
+- **Responses and Codex.** `store: false`; reasoning comes back encrypted
+  (`include: ["reasoning.encrypted_content"]`) and each step's `reasoning`
+  items go back verbatim, before its function calls, on every later request
+  of the turn. Plain Responses sends the system prompt as a developer
+  message and `max_output_tokens`; Codex sends `instructions` and runs
+  tools one at a time. xAI always asks for encrypted reasoning.
+- **Anthropic.** `x-api-key` (a bearer token for Copilot),
+  `anthropic-version: 2023-06-01`, cache breakpoints on the system prompt
+  and the newest block of Kin's agent calls, tool schemas trimmed to
+  `properties` and `required`. Thinking is a token budget on older models
+  (1,024 to 16,384 by level, added to `max_tokens`, with the
+  interleaved-thinking beta) or adaptive with an effort on newer ones.
+  Thinking blocks and their signatures go back in front of the step's text
+  and tool calls.
+- **Gemini.** The key in `x-goog-api-key`, tools as JSON Schema
+  (`parametersJsonSchema`, `const` written as `enum`), thinking as a level
+  on Gemini 3 and later and a budget before. The model's parts, with their
+  thought signatures, go back verbatim within the turn. Vertex AI is used
+  with an API key (express mode); Kin doesn't mint Google Cloud tokens, so
+  application-default credentials aren't read.
+- **Thinking levels.** A model choice's `reasoning` is one of Pi's levels
+  (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; `none` means
+  `off`), moved to the nearest one the model supports, as Pi does. Without
+  one, nothing about thinking is sent and the provider's default applies.
+- **Copilot.** The catalog's editor headers, `X-Initiator` and
+  `Openai-Intent` on every request; a login's token names its own API host.
+- **OpenCode.** Every request carries `x-opencode-session`, a hash of the
+  model and the fixed prompt prefix, so a conversation is routed and cached
+  together (Go requires one).
+
+Left out, as Pi needs more than a key for them: Amazon Bedrock (AWS
+request signing), Azure and Cloudflare (per-account URLs). Pi's Radius
+gateway uses Pi's own API.
+
+### The model catalog
+
+`ai/catalog.json` lists every chat model of those providers: provider, id,
+name, wire, base URL, context window, maximum output, input, output and
+cache prices (with input-size tiers), reasoning, image input and Pi's
+per-model quirks. Pi keeps only models that call tools. It's generated from
+Pi's catalog and checked in:
+
+```sh
+pnpm gen:models          # the version pinned in scripts/gen-models.mjs
+pnpm gen:models 1.6.0    # another published version of @earendil-works/pi-ai
+```
+
+The script downloads the package tarball with `npm pack` (no install, no
+dependencies), reads `dist/providers/data/*.json` and writes the catalog,
+noting the version and its integrity hash. Entries in
+`ai/catalog.extra.json` are added for models Pi lacks (empty today: Pi has
+OpenCode Zen's and Go's models). `scripts/gen-models.test.mjs` checks the
+checked-in file is in the generated shape, and a Rust test checks every
+catalog provider and wire is one Kin speaks.
+
+### Listing models (`ai_models`)
+
+`invoke("ai_models", { all?: boolean })` (`models()` in `src/lib/ai.ts`)
+returns the providers with a usable credential, in Settings order, each
+with its models sorted by name. `all: true` lists every provider, with
+`usable: false` and the reason where there's no credential. Code:
+`ai/models.rs`.
+
+```ts
+type ProviderModels = {
+  id: string; name: string;
+  auth: "api_key" | "login" | "local" | "mock" | "unsupported_login" | "expired_login" | "none";
+  source: "opencode" | "pi" | "env" | "local" | null;
+  usable: boolean;
+  subscription: boolean;   // calls cost $0 in the ledger
+  models: {
+    id: string; name: string;
+    api: string;           // the wire, e.g. "openai-completions"
+    contextWindow: number; maxOutput: number;
+    reasoning: boolean;
+    thinkingLevels: ("off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max")[];
+    tools: boolean; images: boolean;
+    price: { input: number; output: number; cacheRead: number; cacheWrite: number;
+             tiers?: { inputTokensAbove: number; input: number; output: number; cacheRead: number; cacheWrite: number }[] };
+  }[];
+}[];
+```
+
+A model choice is `{ provider, model: <id>, reasoning?: <thinking level> }`,
+as `kin_set_model` takes it. Nothing in the answer is secret. `ai_providers`
+(Settings' list) keeps to the providers the default models use and any
+other with a credential.
 
 ## Credentials (KI-48)
 
@@ -52,13 +173,56 @@ each provider the first usable credential wins, in this order:
    Verified against OpenCode v2.0.32's source (`packages/core/src/credential.ts`,
    `integration.ts`, the `import_legacy_credentials` migration).
 2. **Pi login**, `~/.pi/agent/auth.json` (or `$PI_CODING_AGENT_DIR`).
-3. **Environment**: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`,
-   `ZAI_API_KEY`, `OPENCODE_API_KEY` (Zen). GUI apps rarely inherit these.
+3. **Environment**: the provider's key, by Pi's names (below). GUI apps
+   rarely inherit these.
 
-OpenCode ids map to Kintsugi's: `anthropic`, `openrouter`, `opencode` (OpenCode
-Zen), `opencode-go` (OpenCode Go) as they are; `openai` is an OpenAI API key,
-or as an OAuth login ChatGPT on the Codex backend (`openai-codex`);
-`zai-coding-plan`, else `zai`, is `zai` (the coding-plan endpoint).
+| Provider | Environment | Logins |
+| --- | --- | --- |
+| Anthropic | `ANTHROPIC_API_KEY` | refused (a Claude subscription) |
+| ChatGPT (Codex) | | OpenCode, Pi |
+| OpenAI | `OPENAI_API_KEY` | Pi ("Sign in with ChatGPT") |
+| OpenRouter | `OPENROUTER_API_KEY` | Pi |
+| Z.AI, Z.AI Coding (China) | `ZAI_API_KEY`, `ZAI_CODING_CN_API_KEY` | |
+| OpenCode Zen and Go | `OPENCODE_API_KEY` | |
+| Google Gemini | `GEMINI_API_KEY` | |
+| Google Vertex AI | `GOOGLE_CLOUD_API_KEY` | |
+| xAI | `XAI_API_KEY` | Pi |
+| Groq | `GROQ_API_KEY` | |
+| Cerebras | `CEREBRAS_API_KEY` | |
+| Mistral | `MISTRAL_API_KEY` | |
+| DeepSeek | `DEEPSEEK_API_KEY` | |
+| Together | `TOGETHER_API_KEY` | |
+| Fireworks | `FIREWORKS_API_KEY` | |
+| Vercel AI Gateway | `AI_GATEWAY_API_KEY` | |
+| GitHub Copilot | `COPILOT_GITHUB_TOKEN` | OpenCode, Pi |
+| Moonshot AI, Moonshot AI (China) | `MOONSHOT_API_KEY` | |
+| Kimi For Coding | `KIMI_API_KEY` | Pi |
+| MiniMax, MiniMax (China) | `MINIMAX_API_KEY`, `MINIMAX_CN_API_KEY` | |
+| Meta | `META_API_KEY` | Pi |
+| Hugging Face | `HF_TOKEN` | |
+| NVIDIA | `NVIDIA_API_KEY` | |
+| Baseten | `BASETEN_API_KEY` | |
+| Ant Ling | `ANT_LING_API_KEY` | |
+| Xiaomi and its token plans | `XIAOMI_API_KEY`, `XIAOMI_TOKEN_PLAN_{AMS,CN,SGP}_API_KEY` | |
+| Qwen token plans | `QWEN_TOKEN_PLAN_API_KEY`, `QWEN_TOKEN_PLAN_CN_API_KEY` | |
+| Ollama (local) | none | |
+
+Pi's `auth.json` can hold an API key for any of them, by the same ids. A
+key stored as `$VAR` is read from the environment; one stored as
+`!command` would need a shell command run, which Kintsugi never does, so it
+counts as absent. Pi's logins are refreshed the way Pi does it, under Pi's
+lock, natively only: ChatGPT for Codex and for the OpenAI API, Copilot (its
+GitHub token is exchanged for a Copilot token), Kimi, xAI and Meta (a
+day-long key); an OpenRouter login is a key that doesn't expire.
+
+OpenCode ids map to Kintsugi's: most as they are (`anthropic`, `openrouter`,
+`opencode`, `opencode-go`, `groq`, `xai`, `mistral`, `deepseek`, `google`,
+`github-copilot`, …); `openai` is an OpenAI API key, or as an OAuth login
+ChatGPT on the Codex backend (`openai-codex`); `zai-coding-plan`, else `zai`,
+is `zai` (the coding-plan endpoint); `togetherai`, `fireworks-ai`, `vercel`,
+`kimi-for-coding` and `zhipuai-coding-plan` are Together, Fireworks, Vercel
+AI Gateway, Kimi For Coding and Z.AI Coding (China). Only keys are read for
+the providers OpenCode logs in to by OAuth other than OpenAI and Copilot.
 
 - **What can't be used.** A Claude subscription login (OpenCode's or Pi's)
   is refused: Kintsugi uses only Anthropic API keys. OpenCode's newer ChatGPT
@@ -74,13 +238,11 @@ or as an OAuth login ChatGPT on the Codex backend (`openai-codex`);
   OpenCode login (under five minutes left) is shown as expired: open OpenCode
   once and it refreshes it. Pi's file has a lock both sides respect, so Pi's
   Codex login is still refreshed and written back as before (natively only).
-- **OpenCode Zen and Go** are OpenAI-compatible chat completions at
-  `https://opencode.ai/inference/openai/v1` (Zen, pay as you go) and
-  `https://opencode.ai/inference/go/openai/v1` (Go, the subscription); the
-  gateway translates for models whose native API differs. Requests carry
-  `x-opencode-session` (Go requires one), a hash of the model and the fixed
-  prompt prefix, so a conversation is routed and cached together. Go counts
-  as a subscription ($0 in the ledger); Zen is priced per model family.
+- **OpenCode Zen and Go** serve each model on its native API under
+  `https://opencode.ai/inference/` (Zen, pay as you go) and
+  `https://opencode.ai/inference/go/` (Go, the subscription), as the
+  catalog says. Go counts as a subscription ($0 in the ledger); Zen is
+  priced from the catalog.
 - **Settings** lists every provider and where its credential comes from:
   "OpenCode login", "Pi login" or "environment", or why it can't be used.
 
@@ -214,7 +376,8 @@ one; his edits pass the same caps and checks.
 `src/lib/models.json` lists preferences per task: `edit` and `complete`
 (the webview), and Kin's `chat`, `ideas` (strong) and `triage` (cheap). The
 first preference with usable credentials wins, unless the owner picks a
-model for a Kin task in Settings.
+model for a Kin task in Settings. A test checks every preference is in the
+catalog. Requests ask for at most the model's maximum output.
 
 ## Cost and the cap
 
@@ -223,9 +386,13 @@ Every call (Kin turns, enrichment through `ai::complete`, the webview's
 and model choices live in `<config>/kin/settings.json`. An isolated dev run
 without `KINTSUGI_CONFIG_DIR` keeps both in memory.
 
-- Prices are estimates per model family (`cost::FAMILIES`). Subscription
-  logins (Codex, the Z.AI coding plan) and Ollama cost $0; an unknown paid
-  model is priced high and the month is marked estimated.
+- Prices come from the catalog, per model, with its input-size tiers: a
+  request whose input (fresh, cached and cache-written together) is over a
+  tier's size is billed at that tier's rates, as Pi computes it.
+  Subscriptions (Codex, the Z.AI coding plans, OpenCode Go, Copilot, Kimi
+  For Coding, the token plans) and Ollama cost $0. A model the catalog
+  doesn't list under its provider is priced like the same model elsewhere,
+  else high, and the month is marked estimated.
 - When the month's spend reaches the cap, background work stops:
   `ai::complete` returns `AiError::CapReached`, and a background turn ends
   with `stop: "capReached"` before its next step. A turn the owner asked
@@ -513,5 +680,6 @@ XCUITest (screenshots in `docs/screenshots/ki-42/`).
 
 Settings (⌘, or the sidebar) shows the privacy statement, this month's
 spend by task, the monthly cap, the model for each Kin task and, under AI
-providers, where each provider's credential comes from (above, Credentials). ⇧⌘K opens a
+providers, where each credential comes from (above, Credentials), for the
+providers the default models use and any other with a credential. ⇧⌘K opens a
 minimal developer panel to run one turn (with a "don't remember this" box).

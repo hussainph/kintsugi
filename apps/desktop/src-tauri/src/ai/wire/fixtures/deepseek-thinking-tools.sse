@@ -1,0 +1,16 @@
+data: {"id":"9f1","object":"chat.completion.chunk","model":"deepseek-v4-pro","choices":[{"index":0,"delta":{"role":"assistant","content":null,"reasoning_content":""},"finish_reason":null}]}
+
+data: {"id":"9f1","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"The owner asks about kilns. "},"finish_reason":null}]}
+
+data: {"id":"9f1","choices":[{"index":0,"delta":{"content":null,"reasoning_content":"Search first."},"finish_reason":null}]}
+
+data: {"id":"9f1","choices":[{"index":0,"delta":{"content":"Let me look."},"finish_reason":null}]}
+
+data: {"id":"9f1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_00_kq","type":"function","function":{"name":"search","arguments":""}}]},"finish_reason":null}]}
+
+data: {"id":"9f1","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\": \"kiln\"}"}}]},"finish_reason":null}]}
+
+data: {"id":"9f1","choices":[{"index":0,"delta":{"content":""},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":2048,"completion_tokens":61,"total_tokens":2109,"prompt_cache_hit_tokens":1920,"prompt_cache_miss_tokens":128,"completion_tokens_details":{"reasoning_tokens":12}}}
+
+data: [DONE]
+

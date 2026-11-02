@@ -1,0 +1,14 @@
+: OPENROUTER PROCESSING
+
+data: {"id":"gen-1","provider":"Google","model":"google/gemini-flash-latest","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"Weighing ","reasoning_details":[{"type":"reasoning.text","text":"Weighing ","format":"google-gemini-v1","index":0}]},"finish_reason":null}]}
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning":"the drafts.","reasoning_details":[{"type":"reasoning.text","text":"the drafts.","format":"google-gemini-v1","index":0}]},"finish_reason":null}]}
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"role":"assistant","content":"","reasoning_details":[{"type":"reasoning.encrypted","data":"CiQB4/H/Xs","id":"tool_search_1","format":"google-gemini-v1","index":1}]},"finish_reason":null}]}
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"role":"assistant","content":"Two drafts mention it."},"finish_reason":"stop","native_finish_reason":"STOP"}]}
+
+data: {"id":"gen-1","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}],"usage":{"prompt_tokens":5000,"completion_tokens":40,"total_tokens":5040,"cost":0.0004,"is_byok":false,"prompt_tokens_details":{"cached_tokens":3000,"cache_write_tokens":1000},"completion_tokens_details":{"reasoning_tokens":30}}}
+
+data: [DONE]
+

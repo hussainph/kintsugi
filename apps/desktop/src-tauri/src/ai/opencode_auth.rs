@@ -79,6 +79,30 @@ fn sources(provider: &str) -> &'static [(&'static str, Want)] {
         "zai" => &[("zai-coding-plan", Want::Any), ("zai", Want::Any)],
         "opencode" => &[("opencode", Want::Any)],
         "opencode-go" => &[("opencode-go", Want::Any)],
+        // OpenCode names providers as models.dev does; most match Kin's.
+        "together" => &[("togetherai", Want::ApiKey), ("together", Want::ApiKey)],
+        "fireworks" => &[("fireworks-ai", Want::ApiKey), ("fireworks", Want::ApiKey)],
+        "vercel-ai-gateway" => &[("vercel", Want::ApiKey)],
+        "kimi-coding" => &[
+            ("kimi-for-coding", Want::ApiKey),
+            ("kimi-coding", Want::ApiKey),
+        ],
+        "github-copilot" => &[("github-copilot", Want::Any)],
+        "google" => &[("google", Want::ApiKey)],
+        "google-vertex" => &[("google-vertex", Want::ApiKey)],
+        "groq" => &[("groq", Want::ApiKey)],
+        "cerebras" => &[("cerebras", Want::ApiKey)],
+        "xai" => &[("xai", Want::ApiKey)],
+        "mistral" => &[("mistral", Want::ApiKey)],
+        "deepseek" => &[("deepseek", Want::ApiKey)],
+        "moonshotai" => &[("moonshotai", Want::ApiKey)],
+        "moonshotai-cn" => &[("moonshotai-cn", Want::ApiKey)],
+        "minimax" => &[("minimax", Want::ApiKey)],
+        "minimax-cn" => &[("minimax-cn", Want::ApiKey)],
+        "zai-coding-cn" => &[("zhipuai-coding-plan", Want::ApiKey)],
+        "huggingface" => &[("huggingface", Want::ApiKey)],
+        "nvidia" => &[("nvidia", Want::ApiKey)],
+        "baseten" => &[("baseten", Want::ApiKey)],
         _ => &[],
     }
 }
@@ -281,7 +305,7 @@ impl Store {
             None => Lookup::Missing,
             Some(Cred::Key(_)) => Lookup::Usable(Kind::ApiKey),
             // A Claude subscription login: Kintsugi only uses Anthropic API keys.
-            Some(Cred::Oauth { .. }) if provider.wire == Wire::Anthropic => Lookup::Unsupported,
+            Some(Cred::Oauth { .. }) if provider.id == "anthropic" => Lookup::Unsupported,
             Some(Cred::Oauth { method, .. })
                 if provider.wire == Wire::Codex && method.as_deref() == Some(TOKEN_SHARING) =>
             {

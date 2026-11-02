@@ -108,6 +108,7 @@ fn builder() -> tauri::Builder<Runtime> {
             library::clip_image,
             search::search,
             ai::ai_providers,
+            ai::models::ai_models,
             ai::ai_stream,
             ai::ai_cancel,
             ai::kin::kin_turn,

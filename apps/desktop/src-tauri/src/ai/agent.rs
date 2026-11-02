@@ -12,7 +12,7 @@ use super::cost::Meter;
 use super::pi_auth::Auth;
 use super::prompt::{self, Chip, Memory};
 use super::tools::{self, Tools};
-use super::wire::{self, Endpoint, Exchange, Item, Provider, Reply, ToolResult, Usage};
+use super::wire::{self, Endpoint, Exchange, Item, Reply, Route, ToolResult, Usage};
 use super::{ModelRef, Task};
 use futures_util::future::{Either, select};
 use serde::Serialize;
@@ -51,8 +51,8 @@ impl<M: Model> Model for std::sync::Arc<M> {
 /// A real provider, with credentials resolved in Rust.
 pub struct Remote {
     pub model: ModelRef,
-    pub provider: &'static Provider,
-    pub base_url: String,
+    /// The model's wire and base URL (tests point it at a local server).
+    pub route: Route,
     pub auth: Option<Auth>,
 }
 
@@ -67,8 +67,7 @@ impl Model for Remote {
         on_text: &mut (dyn FnMut(&str) + Send),
     ) -> Result<Reply> {
         let endpoint = Endpoint {
-            provider: self.provider,
-            base_url: &self.base_url,
+            route: self.route.clone(),
             auth: self.auth.clone(),
         };
         wire::send(endpoint, ex, on_text).await
@@ -681,9 +680,14 @@ pub(crate) mod tests {
         assert_eq!(names, ["search", "read", "list"]);
         assert!(matches!(events.last(), Some(KinEvent::Done { .. })));
 
-        // Cost: two tool steps and an answer, priced as Sonnet and recorded.
-        let expected = 2.0 * (1_000.0 * 3.0 + 100.0 * 15.0 + 2_000.0 * 3.75) / 1e6
-            + (200.0 * 3.0 + 300.0 * 15.0 + 3_000.0 * 0.3) / 1e6;
+        // Cost: two tool steps and an answer, priced as Sonnet (from the
+        // catalog) and recorded.
+        let p = crate::ai::catalog::find("anthropic", "claude-sonnet-5-5")
+            .unwrap()
+            .cost
+            .rates;
+        let expected = 2.0 * (1_000.0 * p.input + 100.0 * p.output + 2_000.0 * p.cache_write) / 1e6
+            + (200.0 * p.input + 300.0 * p.output + 3_000.0 * p.cache_read) / 1e6;
         assert!(
             (summary.usd - expected).abs() < 1e-12,
             "{} vs {expected}",
@@ -755,9 +759,9 @@ pub(crate) mod tests {
     #[test]
     fn the_cap_stops_background_turns_before_and_between_steps() {
         let f = fixture();
-        // One tool step costs ~$0.0120; a cap below that stops after it.
+        // One tool step costs ~$0.008; a cap below that stops after it.
         f.meter
-            .update_settings(|s| s.monthly_cap_usd = Some(0.01))
+            .update_settings(|s| s.monthly_cap_usd = Some(0.005))
             .unwrap();
         let mock = Mock::new(vec![
             calls(&[("c1", "search", json!({ "query": "kiln" }))], ""),
@@ -1156,8 +1160,10 @@ pub(crate) mod tests {
                     model: model.into(),
                     reasoning: None,
                 },
-                provider: wire::provider(provider).unwrap(),
-                base_url,
+                route: Route {
+                    base_url,
+                    ..Route::new(wire::provider(provider).unwrap(), model)
+                },
                 auth: Some(Auth::ApiKey("test-key".into())),
             }
         }
@@ -1205,7 +1211,7 @@ pub(crate) mod tests {
             ]) + "data: [DONE]\n\n";
             let rt = runtime();
             let (base, recorded) = rt.block_on(provider("/chat/completions", vec![first, second]));
-            let summary = run_remote(&rt, &f, &remote("openai", "gpt-6-mini", base));
+            let summary = run_remote(&rt, &f, &remote("groq", "llama-3.3-70b-versatile", base));
 
             assert_eq!(summary.stop, Stop::Answered);
             assert_eq!(
@@ -1221,7 +1227,22 @@ pub(crate) mod tests {
                     cache_write: 0
                 }
             );
-            let expected = (1500.0 * 0.25 + 50.0 * 2.0 + 1200.0 * 0.025) / 1e6;
+            // Priced from the catalog, per step.
+            let price = &crate::ai::catalog::find("groq", "llama-3.3-70b-versatile")
+                .unwrap()
+                .cost;
+            let expected = price.usd(&Usage {
+                input: 1200,
+                output: 20,
+                cache_read: 0,
+                cache_write: 0,
+            }) + price.usd(&Usage {
+                input: 300,
+                output: 30,
+                cache_read: 1200,
+                cache_write: 0,
+            });
+            assert!(expected > 0.0);
             assert!((summary.usd - expected).abs() < 1e-12);
             assert!((f.meter.report().spent_usd - expected).abs() < 1e-12);
 
@@ -1229,7 +1250,7 @@ pub(crate) mod tests {
             assert_eq!(requests.len(), 2);
             assert_eq!(requests[0].0, "Bearer test-key");
             assert_eq!(requests[0].1["tools"][0]["function"]["name"], "search");
-            assert_eq!(requests[0].1["prompt_cache_key"], "kin");
+            assert_eq!(requests[0].1["store"], false);
             let messages = requests[1].1["messages"].as_array().unwrap();
             assert_eq!(
                 messages[2]["tool_calls"][0]["function"]["arguments"],

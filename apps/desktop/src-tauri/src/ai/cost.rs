@@ -7,11 +7,14 @@
 //! work (enrichment, feed triage, daily Ideas) stops; a turn the owner asked
 //! for still runs and reports that the cap is reached.
 //!
-//! Prices are estimates in US dollars per million tokens, matched on model
-//! family. Subscriptions (ChatGPT Codex, the Z.AI coding plan, OpenCode Go) and
-//! local models cost nothing per token; their tokens are still counted. An
-//! unknown paid model is priced high, so the cap errs towards stopping early.
+//! Prices are in US dollars per million tokens, from the model catalog
+//! (`catalog.rs`, Pi's), with its input-size tiers. Subscriptions (ChatGPT
+//! Codex, the Z.AI coding plan, OpenCode Go, Copilot, Kimi For Coding, the
+//! token plans) and local models cost nothing per token; their tokens are
+//! still counted. A model the catalog doesn't know is priced high, so the
+//! cap errs towards stopping early.
 
+use super::catalog;
 use super::wire::Usage;
 use super::{ModelRef, Task};
 use kintsugi_vault::write_atomic;
@@ -24,135 +27,45 @@ use std::sync::Mutex;
 
 type Result<T> = std::result::Result<T, String>;
 
-/// USD per million tokens.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Price {
-    pub input: f64,
-    pub output: f64,
-    pub cache_read: f64,
-    pub cache_write: f64,
-}
+/// What a model costs per million tokens (with any input-size tiers).
+pub use super::catalog::Cost as Price;
 
-const FREE: Price = Price {
-    input: 0.0,
-    output: 0.0,
-    cache_read: 0.0,
-    cache_write: 0.0,
-};
 /// For a paid model we don't recognize: deliberately on the expensive side.
 const UNKNOWN: Price = Price {
-    input: 5.0,
-    output: 25.0,
-    cache_read: 0.5,
-    cache_write: 6.25,
+    rates: super::catalog::Rates {
+        input: 5.0,
+        output: 25.0,
+        cache_read: 0.5,
+        cache_write: 6.25,
+    },
+    tiers: Vec::new(),
 };
 
-/// Model families, matched as substrings of the model id, first match wins.
-const FAMILIES: &[(&str, Price)] = &[
-    (
-        "opus",
-        Price {
-            input: 5.0,
-            output: 25.0,
-            cache_read: 0.5,
-            cache_write: 6.25,
-        },
-    ),
-    (
-        "sonnet",
-        Price {
-            input: 3.0,
-            output: 15.0,
-            cache_read: 0.3,
-            cache_write: 3.75,
-        },
-    ),
-    (
-        "haiku",
-        Price {
-            input: 1.0,
-            output: 5.0,
-            cache_read: 0.1,
-            cache_write: 1.25,
-        },
-    ),
-    (
-        "gemini-flash",
-        Price {
-            input: 0.3,
-            output: 2.5,
-            cache_read: 0.03,
-            cache_write: 0.3,
-        },
-    ),
-    (
-        "-mini",
-        Price {
-            input: 0.25,
-            output: 2.0,
-            cache_read: 0.025,
-            cache_write: 0.25,
-        },
-    ),
-    (
-        "gpt",
-        Price {
-            input: 1.25,
-            output: 10.0,
-            cache_read: 0.125,
-            cache_write: 1.25,
-        },
-    ),
-    // Open models, at OpenCode Zen's listed prices (opencode.ai, Console › Models).
-    (
-        "glm-5.3-flash",
-        Price {
-            input: 0.15,
-            output: 0.5,
-            cache_read: 0.03,
-            cache_write: 0.0,
-        },
-    ),
-    (
-        "glm",
-        Price {
-            input: 1.4,
-            output: 4.4,
-            cache_read: 0.26,
-            cache_write: 0.0,
-        },
-    ),
-    (
-        "kimi",
-        Price {
-            input: 3.0,
-            output: 15.0,
-            cache_read: 0.3,
-            cache_write: 3.0,
-        },
-    ),
-];
-
-/// The price of a model, and whether it's a guess.
+/// The price of a model, and whether it's a guess. Prices come from the
+/// catalog (Pi's); flat-rate subscriptions and local servers cost nothing.
+/// A model the catalog doesn't list under its provider is priced like the
+/// same model elsewhere, else high; both are marked estimated.
 pub fn price(provider: &str, model: &str) -> (Price, bool) {
-    // Flat-rate subscriptions and the Mac's own models.
-    if matches!(provider, "openai-codex" | "zai" | "opencode-go" | "ollama") {
-        return (FREE, false);
+    if super::providers::provider(provider).is_some_and(|p| p.subscription) {
+        return (Price::FREE, false);
     }
-    let model = model.to_lowercase();
-    match FAMILIES.iter().find(|(family, _)| model.contains(family)) {
-        Some((_, price)) => (*price, false),
+    if let Some(m) = catalog::find(provider, model) {
+        return (m.cost.clone(), false);
+    }
+    // The same model under another provider (OpenRouter's `vendor/id`
+    // names included).
+    let bare = model.rsplit('/').next().unwrap_or(model);
+    match catalog::all()
+        .iter()
+        .find(|m| m.id == model || m.id.rsplit('/').next() == Some(bare))
+    {
+        Some(m) => (m.cost.clone(), true),
         None => (UNKNOWN, true),
     }
 }
 
 pub fn usd(price: &Price, usage: &Usage) -> f64 {
-    (usage.input as f64 * price.input
-        + usage.output as f64 * price.output
-        + usage.cache_read as f64 * price.cache_read
-        + usage.cache_write as f64 * price.cache_write)
-        / 1_000_000.0
+    price.usd(usage)
 }
 
 /// Kin's own settings, separate from `config.json` so they work in scratch runs.
@@ -420,20 +333,33 @@ mod tests {
     };
 
     #[test]
-    fn prices_by_family_with_free_subscriptions_and_a_high_default() {
-        assert_eq!(price("anthropic", "claude-sonnet-5-5").0.input, 3.0);
+    fn prices_come_from_the_catalog_with_free_subscriptions_and_a_high_default() {
+        let sonnet = price("anthropic", "claude-sonnet-5-5");
         assert_eq!(
-            price("openrouter", "~anthropic/claude-haiku-latest")
-                .0
-                .output,
-            5.0
+            sonnet,
+            (
+                catalog::find("anthropic", "claude-sonnet-5-5")
+                    .unwrap()
+                    .cost
+                    .clone(),
+                false
+            )
         );
-        assert_eq!(price("openai-codex", "gpt-6-luna"), (FREE, false));
-        assert_eq!(price("zai", "glm-5.3"), (FREE, false));
-        assert_eq!(price("opencode-go", "kimi-k3"), (FREE, false));
-        assert_eq!(price("opencode", "glm-5.3-flash").0.input, 0.15);
-        assert_eq!(price("opencode", "glm-5.3").0.output, 4.4);
-        assert_eq!(price("opencode", "claude-sonnet-5-5").0.input, 3.0);
+        assert_eq!(sonnet.0.rates.input, 2.0);
+        assert_eq!(price("opencode", "glm-5.3-flash").0.rates.input, 0.15);
+        assert_eq!(price("opencode", "glm-5.3").0.rates.output, 4.4);
+        for (provider, model) in [
+            ("openai-codex", "gpt-6-luna"),
+            ("zai", "glm-5.3"),
+            ("opencode-go", "kimi-k3"),
+            ("github-copilot", "kimi-k3"),
+            ("ollama", "qwen3:8b"),
+        ] {
+            assert_eq!(price(provider, model), (Price::FREE, false), "{provider}");
+        }
+        // Unlisted here, listed elsewhere: that price, marked estimated.
+        let (borrowed, estimated) = price("groq", "claude-sonnet-5-5");
+        assert!(estimated && borrowed.rates.input > 0.0);
         assert_eq!(price("openrouter", "mystery-model"), (UNKNOWN, true));
         let usage = Usage {
             input: 1000,
@@ -441,11 +367,14 @@ mod tests {
             cache_read: 10_000,
             cache_write: 4000,
         };
-        let cost = usd(&price("anthropic", "claude-sonnet-5-5").0, &usage);
+        let cost = usd(&sonnet.0, &usage);
         assert!(
-            (cost - (0.003 + 0.03 + 0.003 + 0.015)).abs() < 1e-9,
+            (cost - (0.002 + 0.02 + 0.001 + 0.01)).abs() < 1e-9,
             "{cost}"
         );
+        // Haiku 5.5 bills a whole request over 100k input tokens higher.
+        let haiku = price("anthropic", "claude-haiku-5-5").0;
+        assert!((usd(&haiku, &MILLION_IN) - 0.5).abs() < 1e-9);
     }
 
     #[test]
@@ -457,7 +386,7 @@ mod tests {
             &model("anthropic", "claude-sonnet-5-5"),
             &MILLION_IN,
         );
-        assert_eq!(spent, 3.0);
+        assert_eq!(spent, 2.0);
         meter.record(
             Task::Triage,
             &model("anthropic", "claude-haiku-5-5"),
@@ -472,7 +401,7 @@ mod tests {
 
         let reopened = Meter::with_clock(Some(dir.path().into()), || "2026-11".into());
         let report = reopened.report();
-        assert_eq!(report.spent_usd, 4.0);
+        assert_eq!(report.spent_usd, 2.5);
         assert_eq!(
             report
                 .by_task
@@ -492,7 +421,7 @@ mod tests {
         let meter = Meter::with_clock(Some(dir.path().into()), || "2026-11".into());
         assert_eq!(meter.allows(true), Ok(()));
         meter
-            .update_settings(|s| s.monthly_cap_usd = Some(3.0))
+            .update_settings(|s| s.monthly_cap_usd = Some(2.0))
             .unwrap();
         meter.record(
             Task::Chat,
@@ -504,7 +433,7 @@ mod tests {
         assert_eq!(meter.allows(false), Ok(()));
         // The cap persists.
         let reopened = Meter::with_clock(Some(dir.path().into()), || "2026-11".into());
-        assert_eq!(reopened.settings().monthly_cap_usd, Some(3.0));
+        assert_eq!(reopened.settings().monthly_cap_usd, Some(2.0));
         assert!(reopened.report().cap_reached);
         assert!(
             meter

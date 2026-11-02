@@ -3,7 +3,10 @@
 //! keys never leave Rust.
 //!
 //! - `credentials`: where a credential comes from (OpenCode, Pi, env).
-//! - `wire`: three wire formats, streaming text and tool calls.
+//! - `providers`: every provider Kin speaks, with its defaults.
+//! - `catalog`: every model (Pi's generated catalog): wire, limits, prices.
+//! - `models`: `ai_models`, the models Kin can use now, for pickers.
+//! - `wire`: the wire formats, streaming text, tool calls and reasoning.
 //! - `agent`: Kin's loop, many tool calls per turn, cancellable.
 //! - `tools`: Kin's read-only vault tools.
 //! - `prompt`: the fixed, cacheable prefix and the dynamic tail.
@@ -18,6 +21,7 @@
 
 pub mod about;
 mod agent;
+pub(crate) mod catalog;
 pub mod chat;
 pub mod comments;
 pub mod cost;
@@ -27,9 +31,11 @@ pub mod ideas;
 mod jobs;
 pub mod kin;
 pub mod memory;
+pub mod models;
 mod opencode_auth;
 mod pi_auth;
 pub mod prompt;
+mod providers;
 #[cfg(feature = "headless")]
 mod scripted;
 pub(crate) mod tools;
@@ -74,9 +80,24 @@ pub struct ProviderStatus {
     source: Option<Source>,
 }
 
-/// Every provider Kintsugi speaks, and whether it can be used right now.
+/// The providers Settings lists, and whether each can be used right now:
+/// the ones the default models use, and any other with a credential (or a
+/// login it can't use). Every provider is in `ai_models` with `all: true`.
 #[tauri::command]
 pub fn ai_providers() -> Result<Vec<ProviderStatus>> {
+    let defaults: Vec<&str> = Task::ALL
+        .iter()
+        .flat_map(|t| preferences(*t))
+        .map(|m| m.provider.as_str())
+        .collect();
+    Ok(shown_statuses()?
+        .into_iter()
+        .filter(|s| s.auth != "none" || defaults.contains(&s.id))
+        .collect())
+}
+
+/// Every provider's status, a headless mock run's stand-in included.
+fn shown_statuses() -> Result<Vec<ProviderStatus>> {
     #[allow(unused_mut)]
     let mut statuses = statuses()?;
     // A mock run offers the webview's first edit model, answered by
@@ -338,7 +359,8 @@ pub async fn complete(task: Task, ask: &Ask) -> std::result::Result<String, AiEr
             .map_err(|_| AiError::NotConfigured)?;
         let overflow = AtomicBool::new(false);
         let mut length = 0;
-        let streaming = wire::send(wire::Endpoint::new(provider, auth), &exchange, |delta| {
+        let endpoint = wire::Endpoint::new(provider, &model.model, auth);
+        let streaming = wire::send(endpoint, &exchange, |delta| {
             // Checked as it streams, so a runaway answer is never held.
             length += delta.len();
             if length > ask.max_response_bytes {
@@ -421,7 +443,8 @@ pub fn ai_stream(
         async move {
             let result = async {
                 let auth = resolve(provider).await?;
-                let reply = wire::stream(wire::Endpoint::new(provider, auth), &request, |event| {
+                let endpoint = wire::Endpoint::new(provider, &request.model, auth);
+                let reply = wire::stream(endpoint, &request, |event| {
                     let _ = on_event.send(event);
                 })
                 .await?;
@@ -481,8 +504,8 @@ mod tests {
     }
 
     #[test]
-    fn preferences_parse_and_name_known_providers() {
-        for task in [Task::Edit, Task::Complete] {
+    fn preferences_parse_and_name_known_providers_and_catalog_models() {
+        for task in Task::ALL {
             assert!(!preferences(task).is_empty());
             for m in preferences(task) {
                 assert!(
@@ -490,6 +513,12 @@ mod tests {
                     "unknown provider {}",
                     m.provider
                 );
+                let model = catalog::find(&m.provider, &m.model)
+                    .unwrap_or_else(|| panic!("{}/{} is not in the catalog", m.provider, m.model));
+                if let Some(level) = &m.reasoning {
+                    assert!(catalog::Level::parse(level).is_some(), "{level}");
+                    assert!(model.reasoning, "{} doesn't think", m.model);
+                }
             }
         }
     }
@@ -542,7 +571,10 @@ mod tests {
     }
 }
 
-/// Real requests against the owner's credentials (OpenCode, Pi, env): `cargo test live -- --ignored --nocapture`.
+/// Real requests, ignored by default. `live_codex`, `live_zai`, `live_complete`
+/// and `live_request` use the owner's credentials (OpenCode, Pi, env):
+/// `cargo test live -- --ignored --nocapture`; the per-provider ones read only
+/// that provider's environment key.
 #[cfg(test)]
 mod live {
     use super::*;
@@ -575,7 +607,7 @@ mod live {
             .block_on(async {
                 let auth = resolve(provider).await?;
                 wire::stream(
-                    wire::Endpoint::new(provider, auth),
+                    wire::Endpoint::new(provider, &request.model, auth),
                     &request,
                     |event| match event {
                         Event::Delta { text: t } => text.push_str(&t),
@@ -599,6 +631,125 @@ mod live {
     #[ignore]
     fn live_zai() {
         ping("zai", "glm-5.3-flash", None);
+    }
+
+    /// One tiny request per provider with the key from its environment
+    /// variable only (never OpenCode's or Pi's stores), to the provider's
+    /// cheapest catalog model, thinking at its lowest. Skipped, and passing,
+    /// without the key: `GROQ_API_KEY=… cargo test live_groq -- --ignored --nocapture`.
+    fn live_env(id: &str) {
+        let provider = wire::provider(id).unwrap();
+        let Some(key) = provider
+            .env_keys
+            .iter()
+            .find_map(|k| std::env::var(k).ok().filter(|v| !v.trim().is_empty()))
+        else {
+            println!("{id}: skipped, none of {:?} is set", provider.env_keys);
+            return;
+        };
+        let model = catalog::models(id)
+            .min_by(|a, b| {
+                let price = |m: &catalog::Model| m.cost.rates.input + m.cost.rates.output;
+                price(a).total_cmp(&price(b))
+            })
+            .expect("the provider has catalog models");
+        let request = Request {
+            id: "live".into(),
+            provider: id.into(),
+            model: model.id.clone(),
+            system: "Reply with exactly the word: ok".into(),
+            messages: vec![Message {
+                role: Role::User,
+                content: "ping".into(),
+            }],
+            max_tokens: Some(256),
+            temperature: None,
+            stop: None,
+            reasoning: Some("off".into()),
+            task: None,
+        };
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut text = String::new();
+        let reply = runtime
+            .block_on(wire::stream(
+                wire::Endpoint::new(provider, &model.id, Some(Auth::ApiKey(key))),
+                &request,
+                |event| {
+                    if let Event::Delta { text: t } = event {
+                        text.push_str(&t)
+                    }
+                },
+            ))
+            .unwrap();
+        let (price, _) = cost::price(id, &model.id);
+        println!(
+            "{id}/{}: {text:?} {:?} ${:.6}",
+            model.id,
+            reply.usage,
+            cost::usd(&price, &reply.usage)
+        );
+        assert!(!text.trim().is_empty());
+    }
+
+    macro_rules! live {
+        ($($name:ident => $id:literal),* $(,)?) => {
+            $(
+                #[test]
+                #[ignore]
+                fn $name() {
+                    live_env($id);
+                }
+            )*
+            const LIVE: &[&str] = &[$($id),*];
+        };
+    }
+
+    live! {
+        live_anthropic => "anthropic",
+        live_openai => "openai",
+        live_openrouter => "openrouter",
+        live_zai_env => "zai",
+        live_opencode => "opencode",
+        live_opencode_go => "opencode-go",
+        live_google => "google",
+        live_google_vertex => "google-vertex",
+        live_xai => "xai",
+        live_groq => "groq",
+        live_cerebras => "cerebras",
+        live_mistral => "mistral",
+        live_deepseek => "deepseek",
+        live_together => "together",
+        live_fireworks => "fireworks",
+        live_vercel_ai_gateway => "vercel-ai-gateway",
+        live_github_copilot => "github-copilot",
+        live_moonshotai => "moonshotai",
+        live_moonshotai_cn => "moonshotai-cn",
+        live_kimi_coding => "kimi-coding",
+        live_minimax => "minimax",
+        live_minimax_cn => "minimax-cn",
+        live_zai_coding_cn => "zai-coding-cn",
+        live_meta => "meta",
+        live_huggingface => "huggingface",
+        live_nvidia => "nvidia",
+        live_baseten => "baseten",
+        live_ant_ling => "ant-ling",
+        live_xiaomi => "xiaomi",
+        live_xiaomi_token_plan_ams => "xiaomi-token-plan-ams",
+        live_xiaomi_token_plan_cn => "xiaomi-token-plan-cn",
+        live_xiaomi_token_plan_sgp => "xiaomi-token-plan-sgp",
+        live_qwen_token_plan => "qwen-token-plan",
+        live_qwen_token_plan_individual => "qwen-token-plan-individual",
+        live_qwen_token_plan_cn => "qwen-token-plan-cn",
+    }
+
+    #[test]
+    fn every_provider_with_a_key_has_a_live_test() {
+        for p in PROVIDERS.iter().filter(|p| !p.env_keys.is_empty()) {
+            assert!(LIVE.contains(&p.id), "no live test for {}", p.id);
+        }
     }
 
     /// `complete` end to end with the edit model.
@@ -639,11 +790,15 @@ mod live {
         runtime
             .block_on(async {
                 let auth = resolve(provider).await?;
-                wire::stream(wire::Endpoint::new(provider, auth), &request, |event| {
-                    if let Event::Delta { text: t } = event {
-                        text.push_str(&t)
-                    }
-                })
+                wire::stream(
+                    wire::Endpoint::new(provider, &request.model, auth),
+                    &request,
+                    |event| {
+                        if let Event::Delta { text: t } = event {
+                            text.push_str(&t)
+                        }
+                    },
+                )
                 .await
             })
             .unwrap();
