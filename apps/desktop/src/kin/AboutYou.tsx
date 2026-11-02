@@ -1,4 +1,4 @@
-import { Undo2, X } from "lucide-react";
+import { Undo2, X } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@kintsugi/ui/components/badge";

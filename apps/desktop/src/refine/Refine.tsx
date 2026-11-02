@@ -13,7 +13,6 @@ import { memory, type Skill } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
 import { modelFor } from "@/lib/models";
 import { passageChips } from "@/kin/screen";
-import { cn } from "@kintsugi/ui/lib/utils";
 import { Action, ACTIONS, ask, choices, clean } from "./prompts";
 import { type Found, KIN_ACTIONS, type KinAction, skillAction, supportingClips, WHO_DISAGREES } from "./kin";
 

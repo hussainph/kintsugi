@@ -21,7 +21,6 @@
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
     "cn": "^0.5.0",
-    "lucide-react": "catalog:",
     "motion": "catalog:",
     "next-themes": "^0.4.6",
     "radix-ui": "^1.8.1",
@@ -40,9 +39,11 @@
     "@types/react-dom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "tailwindcss": "catalog:"
+    "tailwindcss": "catalog:",
+    "tsx": "^4.23.15"
   },
   "scripts": {
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "test": "node --import tsx --test src/components/graphical.test.ts src/contrast.test.ts src/fonts/font-assets.test.ts"
   }
 }

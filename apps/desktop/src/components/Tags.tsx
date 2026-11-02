@@ -1,4 +1,4 @@
-import { Plus, Tag, X } from "lucide-react";
+import { Plus, Tag, X } from "@kintsugi/ui/icons";
 import { useState } from "react";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@kintsugi/ui/components/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@kintsugi/ui/components/popover";
@@ -35,7 +35,7 @@ export function DocTags({
   return (
     <span role="group" className="flex items-center gap-1.5" aria-label="Tags">
       {tags.map((tag) => (
-        <span key={tag} className="group/tag inline-flex items-center rounded-full bg-muted/60 py-0.5 pr-1 pl-2 text-[11px] text-muted-foreground">
+        <span key={tag} className="group/tag inline-flex items-center rounded-full bg-muted/60 py-0.5 pr-1 pl-2 text-xs text-muted-foreground">
           #{tag}
           <button
             className="ml-0.5 rounded-full p-0.5 opacity-40 group-hover/tag:opacity-100 hover:text-foreground focus-visible:opacity-100"
@@ -154,7 +154,7 @@ export function TagChips({ tags, onRemove, className }: { tags: string[]; onRemo
       {tags.map((tag) => (
         <button
           key={tag}
-          className="inline-flex items-center gap-0.5 rounded-full bg-sidebar-accent px-2 py-0.5 text-[11px] text-sidebar-accent-foreground hover:bg-sidebar-accent/70"
+          className="inline-flex items-center gap-0.5 rounded-full bg-sidebar-accent px-2 py-0.5 text-xs text-sidebar-accent-foreground hover:bg-sidebar-accent/70"
           onClick={() => onRemove(tag)}
           title={`Stop filtering by #${tag}`}
           aria-label={`Stop filtering by ${tag}`}

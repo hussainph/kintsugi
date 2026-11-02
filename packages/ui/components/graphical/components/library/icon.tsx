@@ -8,67 +8,68 @@ import {
   type ReactNode,
   type SVGProps,
 } from 'react';
+import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
 import {
-  Archive,
-  PanelLeft,
-  Check,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Minus,
-  Plus,
-  X,
-  Info,
-  Bold,
-  Italic,
-  Underline,
-  Copy,
-  Download,
-  FilePlus,
-  FolderOpen,
-  Printer,
-  Save,
-  Undo2,
-  Redo2,
-  ArrowUp,
-  CalendarPlus,
-  CalendarDays,
-  MapPin,
-  Tag,
-  Package,
-  Truck,
-  ListOrdered,
-  LoaderCircle,
-  Timer,
-  BookOpen,
-  CheckCheck,
-  ShieldCheck,
-  TrendingUp,
-  ArrowDownToLine,
-  ArrowRight,
-  Award,
-  Bell,
-  Bookmark,
-  CreditCard,
-  FileText,
-  Folder,
-  Gift,
-  Globe,
-  House,
-  Inbox,
-  Mailbox,
-  Paperclip,
-  Pause,
-  Pencil,
-  Play,
-  Search,
-  Settings,
-  ShoppingBag,
-  SlidersHorizontal,
-  Stamp,
-  Trash2,
-  UsersRound,
-} from 'lucide-react';
+  Add01Icon,
+  Archive01Icon,
+  ArrowDown01Icon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  ArrowRight02Icon,
+  ArrowUp02Icon,
+  Attachment01Icon,
+  Award01Icon,
+  BookOpen01Icon,
+  Bookmark01Icon,
+  Calendar03Icon,
+  CalendarAdd01Icon,
+  Cancel01Icon,
+  ChartIncreaseIcon,
+  Copy01Icon,
+  CreditCardIcon,
+  Delete02Icon,
+  DeliveryTruck01Icon,
+  Download01Icon,
+  Edit02Icon,
+  File01Icon,
+  FileAddIcon,
+  Folder01Icon,
+  FolderOpenIcon,
+  GiftIcon,
+  Globe02Icon,
+  Home01Icon,
+  InboxDownloadIcon,
+  InboxIcon,
+  InformationCircleIcon,
+  Loading03Icon,
+  Location01Icon,
+  Mailbox01Icon,
+  Notification01Icon,
+  Package01Icon,
+  PauseIcon,
+  PlayIcon,
+  PrinterIcon,
+  Redo02Icon,
+  Remove01Icon,
+  SaveIcon,
+  Search01Icon,
+  Settings01Icon,
+  ShieldCheckIcon,
+  ShoppingBag01Icon,
+  SidebarLeft01Icon,
+  SlidersHorizontalIcon,
+  Sorting01Icon,
+  Stamp01Icon,
+  Tag01Icon,
+  TextBoldIcon,
+  TextItalicIcon,
+  TextUnderlineIcon,
+  Tick02Icon,
+  TickDouble02Icon,
+  Timer01Icon,
+  Undo02Icon,
+  UserGroupIcon,
+} from '@hugeicons/core-free-icons';
 import { THEME_ICON_ARTWORK } from "../../lib/icon-artwork";
 import { CENTRAL_OUTLINE_ARTWORK } from "../../lib/icon-artwork";
 import { LUCIDE_FILLED_ARTWORK } from "../../lib/icon-artwork";
@@ -85,6 +86,83 @@ import {
   type HugeiconsVariant,
 } from "../../lib/hugeicons-options";
 import { iconWeightVariables } from "../../lib/theme-icon-weight";
+
+/** Bundled fallback artwork: Hugeicons free, stroke-rounded (MIT). */
+function strokeGlyph(icon: IconSvgElement) {
+  const outline = icon.map(([tag, attributes]) => {
+    const { strokeWidth: _strokeWidth, ...rest } = attributes;
+    return [tag, rest] as const;
+  });
+  return function Glyph({ strokeWidth, style, ...props }: SVGProps<SVGSVGElement>) {
+    return (
+      <HugeiconsIcon
+        icon={outline}
+        size={24}
+        {...(props as object)}
+        style={{ strokeWidth: strokeWidth ?? 'var(--icon-stroke-width, 1.5)', ...style }}
+      />
+    );
+  };
+}
+const Archive = strokeGlyph(Archive01Icon);
+const ArrowDownToLine = strokeGlyph(InboxDownloadIcon);
+const ArrowRight = strokeGlyph(ArrowRight02Icon);
+const ArrowUp = strokeGlyph(ArrowUp02Icon);
+const Award = strokeGlyph(Award01Icon);
+const Bell = strokeGlyph(Notification01Icon);
+const Bold = strokeGlyph(TextBoldIcon);
+const BookOpen = strokeGlyph(BookOpen01Icon);
+const Bookmark = strokeGlyph(Bookmark01Icon);
+const CalendarDays = strokeGlyph(Calendar03Icon);
+const CalendarPlus = strokeGlyph(CalendarAdd01Icon);
+const Check = strokeGlyph(Tick02Icon);
+const CheckCheck = strokeGlyph(TickDouble02Icon);
+const ChevronDown = strokeGlyph(ArrowDown01Icon);
+const ChevronLeft = strokeGlyph(ArrowLeft01Icon);
+const ChevronRight = strokeGlyph(ArrowRight01Icon);
+const Copy = strokeGlyph(Copy01Icon);
+const CreditCard = strokeGlyph(CreditCardIcon);
+const Download = strokeGlyph(Download01Icon);
+const FilePlus = strokeGlyph(FileAddIcon);
+const FileText = strokeGlyph(File01Icon);
+const Folder = strokeGlyph(Folder01Icon);
+const FolderOpen = strokeGlyph(FolderOpenIcon);
+const Gift = strokeGlyph(GiftIcon);
+const Globe = strokeGlyph(Globe02Icon);
+const House = strokeGlyph(Home01Icon);
+const Inbox = strokeGlyph(InboxIcon);
+const Info = strokeGlyph(InformationCircleIcon);
+const Italic = strokeGlyph(TextItalicIcon);
+const ListOrdered = strokeGlyph(Sorting01Icon);
+const LoaderCircle = strokeGlyph(Loading03Icon);
+const Mailbox = strokeGlyph(Mailbox01Icon);
+const MapPin = strokeGlyph(Location01Icon);
+const Minus = strokeGlyph(Remove01Icon);
+const Package = strokeGlyph(Package01Icon);
+const PanelLeft = strokeGlyph(SidebarLeft01Icon);
+const Paperclip = strokeGlyph(Attachment01Icon);
+const Pause = strokeGlyph(PauseIcon);
+const Pencil = strokeGlyph(Edit02Icon);
+const Play = strokeGlyph(PlayIcon);
+const Plus = strokeGlyph(Add01Icon);
+const Printer = strokeGlyph(PrinterIcon);
+const Redo2 = strokeGlyph(Redo02Icon);
+const Save = strokeGlyph(SaveIcon);
+const Search = strokeGlyph(Search01Icon);
+const Settings = strokeGlyph(Settings01Icon);
+const ShieldCheck = strokeGlyph(ShieldCheckIcon);
+const ShoppingBag = strokeGlyph(ShoppingBag01Icon);
+const SlidersHorizontal = strokeGlyph(SlidersHorizontalIcon);
+const Stamp = strokeGlyph(Stamp01Icon);
+const Tag = strokeGlyph(Tag01Icon);
+const Timer = strokeGlyph(Timer01Icon);
+const Trash2 = strokeGlyph(Delete02Icon);
+const TrendingUp = strokeGlyph(ChartIncreaseIcon);
+const Truck = strokeGlyph(DeliveryTruck01Icon);
+const Underline = strokeGlyph(TextUnderlineIcon);
+const Undo2 = strokeGlyph(Undo02Icon);
+const UsersRound = strokeGlyph(UserGroupIcon);
+const X = strokeGlyph(Cancel01Icon);
 
 const lucide = {
   home: House,
@@ -276,7 +354,7 @@ export function ThemedIcon({
 }) {
   const inherited = useContext(IconThemeContext);
   const renderIcon = useContext(IconRendererContext);
-  const family = explicitFamily ?? inherited.family ?? 'Lucide';
+  const family = explicitFamily ?? inherited.family ?? 'Hugeicons';
   const instance = useId();
   const resolveName = useContext(IconNameContext);
   const name =
@@ -310,10 +388,10 @@ export function ThemedIcon({
   const outlined = (
     <Icon
       aria-hidden="true"
-      data-icon-family="Lucide"
+      data-icon-family="Hugeicons"
       data-icon-style="outlined"
       data-icon-fallback={
-        family !== 'Lucide' || resolvedStyle !== 'outlined' || undefined
+        family !== 'Hugeicons' || resolvedStyle !== 'outlined' || undefined
       }
       strokeWidth="var(--icon-stroke-width, 2)"
       {...props}

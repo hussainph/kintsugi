@@ -57,15 +57,11 @@ substitute family or invented italic face was added.
 ## Notices and verification
 
 Source contracts accompany the font files. Complete copies (and Timeless's
-NOTICE) under `apps/{desktop,lab}/public/font-licenses/` accompany app builds too.
+NOTICE) under `apps/desktop/public/font-licenses/` accompany app builds too.
 The original Superior OFL's CRLF/whitespace bytes are preserved by narrowly
 scoped `.gitattributes`; authored source retains normal whitespace checks.
 
-`font-assets.test.ts` checks font hashes, descriptors, contracts and distribution
-copies. `scripts/check-theme-assets.mjs` requires actual loaded FontFace objects
-and `document.fonts.check()` at every requested weight, including Timeless in both
-light and dark, plus computed axes and real rendered font evidence. Inherited UI
-glyphs match explicit STYL100/ital0 pixels and differ from STYL0. CDP's internal
-family name includes “Grotesk Light”; the binary is not renamed, and the actual
-instance axes/render comparison—not that base label—establish Sans rendering.
-There is no missing-font escape flag or licensing gate.
+`font-assets.test.ts` (run by `pnpm --filter @kintsugi/ui test`) checks font
+hashes, descriptors, contracts and distribution copies.
+`scripts/check-desktop-theme.mjs` checks, in a running headless app, that the
+fonts actually load and that the UI text renders with the Sans/upright axes.

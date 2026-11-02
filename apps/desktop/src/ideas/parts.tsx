@@ -16,7 +16,7 @@ export const serif = "font-[family-name:var(--font-prose)]";
 /** The gold seam's values, from KI-23's Kin gold: the one accent, used only
  *  where Kin's own thinking sits. */
 export const seam =
-  "[--seam-ink:oklch(0.5_0.1_68)] [--seam:oklch(0.66_0.125_76)] dark:[--seam-ink:oklch(0.83_0.11_85)] dark:[--seam:oklch(0.79_0.12_84)]";
+  "[--seam-ink:var(--kin-ink)] [--seam:var(--kin)]";
 
 /** A section's name: a plain sentence-case heading, never a small-caps label. */
 export function Heading({ children, className }: { children: ReactNode; className?: string }) {
@@ -64,7 +64,7 @@ export function Hunch({ idea }: { idea: Idea }) {
         <Heading>Hunch</Heading>
         <KinMark size="xs">Kin's guess, not a fact</KinMark>
       </div>
-      <p className={cn(serif, "border-l-2 border-[var(--seam)] pl-4 text-[17px] leading-relaxed")}>{idea.hunch}</p>
+      <p className={cn(serif, "border-l-2 border-[var(--seam)] pl-4 text-base leading-relaxed")}>{idea.hunch}</p>
     </section>
   );
 }
@@ -85,7 +85,7 @@ function withLinks(text: string): ReactNode[] {
 export function ClipQuote({ quote, compact = false, onOpen }: { quote: Quote; compact?: boolean; onOpen: (q: Quote) => void }) {
   return (
     <figure className={compact ? "space-y-1" : "space-y-1.5"}>
-      <blockquote className={cn(serif, compact ? "text-[15px]" : "text-base", "leading-relaxed")}>“{withLinks(quote.text)}”</blockquote>
+      <blockquote className={cn(serif, compact ? "text-base" : "text-base", "leading-relaxed")}>“{withLinks(quote.text)}”</blockquote>
       <figcaption>
         <button
           type="button"
@@ -121,7 +121,7 @@ export function HowIGotHere({ idea }: { idea: Idea }) {
   return (
     <details className="group text-sm">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="inline-block text-[10px] transition-transform group-open:rotate-90 motion-reduce:transition-none">▸</span>
+        <span aria-hidden className="inline-block text-xxs transition-transform group-open:rotate-90 motion-reduce:transition-none">▸</span>
         How Kin found this
       </summary>
       {idea.steps.length > 0 && (
@@ -174,7 +174,7 @@ export function WhyThis({ idea, model }: { idea: Listed; model: IdeasModel }) {
                 {reason.profileLine && !reason.removed && (
                   <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
                     <span>
-                      About you: <q className={cn(serif, "text-[13px] text-foreground")}>{reason.profileLine}</q>
+                      About you: <q className={cn(serif, "text-sm text-foreground")}>{reason.profileLine}</q>
                     </span>
                     <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={model.fixProfile}>
                       Fix
@@ -234,7 +234,7 @@ export function AdoptChooser({ idea, model }: { idea: Listed; model: IdeasModel 
             id={`adopt-${idea.id}`}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className={cn(serif, "h-8 min-w-0 flex-1 rounded-md border bg-background px-2.5 text-[15px] outline-none focus-visible:ring-3 focus-visible:ring-ring/50")}
+            className={cn(serif, "h-8 min-w-0 flex-1 rounded-md border bg-background px-2.5 text-base outline-none focus-visible:ring-3 focus-visible:ring-ring/50")}
           />
           <Button size="sm" type="submit">
             Create draft

@@ -1,5 +1,5 @@
 import { save as pickSavePath } from "@tauri-apps/plugin-dialog";
-import { AtSign, BookOpen, Download, FileDiff, Headphones, Newspaper, RotateCw, Rss, Search, Trash2, Upload, Video } from "lucide-react";
+import { AtSign, BookOpen, Download, FileDiff, Headphones, Newspaper, RotateCw, Rss, Search, Trash2, Upload, Video } from "@kintsugi/ui/icons";
 import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -190,7 +190,7 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                 <Input aria-label="Minimum points" inputMode="numeric" placeholder="Minimum points (optional)" value={points} onChange={(e) => setPoints(e.target.value.replace(/\D/g, ""))} className="h-9" />
                 <Button type="submit" disabled={!!busy}>{busy === "hn" ? "Following…" : "Follow"}</Button>
               </div>
-              <p className="text-[11px] text-muted-foreground">Through hnrss.org. Set minimum points to skip low-scoring stories.</p>
+              <p className="text-xs text-muted-foreground">Through hnrss.org. Set minimum points to skip low-scoring stories.</p>
             </div>
           ) : (
             <div className="flex gap-2">
@@ -206,11 +206,11 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
               </Button>
             </div>
           )}
-          {tab === "url" && <p className="text-[11px] text-muted-foreground">RSS, Atom or JSON Feed. A page that links to its feed works too.</p>}
-          {tab === "youtube" && <p className="text-[11px] text-muted-foreground">New uploads arrive through the channel’s feed. YouTube sometimes stalls; Kintsugi keeps trying.</p>}
-          {tab === "x" && <p className="text-[11px] text-muted-foreground">Their own posts and threads, through FxTwitter. No X account needed; it’s best-effort.</p>}
-          {tab === "page" && <p className="text-[11px] text-muted-foreground">For pages without a feed. Kintsugi checks every few hours and posts what changed, ignoring dates and counters.</p>}
-          {tab === "author" && <p className="text-[11px] text-muted-foreground">New books arrive weekly, through Google Books and Open Library.</p>}
+          {tab === "url" && <p className="text-xs text-muted-foreground">RSS, Atom or JSON Feed. A page that links to its feed works too.</p>}
+          {tab === "youtube" && <p className="text-xs text-muted-foreground">New uploads arrive through the channel’s feed. YouTube sometimes stalls; Kintsugi keeps trying.</p>}
+          {tab === "x" && <p className="text-xs text-muted-foreground">Their own posts and threads, through FxTwitter. No X account needed; it’s best-effort.</p>}
+          {tab === "page" && <p className="text-xs text-muted-foreground">For pages without a feed. Kintsugi checks every few hours and posts what changed, ignoring dates and counters.</p>}
+          {tab === "author" && <p className="text-xs text-muted-foreground">New books arrive weekly, through Google Books and Open Library.</p>}
           {tab === "podcast" && podcasts && (
             <ul className="max-h-60 space-y-1 overflow-y-auto" aria-label="Podcasts found">
               {podcasts.length === 0 && <li className="py-2 text-xs text-muted-foreground">No podcasts with a public feed matched.</li>}
@@ -219,7 +219,7 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                   {podcast.artwork ? <img src={podcast.artwork} alt="" referrerPolicy="no-referrer" className="size-9 rounded bg-muted object-cover" /> : <div className="size-9 rounded bg-muted" />}
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm">{podcast.title}</p>
-                    {podcast.author && <p className="truncate text-[11px] text-muted-foreground">{podcast.author}</p>}
+                    {podcast.author && <p className="truncate text-xs text-muted-foreground">{podcast.author}</p>}
                   </div>
                   <Button type="button" size="sm" variant="outline" disabled={!!busy} onClick={() => void follow({ kind: "podcast", feedUrl: podcast.feedUrl, title: podcast.title }, `podcast:${podcast.feedUrl}`)}>
                     {busy === `podcast:${podcast.feedUrl}` ? "Following…" : "Follow"}
@@ -243,8 +243,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                     <span className="mt-0.5 text-muted-foreground" aria-hidden>{KIND_ICON[source.kind]}</span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm" title={source.url}>{name}</p>
-                      <p className={cn("mt-0.5 flex items-center gap-1.5 text-[11px]", state.tone === "error" ? "text-destructive" : "text-muted-foreground")} data-health={state.tone}>
-                        <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", { ok: "bg-emerald-500/80", waiting: "bg-muted-foreground/40", error: "bg-destructive", muted: "bg-muted-foreground/30" }[state.tone])} />
+                      <p className={cn("mt-0.5 flex items-center gap-1.5 text-xs", state.tone === "error" ? "text-destructive" : "text-muted-foreground")} data-health={state.tone}>
+                        <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", { ok: "bg-[var(--success)]", waiting: "bg-muted-foreground/40", error: "bg-destructive", muted: "bg-muted-foreground/30" }[state.tone])} />
                         <span className="line-clamp-2">{state.label}</span>
                       </p>
                     </div>

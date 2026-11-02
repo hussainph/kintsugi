@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { Compass, Sparkles, X } from "lucide-react";
+import { Compass, Sparkles, X } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -103,7 +103,7 @@ export function Picked() {
           <Sparkles className="size-3.5 text-primary" />
           Picked for you
         </h2>
-        <span className="text-[11px] text-muted-foreground">{learning(list.examples, list.learnedShare)}</span>
+        <span className="text-xs text-muted-foreground">{learning(list.examples, list.learnedShare)}</span>
       </header>
       {shown.map((pick, position) => (
         <FeedItem
@@ -135,7 +135,7 @@ function WhyThis({ pick, onRemove }: { pick: Pick; onRemove: (reason: Reason) =>
           Why this?
         </Button>
         {pick.explore && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xxs text-primary">
             <Compass className="size-3" /> Exploring
           </span>
         )}
@@ -148,7 +148,7 @@ function WhyThis({ pick, onRemove }: { pick: Pick; onRemove: (reason: Reason) =>
               {reason.removable && (
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                   aria-label={`Don’t use this: ${reason.label}`}
                   onClick={() => onRemove(reason)}
                 >

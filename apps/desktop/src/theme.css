@@ -28,7 +28,10 @@
 .ki-divider-bottom { border-width: 0; box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4); }
 
 .ki-empty { margin: auto; color: var(--neutral-7); text-align: center; }
-.ki-document-status { position: absolute; right: var(--space-m); bottom: var(--space-s); display: flex; align-items: center; gap: var(--space-s); color: var(--neutral-7); }
+/* Clears the Kin chat button in the bottom-right corner. */
+.ki-document-status { position: absolute; right: 4.5rem; bottom: var(--space-s); display: flex; align-items: center; gap: var(--space-s); color: var(--neutral-7); }
+.ki-footer-action { border-radius: var(--radius-xs); color: var(--neutral-7); transition: color var(--motion-duration) var(--motion-easing); }
+.ki-footer-action:hover { color: var(--neutral-10); }
 .ki-status-dot { width: var(--space-xs); height: var(--space-xs); flex-shrink: 0; border-radius: var(--radius-full); box-shadow: inset 0 0 0 var(--border-s) var(--neutral-7); }
 .ki-status-dot[data-complete="true"] { background: var(--neutral-10); box-shadow: none; }
 .ki-chevron { transition: transform var(--motion-large-duration) var(--motion-large-easing); }
@@ -72,7 +75,7 @@
 .ki-diff-added { border-radius: var(--radius-xs); background: var(--success-transparent); color: var(--neutral-10); text-decoration: none; }
 .ki-diff-removed { color: var(--neutral-7); text-decoration-color: var(--error); }
 
-.ki-clip-card:focus-visible, .ki-source-link:focus-visible, .ki-refine-choice:focus-visible, .ki-used-in-link:focus-visible {
+.ki-clip-card:focus-visible, .ki-source-link:focus-visible, .ki-footer-action:focus-visible, .ki-refine-choice:focus-visible, .ki-used-in-link:focus-visible {
   outline: 2px solid var(--neutral-10);
   outline-offset: var(--space-xxs);
 }
@@ -90,6 +93,6 @@
 [data-headless-dialog] :is(input, button):focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ki-chevron, .ki-clip-card, .ki-refine-choice, .ki-source-link, [data-headless-dialog] button { transition: none; }
+  .ki-chevron, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-footer-action, [data-headless-dialog] button { transition: none; }
   .ki-clip-card:active, .ki-refine-choice:active { transform: none; }
 }

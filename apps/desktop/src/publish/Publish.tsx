@@ -1,5 +1,5 @@
 import type { EditorView } from "@codemirror/view";
-import { AlertCircle, AlertTriangle, Check as CheckIcon, Copy, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, Check as CheckIcon, Copy, Info } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { field, setField } from "@kintsugi/core/frontmatter";

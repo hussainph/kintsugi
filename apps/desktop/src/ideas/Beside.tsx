@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { Lightbulb, X } from "lucide-react";
+import { Lightbulb, X } from "@kintsugi/ui/icons";
 import { useEffect, useMemo, useState } from "react";
 import { body } from "@kintsugi/core/frontmatter";
 import { cn } from "@kintsugi/ui/lib/utils";
@@ -70,7 +70,7 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
               <div className="space-y-2">
                 <KinMark size="xs">from Kin · {idea.created.slice(0, 10)}</KinMark>
                 <p className="text-sm font-medium">{idea.title}</p>
-                <p className={cn(serif, "border-l-2 border-[var(--seam)] pl-3.5 text-[15px] leading-relaxed")}>{idea.hunch}</p>
+                <p className={cn(serif, "border-l-2 border-[var(--seam)] pl-3.5 text-base leading-relaxed")}>{idea.hunch}</p>
               </div>
               <div className="space-y-3">
                 {idea.quotes
@@ -88,7 +88,7 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
               </button>
             </div>
           ))}
-          <p className="text-[11px] text-muted-foreground">Saved in the file’s frontmatter, not in the text. Clips are saved as wikilinks.</p>
+          <p className="text-xs text-muted-foreground">Saved in the file’s frontmatter, not in the text. Clips are saved as wikilinks.</p>
         </aside>
       )}
     </div>

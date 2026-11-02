@@ -87,6 +87,8 @@ Selected: [Hugeicons](https://hugeicons.com/docs/integrations/react/pro), outlin
 
 Preserve icon size, color, weight, style, and accessible names. Match the selected style only where the pack supports it; Lucide’s official pack supplies outlines, so report a filled-style gap rather than claiming exact filled artwork. Keep existing package versions and add only missing packages using the receiving project’s package manager.
 
+Kintsugi's setup (owner decision, 2026-11-02): Hugeicons **free**, stroke-rounded (`@hugeicons/core-free-icons`, MIT), with no Pro package and no Lucide. The bundled source's Lucide imports were replaced with the same free set, and `lucide-react` is not installed. Import app icons from `@kintsugi/ui/icons`. See `docs/graphical-coverage.md`.
+
 ## Theme values
 
 These sections contain the complete saved theme: both color modes, foundation values, and authored component edits. Import this GUI.md from Theme → Edit → Import theme to restore it. Shared palette catalogs and editor preferences are not part of the theme.
