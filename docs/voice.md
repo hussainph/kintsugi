@@ -10,6 +10,17 @@ Don't put a small label above or beside a heading, card, panel or section. That 
 - If a group needs a name, give it a normal sentence-case heading at body or heading size.
 - Never use `uppercase`, `textTransform: 'uppercase'` or wide `tracking`/`letterSpacing` as a label style. Keyboard shortcut hints such as `⌘K` are fine.
 
+## Let the components do the talking
+
+Don't explain the interface. A button, field, list or toggle shows what it does, so don't add a sentence that says it again.
+
+- No subtitles under page or section headings that restate the heading ("Inspiration: links, quotes, images and notes you've saved").
+- No helper text under a field, toggle or setting unless it carries a fact the control can't show, such as a limit, a cost or what leaves the Mac. One short line at most.
+- No descriptions in dialogs that repeat the title and the buttons.
+- No tooltips on controls whose label already says it.
+- An empty state is one short line and, at most, one action.
+- When in doubt, delete the sentence and look at the screen again. If nothing is lost, leave it deleted.
+
 ## Say it plainly
 
 Name the thing, or say what it does, in ordinary words.
