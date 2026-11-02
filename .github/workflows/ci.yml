@@ -134,6 +134,11 @@ jobs:
         run: >
           pnpm tauri build --debug --bundles app --ci
           --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      # The bundled search model (KI-59) is most of what the app's size moves by.
+      - name: App size
+        working-directory: target/debug/bundle/macos
+        run: |
+          du -sk Kintsugi.app Kintsugi.app/Contents/Resources/search-model Kintsugi.app/Contents/MacOS | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Launch it and wait for the rendered app
         env:
           KINTSUGI_SMOKE_SHOTS: ${{ runner.temp }}/smoke-shots

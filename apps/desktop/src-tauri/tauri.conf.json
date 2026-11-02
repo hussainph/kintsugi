@@ -37,6 +37,9 @@
       "icons/icon.ico"
     ],
     "createUpdaterArtifacts": true,
+    "resources": {
+      "resources/search-model/": "search-model/"
+    },
     "externalBin": ["binaries/kintsugi-transcribe", "binaries/kintsugi-pdf", "binaries/kintsugi-vision"],
     "category": "Productivity",
     "copyright": "© 2026 Hussain Phalasiya",

@@ -105,6 +105,10 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
     crate::feed::seed_sample(app.handle(), "http://127.0.0.1:9").unwrap();
     let host = super::host(app.handle()).unwrap();
     assert!(host.sections.is_some());
+    let handle = app.handle().clone();
+    // Headless only opens folders inside its scratch vault.
+    let other_vault = vault.join("other-vault");
+    std::fs::create_dir_all(&other_vault).unwrap();
     tauri::async_runtime::block_on(async move {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
@@ -344,6 +348,26 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
         );
         let bad_chip = post("/v1/kin", serde_json::json!({ "id": "22222222-2222-4333-8444-555555555555", "text": "hi", "chips": [{ "kind": "paragraph", "path": "x.md" }] })).await.unwrap();
         assert_eq!(bad_chip.status(), 400);
+
+        // The conversation is the open vault's, kept in it (KI-59): another
+        // vault shows its own (empty) log, and switching back shows this one.
+        assert!(vault.join(".kintsugi/kin/log.jsonl").is_file());
+        let open = |path: &Path| {
+            crate::vault::vault_open(handle.clone(), path.to_string_lossy().into()).unwrap();
+        };
+        open(&other_vault);
+        let there = get("/v1/kin").await;
+        assert_eq!(there["entries"], serde_json::json!([]), "{there}");
+        open(&vault);
+        let back = get("/v1/kin").await;
+        assert!(
+            back["entries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["text"] == "What does this say about repair?"),
+            "{back}"
+        );
     });
     drop(app);
 }

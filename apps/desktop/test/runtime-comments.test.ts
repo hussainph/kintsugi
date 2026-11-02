@@ -7,7 +7,7 @@
 // margin, a reference it found drags into the draft; threads move with their
 // paragraph through edits and reloads, live outside the document in
 // `.kintsugi/comments/`, resolve and reopen, survive as detached when their
-// paragraph is deleted, and are rows in Kin's one conversation log. Then
+// paragraph is deleted, and are rows in the vault's conversation log. Then
 // "Kin, review this draft", and the popover at phone width. Everything lives
 // in a fresh scratch vault and config; screenshots go to .headless/<run>/shots/.
 import assert from "node:assert/strict";
@@ -51,7 +51,7 @@ const disk = () => readFileSync(resolve(app.vault, DOC), "utf8");
 const store = () => resolve(app.vault, `.kintsugi/comments/${DOC}.json`);
 type Stored = { threads: { id: string; status: string; origin: string; orphaned?: boolean; anchor: { exact: string; line: number } }[] };
 const stored = (): Stored => JSON.parse(readFileSync(store(), "utf8"));
-const log = () => readFileSync(resolve(app.config, "kin/conversation/log.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+const log = () => readFileSync(resolve(app.vault, ".kintsugi/kin/log.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
 
 async function until(check: () => boolean, what: string, tries = 150) {
   for (let i = 0; i < tries; i++) {

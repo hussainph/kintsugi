@@ -431,22 +431,15 @@ fn snippets_stay_short_on_long_documents() {
     );
 }
 
-/// The real model, downloaded into a temporary folder. Run with
-/// `cargo test -p kintsugi-search -- --ignored` to check the pinned hashes
-/// and that potion-base-8M separates meaning at `MIN_SIMILARITY`.
+/// The real model, as the app ships it: checks the bundled files against
+/// the pinned hashes and that potion-base-8M separates meaning at
+/// `MIN_SIMILARITY`. Nothing is downloaded.
 #[test]
-#[ignore]
-fn live_potion_base_8m() {
-    // Kept between runs, outside the repository.
-    let models = std::env::temp_dir().join("kintsugi-search-live-model");
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-    let model = runtime
-        .block_on(POTION_BASE_8M.ensure(&models, &reqwest::Client::new()))
-        .unwrap();
-    assert!(POTION_BASE_8M.verified(&models));
+fn bundled_potion_base_8m() {
+    let bundled = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../apps/desktop/src-tauri/resources/search-model");
+    assert!(POTION_BASE_8M.verified(&bundled));
+    let model = POTION_BASE_8M.load(&bundled).unwrap();
     let model: Arc<dyn Embedder> = Arc::new(model);
     let v = model.embed(&[
         "I can't sleep at night".into(),

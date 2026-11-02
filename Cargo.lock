@@ -3213,14 +3213,12 @@ version = "0.1.0"
 dependencies = [
  "kintsugi-vault",
  "model2vec-rs",
- "reqwest",
  "rusqlite",
  "serde",
  "serde_json",
  "sha1",
  "sha2",
  "tempfile",
- "tokio",
 ]
 
 [[package]]

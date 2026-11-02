@@ -103,6 +103,10 @@ export function useComments(path: string, viewRef: RefObject<EditorView | null>,
         case "comments":
           if (event.path === here) reload();
           return;
+        case "switched":
+          turns.current.clear();
+          setLive({});
+          return reload();
       }
     });
     return () => { off.then((stop) => stop()); };

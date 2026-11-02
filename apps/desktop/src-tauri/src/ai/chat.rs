@@ -1,8 +1,8 @@
-//! Kin's chat: one conversation, everywhere on the Mac.
+//! Kin's chat: one conversation per vault, everywhere on the Mac.
 //!
 //! The owner sends messages with whatever is on screen attached as chips.
-//! Every message lands in the one log at once ([`history`]); Kin answers in
-//! turns:
+//! Every message lands in the open vault's log at once ([`history`]); Kin
+//! answers in turns:
 //!
 //! - **Bursts batch.** A turn starts once he has been quiet for
 //!   [`Timing::batch`]; every message waiting by then is answered together.
@@ -18,6 +18,10 @@
 //! - **Helpers.** Heavy or background work runs as helper jobs ([`jobs`]):
 //!   one at a time, each its own agent with a brief and the memory snapshot,
 //!   reporting back quietly as a helper entry in the log.
+//! - **Switching vaults switches the conversation.** The log follows the
+//!   open vault: the next access after a switch opens the new vault's log,
+//!   stops what was running, and tells the webview (`Switched`). A turn that
+//!   finishes after the switch writes to the log of the vault it started in.
 //!
 //! The engine knows nothing about Tauri: a [`Brain`] gives it models, the
 //! vault, memory, the meter and somewhere to send events, so tests run it
@@ -36,8 +40,9 @@ use serde::Serialize;
 use serde_json::Value;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 use tauri::async_runtime;
 
@@ -56,6 +61,16 @@ pub trait Brain: Send + Sync + 'static {
     /// The model for a task, with credentials resolved.
     fn connect(&self, task: Task) -> impl Future<Output = Result<Self::Model>> + Send;
     fn vault(&self) -> Result<PathBuf>;
+    /// Where a vault's conversation log lives (`None`: in memory).
+    fn log_dir(&self, vault: &Path) -> Option<PathBuf> {
+        match history::vault_dir(vault) {
+            Ok(dir) => Some(dir),
+            Err(error) => {
+                eprintln!("kin: the conversation is kept in memory ({error})");
+                None
+            }
+        }
+    }
     /// Kin's memory snapshot for a vault (About you, notes, the skills index).
     fn memory(&self, vault: &Path) -> Memory;
     /// Lets a chat turn update memory and skills. Helper jobs get none.
@@ -156,6 +171,8 @@ pub enum ChatEvent {
     Comments {
         path: String,
     },
+    /// Another vault was opened: this is its conversation now.
+    Switched,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -189,7 +206,11 @@ struct Live {
 
 struct Inner<B: Brain> {
     brain: B,
+    /// The open vault's log ([`Engine::log`] keeps it in step).
     log: Arc<Mutex<Log>>,
+    /// The global log from before KI-59, moved into the first vault opened.
+    old_log: Option<PathBuf>,
+    migrated: AtomicBool,
     jobs: Mutex<Table>,
     live: Mutex<Live>,
     timing: Timing,
@@ -218,17 +239,15 @@ pub struct Page {
 }
 
 impl<B: Brain> Engine<B> {
-    /// Opens the log and job table in `dir` (`None`: in memory). Messages a
-    /// quit left unanswered stay in the log, already settled; jobs a quit
+    /// Opens the job table in `dir` (Kin's app data; `None`: in memory). The
+    /// conversation log is the open vault's, opened on first use. Jobs a quit
     /// interrupted are queued again and start now.
     pub fn new(brain: B, dir: Option<PathBuf>, timing: Timing) -> Self {
-        let mut log = Log::open(dir.as_ref().map(|d| d.join("conversation")));
-        if let Some(last) = log.pending().last() {
-            log.mark_answered(last.seq);
-        }
         let engine = Engine(Arc::new(Inner {
             brain,
-            log: Arc::new(Mutex::new(log)),
+            log: Arc::new(Mutex::new(Log::open(None))),
+            old_log: dir.as_ref().map(|d| d.join("conversation")),
+            migrated: AtomicBool::new(false),
             jobs: Mutex::new(Table::open(dir)),
             live: Mutex::default(),
             timing,
@@ -241,6 +260,86 @@ impl<B: Brain> Engine<B> {
 
     fn emit(&self, event: ChatEvent) {
         self.0.brain.emit(event);
+    }
+
+    // --- Which vault's log ------------------------------------------------
+
+    /// The open vault's log. After a vault switch this opens the new vault's
+    /// log first (and stops what was running in the old one).
+    fn log(&self) -> MutexGuard<'_, Log> {
+        // Asked before locking: the brain may open the vault, which tells us.
+        let vault = self.0.brain.vault().ok();
+        let mut log = self.0.log.lock().unwrap();
+        if let Some(vault) = vault
+            && log.vault() != Some(vault.as_path())
+        {
+            let first = log.vault().is_none();
+            *log = self.open_log(&vault);
+            if !first {
+                // Not under the log's lock: the lock order is live, then log.
+                let engine = self.clone();
+                async_runtime::spawn(async move { engine.switched() });
+            }
+        }
+        log
+    }
+
+    /// Opens a vault's log. The first one opened adopts the old global log.
+    /// Messages a quit (or a switch) left unanswered stay in it, settled.
+    fn open_log(&self, vault: &Path) -> Log {
+        let dir = self.0.brain.log_dir(vault);
+        if let (Some(old), Some(dir)) = (&self.0.old_log, &dir)
+            && !self.0.migrated.swap(true, Ordering::SeqCst)
+        {
+            match history::migrate(old, dir) {
+                Ok(history::Migrated::Nothing) => {}
+                Ok(moved) => eprintln!(
+                    "kin: the conversation moved into {} ({moved:?})",
+                    dir.display()
+                ),
+                Err(error) => eprintln!("kin: {error}"),
+            }
+        }
+        let mut log = Log::open_for(vault, dir);
+        if let Some(last) = log.pending().last() {
+            log.mark_answered(last.seq);
+        }
+        log
+    }
+
+    /// Runs `f` on `vault`'s log: the live one if that vault is still open,
+    /// else its log on disk. True when it was the live one (so the webview
+    /// should hear about it).
+    fn in_log<T>(&self, vault: Option<&Path>, f: impl FnOnce(&mut Log) -> T) -> (T, bool) {
+        let mut log = self.0.log.lock().unwrap();
+        if log.vault() == vault {
+            return (f(&mut log), true);
+        }
+        drop(log);
+        let mut other = match vault {
+            Some(vault) => Log::open_for(vault, self.0.brain.log_dir(vault)),
+            None => Log::open(None),
+        };
+        (f(&mut other), false)
+    }
+
+    /// Another vault's log is open: nothing of the old one keeps running.
+    fn switched(&self) {
+        let mut live = self.0.live.lock().unwrap();
+        live.generation += 1;
+        live.want_turn = false;
+        if let Some(running) = live.running.as_mut() {
+            running.stopped = true;
+            running.cancel.cancel();
+        }
+        drop(live);
+        self.stop_comments();
+        self.emit(ChatEvent::Switched);
+    }
+
+    /// The vault may have changed: switch now rather than on next use.
+    pub fn follow_vault(&self) {
+        drop(self.log());
     }
 
     // --- The conversation -------------------------------------------------
@@ -259,7 +358,7 @@ impl<B: Brain> Engine<B> {
             .filter(|c| !c.path.trim().is_empty())
             .take(MAX_CHIPS)
             .collect();
-        let entry = self.0.log.lock().unwrap().say(text, chips)?;
+        let entry = self.log().say(text, chips)?;
         self.emit(ChatEvent::Entry {
             entry: entry.clone(),
         });
@@ -271,7 +370,7 @@ impl<B: Brain> Engine<B> {
     /// He's typing: Kin stops talking and waits for him.
     pub fn typing(&self) {
         let interrupted = self.interrupt();
-        let waiting = interrupted || !self.0.log.lock().unwrap().pending().is_empty();
+        let waiting = interrupted || !self.log().pending().is_empty();
         if waiting {
             self.schedule(self.0.timing.typing);
         } else {
@@ -289,7 +388,7 @@ impl<B: Brain> Engine<B> {
             running.cancel.cancel();
         }
         drop(live);
-        let mut log = self.0.log.lock().unwrap();
+        let mut log = self.log();
         if let Some(last) = log.pending().last() {
             log.mark_answered(last.seq);
         }
@@ -336,7 +435,10 @@ impl<B: Brain> Engine<B> {
     /// Starts a turn for everything waiting. Called with `live` held.
     fn start_turn(&self, live: &mut Live) {
         live.want_turn = false;
-        let pending = self.0.log.lock().unwrap().pending();
+        let (pending, vault) = {
+            let log = self.log();
+            (log.pending(), log.vault().map(Path::to_path_buf))
+        };
         let Some(last) = pending.last() else { return };
         let turn = format!(
             "turn-{}-{}",
@@ -360,16 +462,17 @@ impl<B: Brain> Engine<B> {
             topic: info.topic.clone(),
         });
         let engine = self.clone();
-        async_runtime::spawn(async move { engine.answer(info, pending, cancel).await });
+        async_runtime::spawn(async move { engine.answer(info, pending, vault, cancel).await });
     }
 
-    async fn answer(&self, info: RunningTurn, pending: Vec<Entry>, cancel: Cancel) {
-        let (recap, history) = self
-            .0
-            .log
-            .lock()
-            .unwrap()
-            .context(&info.topic, history::HISTORY_PAIRS);
+    async fn answer(
+        &self,
+        info: RunningTurn,
+        pending: Vec<Entry>,
+        vault: Option<PathBuf>,
+        cancel: Cancel,
+    ) {
+        let (recap, history) = self.log().context(&info.topic, history::HISTORY_PAIRS);
         let question = pending
             .iter()
             .map(|e| e.text.as_str())
@@ -445,16 +548,16 @@ impl<B: Brain> Engine<B> {
                 true,
             ),
         };
-        {
-            let mut log = self.0.log.lock().unwrap();
-            if let Some(draft) = draft
-                && let Ok(entry) = log.reply(Role::Kin, draft)
-            {
-                self.emit(ChatEvent::Entry { entry });
-            }
+        // Into the log of the vault the turn started in, even after a switch.
+        let (entry, live) = self.in_log(vault.as_deref(), |log| {
+            let entry = draft.and_then(|draft| log.reply(Role::Kin, draft).ok());
             if settled {
                 log.mark_answered(through);
             }
+            entry
+        });
+        if let Some(entry) = entry.filter(|_| live) {
+            self.emit(ChatEvent::Entry { entry });
         }
         self.emit(ChatEvent::TurnEnded {
             turn: info.turn.clone(),
@@ -572,7 +675,7 @@ impl<B: Brain> Engine<B> {
             .running
             .as_ref()
             .map(|r| r.info.clone());
-        let log = self.0.log.lock().unwrap();
+        let log = self.log();
         Page {
             entries: log.page(topic, before, limit.clamp(1, 500)),
             threads: log.threads(),
@@ -583,19 +686,12 @@ impl<B: Brain> Engine<B> {
 
     /// What a message sent now, with these chips, would be about.
     pub fn topic(&self, chips: &[Chip]) -> Topic {
-        self.0
-            .log
-            .lock()
-            .unwrap()
+        self.log()
             .infer("", chips, chrono::Local::now().fixed_offset())
     }
 
     pub fn search(&self, query: &str, topic: Option<&str>, limit: usize) -> Vec<Hit> {
-        self.0
-            .log
-            .lock()
-            .unwrap()
-            .search(query, topic, limit.clamp(1, 100))
+        self.log().search(query, topic, limit.clamp(1, 100))
     }
 
     // --- Idle summaries ---------------------------------------------------
@@ -622,12 +718,13 @@ impl<B: Brain> Engine<B> {
     /// at the cap, and when he comes back.
     pub async fn summarize(&self) {
         let activity = self.0.live.lock().unwrap().activity;
-        let stale = self
-            .0
-            .log
-            .lock()
-            .unwrap()
-            .stale(self.0.timing.summary_after);
+        let (stale, vault) = {
+            let log = self.log();
+            (
+                log.stale(self.0.timing.summary_after),
+                log.vault().map(Path::to_path_buf),
+            )
+        };
         for key in stale {
             let meter = self.0.brain.meter();
             if meter.allows(true).is_err() || self.0.live.lock().unwrap().activity != activity {
@@ -637,7 +734,7 @@ impl<B: Brain> Engine<B> {
                 return;
             };
             let (label, previous, entries) = {
-                let log = self.0.log.lock().unwrap();
+                let log = self.log();
                 let (previous, entries) = log.unsummarized(&key);
                 (
                     log.thread(&key)
@@ -673,13 +770,10 @@ impl<B: Brain> Engine<B> {
             if reply.text.trim().is_empty() {
                 continue;
             }
-            let thread = self
-                .0
-                .log
-                .lock()
-                .unwrap()
-                .set_summary(&key, &reply.text, through);
-            if let Some(thread) = thread {
+            let (thread, live) = self.in_log(vault.as_deref(), |log| {
+                log.set_summary(&key, &reply.text, through)
+            });
+            if let Some(thread) = thread.filter(|_| live) {
                 self.emit(ChatEvent::Thread { thread });
             }
         }
@@ -748,6 +842,7 @@ impl<B: Brain> Engine<B> {
     }
 
     async fn run_job(&self, job: Job, cancel: Cancel) {
+        let vault = self.log().vault().map(Path::to_path_buf);
         let request = agent::Turn {
             task: Task::from_id(&job.task).unwrap_or(Task::Chat),
             background: true,
@@ -823,8 +918,9 @@ impl<B: Brain> Engine<B> {
                 usd: Some(job.usd + usd),
                 ..Draft::default()
             };
-            let entry = self.0.log.lock().unwrap().reply(Role::Helper, draft);
-            if let Ok(entry) = entry {
+            // Into the log of the vault the job ran in.
+            let (entry, live) = self.in_log(vault.as_deref(), |log| log.reply(Role::Helper, draft));
+            if live && let Ok(entry) = entry {
                 self.emit(ChatEvent::Entry { entry });
             }
         }
@@ -953,7 +1049,7 @@ impl Brain for AppBrain {
     }
 }
 
-/// The app's one conversation, set up by `ai::init`.
+/// The open vault's conversation, set up by `ai::init`.
 #[derive(Default)]
 pub struct Chat(OnceLock<Engine<AppBrain>>);
 
@@ -963,7 +1059,9 @@ impl Chat {
     }
 }
 
-/// Opens the log and job table in Kin's data folder and starts any queued jobs.
+/// Opens the job table in Kin's data folder, starts any queued jobs, and
+/// opens the conversation of the vault that's open (or was last used),
+/// moving the old global log into it the first time.
 pub fn init(app: &AppHandle) {
     use tauri::Manager;
     #[allow(unused_mut)]
@@ -977,6 +1075,7 @@ pub fn init(app: &AppHandle) {
     }
     let engine = Engine::new(AppBrain(app.clone()), super::kin::data_dir(app), timing);
     if app.state::<Chat>().0.set(engine.clone()).is_ok() {
+        engine.follow_vault();
         // Waiting jobs resume when a new month (or a higher cap) allows.
         async_runtime::spawn(async move {
             loop {
@@ -984,6 +1083,17 @@ pub fn init(app: &AppHandle) {
                 engine.kick_jobs();
             }
         });
+    }
+}
+
+/// Another vault was opened: its conversation is the chat's now. Called by
+/// `vault::open`, which may run under the engine's own locks (the first
+/// `vault::current`), so the switch happens off this thread.
+pub fn vault_changed(app: &AppHandle) {
+    use tauri::Manager;
+    if let Ok(engine) = app.state::<Chat>().engine() {
+        let engine = engine.clone();
+        async_runtime::spawn(async move { engine.follow_vault() });
     }
 }
 

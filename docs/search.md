@@ -98,13 +98,21 @@ using `minishlab/potion-base-8M` (MIT, 256 dimensions, about 30 MB). A text
 is embedded by looking up and averaging token vectors, which takes
 microseconds on the CPU and makes no network call.
 
-- The model is downloaded once, at app start, into
-  `<app config>/search/models/potion-base-8M-<rev>/`. It's pinned to Hub
-  revision `bf8b0566…`. Each file is checked against its size and pinned
-  hash (Git blob id for the small files, sha256 for the weights), and a
-  mismatch is refused. The download is the only network call search makes.
-  Until it finishes (or if it fails, for example when offline), search runs
-  on words only, and the app tries again at the next start.
+- The model ships inside the app (KI-59): a Tauri resource,
+  `Kintsugi.app/Contents/Resources/search-model/`, from
+  `apps/desktop/src-tauri/resources/search-model/` in the repository (where
+  the files are committed as they are). It's Hub revision `bf8b0566…`, MIT
+  licensed (`LICENSE` beside it, and `THIRD_PARTY_NOTICES.md`). Search makes
+  no network calls, and it works offline from the first launch.
+- It loads in the background at app start. Each file is checked against its
+  size and pinned hash (Git blob id for the small files, sha256 for the
+  weights) first, and a missing or damaged file is refused: search then runs
+  on words only. Nothing is downloaded instead. Development builds without
+  the bundled resources (headless runs, `cargo test`) read the same folder
+  from the source tree.
+- Earlier versions downloaded the model into `<app config>/search/models/`.
+  That copy is deleted once the bundled model has loaded. The model id is
+  the same, so no vectors are embedded again.
 - Once the model loads, chunks without vectors are embedded in batches of
   512, so searches can run between batches. The stored model id
   (`potion-base-8M@<rev>`) is kept in the index. A different model clears
@@ -112,7 +120,8 @@ microseconds on the CPU and makes no network call.
 - `KINTSUGI_EMBEDDINGS=off` turns the model off. Headless runs skip it
   unless `KINTSUGI_HEADLESS_EMBEDDINGS=1`.
 - If a stronger model is needed later, fastembed-rs can implement the same
-  `Embedder` trait.
+  `Embedder` trait. Shipping it means swapping the bundled files and their
+  pinned hashes.
 
 ## Who uses it
 
@@ -146,6 +155,7 @@ with no download. The relevance check
 (`hybrid_search_finds_by_meaning_and_keeps_exact_matches_first`) measures
 recall on synonym queries. The words-only ranking must miss them, hybrid
 must find all of them, and exact matches must stay first.
-`live_potion_base_8m` is `#[ignore]`d and is the only test that downloads
-anything. It fetches the real model into a temporary folder and checks the
-hashes and the similarity threshold.
+`bundled_potion_base_8m` loads the bundled model from the repository,
+checks its hashes and the similarity threshold, and runs the relevance check
+on the real model. `a_missing_or_damaged_model_is_refused` covers the
+refusal. No test downloads anything.

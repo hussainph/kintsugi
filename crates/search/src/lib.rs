@@ -6,7 +6,7 @@
 //! never in the vault; it holds copies that can always be rebuilt.
 //!
 //! No Tauri here: the desktop app owns where the file lives, when it
-//! refreshes, and how the model is fetched.
+//! refreshes, and where the bundled model is.
 
 pub mod embed;
 mod index;
