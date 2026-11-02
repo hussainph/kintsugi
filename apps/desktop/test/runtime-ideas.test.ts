@@ -147,7 +147,7 @@ test("engaging shows observed vs hunch, quotes, how I got here; Why this? correc
   await first.getByLabel("Observed").waitFor();
   await first.getByText("Kin's guess, not a fact").waitFor();
   assert.ok((await first.getByLabel("Evidence").locator("blockquote").count()) >= 2);
-  await first.getByText("How I got here").click();
+  await first.getByText("How Kin found this").click();
   await first.getByText(/\d+ search(es)? · \d+ files? read · \d+ s · \$0/).waitFor();
   await first.getByRole("button", { name: "Why this?" }).click();
   await first.getByText("About you:").waitFor();
@@ -269,7 +269,7 @@ test("unused ideas thin from day three and fade after a week; adopted ones don't
   const faded = section().getByRole("button", { name: /faded this week/ });
   if (await faded.count()) {
     await faded.click();
-    await section().getByText("Unused · counts as a faint “no”").first().waitFor();
+    await section().getByText("Unused, so Kin counts it as a weak no").first().waitFor();
   }
   // Adopted ideas are still listed, still full strength.
   await section().locator('li[data-stage="fresh"][data-adopted]').first().waitFor();

@@ -14,8 +14,8 @@ export const PRIVACY =
   "Your writing, collection and Kin's memory stay on this Mac. What leaves it: calls to your own AI provider with your own key, fetching the sources you follow or save, and one-time downloads of local models and tools. Nothing is used for training.";
 
 const TASKS: Record<KinTask, { label: string; hint: string }> = {
-  chat: { label: "Chat", hint: "Talking with Kin. Worth a strong model." },
-  ideas: { label: "Ideas", hint: "Daily ideas. Worth a strong model." },
+  chat: { label: "Chat", hint: "Chat with Kin. Use a strong model." },
+  ideas: { label: "Ideas", hint: "Daily ideas. Use a strong model." },
   triage: { label: "Feed triage", hint: "Sorting the feed in the background. A cheap model is fine." },
 };
 

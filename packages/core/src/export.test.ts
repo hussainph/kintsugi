@@ -161,7 +161,7 @@ test("PDF source keeps every word in Typst string literals", () => {
   assert.ok(content.startsWith('#set document(title: "On craft and repair")'));
   assert.ok(content.includes('#link("https://example.com/kintsugi")[#"Golden joinery"]'));
   assert.ok(content.includes('#fig("/assets/image-1.png", "A mended bowl", [#"The seam, in gold."])'));
-  assert.ok(content.includes('#callout("tip")[#"Look for the gold."]'));
+  assert.ok(content.includes('#callout("Tip")[#"Look for the gold."]'));
   assert.ok(content.includes('#codeblock("seam.ts", raw(block: true, lang: "ts", "const seam = \\"[[not-a-link]]\\" // <b>"))'));
   assert.ok(content.includes('#"A “quoted” line with a * star, a # hash and a $ sign, and "#link("https://example.com/x")'));
   assert.ok(content.includes(`#text(style: "italic", fill: luma(80), [#"${HUMAN_STATEMENT}"])`));

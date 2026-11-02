@@ -81,7 +81,7 @@ export function Ledger({ model, status }: { model: IdeasModel; status: string | 
             {snapshot.today ? ` · ${snapshot.today}` : ''}
           </Text>
         </View>
-        <Text style={[styles.headerText, { color: theme.muted }]}>Ignore any of them. Unused ideas fade after a week.</Text>
+        <Text style={[styles.headerText, { color: theme.muted }]}>Ignore the ones you don’t want. Unused ideas fade after a week.</Text>
         {status && <Text style={[styles.headerText, { color: theme.muted }]}>{status}</Text>}
       </View>
 
@@ -89,20 +89,20 @@ export function Ledger({ model, status }: { model: IdeasModel; status: string | 
         <View style={[styles.empty, { borderColor: theme.border }]}>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>No ideas yet.</Text>
           <Text style={[styles.headerText, { color: theme.muted, textAlign: 'center' }]}>
-            Kin offers a few each day, grounded in your writing and what you’ve saved.
+            Kin suggests a few each day, based on your writing and what you’ve saved.
           </Text>
         </View>
       )}
       {today.length > 0 && <List ideas={today} model={model} from={0} label="Today" />}
       {earlier.length > 0 && (
         <>
-          <Text style={[styles.label, { color: theme.faint }]}>{today.length ? 'Earlier' : 'This week'}</Text>
+          <Text style={[styles.label, { color: theme.text }]}>{today.length ? 'Earlier' : 'This week'}</Text>
           <List ideas={earlier} model={model} from={today.length} label="Earlier" />
         </>
       )}
       {faded.length > 0 && (
         <>
-          <Text style={[styles.label, { color: theme.faint }]}>Faded this week</Text>
+          <Text style={[styles.label, { color: theme.text }]}>Faded this week</Text>
           {faded.map((idea) => (
             <Text key={idea.id} style={[styles.faded, { color: theme.faint }]} numberOfLines={1}>
               {idea.title}
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: fonts.serif, fontSize: 18, lineHeight: 24 },
   snippet: { fontSize: 14 },
   open: { paddingLeft: 28, paddingBottom: 20 },
-  label: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 16 },
+  label: { fontSize: 17, fontWeight: '600', marginTop: 16 },
   faded: { fontSize: 14, paddingVertical: 2 },
   more: { gap: 8, alignItems: 'flex-start', marginTop: 8 },
 });

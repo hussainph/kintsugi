@@ -19,9 +19,9 @@ export function Preview({ title, kind, date, tags, body, images }: {
   return (
     <article className="publish-preview" aria-label="Post preview">
       <header>
-        <p className="publish-preview-kind">{kind === "note" ? "Note" : "Essay"}</p>
         {kind === "writing" && <h1>{title}</h1>}
         <p className="publish-preview-meta">
+          <span>{kind === "note" ? "Note" : "Essay"}</span>
           <time>{formatDate(date)}</time>
           {kind === "writing" && <span>{Math.max(1, Math.round(words / 230))} min read</span>}
           {tags.map((tag) => <span key={tag}>#{tag}</span>)}

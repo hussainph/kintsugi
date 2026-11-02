@@ -1,6 +1,6 @@
 /**
  * The pieces of an engaged idea, shared by every layout (KI-22): observed
- * vs hunch, quoted evidence, how I got here, Why this?, the actions, Adopt,
+ * vs hunch, quoted evidence, how Kin found it, Why this?, the actions, Adopt,
  * Refine and the dismissed row. A layout (Ledger today) only arranges them.
  */
 import { useState, type ReactNode } from "react";
@@ -18,8 +18,9 @@ export const serif = "font-[family-name:var(--font-prose)]";
 export const seam =
   "[--seam-ink:oklch(0.5_0.1_68)] [--seam:oklch(0.66_0.125_76)] dark:[--seam-ink:oklch(0.83_0.11_85)] dark:[--seam:oklch(0.79_0.12_84)]";
 
-export function Label({ children, className }: { children: ReactNode; className?: string }) {
-  return <p className={cn("text-[11px] font-medium tracking-[0.06em] text-muted-foreground uppercase", className)}>{children}</p>;
+/** A section's name: a plain sentence-case heading, never a small-caps label. */
+export function Heading({ children, className }: { children: ReactNode; className?: string }) {
+  return <h3 className={cn("text-sm font-medium", className)}>{children}</h3>;
 }
 
 /** Kin's mark: the product's placeholder avatar (KI-41 applies the chosen look). */
@@ -32,7 +33,7 @@ export function KinMark({ size = "sm", children }: { size?: "xs" | "sm" | "md"; 
   );
 }
 
-/** The one quiet status a collapsed idea carries. */
+/** The one status a collapsed idea carries. */
 export function Status({ idea, className }: { idea: Listed; className?: string }) {
   if (idea.adopted) return <span className={cn("text-xs whitespace-nowrap text-[var(--seam-ink)]", className)}>Adopted</span>;
   if (idea.refining) return <span className={cn("text-xs whitespace-nowrap text-muted-foreground", className)}>Refining…</span>;
@@ -43,7 +44,7 @@ export function Status({ idea, className }: { idea: Listed; className?: string }
 export function Observed({ idea }: { idea: Idea }) {
   return (
     <section className="space-y-2" aria-label="Observed">
-      <Label>Observed</Label>
+      <Heading>Observed</Heading>
       <ul className="space-y-1.5 text-sm leading-relaxed">
         {idea.observed.map((fact) => (
           <li key={fact} className="flex gap-2.5">
@@ -60,7 +61,7 @@ export function Hunch({ idea }: { idea: Idea }) {
   return (
     <section className="space-y-2" aria-label="Hunch">
       <div className="flex items-center gap-2">
-        <Label>Hunch</Label>
+        <Heading>Hunch</Heading>
         <KinMark size="xs">Kin's guess, not a fact</KinMark>
       </div>
       <p className={cn(serif, "border-l-2 border-[var(--seam)] pl-4 text-[17px] leading-relaxed")}>{idea.hunch}</p>
@@ -105,7 +106,7 @@ export function ClipQuote({ quote, compact = false, onOpen }: { quote: Quote; co
 export function Evidence({ idea, onOpen }: { idea: Idea; onOpen: (q: Quote) => void }) {
   return (
     <section className="space-y-3" aria-label="Evidence">
-      <Label>In your vault · {idea.quotes.length}</Label>
+      <Heading>{idea.quotes.length === 1 ? "1 quote" : `${idea.quotes.length} quotes`}</Heading>
       <div className="space-y-4">
         {idea.quotes.map((quote) => (
           <ClipQuote key={quote.source + quote.text} quote={quote} onOpen={onOpen} />
@@ -121,7 +122,7 @@ export function HowIGotHere({ idea }: { idea: Idea }) {
     <details className="group text-sm">
       <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
         <span aria-hidden className="inline-block text-[10px] transition-transform group-open:rotate-90 motion-reduce:transition-none">▸</span>
-        How I got here
+        How Kin found this
       </summary>
       {idea.steps.length > 0 && (
         <ol className="mt-3 ml-1 space-y-2 border-l pl-4">
@@ -129,7 +130,7 @@ export function HowIGotHere({ idea }: { idea: Idea }) {
             <li key={step.did} className="relative leading-snug">
               <span aria-hidden className="absolute top-[0.5em] -left-[19px] size-[5px] rounded-full bg-muted-foreground/50" />
               {step.did}
-              {step.found && <span className="text-muted-foreground"> — {step.found}</span>}
+              {step.found && <span className="text-muted-foreground">: {step.found}</span>}
             </li>
           ))}
         </ol>
@@ -155,7 +156,7 @@ export function WhyThis({ idea, model }: { idea: Listed; model: IdeasModel }) {
       </button>
       {open && (
         <div className="mt-3 space-y-3 rounded-lg bg-muted/60 p-4">
-          <p className="text-xs text-muted-foreground">Kin offered this because of the reasons below. Remove one that's wrong, and it stops counting.</p>
+          <p className="text-xs text-muted-foreground">Kin suggested this for the reasons below. Mark one as not a reason and Kin stops using it.</p>
           <ul className="space-y-2.5">
             {idea.reasons.map((reason) => (
               <li key={reason.id} className={cn("space-y-1.5", reason.removed && "opacity-50")}>
@@ -240,7 +241,7 @@ export function AdoptChooser({ idea, model }: { idea: Listed; model: IdeasModel 
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          The body starts empty. The idea and {clips} {clips === 1 ? "clip" : "clips"} sit beside it and in its frontmatter, never in the prose.
+          The body starts empty. The idea and {clips} {clips === 1 ? "clip" : "clips"} go in its frontmatter and show beside the draft, not in the text.
         </p>
       </form>
       {model.drafts.length > 0 && (
@@ -394,7 +395,7 @@ export function FadedList({ model }: { model: IdeasModel }) {
           {faded.map((idea) => (
             <li key={idea.id} className="flex items-baseline justify-between gap-3 text-muted-foreground/80">
               <span className={cn(serif, "truncate")}>{idea.title}</span>
-              <span className="shrink-0 text-xs">Unused · counts as a faint “no”</span>
+              <span className="shrink-0 text-xs">Unused, so Kin counts it as a weak no</span>
             </li>
           ))}
         </ul>
@@ -418,7 +419,7 @@ export function JobLine({ model }: { model: IdeasModel }) {
   if (job.status === "waiting")
     return (
       <p role="status" className="text-sm text-muted-foreground">
-        Waiting: this month's AI spending cap is reached. Kin looks again once spending allows.
+        This month's AI spending cap is reached. Kin looks again next month, or sooner if you raise the cap.
       </p>
     );
   const recent = job.finished && Date.now() - Date.parse(job.finished) < 6 * 3600_000;

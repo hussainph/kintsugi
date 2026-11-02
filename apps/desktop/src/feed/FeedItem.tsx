@@ -123,7 +123,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
     onDismiss(next);
     refreshPicked();
     toast("Not interested", {
-      description: "Hidden. The strongest signal Picked for you gets.",
+      description: "Hidden. Picked for you counts this as a strong no.",
       action: {
         label: "Undo",
         onClick: () =>
@@ -218,7 +218,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
         <Textarea
           autoFocus={noting && !item.note}
           aria-label={`Note on ${title}`}
-          placeholder="What does this make you think?"
+          placeholder="Add a note…"
           value={note}
           onChange={(e) => {
             const text = e.target.value;

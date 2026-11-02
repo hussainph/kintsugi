@@ -11,7 +11,7 @@ export function UsedIn({ root, path, onOpen }: {
   const documents = index.documents.filter((document) => paths.has(document.path));
   return (
     <section className="space-y-2" aria-label="Used in">
-      <h3 className="text-xs font-medium text-muted-foreground">Used in</h3>
+      <h3 className="text-sm font-medium">Used in</h3>
       {documents.map((document) => (
         <button key={document.path} onClick={() => onOpen(document.path)} className="block max-w-full truncate text-left text-sm hover:text-primary">
           {document.title || document.path.replace(/^.*\//, "").replace(/\.mdx?$/, "")}

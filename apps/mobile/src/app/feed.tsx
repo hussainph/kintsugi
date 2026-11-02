@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 160, gap: 6 },
   status: { fontSize: 14, lineHeight: 19, paddingHorizontal: 4, paddingVertical: 4 },
   picked: { borderRadius: 16, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 4 },
-  heading: { fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.6 },
+  heading: { fontSize: 17, fontWeight: '600' },
   newest: { marginTop: 18, paddingHorizontal: 4 },
   more: { paddingVertical: 12, alignItems: 'center' },
   moreText: { fontSize: 14 },

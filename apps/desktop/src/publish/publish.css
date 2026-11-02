@@ -26,11 +26,10 @@
 .publish-written li { display: flex; align-items: center; gap: 6px; }
 .publish-written li[data-removed] { color: var(--muted-foreground); }
 
-/* The preview reads like the blog: a serif measure, quiet metadata. */
+/* The preview reads like the blog: a serif measure, muted metadata. */
 .publish-preview { font-family: var(--font-prose); font-size: 16px; line-height: 1.65; max-width: 38rem; margin: 0 auto; padding: 18px 8px 28px; }
 .publish-preview header { margin-bottom: 22px; }
-.publish-preview-kind, .publish-preview-meta { font-family: var(--font-sans); font-size: 11px; letter-spacing: .02em; color: var(--muted-foreground); text-transform: uppercase; }
-.publish-preview-meta { display: flex; gap: 12px; flex-wrap: wrap; text-transform: none; }
+.publish-preview-meta { display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 12px; color: var(--muted-foreground); }
 .publish-preview h1 { font-size: 30px; line-height: 1.2; margin: 6px 0 10px; font-weight: 600; }
 .publish-preview h2 { font-size: 21px; margin: 28px 0 8px; font-weight: 600; }
 .publish-preview h3, .publish-preview h4, .publish-preview h5, .publish-preview h6 { font-size: 17px; margin: 22px 0 6px; font-weight: 600; }

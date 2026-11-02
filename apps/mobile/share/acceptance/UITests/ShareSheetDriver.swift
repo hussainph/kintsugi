@@ -168,7 +168,7 @@ final class ShareSheetDriver {
   }
 
   private func noteField() -> XCUIElement? {
-    let placeholder = "What caught your attention?"
+    let placeholder = "Add a note"
     for scope in scopes {
       let field = scope.textFields[placeholder]
       if field.exists { return field }

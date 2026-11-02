@@ -118,13 +118,13 @@ export default function ClipScreen() {
 
         {clip.summary && (
           <View style={styles.section}>
-            <Text style={[styles.label, { color: theme.faint }]}>Summary · machine-made</Text>
+            <Text style={[styles.label, { color: theme.text }]}>AI summary</Text>
             <Text style={[styles.summary, { color: theme.muted }]}>{clip.summary}</Text>
           </View>
         )}
 
         <View style={styles.section}>
-          <Text style={[styles.label, { color: theme.faint }]}>Your notes</Text>
+          <Text style={[styles.label, { color: theme.text }]}>Your notes</Text>
           {local.conflict && (
             <Text style={[styles.small, { color: theme.danger }]}>
               Changed on your Mac and on this phone in the same place. Open your notes to choose which stays.
@@ -167,7 +167,7 @@ export default function ClipScreen() {
 
         {clip.hasSource && (
           <View style={styles.section}>
-            <Text style={[styles.label, { color: theme.faint }]}>Source · extracted from the page</Text>
+            <Text style={[styles.label, { color: theme.text }]}>Source text</Text>
             {source.state === 'shown' ? (
               <Text style={[styles.source, { color: theme.muted }]} selectable>
                 {source.text ?? 'There’s no source text for this clip.'}
@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
   linkButton: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8, maxWidth: '100%' },
   linkText: { fontSize: 15, fontWeight: '500' },
   section: { gap: 8 },
-  label: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  label: { fontSize: 17, fontWeight: '600' },
   summary: { fontSize: 15, lineHeight: 21 },
   notes: { borderRadius: 12, padding: 14 },
   notesText: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 25 },

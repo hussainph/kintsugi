@@ -105,18 +105,18 @@ export function Library({ ref, openClip, renderUsedIn }: Props) {
           <div className="flex items-start justify-between gap-5">
             <div>
               <h1 className="text-xl font-medium tracking-tight">Inspiration</h1>
-              <p className="mt-1.5 text-xs text-muted-foreground">A place for things that stay with you.</p>
+              <p className="mt-1.5 text-xs text-muted-foreground">Links, quotes, images, books and notes you’ve saved.</p>
             </div>
-            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setAdding(true)}><Plus />Keep something</Button>
+            <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={() => setAdding(true)}><Plus />Add a clip</Button>
           </div>
           <div className="relative max-w-xl">
             <Search className="pointer-events-none absolute top-3 left-3 size-4 text-muted-foreground/60" />
-            <Input type="search" aria-label="Search inspiration" placeholder="Find a thought, a phrase, a place…" value={query} onChange={(e) => setQuery(e.target.value)} className="h-10 border-0 bg-muted/60 pr-9 pl-10 shadow-none focus-visible:ring-1" />
+            <Input type="search" aria-label="Search inspiration" placeholder="Search clips…" value={query} onChange={(e) => setQuery(e.target.value)} className="h-10 border-0 bg-muted/60 pr-9 pl-10 shadow-none focus-visible:ring-1" />
             {query && <button aria-label="Clear search" className="absolute top-3 right-3 text-muted-foreground" onClick={() => setQuery("")}><X className="size-4" /></button>}
           </div>
           {(shownTags.length > 0 || tags.length > 0) && <div className="flex items-center gap-2">
             <div className="flex flex-1 flex-wrap gap-2">{shownTags.map(tagButton)}</div>
-            {data.tags.length > 8 && <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="All tags"><SlidersHorizontal /></Button></PopoverTrigger><PopoverContent align="end" className="max-h-72 w-72 overflow-y-auto"><p className="mb-3 text-xs text-muted-foreground">Filter by tags</p><div className="flex flex-wrap gap-2">{data.tags.map(tagButton)}</div></PopoverContent></Popover>}
+            {data.tags.length > 8 && <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="All tags"><SlidersHorizontal /></Button></PopoverTrigger><PopoverContent align="end" className="max-h-72 w-72 overflow-y-auto"><p className="mb-3 text-sm font-medium">Filter by tags</p><div className="flex flex-wrap gap-2">{data.tags.map(tagButton)}</div></PopoverContent></Popover>}
             {tags.length > 0 && <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setTags([])}>Clear</Button>}
           </div>}
         </header>
@@ -127,13 +127,13 @@ export function Library({ ref, openClip, renderUsedIn }: Props) {
         {error && <div role="alert" className="mb-4 flex items-center justify-between gap-3 rounded-lg bg-destructive/5 p-3 text-sm text-destructive"><span>{error}</span><Button variant="ghost" size="sm" onClick={refresh}>Try again</Button></div>}
         {data.clips.length ? <Masonry active={!detail} key={JSON.stringify([query, tags])} items={data.clips} total={data.total} loading={loading} onOpen={setDetail} onMore={more} /> : <div className="flex flex-1 flex-col items-center justify-center pb-20 text-center">
           <Bookmark className="mb-6 size-7 stroke-1 text-muted-foreground/40" />
-          <h2 className="font-[family-name:var(--font-prose)] text-2xl">{query || tags.length ? "Nothing here just yet." : "Good things find their way here."}</h2>
-          <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{query || tags.length ? "Try another word, or let a tag go." : "Paste a link, drop an image or a PDF, or keep a passing thought. It’s all welcome."}</p>
-          {(query || tags.length > 0) ? <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => { setQuery(""); setTags([]); }}>Clear filters</Button> : <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => setAdding(true)}><Plus />Keep your first inspiration</Button>}
+          <h2 className="font-[family-name:var(--font-prose)] text-2xl">{query || tags.length ? "No clips match." : "Nothing saved yet."}</h2>
+          <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">{query || tags.length ? "Try another word or remove a tag." : "Paste a link, drop an image, PDF or EPUB here, or write a note."}</p>
+          {(query || tags.length > 0) ? <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => { setQuery(""); setTags([]); }}>Clear filters</Button> : <Button variant="ghost" className="mt-5 text-muted-foreground" onClick={() => setAdding(true)}><Plus />Add a clip</Button>}
         </div>}
         <p className="shrink-0 pt-2 pb-3 text-center text-[11px] text-muted-foreground/65">Paste or drop a link, image, PDF, EPUB or text anywhere here.</p>
       </div>
-      {dragging && <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-2xl border border-dashed border-foreground/30 bg-background/95"><div className="text-center"><Plus className="mx-auto mb-4 size-6 stroke-1" /><p className="font-[family-name:var(--font-prose)] text-2xl">Let it land here.</p><p className="mt-2 text-sm text-muted-foreground">A link, an image, a PDF, a little inspiration.</p></div></div>}
+      {dragging && <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-2xl border border-dashed border-foreground/30 bg-background/95"><div className="text-center"><Plus className="mx-auto mb-4 size-6 stroke-1" /><p className="font-[family-name:var(--font-prose)] text-2xl">Drop to save</p><p className="mt-2 text-sm text-muted-foreground">A link, image, PDF, EPUB or text.</p></div></div>}
       <CaptureDialog open={adding} onClose={() => setAdding(false)} capture={capture} />
     </section>
   );

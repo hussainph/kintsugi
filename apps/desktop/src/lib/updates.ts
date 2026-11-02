@@ -49,7 +49,7 @@ function offer(update: Update, beforeRestart: () => Promise<boolean>) {
   toast(`Kintsugi ${update.version} is ready`, {
     id: TOAST,
     duration: Infinity,
-    description: "Restart when it suits you. Your writing is saved first.",
+    description: "Restart to install it. Your writing is saved first.",
     action: { label: "Restart to update", onClick: () => void install(update, beforeRestart) },
   });
 }

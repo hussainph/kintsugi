@@ -174,7 +174,7 @@ export function Export({ root, path, viewRef, flush }: Props) {
       <DialogContent className="publish-dialog export-dialog sm:max-w-3xl" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>Export</DialogTitle>
-          <DialogDescription>{current?.hint ?? "Render this document for somewhere else."}</DialogDescription>
+          <DialogDescription>{current?.hint ?? "Export this document as a file or as text."}</DialogDescription>
         </DialogHeader>
 
         <div className="publish-bar">
@@ -201,7 +201,7 @@ export function Export({ root, path, viewRef, flush }: Props) {
         {ready && (
           <>
             <ul className="publish-checks" aria-label="Checks">
-              {ready.rendered.checks.length === 0 && <li data-level="ok"><CheckIcon size={14} /> Ready: every link and image made it.</li>}
+              {ready.rendered.checks.length === 0 && <li data-level="ok"><CheckIcon size={14} /> Ready. Every link and image is included.</li>}
               {ready.rendered.checks.map((c, i) => (
                 <li key={i} data-level={c.level}>
                   {c.level === "error" ? <AlertCircle size={14} /> : c.level === "warning" ? <AlertTriangle size={14} /> : <Info size={14} />}

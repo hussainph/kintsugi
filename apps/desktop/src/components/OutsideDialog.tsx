@@ -30,7 +30,7 @@ export function OutsideDialog({ collision, onChoose }: Props) {
           <DialogTitle>{gone ? `“${file}” was moved or deleted in another app` : `“${file}” changed in another app`}</DialogTitle>
           <DialogDescription>
             {gone
-              ? "You have changes here that aren’t saved. Keep them to save the document again where it was, or close it and let it go."
+              ? "You have changes here that aren’t saved. Keep them to save the document again where it was, or close it and lose them."
               : "You changed the same lines here before saving, so the two versions can’t be combined. Nothing has been saved over either one."}
           </DialogDescription>
         </DialogHeader>

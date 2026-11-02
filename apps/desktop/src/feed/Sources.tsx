@@ -190,7 +190,7 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                 <Input aria-label="Minimum points" inputMode="numeric" placeholder="Minimum points (optional)" value={points} onChange={(e) => setPoints(e.target.value.replace(/\D/g, ""))} className="h-9" />
                 <Button type="submit" disabled={!!busy}>{busy === "hn" ? "Following…" : "Follow"}</Button>
               </div>
-              <p className="text-[11px] text-muted-foreground">Through hnrss.org. A points threshold keeps it to the stories people stayed for.</p>
+              <p className="text-[11px] text-muted-foreground">Through hnrss.org. Set minimum points to skip low-scoring stories.</p>
             </div>
           ) : (
             <div className="flex gap-2">

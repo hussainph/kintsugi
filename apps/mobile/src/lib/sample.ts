@@ -14,7 +14,7 @@ const PATHS = 'sample:paths';
 export const isSample = (pairing: Pairing | null) => pairing?.url === SAMPLE_PAIRING.url && pairing.token === SAMPLE_PAIRING.token;
 
 const paragraph = (n: number) =>
-  `## Part ${n}\n\nThe quick brown fox jumps over the lazy dog while the writer, half awake on the train, tries to remember what the paragraph was meant to say. Part ${n} links back to [[mending-with-gold]] and has some *emphasis* and **strong text**.\n\nA second paragraph for part ${n}: a phone editor has to stay quick when the document is long, because the long ones are the ones worth finishing.\n`;
+  `## Part ${n}\n\nThe quick brown fox jumps over the lazy dog while the writer, half awake on the train, tries to remember what the paragraph was meant to say. Part ${n} links back to [[about-kintsugi]] and has some *emphasis* and **strong text**.\n\nA second paragraph for part ${n}: a phone editor has to stay quick when the document is long, because the long ones are the ones worth finishing.\n`;
 
 const SAMPLES = [
   `Mending with gold\n\nKintsugi repairs broken pottery with lacquer and gold, so the break becomes part of the object's history instead of something to hide.\n\n## Why it matters for writing\n\nA draft is mostly breaks. The *first* version says the wrong thing in the right order, or the right thing in the **wrong** order. Type [[ to link another note.\n\n> The point is not to hide the seam. It is to make it worth looking at.\n\n- Write the ugly paragraph first.\n- Fix the order before the sentences.\n- Read it aloud on the phone, away from the desk.`,

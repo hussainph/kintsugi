@@ -6,7 +6,7 @@ import { cn } from "@kintsugi/ui/lib/utils";
 import { discuss } from "@/lib/chat";
 import { ideas, IDEAS_CHANGED, type Idea, type Quote } from "./api";
 import { adoptedIds } from "./model";
-import { ClipQuote, KinMark, Label, seam, serif } from "./parts";
+import { ClipQuote, Heading, KinMark, seam, serif } from "./parts";
 
 /**
  * Adopt's other half: the idea and its clips beside the draft, never in
@@ -51,7 +51,7 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
         aria-expanded={open}
         onClick={() => setOpen(!open)}
         aria-label={`${label} beside this draft`}
-        title="The idea beside this draft, never in it"
+        title="Kin’s ideas for this draft. They’re never added to the text."
         className="flex items-center gap-1.5 rounded-full border bg-background/90 px-3 py-1 text-xs whitespace-nowrap text-muted-foreground shadow-xs backdrop-blur hover:text-foreground"
       >
         <Lightbulb className="size-3.5 text-[var(--seam-ink)]" />
@@ -60,7 +60,7 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
       {open && (
         <aside aria-label="Idea beside the draft" className="mt-2 w-full space-y-6 overflow-y-auto rounded-xl border bg-background p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <Label>{found.length === 1 ? "The idea" : "The ideas"}</Label>
+            <Heading>Ideas for this draft</Heading>
             <button type="button" aria-label="Hide" onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
               <X className="size-3.5" />
             </button>
@@ -88,7 +88,7 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
               </button>
             </div>
           ))}
-          <p className="text-[11px] text-muted-foreground">In the file’s frontmatter, never in the prose. Clips are wikilinks.</p>
+          <p className="text-[11px] text-muted-foreground">Saved in the file’s frontmatter, not in the text. Clips are saved as wikilinks.</p>
         </aside>
       )}
     </div>

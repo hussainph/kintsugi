@@ -94,7 +94,7 @@ export type ClipChanged = { path: string };
 
 /** How a clip is named when it has no title: its link, else what it is. */
 export function clipLabel(clip: Pick<ClipSummary, "title" | "url" | "kind">) {
-  return clip.title || clip.url || ({ image: "An image", note: "A thought", quote: "A passage", document: "A PDF", book: "A book", podcast: "A podcast episode" }[clip.kind as "image" | "note" | "quote" | "document" | "book" | "podcast"] ?? "Untitled clip");
+  return clip.title || clip.url || ({ image: "An image", note: "A note", quote: "A passage", document: "A PDF", book: "A book", podcast: "A podcast episode" }[clip.kind as "image" | "note" | "quote" | "document" | "book" | "podcast"] ?? "Untitled clip");
 }
 
 /** Where a clip came from, small on its card: the site, else the link's host. */
@@ -103,7 +103,7 @@ export function clipSite(clip: Pick<ClipSummary, "site" | "url" | "kind">) {
   try {
     if (clip.url) return new URL(clip.url).hostname.replace(/^www\./, "");
   } catch { /* A hand-edited clip may have an invalid URL. */ }
-  return ({ note: "Your thought", image: "Saved image", document: "PDF", book: "Book", podcast: "Podcast" } as Record<string, string>)[clip.kind] ?? "Saved passage";
+  return ({ note: "Your note", image: "Saved image", document: "PDF", book: "Book", podcast: "Podcast" } as Record<string, string>)[clip.kind] ?? "Saved passage";
 }
 
 /** Never hand a file/javascript URL from hand-edited frontmatter to the opener. */
