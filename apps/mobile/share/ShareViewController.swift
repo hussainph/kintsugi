@@ -407,17 +407,15 @@ private struct CaptureSheet: View {
             .padding(16).frame(maxWidth: .infinity, alignment: .leading)
             .background(surface, in: RoundedRectangle(cornerRadius: 14))
 
-            VStack(alignment: .leading, spacing: 8) {
-              Text("Note (optional)").font(.subheadline).foregroundStyle(muted)
-              TextField("Add a note", text: $model.note, axis: .vertical)
-                .font(.system(.body, design: .serif)).lineLimit(3...6)
-                .padding(14).background(surface, in: RoundedRectangle(cornerRadius: 12))
-                .disabled(model.saving)
+            TextField("Add a note", text: $model.note, axis: .vertical)
+              .font(.system(.body, design: .serif)).lineLimit(3...6)
+              .padding(14).background(surface, in: RoundedRectangle(cornerRadius: 12))
+              .disabled(model.saving)
+            // Files wait for the app (it sends them itself), so say when they go.
+            if model.document != nil {
+              Text("Sent to your Mac next time you open Kintsugi.")
+                .font(.footnote).foregroundStyle(muted)
             }
-            Text(model.document == nil
-                 ? "Saved on this iPhone first. Sent when your Mac is back."
-                 : "Saved on this iPhone first. Kintsugi sends it to your Mac the next time you open the app.")
-              .font(.footnote).foregroundStyle(muted)
           }
           if let error = model.error {
             Text(error).font(.callout).foregroundStyle(dark ? Color(red: 248 / 255, green: 113 / 255, blue: 113 / 255) : .red)

@@ -115,16 +115,13 @@ export default function FeedItemScreen() {
             />
           )}
         </View>
-        {item.waiting && offline && (
-          <Text style={[styles.small, { color: theme.muted }]}>Kept on this phone. It goes to your Mac when it’s reachable.</Text>
-        )}
-        {saved && item.savedPath && <Text style={[styles.small, { color: theme.muted }]}>In Inspiration. Its note is edited there now.</Text>}
+        {item.waiting && offline && <Text style={[styles.small, { color: theme.muted }]}>Waiting for your Mac.</Text>}
+        {saved && item.savedPath && <Text style={[styles.small, { color: theme.muted }]}>Its note is in Inspiration now.</Text>}
 
-        <Text style={[styles.label, { color: theme.text }]}>Your note</Text>
         {conflict ? (
           <View style={[styles.conflict, { backgroundColor: theme.surface }]}>
             <Text style={[styles.body, { color: theme.text }]}>
-              This note was changed on your Mac too. Which should stay?
+              Changed on your Mac too. Which stays?
             </Text>
             <Text style={[styles.small, { color: theme.muted }]}>Mac: {conflict.theirs || '(empty)'}</Text>
             <Text style={[styles.small, { color: theme.muted }]}>This phone: {conflict.mine || '(empty)'}</Text>
@@ -164,7 +161,7 @@ export default function FeedItemScreen() {
           ))
         ) : (
           <Text style={[styles.small, { color: theme.muted }]}>
-            {offline ? 'The text is on your Mac. It opens here when your Mac is reachable.' : 'Loading…'}
+            {offline ? 'The text loads when your Mac is back.' : 'Loading…'}
           </Text>
         )}
 
@@ -208,8 +205,7 @@ const styles = StyleSheet.create({
   action: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },
   actionText: { fontSize: 14, fontWeight: '500' },
   small: { fontSize: 13, lineHeight: 18 },
-  label: { fontSize: 17, fontWeight: '600', marginTop: 8 },
-  note: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 24, borderRadius: 12, padding: 12, minHeight: 70 },
+  note: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 24, borderRadius: 12, padding: 12, minHeight: 70, marginTop: 4 },
   conflict: { borderRadius: 12, padding: 12, gap: 8 },
   choices: { flexDirection: 'row', gap: 10, justifyContent: 'flex-end' },
   choice: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 7 },

@@ -288,5 +288,5 @@ export function effectLine(effect: Effect): string {
   const parts: string[] = [];
   if (moved.length) parts.push(`More like ${moved.slice(0, 2).join(' and ')}`);
   if (effect.added.length) parts.push(`${effect.added.length} new in Picked for you`);
-  return parts.length ? parts.join(' · ') : 'Liked. Picked for you will learn from it.';
+  return parts.length ? parts.join(' · ') : 'Liked.';
 }

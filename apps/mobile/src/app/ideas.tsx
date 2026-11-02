@@ -97,7 +97,7 @@ export default function IdeasScreen() {
     api > 0 && api < SECTIONS_API
       ? OLD_MAC
       : snapshot.connection === 'offline'
-        ? `Your Mac is offline. These are the ideas kept on this phone${snapshot.waiting ? '; what you did waits for it' : ''}.`
+        ? `Your Mac is offline${snapshot.waiting ? '. Your changes are waiting' : ''}.`
         : snapshot.problem;
 
   return (

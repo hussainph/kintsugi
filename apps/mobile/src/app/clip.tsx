@@ -33,9 +33,7 @@ export default function ClipScreen() {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
         <Stack.Title>{''}</Stack.Title>
-        <Text style={[styles.muted, { color: theme.muted }]}>
-          This clip isn’t on this phone any more. It may have been removed on your Mac.
-        </Text>
+        <Text style={[styles.muted, { color: theme.muted }]}>This clip isn’t on this phone any more.</Text>
       </View>
     );
   }
@@ -55,7 +53,7 @@ export default function ClipScreen() {
       if (e instanceof Unpaired) return unpair();
       setSource({
         state: 'failed',
-        message: e instanceof Offline ? 'The source is kept on your Mac. It opens here when your Mac is reachable.' : String(e),
+        message: e instanceof Offline ? 'The source loads when your Mac is back.' : String(e),
       });
     }
   };
@@ -126,14 +124,10 @@ export default function ClipScreen() {
         <View style={styles.section}>
           <Text style={[styles.label, { color: theme.text }]}>Your notes</Text>
           {local.conflict && (
-            <Text style={[styles.small, { color: theme.danger }]}>
-              Changed on your Mac and on this phone in the same place. Open your notes to choose which stays.
-            </Text>
+            <Text style={[styles.small, { color: theme.danger }]}>Changed on your Mac too. Open your notes to choose.</Text>
           )}
           {local.gone && (
-            <Text style={[styles.small, { color: theme.danger }]}>
-              This clip was removed on your Mac. Your notes are kept here until you discard them.
-            </Text>
+            <Text style={[styles.small, { color: theme.danger }]}>Removed on your Mac. Your notes stay here until you discard them.</Text>
           )}
           {notes === null ? (
             <Text style={[styles.muted, { color: theme.muted }]}>Update Kintsugi on your Mac to read and edit notes here.</Text>
@@ -152,7 +146,7 @@ export default function ClipScreen() {
             </Pressable>
           )}
           {clipUnsent(local) && !local.conflict && !local.gone && connection === 'offline' && (
-            <Text style={[styles.small, { color: theme.muted }]}>Saved on this phone. It goes to your Mac when it’s reachable.</Text>
+            <Text style={[styles.small, { color: theme.muted }]}>Saved on this phone until your Mac is back.</Text>
           )}
           {local.gone && (
             <Pressable onPress={() => { inspiration.discard(path); router.back(); }} style={[styles.linkButton, { borderColor: theme.border, borderWidth: 1 }]}>

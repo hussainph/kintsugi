@@ -115,9 +115,7 @@ export default function DocScreen() {
     return (
       <View style={[styles.center, { backgroundColor: theme.background }]}>
         <Stack.Title>{''}</Stack.Title>
-        <Text style={[styles.note, { color: theme.muted }]}>
-          This document isn’t on this phone any more. It may have been moved or deleted on your Mac.
-        </Text>
+        <Text style={[styles.note, { color: theme.muted }]}>This document isn’t on this phone any more.</Text>
       </View>
     );
   }
@@ -135,9 +133,9 @@ export default function DocScreen() {
   };
 
   const note = failure
-    ? `Couldn’t send to your Mac. Your edits are kept on this phone. ${failure}`
+    ? `Couldn’t send to your Mac. Your edits are kept here. ${failure}`
     : unsent(doc) && connection === 'offline'
-      ? 'Saved on this phone. It goes to your Mac when it’s reachable.'
+      ? 'Saved on this phone until your Mac is back.'
       : null;
 
   return (
@@ -157,7 +155,7 @@ export default function DocScreen() {
               {doc.conflict && (
                 <View style={[styles.conflict, { backgroundColor: theme.surface }]}>
                   <Text style={[styles.conflictText, { color: theme.text }]}>
-                    This was changed on your Mac and on this phone in the same place. Which version should stay?
+                    Changed on your Mac too. Which version stays?
                   </Text>
                   <View style={styles.choices}>
                     <Pressable onPress={() => choose('theirs')} style={[styles.choice, { borderColor: theme.border }]}>
@@ -185,7 +183,7 @@ export default function DocScreen() {
           {doc.conflict && (
             <View style={[styles.conflict, { backgroundColor: theme.surface }]}>
               <Text style={[styles.conflictText, { color: theme.text }]}>
-                This was changed on your Mac and on this phone in the same place. Which version should stay?
+                Changed on your Mac too. Which version stays?
               </Text>
               <View style={styles.choices}>
                 <Pressable onPress={() => choose('theirs')} style={[styles.choice, { borderColor: theme.border }]}>

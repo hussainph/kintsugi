@@ -162,7 +162,7 @@ export function WritingList({
       }
       ListEmptyComponent={
         <Text style={[styles.empty, { color: theme.muted }]}>
-          {filtering(filter) ? 'Nothing here matches these filters.' : query.trim() ? 'Nothing matches.' : empty}
+          {filtering(filter) || query.trim() ? 'Nothing matches.' : empty}
         </Text>
       }
     />

@@ -47,10 +47,7 @@ export default function InspirationScreen() {
   const cardWidth = (width - PADDING * 2 - GAP * (count - 1)) / count;
   const columns = useMemo(() => masonry(found, count, cardWidth), [found, count, cardWidth]);
 
-  const status =
-    connection === 'offline'
-      ? 'Your Mac is offline. These are the clips kept on this phone.'
-      : problem;
+  const status = connection === 'offline' ? 'Your Mac is offline.' : problem;
 
   return (
     <>
@@ -79,8 +76,8 @@ export default function InspirationScreen() {
             {query.trim()
               ? 'No clips match.'
               : connection === 'unknown'
-                ? 'Fetching your inspiration from your Mac…'
-                : 'Nothing saved yet. Share a link, a post or a picture to Kintsugi, or paste a link into the capture box.'}
+                ? 'Fetching from your Mac…'
+                : 'Nothing saved yet. Share a link to Kintsugi to add one.'}
           </Text>
         ) : (
           <View style={styles.grid}>

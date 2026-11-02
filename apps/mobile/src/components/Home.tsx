@@ -158,7 +158,7 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
   ].filter(Boolean).join(' and ');
   const status =
     connection === 'offline'
-      ? `Your Mac is offline. Your writing is on this phone${pending ? `; ${pending} will go when it’s back` : ''}.`
+      ? `Your Mac is offline${pending ? `. ${pending} waiting` : ''}.`
       : problem ?? (pending ? `Sending ${pending}…` : null);
 
   return (
@@ -171,7 +171,6 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
           <Stack.Toolbar.MenuAction
             icon="character.cursor.ibeam"
             isOn={newEditor}
-            subtitle="The Mac’s editor, being tried out"
             onPress={() => setNewEditor(!newEditor)}
           >
             New editor
@@ -180,7 +179,7 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
             icon="iphone.slash"
             destructive
             onPress={() =>
-              Alert.alert('Unpair this phone?', 'You can pair again from Kintsugi on your Mac.', [
+              Alert.alert('Unpair this phone?', undefined, [
                 { text: 'Cancel', style: 'cancel' },
                 { text: 'Unpair', style: 'destructive', onPress: unpair },
               ])
@@ -197,7 +196,7 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
         linked={linked}
         refreshing={refreshing}
         onRefresh={refresh}
-        empty={connection === 'unknown' ? 'Fetching your writing from your Mac…' : 'No documents yet. Start a note above.'}
+        empty={connection === 'unknown' ? 'Fetching from your Mac…' : 'No documents yet.'}
         header={
           <View style={styles.header}>
             <View style={[styles.capture, { backgroundColor: theme.surface }]}>
@@ -255,15 +254,14 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
             )}
             {rejected.length > 0 && (
               <Text style={[styles.status, { color: theme.danger }]}>
-                {rejected.length} capture(s) couldn’t be sent. Their contents are kept on this phone; they won’t retry automatically.
+                {rejected.length} capture(s) couldn’t be sent and won’t retry. They’re kept on this phone.
               </Text>
             )}
             {outboxWarning && <Text style={[styles.status, { color: theme.danger }]}>{outboxWarning}</Text>}
             {status && <Text style={[styles.status, { color: theme.muted }]}>{status}</Text>}
             {conflicts > 0 && (
               <Text style={[styles.status, { color: theme.danger }]}>
-                {plural(conflicts, 'document was', 'documents were')} changed on your Mac and here in the same place. Open{' '}
-                {conflicts === 1 ? 'it' : 'them'} to choose which version stays.
+                {plural(conflicts, 'document', 'documents')} changed on your Mac too. Open {conflicts === 1 ? 'it' : 'them'} to choose.
               </Text>
             )}
           </View>

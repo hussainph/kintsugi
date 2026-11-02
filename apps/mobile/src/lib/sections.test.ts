@@ -304,7 +304,7 @@ test('Kin says it needs the Mac, keeps messages in order, and sends each once', 
   await kin.sync(mac.client);
   let snap = kin.getSnapshot();
   assert.equal(snap.connection, 'offline');
-  assert.match(kinStatus(snap)!, /Kin runs on your Mac, which isn’t reachable\. 2 messages wait here/);
+  assert.match(kinStatus(snap)!, /^Your Mac is offline\. 2 messages waiting\.$/);
   assert.deepEqual(shown(snap).map((s) => s.kind), ['outgoing', 'outgoing']);
   assert.equal(kin.busy, false, 'offline, there is nothing to poll for');
 

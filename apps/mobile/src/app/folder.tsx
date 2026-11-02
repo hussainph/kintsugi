@@ -15,7 +15,7 @@ export default function FolderScreen() {
     <>
       <Stack.Title>{baseName(path) || library.vaultName || 'Kintsugi'}</Stack.Title>
       <Stack.SearchBar placeholder={`Find in ${baseName(path)}`} onChangeText={(e) => setQuery(e.nativeEvent.text)} />
-      <WritingList dir={path} rootName={library.vaultName ?? 'Kintsugi'} query={query} empty="Nothing in this folder yet." linked={linkedFilter(params)} />
+      <WritingList dir={path} rootName={library.vaultName ?? 'Kintsugi'} query={query} empty="Nothing in this folder." linked={linkedFilter(params)} />
     </>
   );
 }

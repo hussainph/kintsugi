@@ -170,8 +170,8 @@ export function kinStatus(snapshot: KinSnapshot): string | null {
   const waiting = snapshot.outgoing.filter((m) => !m.error).length;
   if (snapshot.connection === 'offline') {
     return waiting
-      ? `Kin runs on your Mac, which isn’t reachable. ${waiting === 1 ? 'Your message waits here and goes' : `${waiting} messages wait here and go`} when it’s back.`
-      : 'Kin runs on your Mac, which isn’t reachable. You can still write; messages wait here until it’s back.';
+      ? `Your Mac is offline. ${waiting === 1 ? 'One message' : `${waiting} messages`} waiting.`
+      : 'Your Mac is offline. Messages wait here until it’s back.';
   }
   if (snapshot.problem) return snapshot.problem;
   if (waiting) return 'Sending to your Mac…';
