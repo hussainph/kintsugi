@@ -1,5 +1,7 @@
 # Every PR and every push to main, from a fresh checkout (KI-55). Branch
-# protection on main requires all four jobs; see README › CI.
+# protection on main requires all four jobs; see README › CI. No secrets:
+# the runtime tests that talk to Kin start it on its scripted mock model
+# (KINTSUGI_HEADLESS_KIN=mock), and headless AI reads no credentials.
 name: CI
 
 on:
@@ -21,8 +23,6 @@ env:
   CARGO_INCREMENTAL: "0"
   # Scripts and tests read this for -j and pnpm's workspace concurrency.
   VOLLI_CONCURRENCY_HINT: "4"
-  # Never a real model or credential in CI.
-  KINTSUGI_HEADLESS_KIN: mock
 
 jobs:
   typescript:
@@ -71,7 +71,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      - run: cargo test --workspace --locked -j $VOLLI_CONCURRENCY_HINT
+      - name: DIAGNOSTIC (temporary) Vision helper on the runner
+        run: |
+          xcrun swiftc -O -parse-as-library crates/ingest/swift/vision.swift -o "$RUNNER_TEMP/kintsugi-vision"
+          "$RUNNER_TEMP/kintsugi-vision" crates/ingest/fixtures/image/seams.png; echo "exit $?"
+      - run: cargo test --workspace --locked --no-fail-fast -j $VOLLI_CONCURRENCY_HINT
       - run: cargo fmt --all --check
 
   runtime:
@@ -95,7 +99,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Headless Rust tests
-        run: cargo test -p kintsugi --no-default-features --features headless --locked -j $VOLLI_CONCURRENCY_HINT
+        run: cargo test -p kintsugi --no-default-features --features headless --locked --no-fail-fast -j $VOLLI_CONCURRENCY_HINT
       # Built once here so the first runtime test doesn't spend its timeout compiling.
       - name: Build the headless backend
         run: cargo build -p kintsugi --bin kintsugi --no-default-features --features headless --locked -j $VOLLI_CONCURRENCY_HINT
