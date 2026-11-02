@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { Rss, RotateCw, Settings2 } from "lucide-react";
+import { Rss, RotateCw, Settings2 } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -148,7 +148,7 @@ export function Feed({ picked }: Props) {
         <div className="mx-auto max-w-2xl">
           <header className="mb-6 flex items-start justify-between gap-5">
             <div>
-              <h1 className="text-xl font-medium tracking-tight">Feed</h1>
+              <h1 className="ki-title">Feed</h1>
               <p className="mt-1.5 text-xs text-muted-foreground">
                 {sources.length ? (
                   <>
@@ -189,7 +189,7 @@ export function Feed({ picked }: Props) {
 
           {page.items.length > 0 ? (
             <div aria-label="Newest first" role="feed" aria-busy={loading}>
-              <div className="flex items-center justify-between border-b border-border/60 pb-2 text-[11px] text-muted-foreground">
+              <div className="flex items-center justify-between border-b border-border/60 pb-2 text-xs text-muted-foreground">
                 <span role="status">{page.total.toLocaleString()} {page.total === 1 ? "item" : "items"}</span>
                 <span>Newest first</span>
               </div>
@@ -198,14 +198,14 @@ export function Feed({ picked }: Props) {
               ))}
               <div ref={sentinel} className="h-px" />
               {page.items.length >= page.total && page.total > 0 && (
-                <p className="pt-6 text-center text-[11px] text-muted-foreground/70">That’s everything. Items you don’t act on are removed after 30 days.</p>
+                <p className="pt-6 text-center text-xs text-muted-foreground/70">That’s everything. Items you don’t act on are removed after 30 days.</p>
               )}
             </div>
           ) : (
             !loading && (
               <div className="flex flex-col items-center justify-center py-24 text-center">
                 <Rss className="mb-6 size-7 stroke-1 text-muted-foreground/40" />
-                <h2 className="font-[family-name:var(--font-prose)] text-2xl">{sources.length ? "Nothing new yet." : "You’re not following anything yet."}</h2>
+                <h2 className="ki-prose-title">{sources.length ? "Nothing new yet." : "You’re not following anything yet."}</h2>
                 <p className="mt-3 max-w-xs text-sm leading-relaxed text-muted-foreground">
                   {sources.length
                     ? "New posts, videos and episodes show up here when they’re published."

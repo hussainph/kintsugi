@@ -3,7 +3,7 @@
  * headless vault. Never starts a native window or reads provider credentials.
  *
  * KINTSUGI_THEME_URL=<local capability URL> node scripts/check-desktop-theme.mjs
- * Artifacts: .lab-artifacts/ki-20/desktop (never stores the URL/session/token).
+ * Artifacts: .headless/ki-20/desktop (never stores the URL/session/token).
  * This deliberately creates one scratch document and one text clip per mode.
  */
 import assert from 'node:assert/strict';
@@ -12,7 +12,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-const require = createRequire(new URL('../packages/lab/package.json', import.meta.url));
+const require = createRequire(new URL('../apps/desktop/package.json', import.meta.url));
 const { chromium } = require('playwright');
 const capability = process.env.KINTSUGI_THEME_URL;
 if (!capability) throw new Error('Set KINTSUGI_THEME_URL to the already-running local scratch headless URL.');
@@ -29,7 +29,7 @@ const safe = value => String(value).replaceAll(capability, '[local capability]')
   .replaceAll(secret, '[redacted]').replace(/(?:#|&|\b)token=[^\s"'<>]+/g, 'token=[redacted]')
   .replaceAll(root, '[workspace]/').replace(/\/(?:Users|home)\/[^\s"'<>:)]+/g, '[local path]');
 const root = fileURLToPath(new URL('..', import.meta.url));
-const out = resolve(root, '.lab-artifacts/ki-20/desktop');
+const out = resolve(root, '.headless/ki-20/desktop');
 await mkdir(out, { recursive: true });
 const report = {
   run: new Date().toISOString(), browser: 'existing Google Chrome, headless:true',
@@ -37,7 +37,7 @@ const report = {
   modes: {}, console: [], pageErrors: [], requestFailures: [], httpErrors: [], observations: [],
   limitations: [
     'Scratch-vault UI only; no native Tauri window, OS phone settings, provider credentials, or owner vault.',
-    'Timeless Sans is upright only. This checks real FontFace loads and inherited Sans axes; Lab CDP probes separately verify rendered glyphs, not Safari descriptor support.',
+    'Timeless Sans is upright only. This checks real FontFace loads and inherited Sans axes; it does not verify Safari descriptor support.',
     'AI disabled: verify unauthenticated Refine error only; no generated revision or accept/retry network success.',
   ],
 };

@@ -49,6 +49,9 @@
   --radius-2xl: var(--radius-xl);
   --radius-3xl: var(--radius-xl);
   --radius-4xl: var(--radius-xl);
+  --text-xxs: var(--size-xxs);
+  --text-xxs--line-height: var(--line-xxs);
+  --text-xxs--letter-spacing: var(--letter-spacing-xxs);
   --text-xs: var(--size-xs);
   --text-xs--line-height: var(--line-xs);
   --text-xs--letter-spacing: var(--letter-spacing-xs);

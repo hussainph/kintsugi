@@ -1,7 +1,7 @@
 import type { EditorView } from "@codemirror/view";
 import { save } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { AlertCircle, AlertTriangle, Check as CheckIcon, Info } from "lucide-react";
+import { AlertCircle, AlertTriangle, Check as CheckIcon, Info } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
 import { DESTINATIONS, LINKEDIN_FOLD, LINKEDIN_LIMIT, exportName, preparePiece, render, type Destination, type ExportInput, type Piece, type Rendered } from "@kintsugi/core/export";

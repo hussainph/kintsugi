@@ -1,4 +1,4 @@
-import { ImageIcon, Info } from "lucide-react";
+import { ImageIcon, Info } from "@kintsugi/ui/icons";
 import type { ReactNode } from "react";
 
 /** A reading of the post in the blog's terms: figures with numbered

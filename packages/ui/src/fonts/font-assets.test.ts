@@ -85,7 +85,7 @@ test('Timeless Sans: complete v1.3 contract and explicit owner election, not the
 })
 
 test('Timeless Sans: both app distributions retain exact contract/NOTICE copies, not duplicate font binaries', () => {
-  for (const app of ['desktop', 'lab']) {
+  for (const app of ['desktop']) {
     const directory = `${root}/apps/${app}/public/font-licenses`
     for (const name of ['LICENSE', 'NOTICE']) {
       assert.deepEqual(readFileSync(`${directory}/Timeless-Sans-${name}.txt`), readFileSync(`${fonts}/timeless-sans/${name}.txt`))
@@ -98,7 +98,7 @@ test('complete OFL notices accompany source faces and both app distributions', (
   const source = readFileSync(`${fonts}/superior-serif/OFL.txt`, 'utf8')
   assert.match(source, /SIL OPEN FONT LICENSE Version 1\.1/)
   assert.match(source, /Reserved Font Name LT Superior Serif/)
-  for (const app of ['desktop', 'lab']) {
+  for (const app of ['desktop']) {
     for (const [name, path] of [
       ['LT-Superior-Serif-OFL.txt', `${fonts}/superior-serif/OFL.txt`],
       ['Geist-Mono-OFL.txt', `${fonts}/geist-mono/LICENSE`],

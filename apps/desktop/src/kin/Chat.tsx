@@ -1,5 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
-import { Bookmark, ChevronDown, FileText, Lightbulb, Loader2, Pilcrow, Rss, Square, X } from "lucide-react";
+import { Bookmark, ChevronDown, FileText, Lightbulb, Loader2, Pilcrow, Rss, Square, X } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -39,7 +39,7 @@ function ChipView({ chip, onRemove }: { chip: Chip; onRemove?: () => void }) {
     <span
       data-chip={chipKey(chip)}
       title={`${chip.kind} · ${chip.path}${chip.lines ? ` · lines ${chip.lines[0]}–${chip.lines[1]}` : ""}`}
-      className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground"
+      className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
     >
       <Icon className="size-3 shrink-0" />
       <span className="truncate">{title}</span>
@@ -67,7 +67,7 @@ function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
         {(entry.chips?.length || waiting) && (
           <div className="flex max-w-[85%] flex-wrap justify-end gap-1">
             {entry.chips?.map((c) => <ChipView key={chipKey(c)} chip={c} />)}
-            {waiting && <span className="text-[11px] text-muted-foreground">waiting</span>}
+            {waiting && <span className="text-xs text-muted-foreground">waiting</span>}
           </div>
         )}
       </div>
@@ -418,7 +418,7 @@ export function KinChat() {
           {working.length > 0 && (
             <div className="shrink-0 space-y-1 border-t px-3 py-1.5" aria-label="Helpers">
               {working.slice(0, 3).map((j) => (
-                <p key={j.id} className="flex items-center gap-1.5 text-[11px] text-muted-foreground" data-job={j.status}>
+                <p key={j.id} className="flex items-center gap-1.5 text-xs text-muted-foreground" data-job={j.status}>
                   {j.status === "running" ? <Loader2 className="size-3 motion-safe:animate-spin" /> : <span className="size-3" />}
                   <span className="truncate">
                     {j.status === "waiting" ? "Waiting for the monthly cap: " : j.status === "queued" ? "Queued: " : "Helper working: "}

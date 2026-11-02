@@ -1,5 +1,5 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowUpRight, BookmarkCheck, BookmarkPlus, BookOpen, EyeOff, FileDiff, Headphones, Heart, MessagesSquare, NotebookPen, Video } from "lucide-react";
+import { ArrowUpRight, BookmarkCheck, BookmarkPlus, BookOpen, EyeOff, FileDiff, Headphones, Heart, MessagesSquare, NotebookPen, Video } from "@kintsugi/ui/icons";
 import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
@@ -164,7 +164,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
     >
       <div className="flex gap-5">
         <div className="min-w-0 flex-1">
-          <h2 className="text-[15px] leading-snug font-medium">
+          <h2 className="text-base leading-snug font-medium">
             <button type="button" className="text-left outline-none hover:underline focus-visible:underline" aria-expanded={!!reading} onClick={read}>
               {title}
             </button>
@@ -200,7 +200,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
       {reading && (
         <div className="mt-4 rounded-lg bg-muted/40 px-5 py-4" role="region" aria-label={`Reading ${title}`}>
           {reading.text ? (
-            <div className="max-w-prose space-y-3 font-[family-name:var(--font-prose)] text-[15px] leading-relaxed whitespace-pre-line">
+            <div className="max-w-prose space-y-3 font-[family-name:var(--font-prose)] text-base leading-relaxed whitespace-pre-line">
               {paragraphs(reading.text).map((p, i) => <p key={i}>{p}</p>)}
             </div>
           ) : (

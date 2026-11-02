@@ -31,7 +31,7 @@ function Row({ idea, model, n, onOpenDoc }: { idea: Listed; model: IdeasModel; n
       >
         <span className="pt-1 text-xs text-muted-foreground tabular-nums">{n}</span>
         <span className="min-w-0 space-y-1">
-          <span className={cn(serif, "block text-[17px] leading-snug")}>{idea.title}</span>
+          <span className={cn(serif, "block text-base leading-snug")}>{idea.title}</span>
           {!open && <span className="block truncate text-sm text-muted-foreground">{idea.snippet}</span>}
           <Status idea={idea} className="block md:hidden" />
         </span>
@@ -52,7 +52,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
   return (
     <div className="mx-auto max-w-[680px] px-5 pt-14 pb-16 md:px-6">
       <header className="mb-8 space-y-2">
-        <h1 className={cn(serif, "text-[28px] leading-tight font-semibold")}>{model.filter ? "Ideas for this draft" : "Ideas"}</h1>
+        <h1 className="ki-title">{model.filter ? "Ideas for this draft" : "Ideas"}</h1>
         {model.filter ? (
           <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
             <span className="truncate">{filterTitle ?? model.filter}</span>
@@ -80,7 +80,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
 
       {model.view && model.total === 0 && !model.busy && (
         <div className="space-y-2 border-y py-10 text-center">
-          <p className={cn(serif, "text-xl")}>{model.filter ? "No ideas about this draft yet." : "No ideas yet."}</p>
+          <p className="ki-prose-title">{model.filter ? "No ideas about this draft yet." : "No ideas yet."}</p>
           <p className="text-sm text-muted-foreground">
             {model.filter
               ? "Kin can look through your writing and collection for what bears on it."

@@ -2,4 +2,3 @@
 # Only these unmodified third-party notices bypass source whitespace checks.
 packages/ui/src/fonts/superior-serif/OFL.txt -text -whitespace
 apps/desktop/public/font-licenses/LT-Superior-Serif-OFL.txt -text -whitespace
-apps/lab/public/font-licenses/LT-Superior-Serif-OFL.txt -text -whitespace

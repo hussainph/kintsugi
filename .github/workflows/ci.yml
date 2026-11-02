@@ -47,6 +47,7 @@ jobs:
           node --test scripts/*.test.mjs
           pnpm --filter @kintsugi/core test
           pnpm --filter @kintsugi/editor test
+          pnpm --filter @kintsugi/ui test
           pnpm --filter @kintsugi/desktop test
           pnpm --filter @kintsugi/desktop test:references
           pnpm --filter @kintsugi/desktop test:headless
