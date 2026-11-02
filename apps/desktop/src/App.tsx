@@ -38,6 +38,7 @@ import { ExportMenu } from "@/export/ExportMenu";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
+import { appReady } from "@/lib/smoke";
 import { Failure, Saves } from "@/lib/saves";
 import { decide, removes } from "@/lib/outside";
 import { invert, question, restored, skipped, updated, type Relink, type RelinkOutcome, type RelinkPlan } from "@/lib/links";
@@ -431,7 +432,7 @@ export default function App() {
   );
 
   useEffect(() => {
-    vault.current().then(loadVault).catch(fail);
+    vault.current().then(loadVault).then(appReady).catch(fail);
   }, [loadVault, fail]);
 
   // The phone saved something: show it. If the open document changed, the

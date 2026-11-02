@@ -12,6 +12,7 @@ mod navigation;
 mod phone;
 mod references;
 mod search;
+mod smoke;
 mod tools;
 mod vault;
 mod watch;
@@ -54,7 +55,9 @@ fn builder() -> tauri::Builder<Runtime> {
                 // Only `tauri dev` loads from devUrl. A packaged debug build
                 // (`tauri build --debug`) serves tauri://localhost like release.
                 let dev = if tauri::is_dev() { config.build.dev_url.as_ref() } else { None };
-                navigation::allowed(url, dev)
+                let allowed = navigation::allowed(url, dev);
+                smoke::navigation(url, allowed);
+                allowed
             })
             .build())
         .plugin(tauri_plugin_dialog::init())
@@ -174,6 +177,7 @@ fn builder() -> tauri::Builder<Runtime> {
             export::export_assets,
             export::export_pdf,
             export::export_write,
+            smoke::app_ready,
         ])
 }
 

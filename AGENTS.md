@@ -42,7 +42,7 @@ Run the ones your change touches before opening a PR:
 ## Git hosting
 
 - The repository lives on **GitHub**: `github.com/hussainph/kintsugi`
-  (private for now). `origin` points there; `main` is the default branch.
+  (public). `origin` points there; `main` is the default branch.
 - Use `gh` for forge work (repo, PRs, issues). Kintsugi is not hosted on
   Entire or any other forge; don't add other remotes.
 - **Tickets land as pull requests.** Work on the ticket's own branch and
@@ -50,6 +50,11 @@ Run the ones your change touches before opening a PR:
   `gh pr create` (title with the ticket id; body: what changed, checks run,
   anything unverified). Don't push to `main` and don't move `main` in any
   checkout. The board session reviews, verifies and merges the PR.
+- **CI runs on every PR** (`.github/workflows/ci.yml`, see README › CI).
+  It doesn't replace local checks: before opening a PR, still run the checks
+  that cover what you changed (and, for UI, look at it in a headless tab).
+  The board merges only when CI is green; `main` requires it. A failing job
+  is yours to fix on your branch, not to re-run until it passes.
 - **Clean up once your PR is merged.** In your ticket's worktree, run
   `cargo clean` and delete `.headless/` (scratch vaults, screenshots,
   downloaded browsers and tools), plus any scratch folders you made outside
