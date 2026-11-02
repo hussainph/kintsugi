@@ -54,7 +54,7 @@ fn builder() -> tauri::Builder<Runtime> {
                 let config = webview.app_handle().config();
                 // Only `tauri dev` loads from devUrl. A packaged debug build
                 // (`tauri build --debug`) serves tauri://localhost like release.
-                let dev = if tauri::is_dev() { config.build.dev_url.as_ref() } else { None };
+                let dev = if cfg!(debug_assertions) { config.build.dev_url.as_ref() } else { None };
                 let allowed = navigation::allowed(url, dev);
                 smoke::navigation(url, allowed);
                 allowed
