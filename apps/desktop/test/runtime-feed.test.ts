@@ -163,7 +163,7 @@ test("follow sources and read them newest first", { timeout: TIMEOUT }, async ()
   await feedItems().first().waitFor();
   assert.deepEqual(await titles(), [BLOG_TITLES[0], "Hand-cut dovetails, slowly", BLOG_TITLES[1], "Episode 12: Mending", BLOG_TITLES[2]]);
   assert.match(await page.getByRole("status").first().innerText(), /5 items/);
-  assert.match(await page.getByText(/need(s)? attention/).innerText(), /1 needs attention/);
+  assert.match(await page.getByText(/need(s)? attention/).innerText(), /1 source needs attention/);
 
   // Read in the app: full text from the feed, scripts dropped.
   await newest().getByRole("button", { name: BLOG_TITLES[0], exact: true }).click();
