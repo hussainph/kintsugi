@@ -32,12 +32,12 @@ export function FeedRow({ item, place, reasons, explore, onDismiss }: {
         onPress={() => router.push({ pathname: '/feed-item', params: { id: String(item.id), surface: place.surface, position: String(place.position) } })}
         style={({ pressed }) => [styles.body, pressed && { opacity: 0.6 }]}
       >
+        <Text style={[styles.title, { color: theme.text }]} numberOfLines={3}>
+          {title}
+        </Text>
         <Text style={[styles.meta, { color: theme.muted }]} numberOfLines={1}>
           {explore ? 'Exploring · ' : ''}
           {meta}
-        </Text>
-        <Text style={[styles.title, { color: theme.text }]} numberOfLines={3}>
-          {title}
         </Text>
         {item.summary && item.title && (
           <Text style={[styles.summary, { color: theme.muted }]} numberOfLines={2}>

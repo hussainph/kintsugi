@@ -164,7 +164,12 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
     >
       <div className="flex gap-5">
         <div className="min-w-0 flex-1">
-          <p className="mb-1.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+          <h2 className="text-[15px] leading-snug font-medium">
+            <button type="button" className="text-left outline-none hover:underline focus-visible:underline" aria-expanded={!!reading} onClick={read}>
+              {title}
+            </button>
+          </h2>
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
             {item.media === "video" && <Video className="size-3" aria-label="Video" />}
             {item.media === "audio" && <Headphones className="size-3" aria-label="Audio" />}
             {item.media === "book" && <BookOpen className="size-3" aria-label="New book" />}
@@ -174,11 +179,6 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
             <span aria-hidden>·</span>
             <time dateTime={new Date(when * 1000).toISOString()} title={new Date(when * 1000).toLocaleString()}>{ago(when)}</time>
           </p>
-          <h2 className="text-[15px] leading-snug font-medium">
-            <button type="button" className="text-left outline-none hover:underline focus-visible:underline" aria-expanded={!!reading} onClick={read}>
-              {title}
-            </button>
-          </h2>
           {item.summary && item.summary !== title && !reading && (
             <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-muted-foreground">{item.summary}</p>
           )}

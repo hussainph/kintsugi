@@ -310,7 +310,7 @@ export function KinChat() {
   };
 
   const thread = page.threads.find((t) => t.key === view);
-  const threadLabel = view === null ? "Everything" : thread?.label ?? (topic?.key === view ? topic.label : "Anything");
+  const threadLabel = view === null ? "Everything" : thread?.label ?? (topic?.key === view ? topic.label : "General");
   const working = helpers.filter((j) => ACTIVE.includes(j.status));
   const answering = new Set(page.running?.answers ?? []);
   const talking = !!live;
@@ -388,11 +388,11 @@ export function KinChat() {
             {page.entries.map((entry) => {
               const divider = view === null && entry.topic !== lastTopic;
               lastTopic = entry.topic;
-              const label = page.threads.find((t) => t.key === entry.topic)?.label ?? "anything";
+              const label = page.threads.find((t) => t.key === entry.topic)?.label ?? "General";
               return (
                 <div key={entry.seq} className="space-y-4">
                   {divider && (
-                    <p className="text-center text-xs text-muted-foreground">About {label}</p>
+                    <p className="text-center text-xs text-muted-foreground">{entry.topic ? `About ${label}` : label}</p>
                   )}
                   <Message entry={entry} waiting={page.pending.includes(entry.seq) && !answering.has(entry.seq)} />
                 </div>
