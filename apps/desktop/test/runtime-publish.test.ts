@@ -136,12 +136,13 @@ after(async () => {
 
 let page: Page;
 
-test("Settings → Blog refuses a non-scratch folder, then imports posts as a read-only mirror", { timeout: 120_000 }, async () => {
+test("Settings › Blog refuses a non-scratch folder, then imports posts as a read-only mirror", { timeout: 120_000 }, async () => {
   page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
   await page.goto(url);
   await page.locator(`[title="${DOC}"]`).waitFor();
   await page.keyboard.press("Meta+,");
-  const settings = page.getByRole("dialog", { name: "Settings" });
+  const settings = page.getByRole("region", { name: "Settings" });
+  await settings.getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name: "Blog" }).click();
   const field = settings.getByLabel("Blog repository folder");
   // A real folder that isn't a scratch copy: headless refuses it.
   await field.fill(root);

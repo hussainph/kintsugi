@@ -8,7 +8,10 @@ use super::cost::{Report, Settings};
 use super::memory::{Access, Source};
 use super::prompt::Chip;
 use super::tools::Tools;
-use super::{ModelRef, Task, chosen_model, meter, preferences, ready, resolve, statuses, wire};
+use super::{
+    ModelRef, Task, chosen_model, conversation_model, meter, picks, resolve, shown_statuses,
+    statuses, wire,
+};
 use crate::AppHandle;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -70,12 +73,23 @@ impl agent::Model for Connected {
 
 /// The model for a Kin task, with credentials resolved in Rust.
 pub(crate) async fn connect(task: Task) -> Result<Connected> {
+    connect_to(task, None).await
+}
+
+/// The same, with the model picked for a conversation (KI-61) in place of
+/// the task's default while its provider is usable.
+pub(crate) async fn connect_to(task: Task, pick: Option<ModelRef>) -> Result<Connected> {
     #[cfg(feature = "headless")]
     if crate::headless::kin_mock() {
         return Ok(Connected::Mock(super::scripted::Scripted::default()));
     }
-    let model = chosen_model(task, &statuses()?, &meter().settings())
-        .ok_or("No AI provider is set up. Run `pi`, log in or add an API key.")?;
+    let statuses = statuses()?;
+    let settings = meter().settings();
+    let model = match pick {
+        Some(pick) if task == Task::Chat => conversation_model(Some(&pick), &statuses, &settings),
+        _ => chosen_model(task, &statuses, &settings),
+    }
+    .ok_or("No AI provider is set up. Run `pi`, log in or add an API key.")?;
     let provider = wire::provider(&model.provider).ok_or("unknown provider")?;
     let auth = resolve(provider).await?;
     let endpoint = wire::Endpoint::new(provider, &model.model, auth);
@@ -224,22 +238,13 @@ pub fn kin_usage() -> Report {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ModelOption {
-    #[serde(flatten)]
-    pub model: ModelRef,
-    /// Its provider has credentials right now.
-    pub usable: bool,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct TaskModels {
     pub task: &'static str,
-    /// The owner's pick, if any.
+    /// The owner's default for it, if any.
     pub chosen: Option<ModelRef>,
-    /// What a turn would use now.
+    /// What it would use now: the default while its provider is usable,
+    /// else the first usable preference.
     pub resolved: Option<ModelRef>,
-    pub options: Vec<ModelOption>,
 }
 
 #[derive(Debug, Serialize)]
@@ -250,39 +255,13 @@ pub struct SettingsView {
 }
 
 fn view(settings: &Settings) -> Result<SettingsView> {
-    let statuses = statuses()?;
-    // Every known model is an option for every Kin task, the task's own
-    // preferences first.
-    let mut all: Vec<ModelRef> = Vec::new();
-    for task in Task::ALL {
-        for m in preferences(task) {
-            if !all.contains(m) {
-                all.push(m.clone());
-            }
-        }
-    }
-    let tasks = Task::KIN
+    let statuses = shown_statuses()?;
+    let tasks = Task::SETTINGS
         .into_iter()
-        .map(|task| {
-            let mut options: Vec<ModelRef> = preferences(task).to_vec();
-            options.extend(
-                all.iter()
-                    .filter(|m| !options.contains(m))
-                    .cloned()
-                    .collect::<Vec<_>>(),
-            );
-            TaskModels {
-                task: task.id(),
-                chosen: settings.models.get(task.id()).cloned(),
-                resolved: chosen_model(task, &statuses, settings),
-                options: options
-                    .into_iter()
-                    .map(|m| ModelOption {
-                        usable: ready(&m, &statuses),
-                        model: m,
-                    })
-                    .collect(),
-            }
+        .map(|task| TaskModels {
+            task: task.id(),
+            chosen: settings.models.get(task.id()).cloned(),
+            resolved: chosen_model(task, &statuses, settings),
         })
         .collect();
     Ok(SettingsView {
@@ -305,10 +284,11 @@ pub fn kin_set_cap(chat: State<super::chat::Chat>, cap_usd: Option<f64>) -> Resu
     Ok(meter().report())
 }
 
-/// Picks the model for a Kin task, or (`None`) goes back to the default.
+/// Sets the default model for a task (`chat`, `ideas`, `edit`, `complete`
+/// or `triage`), or (`None`) goes back to the automatic choice.
 #[tauri::command]
 pub fn kin_set_model(task: String, model: Option<ModelRef>) -> Result<SettingsView> {
-    let task = kin_task(Some(&task))?;
+    let task = Task::from_id(&task).ok_or_else(|| format!("unknown task {task}"))?;
     if let Some(m) = &model
         && wire::provider(&m.provider).is_none()
     {
@@ -323,6 +303,50 @@ pub fn kin_set_model(task: String, model: Option<ModelRef>) -> Result<SettingsVi
         }
     })?;
     view(&settings)
+}
+
+/// The model for one conversation in the chat: his pick for it, and what
+/// a turn would use now.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatModel {
+    pub topic: String,
+    pub chosen: Option<ModelRef>,
+    pub resolved: Option<ModelRef>,
+}
+
+fn chat_model(vault: &std::path::Path, topic: String) -> Result<ChatModel> {
+    let chosen = picks::get(vault, &topic);
+    let resolved = conversation_model(chosen.as_ref(), &shown_statuses()?, &meter().settings());
+    Ok(ChatModel {
+        topic,
+        chosen,
+        resolved,
+    })
+}
+
+/// The model for the conversation `topic` (a thread's key, `""` for general).
+#[tauri::command]
+pub fn kin_chat_model(app: AppHandle, topic: String) -> Result<ChatModel> {
+    chat_model(&crate::vault::current(&app)?, topic)
+}
+
+/// Picks the model for the conversation `topic`, or (`None`) goes back to
+/// the chat default. Kept in the vault (`picks`).
+#[tauri::command]
+pub fn kin_chat_set_model(
+    app: AppHandle,
+    topic: String,
+    model: Option<ModelRef>,
+) -> Result<ChatModel> {
+    if let Some(m) = &model
+        && wire::provider(&m.provider).is_none()
+    {
+        return Err(format!("unknown provider {}", m.provider));
+    }
+    let vault = crate::vault::current(&app)?;
+    picks::set(&vault, &topic, model)?;
+    chat_model(&vault, topic)
 }
 
 #[cfg(test)]

@@ -5,7 +5,6 @@ import { open as pickFolder } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Palette, PaletteMode } from "@/components/Palette";
-import { PhoneDialog } from "@/components/PhoneDialog";
 import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
 import { OutsideChoice, OutsideDialog } from "@/components/OutsideDialog";
 import { Sidebar } from "@/components/Sidebar";
@@ -25,7 +24,8 @@ import { KinChat } from "@/kin/Chat";
 import { KinDev } from "@/kin/KinDev";
 import { editorChips } from "@/kin/screen";
 import { useScreenContext } from "@/lib/chat";
-import { Settings } from "@/kin/Settings";
+import { Settings } from "@/settings/Settings";
+import { onOpenSettings, type SettingsSection } from "@/lib/kin";
 import { AboutYou } from "@/kin/AboutYou";
 import { Feed } from "@/feed/Feed";
 import { Ideas } from "@/ideas/Ideas";
@@ -91,7 +91,9 @@ export default function App() {
   // Ideas, optionally filtered to one document ("Ideas for this draft").
   const [ideasOpen, setIdeasOpen] = useState<{ path?: string } | null>(null);
   const [openClip, setOpenClip] = useState<{ path: string; seq: number }>();
-  const [phoneOpen, setPhoneOpen] = useState(false);
+  // Settings, open at a section, over everything else; null when closed.
+  const [settingsAt, setSettingsAt] = useState<SettingsSection | null>(null);
+  const lastSection = useRef<SettingsSection>("general");
   const [phoneStatus, setPhoneStatus] = useState<PhoneStatus | null>(null);
   const [blocked, setBlocked] = useState<Blocked | null>(null);
   const [collision, setCollision] = useState<Collision | null>(null);
@@ -478,6 +480,15 @@ export default function App() {
     phone.status().then(setPhoneStatus).catch(() => {});
   }, []);
 
+  // ⌘, the sidebar and `openSettings()` open Settings where he left it.
+  const showSettings = useCallback((section?: SettingsSection) => {
+    if (section) lastSection.current = section;
+    viewRef.current?.contentDOM.blur();
+    setSettingsAt(lastSection.current);
+  }, []);
+  const closeSettings = useCallback(() => setSettingsAt(null), []);
+  useEffect(() => onOpenSettings(showSettings), [showSettings]);
+
   // An update restarts the app, so it waits for the same saves a close does.
   useUpdates(async () => (await settle("restarted")) !== false);
 
@@ -807,6 +818,9 @@ export default function App() {
       action();
     };
     const key = e.key.toLowerCase();
+    if (key === "," && !e.shiftKey) return run(() => showSettings());
+    // Settings covers the app; its shortcuts wait until he's back.
+    if (settingsAt) return;
     if (key === "p" && !e.shiftKey) run(() => setPalette({ kind: "open" }));
     else if (key === "n") run(() => setPalette({ kind: e.shiftKey ? "new-folder" : "new-doc", dir: selectedDir }));
     else if (key === "i" && e.shiftKey) run(showLibrary);
@@ -824,7 +838,7 @@ export default function App() {
   }, []);
 
   // What Kin's chat picks up from the editor: the selection, the document.
-  useScreenContext("writing", doc && !away ? () => editorChips(viewRef.current, doc.path) : null, [doc?.path]);
+  useScreenContext("writing", doc && !away && !settingsAt ? () => editorChips(viewRef.current, doc.path) : null, [doc?.path]);
 
   const status = field(text, "status");
   const mirror = field(text, "mirror");
@@ -852,11 +866,13 @@ export default function App() {
         onRename={rename}
         onTrash={trash}
         phoneOn={phoneStatus?.enabled ?? false}
-        onPhone={() => setPhoneOpen(true)}
+        onPhone={() => showSettings("phone")}
+        settingsOpen={!!settingsAt}
+        inert={!!settingsAt}
         tagFilter={tagFilter}
         onTagFilter={setTagFilter}
       />
-      <SidebarInset className="relative h-svh min-w-0">
+      <SidebarInset className="relative h-svh min-w-0" inert={!!settingsAt}>
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
         {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} renderUsedIn={(clip) => <UsedIn root={root} path={clip.path} onOpen={openDoc} />} />}
         {feedOpen && <Feed picked={<Picked />} />}
@@ -952,15 +968,19 @@ export default function App() {
       <Palette mode={palette} docs={docs} onOpen={openDoc} onCreate={create} onClose={() => setPalette(null)} />
       <UnsavedDialog failures={blocked?.failures ?? null} action={blocked?.action ?? ""} onChoose={answer} />
       <OutsideDialog collision={collision} onChoose={chooseOutside} />
-      <PhoneDialog
-        open={phoneOpen}
-        status={phoneStatus}
-        onStatus={setPhoneStatus}
-        onClose={() => setPhoneOpen(false)}
-      />
       <Publish root={root} path={doc && !away ? doc.path : null} viewRef={viewRef} flush={flush} />
       <Export root={root} path={doc && !away ? doc.path : null} viewRef={viewRef} flush={flush} />
-      <Settings />
+      {settingsAt && (
+        <Settings
+          section={settingsAt}
+          onSection={showSettings}
+          onClose={closeSettings}
+          root={root}
+          onOpenVault={() => void openVault()}
+          phoneStatus={phoneStatus}
+          onPhoneStatus={setPhoneStatus}
+        />
+      )}
       <AboutYou />
       <KinDev />
       <KinChat />

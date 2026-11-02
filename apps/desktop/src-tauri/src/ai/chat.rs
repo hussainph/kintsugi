@@ -27,7 +27,6 @@
 //! vault, memory, the meter and somewhere to send events, so tests run it
 //! against scripted models.
 
-use super::Task;
 use super::agent::{self, Cancel, Harness, KinEvent, Limits, Model, Stop};
 use super::cost::Meter;
 use super::history::{self, Draft, Entry, Hit, Log, Role, Thread, Topic};
@@ -36,6 +35,7 @@ use super::memory::Access;
 use super::prompt::{Chip, Memory};
 use super::tools::Tools;
 use super::wire::{Exchange, Item};
+use super::{ModelRef, Task};
 use serde::Serialize;
 use serde_json::Value;
 use std::future::Future;
@@ -60,6 +60,19 @@ pub trait Brain: Send + Sync + 'static {
     type Model: Model + 'static;
     /// The model for a task, with credentials resolved.
     fn connect(&self, task: Task) -> impl Future<Output = Result<Self::Model>> + Send;
+    /// The model he picked for one conversation (KI-61), if any.
+    fn picked(&self, _topic: &str) -> Option<ModelRef> {
+        None
+    }
+    /// The model for a task, or `pick` while its provider is usable.
+    fn connect_to(
+        &self,
+        task: Task,
+        pick: Option<ModelRef>,
+    ) -> impl Future<Output = Result<Self::Model>> + Send {
+        let _ = pick;
+        self.connect(task)
+    }
     fn vault(&self) -> Result<PathBuf>;
     /// Where a vault's conversation log lives (`None`: in memory).
     fn log_dir(&self, vault: &Path) -> Option<PathBuf> {
@@ -499,7 +512,11 @@ impl<B: Brain> Engine<B> {
             history,
             recap,
         };
-        let (streamed, result, _) = self.execute(&info.turn, &request, &cancel, true).await;
+        // The model he picked for this conversation, if any (KI-61).
+        let pick = self.0.brain.picked(&info.topic);
+        let (streamed, result, _) = self
+            .execute_as(&info.turn, &request, &cancel, true, pick)
+            .await;
 
         let stopped = self
             .0
@@ -582,12 +599,24 @@ impl<B: Brain> Engine<B> {
         cancel: &Cancel,
         chat: bool,
     ) -> (String, Result<agent::Summary>, Trace) {
+        self.execute_as(turn, request, cancel, chat, None).await
+    }
+
+    /// `execute`, on the model picked for the conversation when there is one.
+    async fn execute_as(
+        &self,
+        turn: &str,
+        request: &agent::Turn,
+        cancel: &Cancel,
+        chat: bool,
+        pick: Option<ModelRef>,
+    ) -> (String, Result<agent::Summary>, Trace) {
         let mut streamed = String::new();
         let mut trace = Trace::default();
         let started = std::time::Instant::now();
         let result = async {
             let vault = self.0.brain.vault()?;
-            let model = self.0.brain.connect(request.task).await?;
+            let model = self.0.brain.connect_to(request.task, pick).await?;
             let meter = self.0.brain.meter();
             let log = self.0.log.clone();
             let history: super::tools::History =
@@ -1004,6 +1033,15 @@ impl Brain for AppBrain {
 
     async fn connect(&self, task: Task) -> Result<Connected> {
         super::kin::connect(task).await
+    }
+
+    fn picked(&self, topic: &str) -> Option<ModelRef> {
+        let vault = crate::vault::current(&self.0).ok()?;
+        super::picks::get(&vault, topic)
+    }
+
+    async fn connect_to(&self, task: Task, pick: Option<ModelRef>) -> Result<Connected> {
+        super::kin::connect_to(task, pick).await
     }
 
     fn vault(&self) -> Result<PathBuf> {

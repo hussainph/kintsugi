@@ -156,7 +156,6 @@ export function WhyThis({ idea, model }: { idea: Listed; model: IdeasModel }) {
       </button>
       {open && (
         <div className="mt-3 space-y-3 rounded-lg bg-muted/60 p-4">
-          <p className="text-xs text-muted-foreground">Kin suggested this for the reasons below. Mark one as not a reason and Kin stops using it.</p>
           <ul className="space-y-2.5">
             {idea.reasons.map((reason) => (
               <li key={reason.id} className={cn("space-y-1.5", reason.removed && "opacity-50")}>
@@ -241,7 +240,7 @@ export function AdoptChooser({ idea, model }: { idea: Listed; model: IdeasModel 
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          The body starts empty. The idea and {clips} {clips === 1 ? "clip" : "clips"} go in its frontmatter and show beside the draft, not in the text.
+          The body starts empty. The idea and {clips} {clips === 1 ? "clip" : "clips"} go in the frontmatter.
         </p>
       </form>
       {model.drafts.length > 0 && (
@@ -341,7 +340,7 @@ export function Provenance({ idea, model, onOpenDoc }: { idea: Listed; model: Id
   if (!idea.adopted && !was && !idea.refining && !idea.refineError) return null;
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground" role="status">
-      {idea.refining && <span>Kin is reworking it. The new version replaces this one when it's ready.</span>}
+      {idea.refining && <span>Kin is reworking it.</span>}
       {idea.refineError && !idea.refining && <span className="text-destructive">Refine didn't work: {idea.refineError}</span>}
       {was && (
         <span>

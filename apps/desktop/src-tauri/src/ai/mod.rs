@@ -17,6 +17,7 @@
 //! - `history`: the one conversation log, its inferred threads and summaries.
 //! - `jobs`: the helper job table.
 //! - `chat`: the live conversation: batching, interrupts, helpers.
+//! - `picks`: the model picked for each conversation, in the vault.
 //! - `ideas`: Kin's daily ideas, checked against their sources (KI-39).
 
 pub mod about;
@@ -34,6 +35,7 @@ pub mod memory;
 pub mod models;
 mod opencode_auth;
 mod pi_auth;
+pub mod picks;
 pub mod prompt;
 mod providers;
 #[cfg(feature = "headless")]
@@ -167,8 +169,16 @@ impl Task {
         Task::Ideas,
         Task::Triage,
     ];
-    /// Tasks whose model the owner picks in Settings.
+    /// Tasks Kin's agent runs.
     pub const KIN: [Task; 3] = [Task::Chat, Task::Ideas, Task::Triage];
+    /// Every task, in the order Settings lists their default models.
+    pub const SETTINGS: [Task; 5] = [
+        Task::Chat,
+        Task::Ideas,
+        Task::Edit,
+        Task::Complete,
+        Task::Triage,
+    ];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -253,6 +263,28 @@ fn chosen_model(
         .filter(|m| wire::provider(&m.provider).is_some() && ready(m, statuses))
         .cloned()
         .or_else(|| model_for(task, statuses).cloned())
+}
+
+/// The model for one conversation: the owner's pick for it when its
+/// provider is usable, else the chat default (`chosen_model`), which falls
+/// back to the next usable preference in turn.
+fn conversation_model(
+    pick: Option<&ModelRef>,
+    statuses: &[ProviderStatus],
+    settings: &cost::Settings,
+) -> Option<ModelRef> {
+    pick.filter(|m| wire::provider(&m.provider).is_some() && ready(m, statuses))
+        .cloned()
+        .or_else(|| chosen_model(Task::Chat, statuses, settings))
+}
+
+/// The model a task would use now: the owner's default for it in Settings,
+/// else the first usable preference. The webview asks before an edit or a
+/// completion, so it picks what Settings says.
+#[tauri::command]
+pub fn ai_model_for(task: String) -> Result<Option<ModelRef>> {
+    let task = Task::from_id(&task).ok_or_else(|| format!("unknown task {task}"))?;
+    Ok(chosen_model(task, &shown_statuses()?, &meter().settings()))
 }
 
 /// The process-wide cost meter. `complete` (enrichment) has no app handle,
@@ -535,6 +567,49 @@ mod tests {
             assert_eq!(model_for(Task::Edit, &statuses), Some(second), "{unusable}");
         }
         assert_eq!(model_for(Task::Edit, &[]), None);
+    }
+
+    #[test]
+    fn defaults_and_picks_fall_back_to_the_next_usable_model() {
+        let model = |provider: &str, id: &str| ModelRef {
+            provider: provider.into(),
+            model: id.into(),
+            reasoning: None,
+        };
+        let first = preferences(Task::Chat)[0].clone();
+        let second = preferences(Task::Chat)[1].clone();
+        let id = |m: &ModelRef| wire::provider(&m.provider).unwrap().id;
+        let mut settings = cost::Settings::default();
+        let haiku = model("anthropic", "claude-haiku-5-5");
+        settings.models.insert("chat".into(), haiku.clone());
+        let pick = model("zai", "glm-5.3-flash");
+
+        // Everything usable: the pick, then the default.
+        let all = vec![
+            status(id(&first), "login"),
+            status(id(&second), "login"),
+            status("anthropic", "api_key"),
+            status("zai", "api_key"),
+        ];
+        assert_eq!(
+            conversation_model(Some(&pick), &all, &settings),
+            Some(pick.clone())
+        );
+        assert_eq!(
+            conversation_model(None, &all, &settings),
+            Some(haiku.clone())
+        );
+        assert_eq!(chosen_model(Task::Chat, &all, &settings), Some(haiku));
+        // No credential for the pick or the default: the next usable preference.
+        let few = vec![status(id(&first), "none"), status(id(&second), "login")];
+        assert_eq!(
+            conversation_model(Some(&pick), &few, &settings),
+            Some(second.clone())
+        );
+        assert_eq!(chosen_model(Task::Chat, &few, &settings), Some(second));
+        // Edits and completions take a default too.
+        settings.models.insert("complete".into(), pick.clone());
+        assert_eq!(chosen_model(Task::Complete, &all, &settings), Some(pick));
     }
 
     #[test]

@@ -131,7 +131,8 @@ for (const mode of ['light', 'dark']) {
 
   await check(mode, 'settings', async () => {
     await page.getByRole('button', { name: 'Settings' }).click();
-    await page.getByRole('dialog').waitFor();
+    await page.getByRole('region', { name: 'Settings' }).waitFor();
+    await assertIcons(page);
     await shot(page, mode, 'settings');
     await page.keyboard.press('Escape');
   });

@@ -128,12 +128,11 @@ export function Library({ ref, openClip, renderUsedIn }: Props) {
         {data.clips.length ? <Masonry active={!detail} key={JSON.stringify([query, tags])} items={data.clips} total={data.total} loading={loading} onOpen={setDetail} onMore={more} /> : loading ? <div className="flex-1" /> : <div className="ki-library-empty flex flex-1 flex-col items-center justify-center text-center">
           <Bookmark className="ki-muted mb-[var(--space-l)] size-[var(--size-l)]" />
           <h2 className="ki-prose-title">{query || tags.length ? "No clips match." : "Nothing saved yet."}</h2>
-          <p className="ki-text-s ki-muted mt-[var(--space-s)] max-w-xs">{query || tags.length ? "Try another word or remove a tag." : "Paste a link, drop an image, PDF or EPUB here, or write a note."}</p>
+          {!(query || tags.length) && <p className="ki-text-s ki-muted mt-[var(--space-s)] max-w-xs">Paste a link, drop an image, PDF or EPUB here, or write a note.</p>}
           {(query || tags.length > 0) ? <Button variant="ghost" className="mt-[var(--space-l)]" onClick={() => { setQuery(""); setTags([]); }}>Clear filters</Button> : <Button variant="ghost" className="mt-[var(--space-l)]" onClick={() => setAdding(true)}><Plus />Add a clip</Button>}
         </div>}
-        <p className="ki-library-help ki-text-xs ki-muted shrink-0 text-center">Paste or drop a link, image, PDF, EPUB or text anywhere here.</p>
       </div>
-      {dragging && <div className="ki-drop-target pointer-events-none absolute z-20 flex items-center justify-center"><div className="text-center"><Plus className="mx-auto mb-[var(--space-m)] size-[var(--size-l)]" /><p className="ki-prose-title">Drop to save</p><p className="ki-text-s ki-muted mt-[var(--space-xs)]">A link, image, PDF, EPUB or text.</p></div></div>}
+      {dragging && <div className="ki-drop-target pointer-events-none absolute z-20 flex items-center justify-center"><div className="text-center"><Plus className="mx-auto mb-[var(--space-m)] size-[var(--size-l)]" /><p className="ki-prose-title">Drop to save</p></div></div>}
       <CaptureDialog open={adding} onClose={() => setAdding(false)} capture={capture} />
     </section>
   );

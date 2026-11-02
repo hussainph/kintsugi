@@ -43,16 +43,17 @@ export type UsageReport = {
   ledger: string | null;
 };
 
-/** Mirrors `kin::SettingsView`. */
+/** Every task with a default model in Settings. Mirrors `ai::Task::SETTINGS`. */
+export type DefaultTask = "chat" | "ideas" | "edit" | "complete" | "triage";
+
+/** Mirrors `kin::SettingsView`. `resolved`: what the task would use now. */
 export type KinSettings = {
   capUsd: number | null;
-  tasks: {
-    task: KinTask;
-    chosen: ModelRef | null;
-    resolved: ModelRef | null;
-    options: (ModelRef & { usable: boolean })[];
-  }[];
+  tasks: { task: DefaultTask; chosen: ModelRef | null; resolved: ModelRef | null }[];
 };
+
+/** Mirrors `kin::ChatModel`: the model for one conversation in the chat. */
+export type ChatModel = { topic: string; chosen: ModelRef | null; resolved: ModelRef | null };
 
 /** `remember: false` marks the conversation "don't remember this". */
 export type Ask = { question: string; task?: KinTask; background?: boolean; context?: Chip[]; remember?: boolean };
@@ -117,7 +118,10 @@ export const kin = {
   usage: () => invoke<UsageReport>("kin_usage"),
   settings: () => invoke<KinSettings>("kin_settings"),
   setCap: (capUsd: number | null) => invoke<UsageReport>("kin_set_cap", { capUsd }),
-  setModel: (task: KinTask, model: ModelRef | null) => invoke<KinSettings>("kin_set_model", { task, model }),
+  setModel: (task: DefaultTask, model: ModelRef | null) => invoke<KinSettings>("kin_set_model", { task, model }),
+  /** The model for one conversation (a thread's key, "" for general). */
+  chatModel: (topic: string) => invoke<ChatModel>("kin_chat_model", { topic }),
+  setChatModel: (topic: string, model: ModelRef | null) => invoke<ChatModel>("kin_chat_set_model", { topic, model }),
 };
 
 /** Kin's memory and skills (About you), and the skills list for the / menu. */
@@ -132,12 +136,19 @@ export const memory = {
 export const sameModel = (a: ModelRef | null | undefined, b: ModelRef | null | undefined) =>
   !!a && !!b && a.provider === b.provider && a.model === b.model && (a.reasoning ?? null) === (b.reasoning ?? null);
 
-export const modelLabel = (m: ModelRef) => `${m.provider} · ${m.model}${m.reasoning ? ` (${m.reasoning})` : ""}`;
-
 export const dollars = (usd: number) =>
   usd === 0 ? "$0" : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
 
-/** Opens Settings or the Kin developer panel from anywhere. */
-export const openSettings = () => window.dispatchEvent(new CustomEvent("kintsugi:open-settings"));
+/** Settings' sections, in the order its sidebar lists them. */
+export type SettingsSection = "general" | "kin" | "providers" | "phone" | "blog" | "export" | "privacy";
+
+/** Opens Settings (at a section) or the Kin developer panel from anywhere. */
+export const openSettings = (section?: SettingsSection) =>
+  window.dispatchEvent(new CustomEvent<SettingsSection | undefined>("kintsugi:open-settings", { detail: section }));
+export function onOpenSettings(listener: (section?: SettingsSection) => void) {
+  const handler = (e: Event) => listener((e as CustomEvent<SettingsSection | undefined>).detail);
+  window.addEventListener("kintsugi:open-settings", handler);
+  return () => window.removeEventListener("kintsugi:open-settings", handler);
+}
 export const openKinDev = () => window.dispatchEvent(new CustomEvent("kintsugi:open-kin-dev"));
 export const openAboutYou = () => window.dispatchEvent(new CustomEvent("kintsugi:open-about-you"));

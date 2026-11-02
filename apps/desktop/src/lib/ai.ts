@@ -58,6 +58,11 @@ export class Cancelled extends Error {
 
 export const providers = () => invoke<ProviderStatus[]>("ai_providers");
 
+/** Providers Kintsugi doesn't offer, though Kin can speak to them: the owner
+ *  doesn't run local models (Ollama). */
+const HIDDEN = new Set(["ollama"]);
+export const shown = (p: { id: string }) => !HIDDEN.has(p.id);
+
 /** Pi's thinking levels, weakest first. A `ModelRef`'s `reasoning` is one of them. */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -91,6 +96,17 @@ export type ProviderModels = ProviderStatus & {
 
 /** The providers with a usable credential and their models; `all` lists every provider. */
 export const models = (all = false) => invoke<ProviderModels[]>("ai_models", { all });
+
+/** A model's name from the catalog, else its id. */
+export function modelName(list: ProviderModels[] | null, m: ModelRef): string {
+  return list?.find((p) => p.id === m.provider)?.models.find((x) => x.id === m.model)?.name ?? m.model;
+}
+
+/** US dollars per million tokens, input and output: "$0.40 · $1.60". */
+export function priceLabel(p: Rates): string {
+  const usd = (n: number) => (n === 0 ? "$0" : n < 1 ? `$${n.toFixed(2)}` : `$${n % 1 ? n.toFixed(2) : n}`);
+  return p.input === 0 && p.output === 0 ? "Free" : `${usd(p.input)} · ${usd(p.output)}`;
+}
 
 /** Streams one completion. `onText` gets the whole text so far on every
  *  delta; `done` resolves with the final text, or rejects with `Cancelled`. */

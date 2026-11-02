@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@kintsugi/ui/components/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { Checkbox, SelectField } from "@kintsugi/ui/graphical";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import { ask, dollars, KinEvent, KinTask, Summary } from "@/lib/kin";
 
@@ -75,10 +76,9 @@ export function KinDev() {
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) cancel.current?.(); setOpen(next); }}>
-      <DialogContent className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent aria-describedby={undefined} className="max-h-[85svh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Kin (developer)</DialogTitle>
-          <DialogDescription>Ask one question. Kin searches and reads the vault; it can only change its own memory and skills.</DialogDescription>
         </DialogHeader>
         <Textarea
           autoFocus
@@ -91,19 +91,24 @@ export function KinDev() {
           }}
         />
         <div className="flex items-center gap-3 text-sm">
-          <select className="h-8 rounded-md border bg-transparent px-2" value={task} onChange={(e) => setTask(e.target.value as KinTask)} aria-label="Task">
-            <option value="chat">chat</option>
-            <option value="ideas">ideas</option>
-            <option value="triage">triage</option>
-          </select>
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={background} onChange={(e) => setBackground(e.target.checked)} />
-            background (stops at the cap)
-          </label>
-          <label className="flex items-center gap-1.5">
-            <input type="checkbox" checked={!remember} onChange={(e) => setRemember(!e.target.checked)} />
-            don’t remember this
-          </label>
+          <SelectField<KinTask>
+            label="Task"
+            value={task}
+            onValueChange={(value) => value && setTask(value)}
+            options={[
+              { value: "chat", label: "Chat" },
+              { value: "ideas", label: "Ideas" },
+              { value: "triage", label: "Triage" },
+            ]}
+          />
+          <Checkbox.Row>
+            <Checkbox.Root checked={background} onCheckedChange={setBackground} />
+            <Checkbox.Label>Background, stops at the cap</Checkbox.Label>
+          </Checkbox.Row>
+          <Checkbox.Row>
+            <Checkbox.Root checked={!remember} onCheckedChange={(on) => setRemember(!on)} />
+            <Checkbox.Label>Don’t remember this</Checkbox.Label>
+          </Checkbox.Row>
           <span className="flex-1" />
           {running ? (
             <Button size="sm" variant="outline" onClick={() => cancel.current?.()}>Cancel</Button>

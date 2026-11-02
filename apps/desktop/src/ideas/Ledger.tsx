@@ -67,7 +67,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
                 {live ? `${count(live)} from Kin today` : "Nothing new from Kin today"} · {model.view?.today ?? ""}
               </KinMark>
             </p>
-            <p className="text-sm text-muted-foreground">Ignore the ones you don’t want. Unused ideas fade after a week.</p>
+            <p className="text-sm text-muted-foreground">Unused ideas fade after a week.</p>
           </>
         )}
         <JobLine model={model} />
@@ -81,11 +81,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
       {model.view && model.total === 0 && !model.busy && (
         <div className="space-y-2 border-y py-10 text-center">
           <p className="ki-prose-title">{model.filter ? "No ideas about this draft yet." : "No ideas yet."}</p>
-          <p className="text-sm text-muted-foreground">
-            {model.filter
-              ? "Kin can look through your writing and collection for what bears on it."
-              : "Kin suggests a few each day, based on your writing and what you've saved."}
-          </p>
+          {!model.filter && <p className="text-sm text-muted-foreground">Kin suggests a few each day.</p>}
         </div>
       )}
 

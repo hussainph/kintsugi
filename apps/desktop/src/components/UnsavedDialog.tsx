@@ -29,10 +29,7 @@ export function UnsavedDialog({ failures, action, onChoose }: Props) {
       <DialogContent className="sm:max-w-md" showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            Kintsugi couldn’t write your latest changes to disk, so it hasn’t {action} yet. Your changes are kept
-            here until a save works or you discard them.
-          </DialogDescription>
+          <DialogDescription>Kintsugi couldn’t save, so it hasn’t {action} yet.</DialogDescription>{/* copy-lint-allow: says what didn't happen, which the screen can't show */}
         </DialogHeader>
         <ul className="space-y-1 text-xs text-muted-foreground">
           {files.map((f) => (

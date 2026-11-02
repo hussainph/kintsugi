@@ -5,10 +5,11 @@ import { toast } from "sonner";
 import { field, setField } from "@kintsugi/core/frontmatter";
 import { localDate, planPublish, publishedFields, type PostKind, type PublishInput, type PublishPlan } from "@kintsugi/core/publish";
 import { Button } from "@kintsugi/ui/components/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Switch } from "@kintsugi/ui/components/switch";
 import { blog, importSummary, type BlogStatus, type Published } from "@/lib/blog";
 import { exporting, statementFor } from "@/lib/exporting";
+import { openSettings } from "@/lib/kin";
 import { usePieceSources } from "@/export/sources";
 import { Preview } from "./Preview";
 import "./publish.css";
@@ -152,14 +153,9 @@ export function Publish({ root, path, viewRef, flush }: Props) {
 
   return (
     <Dialog open={phase.kind !== "closed"} onOpenChange={(next) => { if (!next) close(); }}>
-      <DialogContent className="publish-dialog sm:max-w-3xl" onCloseAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent aria-describedby={undefined} className="publish-dialog sm:max-w-3xl" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>{phase.kind === "done" ? "Written to the blog" : "Publish to the blog"}</DialogTitle>
-          <DialogDescription>
-            {phase.kind === "done"
-              ? "The post is in the blog's working tree. Review it, then commit and push when you're ready."
-              : "Kintsugi writes the post into the blog repository. You commit and push."}
-          </DialogDescription>
         </DialogHeader>
 
         {phase.kind === "loading" && <p className="text-sm text-muted-foreground">Checking the post…</p>}
@@ -167,7 +163,7 @@ export function Publish({ root, path, viewRef, flush }: Props) {
         {phase.kind === "setup" && (
           <div className="space-y-3 text-sm">
             <p>{phase.error ?? phase.status?.error ?? "Choose the blog's folder (the hussain.ph repository) in Settings first."}</p>
-            <Button variant="outline" onClick={() => { close(); window.dispatchEvent(new CustomEvent("kintsugi:open-settings")); }}>Open Settings</Button>
+            <Button variant="outline" onClick={() => { close(); openSettings("blog"); }}>Open Settings</Button>
           </div>
         )}
 
