@@ -2,6 +2,7 @@
 // TypeScript parser (syntax only, no type checking).
 import { createRequire } from 'node:module';
 import { checkStyleString, positiveSpacing } from './rules.mjs';
+import { HELPER_PROP, jsxRole, explainerElements } from './explain.mjs';
 
 const require = createRequire(import.meta.url);
 let ts;
@@ -156,6 +157,34 @@ function inShortcut(node) {
   return false;
 }
 
+const LABEL_PROP = /^(?:label|title|heading|headerTitle|headerBackTitle|buttonLabel|actionLabel|confirmLabel|cancelLabel|[a-z]+(?:Button|Action)(?:Label|Title|Text))$/;
+const EMPTY_PROP = /^(?:empty|emptyText|emptyMessage|emptyLabel|emptyTitle|placeholderText)$|Empty(?:Text|Message)?$/;
+
+/** The role a string plays, from the prop, key or variable that holds it. */
+function roleOfName(name, node) {
+  if (HELPER_PROP.test(name)) return 'helper';
+  if (EMPTY_PROP.test(name) || /^empty/i.test(name)) return 'empty';
+  if (name === 'title' && isTooltip(node)) return 'helper';
+  if (LABEL_PROP.test(name)) return 'label';
+  // Alert.alert('Title', 'Message'): the first argument is a title, the second a description.
+  const t = typescript();
+  const call = node.parent && t.isCallExpression(node.parent) ? node.parent : null;
+  if (call && /^Alert\.alert$/.test(calleeFull(call.expression))) return call.arguments[0] === node ? 'label' : 'helper';
+  return '';
+}
+
+/** `title` on a DOM element (or `el.title = …`) is a tooltip, not a label. */
+function isTooltip(node) {
+  const t = typescript();
+  let p = node.parent;
+  while (p && (t.isJsxExpression(p) || t.isConditionalExpression(p) || t.isParenthesizedExpression(p) || t.isBinaryExpression(p) && p.operatorToken.kind !== t.SyntaxKind.EqualsToken)) p = p.parent;
+  if (p && t.isBinaryExpression(p)) return true;
+  if (!p || !t.isJsxAttribute(p)) return false;
+  const open = p.parent.parent;
+  const tag = open.tagName.getText();
+  return /^[a-z]/.test(tag) || open.attributes.properties.some((a) => t.isJsxAttribute(a) && a.name.getText() === 'className');
+}
+
 function literalText(node) {
   const t = typescript();
   if (t.isTemplateExpression(node)) return node.head.text + node.templateSpans.map((s) => `{…}${s.literal.text}`).join('');
@@ -190,7 +219,7 @@ export function extractTs(file, source) {
       const text = node.text.replace(/\s+/g, ' ').trim();
       if (text && /[\p{L}—]/u.test(text)) {
         const start = node.pos + node.text.search(/\S/);
-        texts.push({ line: lineOf(start), text, raw: node.text, rawLine: lineOf(node.pos), context: 'jsx', name: 'children' });
+        texts.push({ line: lineOf(start), text, raw: node.text, rawLine: lineOf(node.pos), context: 'jsx', name: 'children', role: jsxRole(t, node, sf) });
       }
     } else if (t.isStringLiteral(node) || t.isNoSubstitutionTemplateLiteral(node) || t.isTemplateExpression(node)) {
       const text = literalText(node);
@@ -198,7 +227,8 @@ export function extractTs(file, source) {
       const ctx = context(node);
       if (ctx.kind === 'text' ? /[\p{L}—]/u.test(text) : ctx.kind === 'maybe' && (looksLikeProse(text) || /^\s+—\s*$|^\s*—\s+$/.test(text))) {
         const start = node.getStart(sf);
-        texts.push({ line: lineOf(start), text, raw: source.slice(start, node.end), rawLine: lineOf(start), context: ctx.kind, name: ctx.name ?? '' });
+        const role = ctx.name === 'children' ? jsxRole(t, node, sf) : roleOfName(ctx.name ?? '', node);
+        texts.push({ line: lineOf(start), text, raw: source.slice(start, node.end), rawLine: lineOf(start), context: ctx.kind, name: ctx.name ?? '', role });
       }
       if (t.isTemplateExpression(node)) node.templateSpans.forEach((s) => visit(s.expression));
       return;
@@ -216,5 +246,6 @@ export function extractTs(file, source) {
     t.forEachChild(node, visit);
   };
   visit(sf);
-  return { texts, styles };
+  const explains = explainerElements(t, sf).map((e) => ({ line: lineOf(e.pos), detail: e.detail }));
+  return { texts, styles, explains };
 }

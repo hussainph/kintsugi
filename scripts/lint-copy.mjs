@@ -5,6 +5,10 @@
 //   node scripts/lint-copy.mjs --staged     staged files only (pre-commit)
 //   node scripts/lint-copy.mjs <files…>     these files, in scope or not
 //   node scripts/lint-copy.mjs --allows     list every copy-lint-allow
+//   node scripts/lint-copy.mjs --report verbose
+//                                           also print the report-only findings
+//                                           (over-explaining on the Mac app); they
+//                                           never fail the run
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { ROOT, allowances, format, lintSource, readStaged, rel, scopeFiles, stagedFiles } from './copy-lint/index.mjs';
@@ -12,7 +16,9 @@ import { ROOT, allowances, format, lintSource, readStaged, rel, scopeFiles, stag
 const args = process.argv.slice(2);
 const staged = args.includes('--staged');
 const listAllows = args.includes('--allows');
-const paths = args.filter((a) => !a.startsWith('--'));
+const reportAt = args.indexOf('--report');
+const verbose = reportAt >= 0 && args[reportAt + 1] === 'verbose';
+const paths = args.filter((a, i) => !a.startsWith('--') && !(verbose && i === reportAt + 1));
 
 const files = staged ? stagedFiles() : paths.length ? paths.map((p) => rel(resolve(p))) : scopeFiles();
 const read = (path) => (staged ? readStaged(path) : readFileSync(resolve(ROOT, path), 'utf8'));
@@ -22,12 +28,22 @@ if (listAllows) {
   process.exit(0);
 }
 
-let findings = [];
+let all = [];
 try {
-  for (const path of files) findings.push(...lintSource(path, read(path)));
+  for (const path of files) all.push(...lintSource(path, read(path)));
 } catch (error) {
   console.error(`lint:copy: ${error.message}`);
   process.exit(2);
+}
+const findings = all.filter((f) => !f.report);
+const reported = all.filter((f) => f.report);
+if (reported.length) {
+  if (verbose) {
+    for (const f of reported) console.log(format(f));
+    console.log('');
+  }
+  const byRule = [...new Set(reported.map((f) => f.rule))].join(', ');
+  console.log(`lint:copy: ${reported.length} report-only finding${reported.length === 1 ? '' : 's'} (${byRule}) in ${new Set(reported.map((f) => f.file)).size} file(s); they don't fail.${verbose ? '' : ' List them: pnpm lint:copy --report verbose'}`);
 }
 if (findings.length) {
   for (const f of findings) console.log(format(f));

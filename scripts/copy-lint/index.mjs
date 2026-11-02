@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { ALLOW, HINTS, checkText } from './rules.mjs';
 import { extractTs } from './extract-ts.mjs';
+import { checkExplaining } from './explain.mjs';
 import { extractRust } from './extract-rust.mjs';
 import { extractCss, extractHtml, extractMarkdown } from './extract-docs.mjs';
 
@@ -20,6 +21,17 @@ export const SCOPE = [
   { dir: 'docs', ext: /\.(?:md|html)$/, flat: true },
   { file: 'README.md' },
 ];
+
+/**
+ * Where the over-explaining rule only reports (`pnpm lint:copy --report
+ * verbose`) and doesn't fail yet. It is on everywhere else, starting with
+ * apps/mobile; a later ticket sweeps the Mac and turns it on there.
+ */
+export const REPORT_ONLY = [
+  [/^apps\/desktop\//, 'over-explaining', 'the Mac app has not been swept yet'],
+  [/^packages\//, 'over-explaining', 'shared packages are the Mac app\'s UI'],
+];
+export const reportOnly = (path, rule) => REPORT_ONLY.some(([re, r]) => r === rule && re.test(path));
 
 /** Files that are not copy. Keep this short and say why. */
 export const IGNORE = [
@@ -84,11 +96,16 @@ function locate(item, f, matched) {
 
 /** Lint one file's source. Returns findings { file, line, rule, detail, hint }. */
 export function lintSource(path, source) {
-  const { texts, styles } = extract(path, source);
+  const { texts, styles, explains = [] } = extract(path, source);
   const findings = [];
   for (const s of styles) findings.push({ file: path, line: s.line, rule: s.rule, detail: s.detail });
+  // Over-explaining is about UI strings, so TS/TSX only.
+  const ui = /\.tsx?$/.test(path);
+  if (ui) for (const e of explains) findings.push({ file: path, line: e.line, rule: 'over-explaining', detail: e.detail });
   for (const item of texts) {
-    for (const f of checkText(item.text)) {
+    const found = checkText(item.text);
+    if (ui) found.push(...checkExplaining(item.text, item.role ?? ''));
+    for (const f of found) {
       const matched = item.text.slice(f.index, f.index + f.length);
       findings.push({ file: path, line: locate(item, f, matched), rule: f.rule, detail: f.detail });
     }
@@ -103,7 +120,7 @@ export function lintSource(path, source) {
     const key = `${f.line}:${f.rule}:${f.detail}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    result.push({ ...f, hint: HINTS[f.rule] });
+    result.push({ ...f, hint: HINTS[f.rule], ...(reportOnly(path, f.rule) ? { report: true } : {}) });
   }
   lines.forEach((line, i) => {
     const allow = ALLOW.exec(line);

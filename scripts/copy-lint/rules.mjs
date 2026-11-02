@@ -214,6 +214,7 @@ export const HINTS = {
   'binary-contrast': 'say the positive thing directly',
   'colon-reveal': 'make it a plain sentence',
   'allow-reason': 'copy-lint-allow needs a reason: "copy-lint-allow: <why>"',
+  'over-explaining': 'let the components do the talking: delete it, or keep one short line with a fact the UI can\'t show (a limit, a cost, what leaves the device)',
 };
 
 /** Text rules: run over a piece of user-visible text. Returns [{rule, index, length, detail}]. */

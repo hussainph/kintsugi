@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { checkText } from './copy-lint/rules.mjs';
 import { inScope, lintSource, screenOf, inventory } from './copy-lint/index.mjs';
 import { looksLikeProse } from './copy-lint/extract-ts.mjs';
+import { checkExplaining, sentenceCount, wordCount } from './copy-lint/explain.mjs';
 
 const dir = new URL('./copy-lint/fixtures/', import.meta.url);
 const read = (path) => readFileSync(new URL(path, dir), 'utf8');
@@ -95,4 +96,41 @@ test('the CLI exits 1 with file:line and a hint on a failing file, 0 on a clean 
     return true;
   });
   assert.match(execFileSync('node', [cli, pass], { encoding: 'utf8' }), /clean/);
+});
+
+test('over-explaining: lengths by role, narration, and sentence counts', () => {
+  const rules = (text, role) => checkExplaining(text, role).map((f) => f.detail.replace(/ of \d+.*| narrates.*/, ''));
+  assert.deepEqual(rules('Save to Inspiration', 'label'), []);
+  assert.deepEqual(rules('Save this clip to your library now', 'label'), ['label']);
+  assert.deepEqual(rules('Phone access sends your writing over Tailscale only.', 'helper'), []);
+  assert.deepEqual(rules('Shows the clips you saved most recently, newest first, from every source you follow.', 'helper'), ['helper text']);
+  assert.deepEqual(rules('Nothing saved yet. Share a link from Safari to add one.', 'empty'), []);
+  assert.deepEqual(rules('Nothing yet. Share one. Or paste one.', 'empty'), ['empty state']);
+  assert.deepEqual(rules('This lets you pin a clip.', ''), ['"This lets you…"']);
+  assert.deepEqual(rules('Saved. Tap to open.', ''), ['"Tap to…"']);
+  assert.deepEqual(rules('Use this to pin a clip.', ''), ['"Use this to…"']);
+  assert.deepEqual(rules('Here you can pin clips.', ''), ['"Here you can…"']);
+  assert.deepEqual(rules('Tap targets and click-through rates', ''), []);
+  assert.equal(sentenceCount('One. Two {…} words. Three?'), 3);
+  assert.equal(wordCount('Remove {…} from the context'), 5);
+});
+
+test('over-explaining fails on the phone and only reports on the Mac', () => {
+  const source = read('fail/explaining.tsx');
+  const phone = lintSource('apps/mobile/src/app/x.tsx', source).filter((f) => f.rule === 'over-explaining');
+  const mac = lintSource('apps/desktop/src/x.tsx', source).filter((f) => f.rule === 'over-explaining');
+  const pkg = lintSource('packages/ui/src/x.tsx', source).filter((f) => f.rule === 'over-explaining');
+  assert.ok(phone.length > 0 && phone.every((f) => !f.report));
+  assert.equal(mac.length, phone.length);
+  assert.ok(mac.every((f) => f.report) && pkg.every((f) => f.report));
+  // Other rules still fail on the Mac.
+  assert.ok(lintSource('apps/desktop/src/x.tsx', read('fail/copy.tsx')).every((f) => !f.report));
+  // Docs and Rust aren't UI strings: no over-explaining there.
+  assert.deepEqual(lintSource('docs/x.md', 'Tap to open the menu. This lets you pick one.\n'), []);
+});
+
+test('--report verbose is a flag, not a path', () => {
+  const cli = new URL('./lint-copy.mjs', import.meta.url).pathname;
+  const pass = new URL('pass/explaining.tsx', dir).pathname;
+  assert.match(execFileSync('node', [cli, '--report', 'verbose', pass], { encoding: 'utf8' }), /1 file\(s\) clean/);
 });
