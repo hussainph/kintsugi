@@ -21,7 +21,8 @@
   "packageManager": "pnpm@9.12.0",
   "pnpm": {
     "patchedDependencies": {
-      "@expo/dom-webview@58.0.2": "patches/@expo__dom-webview@58.0.2.patch"
+      "@expo/dom-webview@58.0.2": "patches/@expo__dom-webview@58.0.2.patch",
+      "@expo/cli@58.1.17": "patches/@expo__cli@58.1.17.patch"
     }
   }
 }

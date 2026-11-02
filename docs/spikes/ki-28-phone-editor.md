@@ -198,6 +198,23 @@ Fabric has mounted the native view; `patches/@expo__dom-webview@58.0.2.patch`
 tries once more a frame later, then lets it go (the page asks for its props
 again when it loads).
 
+**`expo export` / EAS Update (KI-53).** The editor's CodeMirror languages
+(`@codemirror/language-data`) load with `import()`, so Metro splits each DOM
+component's web bundle into an entry, a shared `__common` chunk and one chunk
+per language. `expo export` then renames every DOM artifact to `<md5>.js` for
+updates, but the chunk references keep the old names, and the export failed
+with `Asset not found: _expo/static/js/web/__common-*.js` (still the case in
+upstream `exportDomComponentAsync`). `patches/@expo__cli@58.1.17.patch` turns
+off splitting only on that md5 path, so each DOM component exports as one
+~2.2 MB script with every language inlined. Dev and `export:embed` (Release
+builds) still split and load languages lazily. `pnpm --filter @kintsugi/mobile
+export:check` runs the export into a temp dir and checks the DOM pages, so a
+new `@expo/cli` (the patch is pinned to 58.1.17 and pnpm refuses an unused
+patch) or a new `"use dom"` component can't break it silently. KI-53 also
+keys Metro's shared `$TMPDIR/metro-cache` by checkout (`cacheVersion` in
+`metro.config.js`). Before that, a worktree's export picked up the main
+checkout's cached `"use dom"` path.
+
 Screenshots are in `docs/spikes/ki-36/`; the UI tests are
 `apps/mobile/spikes/editor-uitest/Tests/PhoneEditorTests.swift`.
 

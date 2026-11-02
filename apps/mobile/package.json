@@ -47,6 +47,7 @@
     "start": "expo start",
     "ios": "expo run:ios",
     "android": "expo run:android",
+    "export:check": "node scripts/export-check.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "test": "node --test src/lib/*.test.ts"

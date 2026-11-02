@@ -1,0 +1,19 @@
+diff --git a/build/src/export/exportDomComponents.js b/build/src/export/exportDomComponents.js
+index b08f8fc7570b3b478be85511dc87868060420738..a553da8d12e4ab472e03ae3590d7111def26cd6b 100644
+--- a/build/src/export/exportDomComponents.js
++++ b/build/src/export/exportDomComponents.js
+@@ -97,7 +97,13 @@ async function exportDomComponentAsync({ filePath, projectRoot, dev, devServer,
+     const bundle = await devServer.legacySinglePageExportBundleAsync({
+         platform: 'web',
+         domRoot: encodeURI(relativeImport),
+-        splitChunks: !_env.env.EXPO_NO_BUNDLE_SPLITTING,
++        // Kintsugi (KI-53): `expo export` (EAS Update) renames each DOM artifact
++        // to <md5>.js below, but split chunks keep their original names in
++        // `metadata.requires` and in the entry's chunk loader, so the HTML
++        // serializer fails with "Asset not found: _expo/static/js/web/__common-*.js".
++        // Emit one bundle per DOM component when renaming; `export:embed`
++        // (Release builds) keeps splitting.
++        splitChunks: !_env.env.EXPO_NO_BUNDLE_SPLITTING && !useMd5Filename,
+         mainModuleName: (0, _paths().convertEntryPointToRelative)(projectRoot, virtualEntry),
+         mode: dev ? 'development' : 'production',
+         engine: isHermes ? 'hermes' : undefined,
