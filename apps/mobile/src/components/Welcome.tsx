@@ -6,7 +6,7 @@ import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
 import { usePairing } from '@/lib/pairing';
 import { startSample } from '@/lib/sample';
-import { fonts, useTheme } from '@/theme';
+import { useTheme } from '@/theme';
 
 /** Before pairing: how to connect to the Mac. */
 export function Welcome() {
@@ -16,7 +16,7 @@ export function Welcome() {
 
   const paste = async () => {
     const pairing = parsePairLink(await Clipboard.getStringAsync());
-    if (!pairing) return setError('Copy the pairing link on your Mac first: Connect your phone → Copy link.');
+    if (!pairing) return setError('No pairing link on the clipboard.');
     setError(null);
     router.push({ pathname: '/pair', params: pairing });
   };
@@ -28,16 +28,7 @@ export function Welcome() {
       contentContainerStyle={styles.content}
     >
       <Stack.Title large>Kintsugi</Stack.Title>
-      <Text style={[styles.lede, { color: theme.text }]}>
-        Write and capture ideas into your Kintsugi vault from here, whenever your Mac is awake.
-      </Text>
-      <Text style={[styles.step, { color: theme.muted }]}>
-        1. On your Mac, open Kintsugi and click Connect your phone at the bottom of the sidebar.
-      </Text>
-      <Text style={[styles.step, { color: theme.muted }]}>
-        2. Turn on phone access, then scan the code with your camera. Or click Copy link on the Mac and paste it
-        here.
-      </Text>
+      <Text style={[styles.step, { color: theme.muted }]}>On your Mac, click Connect your phone and scan the code.</Text>
       <Pressable onPress={paste} style={[styles.button, { backgroundColor: theme.primary }]}>
         <Text style={[styles.buttonText, { color: theme.onPrimary }]}>Paste pairing link</Text>
       </Pressable>
@@ -46,7 +37,7 @@ export function Welcome() {
         // KI-36: try the new editor in Expo Go without a Mac. The notes stay
         // on this phone and go when you unpair (Home → ⋯ → Unpair).
         <Pressable accessibilityRole="button" onPress={() => startSample(pair)} style={[styles.button, styles.secondary, { borderColor: theme.border }]}>
-          <Text style={[styles.buttonText, { color: theme.text }]}>Try the editor on sample notes</Text>
+          <Text style={[styles.buttonText, { color: theme.text }]}>Try sample notes</Text>
         </Pressable>
       )}
     </ScrollView>
@@ -54,10 +45,9 @@ export function Welcome() {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 20, gap: 16 },
-  lede: { fontFamily: fonts.serif, fontSize: 21, lineHeight: 29 },
+  content: { padding: 20, gap: 12 },
   step: { fontSize: 15, lineHeight: 21 },
-  button: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, marginTop: 8 },
+  button: { alignSelf: 'flex-start', borderRadius: 10, paddingHorizontal: 18, paddingVertical: 12, marginTop: 4 },
   buttonText: { fontSize: 16, fontWeight: '600' },
   secondary: { borderWidth: 1 },
 });

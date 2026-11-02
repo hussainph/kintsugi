@@ -122,9 +122,6 @@ export default function KinScreen() {
           {items.length === 0 && (
             <View style={styles.empty}>
               <KinMark size={56} />
-              <Text style={[styles.emptyText, { color: theme.muted }]}>
-                Ask Kin about anything you’re reading or writing. Kin finds and connects things, and never writes your text for you.
-              </Text>
             </View>
           )}
           {items.map((item) => (
@@ -134,7 +131,7 @@ export default function KinScreen() {
           {jobs.length > 0 && (
             <View style={[styles.jobs, { borderColor: theme.border }]}>
               <Pressable accessibilityRole="button" onPress={() => setShowJobs(!showJobs)} style={styles.jobsHeader}>
-                <Text style={[styles.label, { color: theme.muted }]}>Kin’s jobs on your Mac</Text>
+                <Text style={[styles.label, { color: theme.muted }]}>Kin’s jobs</Text>
                 <SymbolView name={showJobs ? 'chevron.up' : 'chevron.down'} size={12} tintColor={theme.muted} />
               </Pressable>
               {showJobs && jobs.map((job) => <JobRow key={job.id} job={job} theme={theme} />)}
@@ -165,7 +162,7 @@ export default function KinScreen() {
             <TextInput
               value={text}
               onChangeText={setText}
-              placeholder={offline ? 'Write to Kin; it goes when your Mac is back…' : 'Ask Kin…'}
+              placeholder="Ask Kin…"
               placeholderTextColor={theme.faint}
               multiline
               accessibilityLabel="Message to Kin"
@@ -292,8 +289,7 @@ const styles = StyleSheet.create({
   bannerText: { flex: 1, fontSize: 14, lineHeight: 19 },
   list: { flex: 1 },
   listContent: { padding: 16, gap: 14, paddingBottom: 24 },
-  empty: { alignItems: 'center', gap: 14, paddingTop: 60, paddingHorizontal: 24 },
-  emptyText: { fontSize: 15, lineHeight: 21, textAlign: 'center' },
+  empty: { alignItems: 'center', paddingTop: 60 },
   thread: { fontSize: 13, textAlign: 'center', marginTop: 6 },
   ownerRow: { alignItems: 'flex-end', gap: 4 },
   owner: { maxWidth: '85%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, gap: 6 },

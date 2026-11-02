@@ -38,14 +38,13 @@ export default function Pair() {
       {problem ? (
         <>
           <Text style={[styles.message, { color: theme.text }]}>{problem}</Text>
-          <Text style={[styles.hint, { color: theme.muted }]}>
-            Check that Kintsugi is open on your Mac with phone access on, and that Tailscale is connected on both.
-          </Text>
+          <Text style={[styles.hint, { color: theme.muted }]}>Check phone access on your Mac and Tailscale on both.</Text>
           <Pressable
             onPress={() => {
               setError(null);
               setAttempt((n) => n + 1);
-            }}             style={[styles.button, { backgroundColor: theme.primary }]}
+            }}
+            style={[styles.button, { backgroundColor: theme.primary }]}
           >
             <Text style={[styles.buttonText, { color: theme.onPrimary }]}>Try again</Text>
           </Pressable>

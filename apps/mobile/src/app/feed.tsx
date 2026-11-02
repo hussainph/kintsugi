@@ -63,7 +63,7 @@ export default function FeedScreen() {
     api > 0 && api < SECTIONS_API
       ? OLD_MAC
       : snapshot.connection === 'offline'
-        ? `Your Mac is offline. This is the Feed as it last was${snapshot.waiting ? `; ${snapshot.waiting === 1 ? 'one action waits' : `${snapshot.waiting} actions wait`} for it` : ''}.`
+        ? `Your Mac is offline${snapshot.waiting ? `. ${snapshot.waiting === 1 ? 'One action' : `${snapshot.waiting} actions`} waiting` : ''}.`
         : snapshot.problem;
 
   return (
@@ -108,9 +108,7 @@ export default function FeedScreen() {
         <Text style={[styles.heading, styles.newest, { color: theme.text }]}>Newest</Text>
         {newest.length === 0 ? (
           <Text style={[styles.status, { color: theme.muted }]}>
-            {snapshot.connection === 'unknown'
-              ? 'Fetching your Feed from your Mac…'
-              : 'Nothing new. Follow sources from Kintsugi on your Mac.'}
+            {snapshot.connection === 'unknown' ? 'Fetching from your Mac…' : 'Nothing new. Follow sources on your Mac.'}
           </Text>
         ) : (
           newest.map((item, position) => (
@@ -120,7 +118,7 @@ export default function FeedScreen() {
       </ScrollView>
       {(hidden !== null || snapshot.effect) && (
         <Toast
-          text={hidden !== null ? 'Not interested. It won’t be shown again.' : effectLine(snapshot.effect!.effect)}
+          text={hidden !== null ? 'Hidden from your Feed.' : effectLine(snapshot.effect!.effect)}
           onUndo={() => {
             if (hidden !== null) {
               feed.act(hidden, 'undoNotInterested');

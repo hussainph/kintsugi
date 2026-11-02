@@ -81,16 +81,12 @@ export function Ledger({ model, status }: { model: IdeasModel; status: string | 
             {snapshot.today ? ` · ${snapshot.today}` : ''}
           </Text>
         </View>
-        <Text style={[styles.headerText, { color: theme.muted }]}>Ignore the ones you don’t want. Unused ideas fade after a week.</Text>
         {status && <Text style={[styles.headerText, { color: theme.muted }]}>{status}</Text>}
       </View>
 
       {snapshot.ideas.length === 0 && !snapshot.making && (
         <View style={[styles.empty, { borderColor: theme.border }]}>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>No ideas yet.</Text>
-          <Text style={[styles.headerText, { color: theme.muted, textAlign: 'center' }]}>
-            Kin suggests a few each day, based on your writing and what you’ve saved.
-          </Text>
         </View>
       )}
       {today.length > 0 && <List ideas={today} model={model} from={0} label="Today" />}
@@ -120,7 +116,7 @@ export function Ledger({ model, status }: { model: IdeasModel; status: string | 
         )}
         {snapshot.failed && <Text style={[styles.headerText, { color: theme.danger }]}>{snapshot.failed}</Text>}
         {snapshot.capReached && (
-          <Text style={[styles.headerText, { color: theme.muted }]}>This month’s AI budget is spent; new ideas wait for next month.</Text>
+          <Text style={[styles.headerText, { color: theme.muted }]}>This month’s AI budget is spent.</Text>
         )}
       </View>
     </View>

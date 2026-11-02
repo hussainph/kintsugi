@@ -89,11 +89,11 @@ export default function ClipNotesScreen() {
   };
 
   const note = failure
-    ? `Couldn’t send to your Mac. Your notes are kept on this phone. ${failure}`
+    ? `Couldn’t send to your Mac. Your notes are kept here. ${failure}`
     : local.gone
-      ? 'This clip was removed on your Mac. Your notes are kept on this phone.'
+      ? 'Removed on your Mac. Your notes are kept here.'
       : clipUnsent(local) && connection === 'offline'
-        ? 'Saved on this phone. It goes to your Mac when it’s reachable.'
+        ? 'Saved on this phone until your Mac is back.'
         : null;
 
   const notices = (local.conflict || note) && (
@@ -101,7 +101,7 @@ export default function ClipNotesScreen() {
       {local.conflict && (
         <View style={[styles.conflict, { backgroundColor: theme.surface }]}>
           <Text style={[styles.conflictText, { color: theme.text }]}>
-            These notes were changed on your Mac and on this phone in the same place. Which version should stay?
+            Changed on your Mac too. Which version stays?
           </Text>
           <View style={styles.choices}>
             <Pressable onPress={() => choose('theirs')} style={[styles.choice, { borderColor: theme.border }]}>

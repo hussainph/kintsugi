@@ -98,7 +98,7 @@ final class InspirationTests: XCTestCase {
     shot("08-grid-offline")
     tap(card("Why we sleep"))
     tap(app.buttons["Show the source"])
-    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "The source is kept on your Mac")).firstMatch.waitForExistence(timeout: 15))
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "The source loads when your Mac is back")).firstMatch.waitForExistence(timeout: 15))
     shot("09-detail-offline")
   }
 

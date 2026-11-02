@@ -102,7 +102,7 @@ final class SectionsTests: XCTestCase {
     tap(message)
     message.typeText("Anything new on repair?")
     tap(app.buttons["Send"])
-    let status = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Kin runs on your Mac, which isn’t reachable")).firstMatch
+    let status = app.staticTexts["Your Mac is offline. One message waiting."]
     XCTAssertTrue(status.waitForExistence(timeout: 30), "Kin doesn’t say it needs the Mac")
     XCTAssertTrue(app.staticTexts["Waiting for your Mac"].waitForExistence(timeout: 10), "the message isn’t kept waiting")
     shot("10-kin-offline-waiting")
