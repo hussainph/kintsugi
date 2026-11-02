@@ -134,6 +134,8 @@ export function KinChat() {
   const [threadsOpen, setThreadsOpen] = useState(false);
   const [providers, setProviders] = useState<ProviderModels[] | null>(null);
   const [model, setModel] = useState<ChatModel | null>(null);
+  /** Bumped when another vault opens: its conversations have their own picks. */
+  const [vaultSeq, setVaultSeq] = useState(0);
   const viewRef = useRef(view);
   viewRef.current = view;
   const openRef = useRef(open);
@@ -191,7 +193,7 @@ export function KinChat() {
     return () => {
       current = false;
     };
-  }, [open, conversation]);
+  }, [open, conversation, vaultSeq]);
 
   const pickModel = async (next: ChatModel["chosen"]) => {
     try {
@@ -234,6 +236,8 @@ export function KinChat() {
           setUnread(false);
           setSummaryOpen(false);
           setThreadsOpen(false);
+          // Model picks are per vault too.
+          setVaultSeq((n) => n + 1);
           // The new vault's thread for what's on screen, else everything.
           if (openRef.current) showRef.current();
           else setView(null);

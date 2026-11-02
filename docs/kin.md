@@ -404,10 +404,12 @@ GLM-5.3-Flash for completions and triage ($60 a month at $0.15 / $0.50).
 
 **Per conversation.** The chat's model picker sets the model for one
 conversation (a thread's key, `""` for general): `kin_chat_model(topic)`
-and `kin_chat_set_model(topic, model | null)`, kept in the vault at
-`.kintsugi/kin/models.json` (`ai/picks.rs`), beside the conversation it
-belongs to, so it moves with the vault. A turn runs on its conversation's
-pick while that provider is usable, else on the chat default.
+and `kin_chat_set_model(topic, model | null)`, kept in
+`<vault>/.kintsugi/kin/models.json` (`ai/picks.rs`), beside that vault's
+`log.jsonl` and `threads.json`, so it moves with the vault and another
+vault's thread of the same name keeps its own. A turn runs on the pick of
+its conversation in the vault it started in, while that provider is usable,
+else on the chat default. The chat reloads the pick on `switched`.
 
 ## Cost and the cap
 

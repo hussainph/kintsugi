@@ -98,10 +98,6 @@ impl Brain for TestBrain {
         Ok(self.script.clone())
     }
 
-    fn picked(&self, topic: &str) -> Option<ModelRef> {
-        crate::ai::picks::get(&self.vault, topic)
-    }
-
     async fn connect_to(&self, task: Task, pick: Option<ModelRef>) -> Result<Arc<Script>> {
         self.connected.lock().unwrap().push((task, pick));
         Ok(self.script.clone())
@@ -391,7 +387,8 @@ fn a_conversation_runs_on_the_model_picked_for_it() {
         model: "glm-5.3-flash".into(),
         reasoning: None,
     };
-    crate::ai::picks::set(f._vault.path(), "drafts/x.md", Some(light.clone())).unwrap();
+    let dir = crate::ai::history::vault_dir(f._vault.path()).unwrap();
+    crate::ai::picks::set(&dir, "drafts/x.md", Some(light.clone())).unwrap();
     f.engine
         .send("Tighten this?", vec![doc("drafts/x.md", "Draft X")])
         .unwrap();
