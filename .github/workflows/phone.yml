@@ -1,0 +1,55 @@
+# A Release build of the phone app for the iOS Simulator (KI-55). Optional and
+# not required by branch protection: it runs nightly, on demand, and on PRs
+# that touch the phone app or the packages it uses.
+name: Phone
+
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - apps/mobile/**
+      - packages/core/**
+      - packages/editor/**
+      - patches/**
+      - pnpm-lock.yaml
+      - .github/workflows/phone.yml
+
+concurrency:
+  group: phone-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    name: iOS Simulator build (Release)
+    runs-on: xcode-27
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the native project
+        working-directory: apps/mobile
+        env:
+          CI: "1"
+        run: npx expo prebuild --platform ios --no-install
+      - name: CocoaPods
+        working-directory: apps/mobile/ios
+        run: pod install
+      - name: xcodebuild
+        working-directory: apps/mobile/ios
+        run: |
+          set -o pipefail
+          xcodebuild -workspace Kintsugi.xcworkspace -scheme Kintsugi \
+            -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/ios" \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 60

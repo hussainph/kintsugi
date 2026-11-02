@@ -12,6 +12,7 @@ mod navigation;
 mod phone;
 mod references;
 mod search;
+mod smoke;
 mod tools;
 mod vault;
 mod watch;
@@ -174,6 +175,7 @@ fn builder() -> tauri::Builder<Runtime> {
             export::export_assets,
             export::export_pdf,
             export::export_write,
+            smoke::app_ready,
         ])
 }
 

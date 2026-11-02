@@ -20,7 +20,8 @@ const freePort = () =>
     });
   });
 
-export type App = { url: string; scratch: string; vault: string; config: string; shots: string; stop: () => void };
+/** `output`: everything the runner (backend and Vite) printed so far. */
+export type App = { url: string; scratch: string; vault: string; config: string; shots: string; output: () => string; stop: () => void };
 
 /** `prepare` runs on the seeded vault before the app starts. */
 export async function startApp(prefix: string, env: Record<string, string>, prepare?: (vault: string) => void): Promise<App> {
@@ -75,5 +76,5 @@ export async function startApp(prefix: string, env: Record<string, string>, prep
       // Already gone.
     }
   };
-  return { url, scratch, vault, config, shots, stop };
+  return { url, scratch, vault, config, shots, output: () => output, stop };
 }

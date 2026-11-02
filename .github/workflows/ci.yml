@@ -1,0 +1,145 @@
+# Every PR and every push to main, from a fresh checkout (KI-55). Branch
+# protection on main requires all four jobs; see README › CI.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same PR or branch cancels the run it replaces.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # Scripts and tests read this for -j and pnpm's workspace concurrency.
+  VOLLI_CONCURRENCY_HINT: "4"
+  # Never a real model or credential in CI.
+  KINTSUGI_HEADLESS_KIN: mock
+
+jobs:
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - name: Unit tests
+        run: |
+          node --test scripts/*.test.mjs
+          pnpm --filter @kintsugi/core test
+          pnpm --filter @kintsugi/editor test
+          pnpm --filter @kintsugi/desktop test
+          pnpm --filter @kintsugi/desktop test:references
+          pnpm --filter @kintsugi/desktop test:headless
+          pnpm --filter @kintsugi/mobile test
+      - name: Expo lint
+        working-directory: apps/mobile
+        run: npx expo lint
+      - run: pnpm --filter @kintsugi/mobile export:check
+      - name: Copy lint
+        run: |
+          if node -e "process.exit(require('./package.json').scripts['lint:copy'] ? 0 : 1)"; then
+            pnpm lint:copy
+          else
+            echo "::notice::pnpm lint:copy does not exist yet (KI-54); skipped"
+          fi
+
+  rust:
+    name: Rust
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo test --workspace --locked -j $VOLLI_CONCURRENCY_HINT
+      - run: cargo fmt --all --check
+
+  runtime:
+    name: Runtime (headless)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tauri's Linux build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev > /dev/null
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Headless Rust tests
+        run: cargo test -p kintsugi --no-default-features --features headless --locked -j $VOLLI_CONCURRENCY_HINT
+      # Built once here so the first runtime test doesn't spend its timeout compiling.
+      - name: Build the headless backend
+        run: cargo build -p kintsugi --bin kintsugi --no-default-features --features headless --locked -j $VOLLI_CONCURRENCY_HINT
+      - name: Playwright Chromium
+        run: pnpm --filter @kintsugi/desktop exec playwright install --with-deps chromium-headless-shell
+      - run: pnpm --filter @kintsugi/desktop test:runtime
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-screenshots
+          path: .headless/*/shots/
+          if-no-files-found: ignore
+
+  smoke:
+    name: Packaged app (macOS)
+    runs-on: xcode-27
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # A debug .app, as `pnpm tauri build --debug` makes it: the bundled
+      # frontend on tauri://localhost, not the Vite dev server. No signing
+      # key in CI, so no updater artifacts to sign.
+      - name: Build Kintsugi.app (debug)
+        working-directory: apps/desktop
+        run: >
+          pnpm tauri build --debug --bundles app --ci
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+      - name: Launch it and wait for the rendered app
+        env:
+          KINTSUGI_SMOKE_SHOTS: ${{ runner.temp }}/smoke-shots
+        run: node scripts/smoke-app.mjs target/debug/bundle/macos/Kintsugi.app
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: ${{ runner.temp }}/smoke-shots/
+          if-no-files-found: ignore

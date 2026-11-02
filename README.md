@@ -94,6 +94,21 @@ never run `pnpm ios` or `expo run:ios` against a device. See
 [Testing without windows](AGENTS.md#testing-without-windows) for the exact
 commands, and [docs/headless.md](docs/headless.md) for the transport.
 
+## CI
+
+GitHub Actions runs `.github/workflows/ci.yml` on every pull request and every push to `main`, from a fresh checkout. A newer push cancels the run it replaces. `main` only takes changes whose four jobs pass:
+
+| Job | Runner | What it runs |
+| --- | --- | --- |
+| TypeScript | Ubuntu | `pnpm install --frozen-lockfile`, `pnpm typecheck`, the unit tests (scripts, core, editor, desktop, mobile), `expo lint`, the phone's `export:check` and `pnpm lint:copy` |
+| Rust | macOS (Xcode 27) | `cargo test --workspace`, then `cargo fmt --check` |
+| Runtime (headless) | Ubuntu | `cargo test -p kintsugi --no-default-features --features headless`, then `pnpm --filter @kintsugi/desktop test:runtime` in headless Chromium |
+| Packaged app | macOS (Xcode 27) | Builds a debug `Kintsugi.app` with `pnpm tauri build --debug --bundles app` and launches it on a scratch home, config and vault. It passes when the app's real webview has loaded the vault: with `KINTSUGI_SMOKE=1` the frontend calls `app_ready` and the app prints `KINTSUGI_SMOKE_READY` and quits (`scripts/smoke-app.mjs`). |
+
+`.github/workflows/phone.yml` builds the phone app in Release for the iOS Simulator. It runs nightly, on demand and on pull requests that touch the phone app, and isn't required.
+
+CI needs no secrets. Kin uses its scripted mock model (`KINTSUGI_HEADLESS_KIN=mock`), and nothing is signed.
+
 ## Releasing
 
 Releases are signed, notarized and published to [GitHub Releases](https://github.com/hussainph/kintsugi/releases). Installed copies check there at launch and every six hours, offer the update quietly, and restart only after your edits are saved.
