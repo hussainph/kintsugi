@@ -139,6 +139,7 @@ export default function ClipScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Edit your notes"
+              accessibilityValue={{ text: notes.trim() || 'No notes yet' }}
               testID="clip-notes"
               onPress={() => router.push({ pathname: '/clip-notes', params: { path } })}
               style={({ pressed }) => [styles.notes, { backgroundColor: theme.surface, opacity: pressed ? 0.7 : 1 }]}
