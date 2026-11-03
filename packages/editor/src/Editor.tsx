@@ -16,6 +16,7 @@ import { currentParagraph, referenceExtensions, refreshReferences, type Referenc
 import { commentExtensions, refreshComments, type Comments } from "./comments";
 import { heldPassages } from "./passages";
 import { dimExtensions } from "./dim";
+import { alternativeExtensions, refreshAlternatives, type Alternatives } from "./alternatives";
 
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
@@ -25,6 +26,8 @@ export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPl
 export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
 export { heldPassage, holdPassage, releasePassage, type Passage } from "./passages";
 export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
+export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet, SpanLevel } from "./alternatives";
+export { addAlternatives, alternativesAt, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives } from "./alternatives";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -46,6 +49,8 @@ type Props = {
   commands?: Commands;
   /** Kin's comment threads on this document's paragraphs (KI-38). */
   comments?: Comments;
+  /** Other versions of words, sentences and paragraphs, swapped in place (KI-86). */
+  alternatives?: Alternatives;
   /** Added to each document's state when it is first opened, such as the
    *  phone's keyboard settings. */
   extensions?: Extension;
@@ -55,7 +60,7 @@ type Props = {
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, alternatives, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
@@ -67,6 +72,8 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
   commandsRef.current = commands;
   const commentsRef = useRef(comments);
   commentsRef.current = comments;
+  const alternativesRef = useRef(alternatives);
+  alternativesRef.current = alternatives;
   const extensionsRef = useRef(extensions);
   extensionsRef.current = extensions;
 
@@ -93,6 +100,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         commandExtensions(() => commandsRef.current),
         commentExtensions(() => commentsRef.current && { ...commentsRef.current, currentPath: docPath }),
         heldPassages,
+        alternativeExtensions(() => alternativesRef.current && { ...alternativesRef.current, currentPath: docPath }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged || !onChangeRef.current) return;
@@ -137,6 +145,12 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
     const view = viewRef.current;
     if (view) view.dispatch({ effects: refreshComments.of(null) });
   }, [comments, viewRef]);
+
+  // A document's alternatives arrive after it opens.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch({ effects: refreshAlternatives.of(null) });
+  }, [alternatives?.path, alternatives?.sets, viewRef]);
 
   // Skills load after the editor mounts; an open / menu picks them up.
   useEffect(() => {

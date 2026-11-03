@@ -7,7 +7,8 @@
     "./theme": "./src/theme.ts",
     "./format": "./src/format.ts",
     "./keys": "./src/keys.ts",
-    "./keymaps": "./src/keymaps.ts"
+    "./keymaps": "./src/keymaps.ts",
+    "./alternatives": "./src/alternatives.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

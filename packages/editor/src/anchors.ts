@@ -99,7 +99,7 @@ function sharedPrefix(a: string, b: string) {
 }
 
 /** How well the text around `range` matches the anchor's context, 0–1. */
-function contextScore(text: string, range: Range, anchor: CommentAnchor) {
+export function contextScore(text: string, range: Range, anchor: CommentAnchor) {
   const before = sharedSuffix(text.slice(Math.max(0, range.from - CONTEXT), range.from), anchor.prefix);
   const after = sharedPrefix(text.slice(range.to, range.to + CONTEXT), anchor.suffix);
   const most = Math.max(1, anchor.prefix.length + anchor.suffix.length);

@@ -33,7 +33,7 @@ export function ShortcutHint({ id, keys, side = "inline", className }: {
 /** The groups the held-⌘ list shows on each screen. */
 const SCREENS: Record<"app" | "writing", Group[]> = {
   app: ["app"],
-  writing: ["app", "document", "kin", "formatting"],
+  writing: ["app", "document", "kin", "formatting", "alternatives"],
 };
 
 const Panel = graphicalPart("div", "popover", "popover", "ki-shortcuts");
