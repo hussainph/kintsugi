@@ -3,6 +3,7 @@ import { type ComponentRef, useCallback, useEffect, useRef, useSyncExternalStore
 import { StyleSheet, Text, View } from 'react-native';
 
 import { editorSessions } from '@/lib/editor-session';
+import { useAppearance } from '@/lib/appearance-store';
 import { fonts, useTheme } from '@/theme';
 
 type Props = {
@@ -25,6 +26,7 @@ const PREVIEW = 3000;
  *  of the text, so the screen is never empty while it slides in or out. */
 export function DocEditor({ docKey, body, focus, write }: Props) {
   const theme = useTheme();
+  const { textSize } = useAppearance();
   const navigation = useNavigation();
   const slot = useRef<ComponentRef<typeof View>>(null);
   // Once the editor covers the slot the preview goes, or it would show
@@ -100,7 +102,7 @@ export function DocEditor({ docKey, body, focus, write }: Props) {
   return (
     <View ref={slot} style={styles.slot} onLayout={() => measure()} collapsable={false}>
       {!covered && (
-        <Text style={[styles.preview, { color: theme.text }]} numberOfLines={60}>
+        <Text style={[styles.preview, { color: theme.text, fontSize: 19 * textSize, lineHeight: 29 * textSize }]} numberOfLines={60}>
           {body.slice(0, PREVIEW)}
         </Text>
       )}

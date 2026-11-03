@@ -50,7 +50,8 @@
     "export:check": "node scripts/export-check.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
-    "test": "node --test src/lib/*.test.ts"
+    "test": "node --test src/lib/*.test.ts",
+    "test:appearance": "node --test --test-concurrency=1 test/appearance-runtime.test.mjs"
   },
   "private": true
 }

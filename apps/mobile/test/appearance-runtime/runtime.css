@@ -1,0 +1,10 @@
+html, body, #root { height: 100%; margin: 0; }
+body { font-family: -apple-system, system-ui, sans-serif; }
+button { font: inherit; color: inherit; background: transparent; border: 0; min-height: 44px; }
+.runtime-phone { position: relative; height: 100%; overflow: hidden; }
+.runtime-phone > header { display: flex; justify-content: space-between; align-items: center; padding: 32px 20px 0; height: 56px; font-weight: 600; }
+.runtime-editor { height: calc(100% - 88px); }
+.runtime-scrim { position: absolute; inset: 0; background: #0004; }
+.runtime-sheet { position: absolute; display: flex; flex-direction: column; bottom: 0; left: 0; right: 0; border-radius: 28px 28px 0 0; overflow: hidden; padding-bottom: 34px; box-sizing: border-box; }
+.runtime-grabber { width: 36px; height: 5px; border-radius: 99px; margin: 10px auto 0; flex-shrink: 0; }
+.runtime-home { position: absolute; bottom: 8px; left: calc(50% - 67px); width: 134px; height: 5px; border-radius: 99px; }

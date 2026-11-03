@@ -11,6 +11,8 @@ import { editorSessions } from '@/lib/editor-session';
 import { clipUnsent } from '@/lib/inspiration';
 import { usePairing } from '@/lib/pairing';
 import { useNewEditor } from '@/lib/settings';
+import { useAppearance } from '@/lib/appearance-store';
+import { openAppearance } from '@/lib/open-appearance';
 import { fonts, useTheme } from '@/theme';
 
 const SAVE_DELAY = 800;
@@ -27,6 +29,7 @@ export default function ClipNotesScreen() {
   const { connection } = useInspiration();
   const { client, unpair } = usePairing();
   const theme = useTheme();
+  const { textSize } = useAppearance();
   const headerHeight = useHeaderHeight();
   const [failure, setFailure] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -120,6 +123,11 @@ export default function ClipNotesScreen() {
   return (
     <>
       <Stack.Title>{local.clip.title || clipLabel(local.clip)}</Stack.Title>
+      <Stack.Toolbar placement="right">
+        <Stack.Toolbar.Menu icon="ellipsis.circle">
+          <Stack.Toolbar.MenuAction icon="circle.lefthalf.filled" onPress={openAppearance}>Appearance</Stack.Toolbar.MenuAction>
+        </Stack.Toolbar.Menu>
+      </Stack.Toolbar>
       {newEditor ? (
         <View style={[styles.editorScreen, { backgroundColor: theme.background, paddingTop: headerHeight }]}>
           {notices && <View style={styles.editorNotices}>{notices}</View>}
@@ -143,7 +151,7 @@ export default function ClipNotesScreen() {
             placeholder="Add a note…"
             placeholderTextColor={theme.faint}
             accessibilityLabel="Your notes"
-            style={[styles.body, { color: theme.text }]}
+            style={[styles.body, { color: theme.text, fontSize: 19 * textSize, lineHeight: 29 * textSize }]}
           />
         </ScrollView>
       )}

@@ -1,4 +1,6 @@
-import { Platform, useColorScheme } from 'react-native';
+import { Platform } from 'react-native';
+
+import { useResolvedScheme } from '@/lib/appearance-store';
 
 /** The desktop's shadcn neutral palette, so both apps feel like one thing. */
 const palette = {
@@ -9,6 +11,7 @@ const palette = {
     muted: '#737373',
     faint: '#a3a3a3',
     border: '#e5e5e5',
+    selected: '#ffffff',
     primary: '#171717',
     onPrimary: '#fafafa',
     danger: '#dc2626',
@@ -23,6 +26,7 @@ const palette = {
     muted: '#a3a3a3',
     faint: '#737373',
     border: '#262626',
+    selected: '#494949',
     primary: '#e5e5e5',
     onPrimary: '#171717',
     danger: '#f87171',
@@ -34,8 +38,27 @@ const palette = {
 export type Theme = (typeof palette)['light'];
 
 export function useTheme(): Theme {
-  return palette[useColorScheme() === 'dark' ? 'dark' : 'light'];
+  return palette[useResolvedScheme()];
 }
+
+/** KI-100 Paper Phone 1. Native controls keep the phone's existing type. */
+export const appearanceStyle = {
+  inset: 16,
+  gap: 16,
+  radius: 12,
+  segmentRadius: 10,
+  segmentInset: 3,
+  segmentItemRadius: 7,
+  hit: 44,
+  row: 56,
+  reserved: 24,
+  label: { fontSize: 16, lineHeight: 20 },
+  value: { fontSize: 17, lineHeight: 22 },
+  percent: { fontSize: 15, lineHeight: 20 },
+  step: { fontSize: 24, lineHeight: 30 },
+  previewTitle: { fontSize: 22, lineHeight: 28 },
+  previewBody: { fontSize: 19, lineHeight: 29 },
+} as const;
 
 export const fonts = {
   /** New York on iOS, like the desktop editor. */
