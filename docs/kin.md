@@ -293,7 +293,10 @@ rules (`$` as `$$`, a leading `!` as `$!`). Logins are refreshed exactly as
 Pi's are. The webview only ever learns that a key or login exists and
 where the one in use comes from; keys never reach it, the logs, errors or
 the vault. "Remove key" and "Sign out" delete Kintsugi's entry only;
-OpenCode's and Pi's files are never written by Settings.
+OpenCode's and Pi's files are never written by Settings. If Kintsugi's
+file can't be read, it counts as holding nothing, so OpenCode's, Pi's and
+the environment's credentials still work; a damaged one is moved aside
+(`auth.json.damaged-<time>`, owner-only) before the next save.
 
 Sign-in is ported from pi-ai 1.5.0 (`src/auth/oauth/`), one flow per
 provider, with Pi's client ids, scopes, endpoints, callback ports and
@@ -314,7 +317,8 @@ binds 127.0.0.1 only, lives for the one sign-in, checks `state` (OpenRouter
 sends none, so its path is random) and gives up after five minutes. A
 device-code sign-in shows the code and the page to enter it on, and polls
 as Pi does: the server's interval, `slow_down` taking its new interval or
-adding 5s, until the code expires. One sign-in runs at a time.
+adding 5s, until the code expires. Every time a server sends is capped at
+a day, whatever it says. One sign-in runs at a time.
 
 Not matched, on purpose:
 

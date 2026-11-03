@@ -131,7 +131,10 @@ impl Callback {
 
 /// Pi's shared callback checks (Codex, OpenRouter): the state when there
 /// is one, then the provider's error, then the code.
-pub fn standard(state: Option<String>, provider: &'static str) -> impl FnMut(&Url) -> Verdict<String> {
+pub fn standard(
+    state: Option<String>,
+    provider: &'static str,
+) -> impl FnMut(&Url) -> Verdict<String> {
     move |url| {
         let param = |name: &str| {
             url.query_pairs()

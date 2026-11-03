@@ -28,7 +28,7 @@ export function credentialLabel(p: ProviderStatus): string {
     case "mock":
       return "Scripted mock model";
     case "unsupported_login":
-      if (p.id === "openai-codex") return `${from}: ChatGPT's newer sign-in, which Kintsugi can't use yet. Use the ChatGPT browser login`;
+      if (p.id === "openai-codex") return `${from}: ChatGPT's newer sign-in, which Kintsugi can't use yet. Sign in here instead`;
       return `${from}: a Claude subscription, which Kintsugi can't use. Kintsugi uses only Anthropic API keys`;
     case "expired_login":
       if (p.source === "opencode") return "OpenCode login expired: open OpenCode once to refresh it";

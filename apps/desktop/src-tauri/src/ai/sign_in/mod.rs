@@ -95,7 +95,10 @@ impl Prompt {
             kind: PromptKind::Select,
             message: message.into(),
             placeholder: None,
-            options: options.iter().map(|&(id, label)| Choice { id, label }).collect(),
+            options: options
+                .iter()
+                .map(|&(id, label)| Choice { id, label })
+                .collect(),
         }
     }
 
@@ -120,7 +123,11 @@ impl Prompt {
 
 /// What a sign-in tells the webview. Never a token or a key.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum Event {
     Prompt {
         id: u32,
@@ -128,16 +135,23 @@ pub enum Event {
         prompt: Prompt,
     },
     /// The page to sign in on; `open` asks the webview to open it.
-    AuthUrl { url: String, open: bool },
+    AuthUrl {
+        url: String,
+        open: bool,
+    },
     /// A device-code login: the code to enter, and where.
     DeviceCode {
         user_code: String,
         verification_uri: String,
     },
     #[cfg_attr(feature = "headless", allow(dead_code))]
-    Progress { message: String },
+    Progress {
+        message: String,
+    },
     Done,
-    Failed { message: String },
+    Failed {
+        message: String,
+    },
 }
 
 pub enum Message {
@@ -226,7 +240,8 @@ pub async fn mock(provider: &str, i: &Interaction) -> Result<Value> {
             url: "https://example.com/kintsugi/mock-sign-in".into(),
             open: false,
         });
-        i.prompt(Prompt::paste("http://localhost:1455/auth/callback")).await?;
+        i.prompt(Prompt::paste("http://localhost:1455/auth/callback"))
+            .await?;
         Ok(())
     };
     let device = async |i: &Interaction| {
@@ -240,7 +255,10 @@ pub async fn mock(provider: &str, i: &Interaction) -> Result<Value> {
     match provider {
         "openai-codex" => {
             let method = i
-                .prompt(Prompt::select("Sign in with", &[("browser", "Browser"), ("device_code", "Device code")]))
+                .prompt(Prompt::select(
+                    "Sign in with",
+                    &[("browser", "Browser"), ("device_code", "Device code")],
+                ))
                 .await?;
             if method == "device_code" {
                 device(i).await
@@ -251,7 +269,10 @@ pub async fn mock(provider: &str, i: &Interaction) -> Result<Value> {
         "openai" | "openrouter" => browser(i).await?,
         "github-copilot" => {
             let input = i
-                .prompt(Prompt::text("GitHub Enterprise domain", "Leave empty for github.com"))
+                .prompt(Prompt::text(
+                    "GitHub Enterprise domain",
+                    "Leave empty for github.com",
+                ))
                 .await?;
             enterprise = pi_auth::normalize_domain(&input);
             device(i).await
@@ -286,12 +307,19 @@ impl Session {
 
 /// The sign-in under way, if any.
 #[derive(Default)]
-pub struct SignIns(Mutex<HashMap<String, Session>>);
+pub struct SignIns {
+    /// Held from stopping the old sign-in to registering the new one, so
+    /// two quick clicks can't leave two sign-ins fighting over port 1455.
+    starting: tokio::sync::Mutex<()>,
+    /// Each removes itself when it ends.
+    sessions: Arc<Mutex<HashMap<String, Session>>>,
+}
 
 /// This installation's UUID, which Sign in with ChatGPT sends OpenAI as
 /// its agent host: `device-id` in the config folder, made on first use.
 fn device_id(app: &AppHandle) -> Option<String> {
-    let Some(dir) = super::kin::data_dir(app).and_then(|d| d.parent().map(|p| p.to_path_buf())) else {
+    let Some(dir) = super::kin::data_dir(app).and_then(|d| d.parent().map(|p| p.to_path_buf()))
+    else {
         return Some(uuid::Uuid::new_v4().to_string());
     };
     let path = dir.join("device-id");
@@ -327,7 +355,14 @@ pub async fn ai_sign_in(
         .then(|| device_id(&app))
         .flatten();
     let _ = &app;
-    let old: Vec<Session> = state.0.lock().unwrap().drain().map(|(_, s)| s).collect();
+    let _starting = state.starting.lock().await;
+    let old: Vec<Session> = state
+        .sessions
+        .lock()
+        .unwrap()
+        .drain()
+        .map(|(_, s)| s)
+        .collect();
     for session in old {
         session.stop().await;
     }
@@ -353,7 +388,12 @@ pub async fn ai_sign_in(
     let store = credentials::kintsugi().clone();
     let cancelled = Arc::new(AtomicBool::new(false));
     let stopped = cancelled.clone();
+    let (registered, is_registered) = oneshot::channel::<()>();
+    let sessions = state.sessions.clone();
+    let ours = id.clone();
     let task = async_runtime::spawn(async move {
+        // Starts once it's in `sessions`, so it can always remove itself.
+        let _ = is_registered.await;
         let result = async {
             #[cfg(feature = "headless")]
             let credential = {
@@ -361,7 +401,13 @@ pub async fn ai_sign_in(
                 mock(provider, &interaction).await?
             };
             #[cfg(not(feature = "headless"))]
-            let credential = login(provider, &interaction, &store.endpoints(), device.as_deref()).await?;
+            let credential = login(
+                provider,
+                &interaction,
+                &store.endpoints(),
+                device.as_deref(),
+            )
+            .await?;
             let saving = store.clone();
             tokio::task::spawn_blocking(move || {
                 if stopped.load(Ordering::SeqCst) {
@@ -369,16 +415,17 @@ pub async fn ai_sign_in(
                 }
                 saving.save(provider, credential)
             })
-                .await
-                .map_err(|_| "Couldn't save the sign-in.".to_string())?
+            .await
+            .map_err(|_| "Couldn't save the sign-in.".to_string())?
         }
         .await;
         interaction.notify(match result {
             Ok(()) => Event::Done,
             Err(message) => Event::Failed { message },
         });
+        sessions.lock().unwrap().remove(&ours);
     });
-    state.0.lock().unwrap().insert(
+    state.sessions.lock().unwrap().insert(
         id.clone(),
         Session {
             task,
@@ -386,24 +433,33 @@ pub async fn ai_sign_in(
             cancelled,
         },
     );
+    let _ = registered.send(());
     Ok(id)
 }
 
 /// Answers the sign-in's prompt `prompt`.
 #[tauri::command]
-pub fn ai_sign_in_answer(state: State<'_, SignIns>, id: String, prompt: u32, value: String) -> Result<()> {
-    let sessions = state.0.lock().unwrap();
+pub fn ai_sign_in_answer(
+    state: State<'_, SignIns>,
+    id: String,
+    prompt: u32,
+    value: String,
+) -> Result<()> {
+    let sessions = state.sessions.lock().unwrap();
     let reply = sessions
         .get(&id)
         .and_then(|s| s.pending.lock().unwrap().remove(&prompt))
         .ok_or("That sign-in has ended.")?;
-    reply.send(value).map_err(|_| "That sign-in has ended.".to_string())
+    reply
+        .send(value)
+        .map_err(|_| "That sign-in has ended.".to_string())
 }
 
 /// Stops a sign-in: its loopback server closes and nothing is saved.
 #[tauri::command]
 pub async fn ai_sign_in_cancel(state: State<'_, SignIns>, id: String) -> Result<()> {
-    let session = state.0.lock().unwrap().remove(&id);
+    let _starting = state.starting.lock().await;
+    let session = state.sessions.lock().unwrap().remove(&id);
     if let Some(session) = session {
         session.stop().await;
     }

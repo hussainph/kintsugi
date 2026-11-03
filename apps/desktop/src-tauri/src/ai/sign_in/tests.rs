@@ -46,7 +46,10 @@ impl Seen {
         if let Ok(json) = serde_json::from_str::<Value>(&self.body) {
             return json.get(name).and_then(Value::as_str).map(String::from);
         }
-        self.form().into_iter().find(|(k, _)| k == name).map(|(_, v)| v)
+        self.form()
+            .into_iter()
+            .find(|(k, _)| k == name)
+            .map(|(_, v)| v)
     }
     fn header(&self, name: &str) -> Option<&str> {
         self.headers.get(name).and_then(|v| v.to_str().ok())
@@ -57,12 +60,17 @@ type Log = Arc<Mutex<Vec<Seen>>>;
 
 /// A stand-in for every server a login talks to. `reply` gets each request
 /// and how many came to its path before it.
-async fn server(reply: impl Fn(&Seen, usize) -> (u16, Value) + Send + Sync + 'static) -> (String, Log) {
+async fn server(
+    reply: impl Fn(&Seen, usize) -> (u16, Value) + Send + Sync + 'static,
+) -> (String, Log) {
     let log: Log = Arc::default();
     let seen = log.clone();
     let reply = Arc::new(reply);
     let app = axum::Router::new().fallback(
-        move |method: axum::http::Method, uri: axum::http::Uri, headers: axum::http::HeaderMap, body: String| {
+        move |method: axum::http::Method,
+              uri: axum::http::Uri,
+              headers: axum::http::HeaderMap,
+              body: String| {
             let (seen, reply) = (seen.clone(), reply.clone());
             async move {
                 let request = Seen {
@@ -78,7 +86,10 @@ async fn server(reply: impl Fn(&Seen, usize) -> (u16, Value) + Send + Sync + 'st
                     n
                 };
                 let (status, body) = reply(&request, count);
-                (axum::http::StatusCode::from_u16(status).unwrap(), axum::Json(body))
+                (
+                    axum::http::StatusCode::from_u16(status).unwrap(),
+                    axum::Json(body),
+                )
             }
         },
     );
@@ -129,9 +140,13 @@ async fn drive(
                         let target = target.replace("://localhost:", "://127.0.0.1:");
                         // The browser waits on the loopback server, which
                         // answers once the sign-in has finished with it.
-                        let response = tokio::spawn(async move { reqwest::get(target).await.map(|r| r.status().as_u16()) });
+                        let response = tokio::spawn(async move {
+                            reqwest::get(target).await.map(|r| r.status().as_u16())
+                        });
                         tokio::task::yield_now().await;
-                        if let Ok(Ok(Ok(status))) = tokio::time::timeout(Duration::from_millis(400), response).await {
+                        if let Ok(Ok(Ok(status))) =
+                            tokio::time::timeout(Duration::from_millis(400), response).await
+                        {
                             statuses.push(status);
                         }
                     }
@@ -164,7 +179,10 @@ fn no_browser() -> Browser {
 }
 
 fn query(url: &reqwest::Url, name: &str) -> String {
-    url.query_pairs().find(|(k, _)| k == name).map(|(_, v)| v.into_owned()).unwrap_or_default()
+    url.query_pairs()
+        .find(|(k, _)| k == name)
+        .map(|(_, v)| v.into_owned())
+        .unwrap_or_default()
 }
 
 fn keys(v: &Value) -> Vec<String> {
@@ -181,7 +199,10 @@ fn s256(verifier: &str) -> String {
 fn assert_no_secrets(events: &[Event], secrets: &[&str]) {
     let shown = serde_json::to_string(events).unwrap();
     for secret in secrets {
-        assert!(!shown.contains(secret), "{secret} reached the webview: {shown}");
+        assert!(
+            !shown.contains(secret),
+            "{secret} reached the webview: {shown}"
+        );
     }
 }
 
@@ -196,8 +217,12 @@ fn auth_url(events: &[Event]) -> reqwest::Url {
 }
 
 fn codex_jwt(n: &str) -> String {
-    let claims = json!({ "https://api.openai.com/auth": { "chatgpt_account_id": "acct-1" }, "n": n });
-    format!("h.{}.s", base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string()))
+    let claims =
+        json!({ "https://api.openai.com/auth": { "chatgpt_account_id": "acct-1" }, "n": n });
+    format!(
+        "h.{}.s",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(claims.to_string())
+    )
 }
 
 // --- The pieces ----------------------------------------------------------------
@@ -212,7 +237,12 @@ fn device_polling_waits_slows_down_succeeds_and_expires() {
         let seen = calls.clone();
         let started = tokio::time::Instant::now();
         let value = device::poll(
-            device::Options { interval: Some(1.0), expires_in: Some(60.0), wait_first: true, second },
+            device::Options {
+                interval: Some(1.0),
+                expires_in: Some(60.0),
+                wait_first: true,
+                second,
+            },
             || {
                 let seen = seen.clone();
                 async move {
@@ -233,19 +263,35 @@ fn device_polling_waits_slows_down_succeeds_and_expires() {
         let at = calls.lock().unwrap().clone();
         assert_eq!(at.len(), 4);
         // Waited one interval first; then 1s, 3s (asked), 3s + 5s.
-        let gaps: Vec<u128> = [at[0], at[1] - at[0], at[2] - at[1], at[3] - at[2]].iter().map(|d| d.as_millis()).collect();
-        assert!(gaps[0] >= 10 && gaps[1] >= 10 && gaps[2] >= 30 && gaps[3] >= 80, "{gaps:?}");
+        let gaps: Vec<u128> = [at[0], at[1] - at[0], at[2] - at[1], at[3] - at[2]]
+            .iter()
+            .map(|d| d.as_millis())
+            .collect();
+        assert!(
+            gaps[0] >= 10 && gaps[1] >= 10 && gaps[2] >= 30 && gaps[3] >= 80,
+            "{gaps:?}"
+        );
 
         // Expiry: always pending gives up at the code's lifetime.
         let err = device::poll(
-            device::Options { interval: Some(1.0), expires_in: Some(3.0), wait_first: false, second },
+            device::Options {
+                interval: Some(1.0),
+                expires_in: Some(3.0),
+                wait_first: false,
+                second,
+            },
             || async { Ok(Poll::<()>::Pending) },
         )
         .await
         .unwrap_err();
         assert_eq!(err, device::TIMED_OUT);
         let err = device::poll(
-            device::Options { interval: None, expires_in: Some(2.0), wait_first: false, second },
+            device::Options {
+                interval: None,
+                expires_in: Some(2.0),
+                wait_first: false,
+                second,
+            },
             || async { Ok(Poll::<()>::SlowDown(None)) },
         )
         .await
@@ -253,7 +299,12 @@ fn device_polling_waits_slows_down_succeeds_and_expires() {
         assert_eq!(err, device::SLOW_DOWN_TIMED_OUT);
         // A denial ends it at once.
         let err = device::poll(
-            device::Options { interval: Some(1.0), expires_in: None, wait_first: false, second },
+            device::Options {
+                interval: Some(1.0),
+                expires_in: None,
+                wait_first: false,
+                second,
+            },
             || async { Ok(Poll::<()>::Failed("denied".into())) },
         )
         .await
@@ -266,40 +317,89 @@ fn device_polling_waits_slows_down_succeeds_and_expires() {
 fn the_callback_server_listens_on_loopback_only_and_checks_path_and_state() {
     let rt = runtime();
     rt.block_on(async {
-        let server = Callback::bind(0, "/auth/callback", "OpenAI", Duration::from_secs(5)).await.unwrap();
+        let server = Callback::bind(0, "/auth/callback", "OpenAI", Duration::from_secs(5))
+            .await
+            .unwrap();
         let port = server.port();
         // 127.0.0.1 only: nothing answers on the machine's other addresses.
-        assert!(server.redirect_uri("localhost").starts_with("http://localhost:"));
-        let wait = tokio::spawn(server.wait(callback::standard(Some("good".into()), "OpenAI"), |code| async move { Ok(code) }));
-        let get = |path: String| async move { reqwest::get(format!("http://127.0.0.1:{port}{path}")).await.unwrap().status().as_u16() };
+        assert!(
+            server
+                .redirect_uri("localhost")
+                .starts_with("http://localhost:")
+        );
+        let wait = tokio::spawn(server.wait(
+            callback::standard(Some("good".into()), "OpenAI"),
+            |code| async move { Ok(code) },
+        ));
+        let get = |path: String| async move {
+            reqwest::get(format!("http://127.0.0.1:{port}{path}"))
+                .await
+                .unwrap()
+                .status()
+                .as_u16()
+        };
         assert_eq!(get("/elsewhere?code=x&state=good".into()).await, 404);
         assert_eq!(get("/auth/callback?code=x&state=forged".into()).await, 400);
         assert_eq!(get("/auth/callback?state=good".into()).await, 400);
-        assert_eq!(get("/auth/callback?code=the-code&state=good".into()).await, 200);
+        assert_eq!(
+            get("/auth/callback?code=the-code&state=good".into()).await,
+            200
+        );
         assert_eq!(wait.await.unwrap().unwrap(), "the-code");
         // The listener is gone with the sign-in.
-        assert!(reqwest::get(format!("http://127.0.0.1:{port}/auth/callback")).await.is_err());
+        assert!(
+            reqwest::get(format!("http://127.0.0.1:{port}/auth/callback"))
+                .await
+                .is_err()
+        );
 
         // The provider's refusal ends it; so does the timeout.
-        let server = Callback::bind(0, "/cb", "OpenRouter", Duration::from_secs(5)).await.unwrap();
+        let server = Callback::bind(0, "/cb", "OpenRouter", Duration::from_secs(5))
+            .await
+            .unwrap();
         let port = server.port();
-        let wait = tokio::spawn(server.wait(callback::standard(None, "OpenRouter"), |code| async move { Ok(code) }));
-        assert_eq!(get_status(port, "/cb?error=access_denied&error_description=No").await, 400);
-        assert_eq!(wait.await.unwrap().unwrap_err(), "OpenRouter authorization failed: No");
-        let server = Callback::bind(0, "/cb", "OpenRouter", Duration::from_millis(50)).await.unwrap();
-        let err = server.wait(callback::standard(None, "OpenRouter"), |c| async move { Ok(c) }).await.unwrap_err();
+        let wait = tokio::spawn(
+            server.wait(callback::standard(None, "OpenRouter"), |code| async move {
+                Ok(code)
+            }),
+        );
+        assert_eq!(
+            get_status(port, "/cb?error=access_denied&error_description=No").await,
+            400
+        );
+        assert_eq!(
+            wait.await.unwrap().unwrap_err(),
+            "OpenRouter authorization failed: No"
+        );
+        let server = Callback::bind(0, "/cb", "OpenRouter", Duration::from_millis(50))
+            .await
+            .unwrap();
+        let err = server
+            .wait(
+                callback::standard(None, "OpenRouter"),
+                |c| async move { Ok(c) },
+            )
+            .await
+            .unwrap_err();
         assert_eq!(err, "OpenRouter sign-in timed out");
     });
 }
 
 async fn get_status(port: u16, path: &str) -> u16 {
-    reqwest::get(format!("http://127.0.0.1:{port}{path}")).await.unwrap().status().as_u16()
+    reqwest::get(format!("http://127.0.0.1:{port}{path}"))
+        .await
+        .unwrap()
+        .status()
+        .as_u16()
 }
 
 #[test]
 fn pasted_codes_are_read_as_pi_reads_them() {
     let p = |s| flows::parse_pasted(s);
-    assert_eq!(p("http://localhost:1455/auth/callback?code=c&state=s"), (Some("c".into()), Some("s".into())));
+    assert_eq!(
+        p("http://localhost:1455/auth/callback?code=c&state=s"),
+        (Some("c".into()), Some("s".into()))
+    );
     assert_eq!(p("c#s"), (Some("c".into()), Some("s".into())));
     assert_eq!(p("code=c&state=s"), (Some("c".into()), Some("s".into())));
     assert_eq!(p(" c "), (Some("c".into()), None));
@@ -308,7 +408,10 @@ fn pasted_codes_are_read_as_pi_reads_them() {
     assert_eq!(s256(&verifier), challenge);
     assert_eq!(verifier.len(), 43);
     assert!(flows::agent_host_id(Some("not-a-uuid")).is_err());
-    assert_eq!(flows::agent_host_id(Some(DEVICE)).unwrap(), format!("urn:uuid:{DEVICE}"));
+    assert_eq!(
+        flows::agent_host_id(Some(DEVICE)).unwrap(),
+        format!("urn:uuid:{DEVICE}")
+    );
 }
 
 // --- Each login ------------------------------------------------------------------
@@ -353,10 +456,31 @@ fn codex_browser_login_checks_state_and_pkce_and_stores_pis_fields() {
 fn codex_falls_back_to_a_pasted_url_and_refuses_a_pasted_state_mismatch() {
     let rt = runtime();
     rt.block_on(async {
-        let (base, _log) = server(|_, _| (200, json!({ "access_token": codex_jwt("2"), "refresh_token": "rt", "expires_in": 60 }))).await;
-        let (result, ..) = drive("openai-codex", endpoints(&base), &["browser", "paste:http://localhost:1455/auth/callback?code=c&state=nope"], no_browser()).await;
+        let (base, _log) = server(|_, _| {
+            (
+                200,
+                json!({ "access_token": codex_jwt("2"), "refresh_token": "rt", "expires_in": 60 }),
+            )
+        })
+        .await;
+        let (result, ..) = drive(
+            "openai-codex",
+            endpoints(&base),
+            &[
+                "browser",
+                "paste:http://localhost:1455/auth/callback?code=c&state=nope",
+            ],
+            no_browser(),
+        )
+        .await;
         assert_eq!(result.unwrap_err(), "State mismatch");
-        let (result, ..) = drive("openai-codex", endpoints(&base), &["browser", "paste:just-the-code"], no_browser()).await;
+        let (result, ..) = drive(
+            "openai-codex",
+            endpoints(&base),
+            &["browser", "paste:just-the-code"],
+            no_browser(),
+        )
+        .await;
         assert_eq!(result.unwrap()["accountId"], "acct-1");
     });
 }
@@ -445,7 +569,11 @@ fn sign_in_with_chatgpt_needs_the_issued_client_and_the_direct_scope() {
 #[test]
 fn copilot_asks_for_an_enterprise_polls_github_and_stores_its_models() {
     let rt = runtime();
-    let known = crate::ai::catalog::models("github-copilot").next().unwrap().id.clone();
+    let known = crate::ai::catalog::models("github-copilot")
+        .next()
+        .unwrap()
+        .id
+        .clone();
     let model = known.clone();
     rt.block_on(async move {
         let (base, log) = server(move |req, n| match req.path.as_str() {
@@ -631,7 +759,11 @@ fn the_headless_mock_has_each_flows_shape_and_saves_pis_fields() {
         for (provider, answers, kind) in [
             ("xai", vec![], "device"),
             ("openai-codex", vec!["device_code"], "device"),
-            ("openai-codex", vec!["browser", "paste:http://x/?code=c"], "browser"),
+            (
+                "openai-codex",
+                vec!["browser", "paste:http://x/?code=c"],
+                "browser",
+            ),
             ("openrouter", vec!["paste:http://x/?code=c"], "browser"),
             ("github-copilot", vec![""], "device"),
         ] {
@@ -650,26 +782,46 @@ fn the_headless_mock_has_each_flows_shape_and_saves_pis_fields() {
                 }
             }
             let credential = run.await.unwrap().unwrap();
-            assert_eq!(keys(&credential), keys(&mock_credential(provider, None)), "{provider}");
+            assert_eq!(
+                keys(&credential),
+                keys(&mock_credential(provider, None)),
+                "{provider}"
+            );
             let device = shown.iter().any(|e| matches!(e, Event::DeviceCode { .. }));
-            let page = shown.iter().any(|e| matches!(e, Event::AuthUrl { open: false, .. }));
-            assert_eq!((device, page), (kind == "device", kind == "browser"), "{provider}");
+            let page = shown
+                .iter()
+                .any(|e| matches!(e, Event::AuthUrl { open: false, .. }));
+            assert_eq!(
+                (device, page),
+                (kind == "device", kind == "browser"),
+                "{provider}"
+            );
         }
     });
 }
 
 #[test]
 fn events_serialize_for_the_webview() {
-    let prompt = Event::Prompt { id: 3, prompt: Prompt::select("Sign in with", &[("browser", "Browser")]) };
+    let prompt = Event::Prompt {
+        id: 3,
+        prompt: Prompt::select("Sign in with", &[("browser", "Browser")]),
+    };
     assert_eq!(
         serde_json::to_value(prompt).unwrap(),
         json!({ "type": "prompt", "id": 3, "kind": "select", "message": "Sign in with", "options": [{ "id": "browser", "label": "Browser" }] })
     );
     assert_eq!(
-        serde_json::to_value(Event::DeviceCode { user_code: "A".into(), verification_uri: "https://x".into() }).unwrap(),
+        serde_json::to_value(Event::DeviceCode {
+            user_code: "A".into(),
+            verification_uri: "https://x".into()
+        })
+        .unwrap(),
         json!({ "type": "device_code", "userCode": "A", "verificationUri": "https://x" })
     );
-    assert_eq!(serde_json::to_value(Event::Done).unwrap(), json!({ "type": "done" }));
+    assert_eq!(
+        serde_json::to_value(Event::Done).unwrap(),
+        json!({ "type": "done" })
+    );
 }
 
 // --- Drift against Pi's source -----------------------------------------------------
@@ -679,27 +831,91 @@ const AUTH_PI: &str = include_str!("../auth.pi.json");
 
 /// Pi's login modules Kintsugi doesn't port, and why.
 const NOT_PORTED: [(&str, &str); 2] = [
-    ("anthropic", "Claude subscription logins are refused; Anthropic is API keys only"),
-    ("radius", "Pi's own Radius gateway, which Kintsugi doesn't speak"),
+    (
+        "anthropic",
+        "Claude subscription logins are refused; Anthropic is API keys only",
+    ),
+    (
+        "radius",
+        "Pi's own Radius gateway, which Kintsugi doesn't speak",
+    ),
 ];
 
 /// Pi's helper modules: no constants of their own to port.
-const HELPERS: [&str; 5] = ["callback-server", "device-code", "load", "pkce", "trusted-url"];
+const HELPERS: [&str; 5] = [
+    "callback-server",
+    "device-code",
+    "load",
+    "pkce",
+    "trusted-url",
+];
 
 /// Pi constants Kintsugi deliberately differs on: (module, name, Pi's
 /// value, why). Pi's value is still checked, so a change shows up.
 fn deviations() -> Vec<(&'static str, &'static str, Value, &'static str)> {
     vec![
-        ("openai-chatgpt", "AGENT_NAME_HINT", json!("Pi"), "the consent page names Kintsugi"),
-        ("openai-chatgpt", "CALLBACK_HOST", json!({ "source": "getProviderEnvValue(\"PI_OAUTH_CALLBACK_HOST\") || \"127.0.0.1\"" }), "always 127.0.0.1"),
-        ("openai-chatgpt", "UUID_PATTERN", json!({ "source": "/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i" }), "checked with the uuid crate"),
-        ("github-copilot", "decode", json!({ "source": "(s) => atob(s)" }), "the client id is kept decoded"),
-        ("kimi-coding", "REQUEST_TIMEOUT_MS", json!(30000), "every request is capped at 15s"),
-        ("kimi-coding", "REFRESH_MAX_RETRIES", json!(3), "a refresh holds the lock, so it's tried once within 15s"),
-        ("meta", "REQUEST_TIMEOUT_MS", json!(30000), "every request is capped at 15s"),
-        ("openrouter", "TOKEN_EXCHANGE_TIMEOUT_MS", json!(30000), "every request is capped at 15s"),
-        ("device-code", "CANCEL_MESSAGE", json!("Login cancelled"), "Kintsugi's own wording"),
-        ("device-code", "SLOW_DOWN_TIMEOUT_MESSAGE", json!("Device flow timed out after one or more slow_down responses. This is often caused by clock drift in WSL or VM environments. Please sync or restart the VM clock and try again."), "shortened"),
+        (
+            "openai-chatgpt",
+            "AGENT_NAME_HINT",
+            json!("Pi"),
+            "the consent page names Kintsugi",
+        ),
+        (
+            "openai-chatgpt",
+            "CALLBACK_HOST",
+            json!({ "source": "getProviderEnvValue(\"PI_OAUTH_CALLBACK_HOST\") || \"127.0.0.1\"" }),
+            "always 127.0.0.1",
+        ),
+        (
+            "openai-chatgpt",
+            "UUID_PATTERN",
+            json!({ "source": "/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i" }),
+            "checked with the uuid crate",
+        ),
+        (
+            "github-copilot",
+            "decode",
+            json!({ "source": "(s) => atob(s)" }),
+            "the client id is kept decoded",
+        ),
+        (
+            "kimi-coding",
+            "REQUEST_TIMEOUT_MS",
+            json!(30000),
+            "every request is capped at 15s",
+        ),
+        (
+            "kimi-coding",
+            "REFRESH_MAX_RETRIES",
+            json!(3),
+            "a refresh holds the lock, so it's tried once within 15s",
+        ),
+        (
+            "meta",
+            "REQUEST_TIMEOUT_MS",
+            json!(30000),
+            "every request is capped at 15s",
+        ),
+        (
+            "openrouter",
+            "TOKEN_EXCHANGE_TIMEOUT_MS",
+            json!(30000),
+            "every request is capped at 15s",
+        ),
+        (
+            "device-code",
+            "CANCEL_MESSAGE",
+            json!("Login cancelled"),
+            "Kintsugi's own wording",
+        ),
+        (
+            "device-code",
+            "SLOW_DOWN_TIMEOUT_MESSAGE",
+            json!(
+                "Device flow timed out after one or more slow_down responses. This is often caused by clock drift in WSL or VM environments. Please sync or restart the VM clock and try again."
+            ),
+            "shortened",
+        ),
     ]
 }
 
@@ -711,53 +927,207 @@ fn ported() -> Vec<(&'static str, &'static str, Value)> {
     vec![
         ("openai-codex", "CLIENT_ID", json!(pi_auth::CODEX_CLIENT_ID)),
         ("openai-codex", "AUTH_BASE_URL", json!(o)),
-        ("openai-codex", "AUTHORIZE_URL", json!(format!("{o}/oauth/authorize"))),
-        ("openai-codex", "TOKEN_URL", json!(format!("{o}/oauth/token"))),
-        ("openai-codex", "REDIRECT_URI", json!(format!("http://localhost:{port}{}", flows::CODEX_CALLBACK_PATH))),
-        ("openai-codex", "DEVICE_USER_CODE_URL", json!(format!("{o}/api/accounts/deviceauth/usercode"))),
-        ("openai-codex", "DEVICE_TOKEN_URL", json!(format!("{o}/api/accounts/deviceauth/token"))),
-        ("openai-codex", "DEVICE_VERIFICATION_URI", json!(format!("{o}/codex/device"))),
-        ("openai-codex", "DEVICE_REDIRECT_URI", json!(format!("{o}/deviceauth/callback"))),
-        ("openai-codex", "DEVICE_CODE_TIMEOUT_SECONDS", json!(flows::CODEX_DEVICE_TIMEOUT_S as u64)),
-        ("openai-codex", "OPENAI_CODEX_BROWSER_LOGIN_METHOD", json!("browser")),
-        ("openai-codex", "OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD", json!("device_code")),
+        (
+            "openai-codex",
+            "AUTHORIZE_URL",
+            json!(format!("{o}/oauth/authorize")),
+        ),
+        (
+            "openai-codex",
+            "TOKEN_URL",
+            json!(format!("{o}/oauth/token")),
+        ),
+        (
+            "openai-codex",
+            "REDIRECT_URI",
+            json!(format!(
+                "http://localhost:{port}{}",
+                flows::CODEX_CALLBACK_PATH
+            )),
+        ),
+        (
+            "openai-codex",
+            "DEVICE_USER_CODE_URL",
+            json!(format!("{o}/api/accounts/deviceauth/usercode")),
+        ),
+        (
+            "openai-codex",
+            "DEVICE_TOKEN_URL",
+            json!(format!("{o}/api/accounts/deviceauth/token")),
+        ),
+        (
+            "openai-codex",
+            "DEVICE_VERIFICATION_URI",
+            json!(format!("{o}/codex/device")),
+        ),
+        (
+            "openai-codex",
+            "DEVICE_REDIRECT_URI",
+            json!(format!("{o}/deviceauth/callback")),
+        ),
+        (
+            "openai-codex",
+            "DEVICE_CODE_TIMEOUT_SECONDS",
+            json!(flows::CODEX_DEVICE_TIMEOUT_S as u64),
+        ),
+        (
+            "openai-codex",
+            "OPENAI_CODEX_BROWSER_LOGIN_METHOD",
+            json!("browser"),
+        ),
+        (
+            "openai-codex",
+            "OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD",
+            json!("device_code"),
+        ),
         ("openai-codex", "SCOPE", json!(flows::CODEX_SCOPE)),
-        ("openai-codex", "JWT_CLAIM_PATH", json!(pi_auth::CODEX_JWT_CLAIM)),
-        ("openai-chatgpt", "DYNAMIC_CLIENT_ID", json!(flows::CHATGPT_CLIENT_ID)),
-        ("openai-chatgpt", "AUTHORIZE_URL", json!(format!("{o}/api/accounts/authorize"))),
-        ("openai-chatgpt", "TOKEN_URL", json!(format!("{o}/api/accounts/oauth/token"))),
-        ("openai-chatgpt", "RESOURCE", json!(pi_auth::CHATGPT_RESOURCE)),
+        (
+            "openai-codex",
+            "JWT_CLAIM_PATH",
+            json!(pi_auth::CODEX_JWT_CLAIM),
+        ),
+        (
+            "openai-chatgpt",
+            "DYNAMIC_CLIENT_ID",
+            json!(flows::CHATGPT_CLIENT_ID),
+        ),
+        (
+            "openai-chatgpt",
+            "AUTHORIZE_URL",
+            json!(format!("{o}/api/accounts/authorize")),
+        ),
+        (
+            "openai-chatgpt",
+            "TOKEN_URL",
+            json!(format!("{o}/api/accounts/oauth/token")),
+        ),
+        (
+            "openai-chatgpt",
+            "RESOURCE",
+            json!(pi_auth::CHATGPT_RESOURCE),
+        ),
         ("openai-chatgpt", "CALLBACK_PORT", json!(port)),
-        ("openai-chatgpt", "CALLBACK_PATH", json!(flows::CODEX_CALLBACK_PATH)),
-        ("openai-chatgpt", "REDIRECT_URI", json!(format!("http://127.0.0.1:{port}{}", flows::CODEX_CALLBACK_PATH))),
-        ("openai-chatgpt", "DIRECT_TOKEN_SCOPE", json!(pi_auth::CHATGPT_DIRECT_SCOPE)),
+        (
+            "openai-chatgpt",
+            "CALLBACK_PATH",
+            json!(flows::CODEX_CALLBACK_PATH),
+        ),
+        (
+            "openai-chatgpt",
+            "REDIRECT_URI",
+            json!(format!(
+                "http://127.0.0.1:{port}{}",
+                flows::CODEX_CALLBACK_PATH
+            )),
+        ),
+        (
+            "openai-chatgpt",
+            "DIRECT_TOKEN_SCOPE",
+            json!(pi_auth::CHATGPT_DIRECT_SCOPE),
+        ),
         ("openai-chatgpt", "SCOPE", json!(flows::CHATGPT_SCOPE)),
-        ("openai-chatgpt", "EXPIRY_MARGIN_MS", json!(pi_auth::CHATGPT_EXPIRY_MARGIN_MS)),
-        ("github-copilot", "CLIENT_ID", json!(flows::COPILOT_CLIENT_ID)),
-        ("github-copilot", "COPILOT_API_VERSION", json!(pi_auth::COPILOT_API_VERSION)),
+        (
+            "openai-chatgpt",
+            "EXPIRY_MARGIN_MS",
+            json!(pi_auth::CHATGPT_EXPIRY_MARGIN_MS),
+        ),
+        (
+            "github-copilot",
+            "CLIENT_ID",
+            json!(flows::COPILOT_CLIENT_ID),
+        ),
+        (
+            "github-copilot",
+            "COPILOT_API_VERSION",
+            json!(pi_auth::COPILOT_API_VERSION),
+        ),
         ("kimi-coding", "CLIENT_ID", json!(pi_auth::KIMI_CLIENT_ID)),
-        ("kimi-coding", "DEFAULT_OAUTH_HOST", json!(pi_auth::KIMI_HOST)),
-        ("kimi-coding", "DEVICE_CODE_TIMEOUT_SECONDS", json!(flows::KIMI_DEVICE_TIMEOUT_S as u64)),
-        ("kimi-coding", "DEFAULT_POLL_INTERVAL_SECONDS", json!(flows::KIMI_DEFAULT_INTERVAL_S as u64)),
+        (
+            "kimi-coding",
+            "DEFAULT_OAUTH_HOST",
+            json!(pi_auth::KIMI_HOST),
+        ),
+        (
+            "kimi-coding",
+            "DEVICE_CODE_TIMEOUT_SECONDS",
+            json!(flows::KIMI_DEVICE_TIMEOUT_S as u64),
+        ),
+        (
+            "kimi-coding",
+            "DEFAULT_POLL_INTERVAL_SECONDS",
+            json!(flows::KIMI_DEFAULT_INTERVAL_S as u64),
+        ),
         ("meta", "CLIENT_ID", json!(flows::META_CLIENT_ID)),
         ("meta", "AUTH_HOST", json!(e.meta_auth)),
-        ("meta", "DEVICE_AUTHORIZATION_URL", json!(format!("{}/oidc/device/authorization/", e.meta_auth))),
-        ("meta", "DEVICE_TOKEN_URL", json!(format!("{}/oidc/device/token/", e.meta_auth))),
-        ("meta", "API_KEY_MINT_URL", json!(format!("{}/muse-code/key", e.meta_api))),
-        ("meta", "API_KEY_LIFETIME_MS", json!(pi_auth::META_KEY_LIFETIME_MS)),
-        ("openrouter", "AUTHORIZE_URL", json!(format!("{}/auth", e.openrouter))),
-        ("openrouter", "TOKEN_URL", json!(format!("{}/api/v1/auth/keys", e.openrouter))),
-        ("openrouter", "LOGIN_TIMEOUT_MS", json!(e.login_timeout.as_millis() as u64)),
+        (
+            "meta",
+            "DEVICE_AUTHORIZATION_URL",
+            json!(format!("{}/oidc/device/authorization/", e.meta_auth)),
+        ),
+        (
+            "meta",
+            "DEVICE_TOKEN_URL",
+            json!(format!("{}/oidc/device/token/", e.meta_auth)),
+        ),
+        (
+            "meta",
+            "API_KEY_MINT_URL",
+            json!(format!("{}/muse-code/key", e.meta_api)),
+        ),
+        (
+            "meta",
+            "API_KEY_LIFETIME_MS",
+            json!(pi_auth::META_KEY_LIFETIME_MS),
+        ),
+        (
+            "openrouter",
+            "AUTHORIZE_URL",
+            json!(format!("{}/auth", e.openrouter)),
+        ),
+        (
+            "openrouter",
+            "TOKEN_URL",
+            json!(format!("{}/api/v1/auth/keys", e.openrouter)),
+        ),
+        (
+            "openrouter",
+            "LOGIN_TIMEOUT_MS",
+            json!(e.login_timeout.as_millis() as u64),
+        ),
         ("xai", "XAI_CLIENT_ID", json!(pi_auth::XAI_CLIENT_ID)),
         ("xai", "XAI_SCOPE", json!(flows::XAI_SCOPE)),
-        ("xai", "XAI_DEVICE_CODE_URL", json!(format!("{}/oauth2/device/code", e.xai))),
-        ("xai", "XAI_TOKEN_URL", json!(format!("{}/oauth2/token", e.xai))),
-        ("xai", "REFRESH_SKEW_MS", json!(pi_auth::MINIMUM_VALIDITY_MS)),
-        ("xai", "DEFAULT_TOKEN_LIFETIME_SECONDS", json!(pi_auth::XAI_DEFAULT_LIFETIME_S)),
+        (
+            "xai",
+            "XAI_DEVICE_CODE_URL",
+            json!(format!("{}/oauth2/device/code", e.xai)),
+        ),
+        (
+            "xai",
+            "XAI_TOKEN_URL",
+            json!(format!("{}/oauth2/token", e.xai)),
+        ),
+        (
+            "xai",
+            "REFRESH_SKEW_MS",
+            json!(pi_auth::MINIMUM_VALIDITY_MS),
+        ),
+        (
+            "xai",
+            "DEFAULT_TOKEN_LIFETIME_SECONDS",
+            json!(pi_auth::XAI_DEFAULT_LIFETIME_S),
+        ),
         ("device-code", "TIMEOUT_MESSAGE", json!(device::TIMED_OUT)),
         ("device-code", "MINIMUM_INTERVAL_MS", json!(1000)),
-        ("device-code", "DEFAULT_POLL_INTERVAL_SECONDS", json!(device::DEFAULT_INTERVAL_S as u64)),
-        ("device-code", "SLOW_DOWN_INTERVAL_INCREMENT_MS", json!(device::SLOW_DOWN_INCREMENT_S * 1000)),
+        (
+            "device-code",
+            "DEFAULT_POLL_INTERVAL_SECONDS",
+            json!(device::DEFAULT_INTERVAL_S as u64),
+        ),
+        (
+            "device-code",
+            "SLOW_DOWN_INTERVAL_INCREMENT_MS",
+            json!(device::SLOW_DOWN_INCREMENT_S * 1000),
+        ),
     ]
 }
 
@@ -774,8 +1144,14 @@ const LITERALS: &[(&str, &str)] = &[
     ("openai-chatgpt", "urn:uuid:${deviceId.toLowerCase()}"),
     ("github-copilot", "read:user"),
     ("github-copilot", "https://${domain}/login/device/code"),
-    ("github-copilot", "https://${domain}/login/oauth/access_token"),
-    ("github-copilot", "https://api.${domain}/copilot_internal/v2/token"),
+    (
+        "github-copilot",
+        "https://${domain}/login/oauth/access_token",
+    ),
+    (
+        "github-copilot",
+        "https://api.${domain}/copilot_internal/v2/token",
+    ),
     ("github-copilot", "https://api.individual.githubcopilot.com"),
     ("github-copilot", "https://copilot-api.${enterpriseDomain}"),
     ("github-copilot", "${baseUrl}/models"),
@@ -791,7 +1167,10 @@ const LITERALS: &[(&str, &str)] = &[
     ("kimi-coding", "${oauthHost}/api/oauth/token"),
     ("kimi-coding", "KIMI_CODE_OAUTH_HOST"),
     ("kimi-coding", "KIMI_OAUTH_HOST"),
-    ("kimi-coding", "urn:ietf:params:oauth:grant-type:device_code"),
+    (
+        "kimi-coding",
+        "urn:ietf:params:oauth:grant-type:device_code",
+    ),
     ("xai", "pi"),
     ("xai", "authorization_denied"),
     ("meta", "x-api-version"),
@@ -803,34 +1182,106 @@ const LITERALS: &[(&str, &str)] = &[
 /// The fields of every form, JSON body and query Pi's login modules
 /// build, in order, as Kintsugi's requests send them.
 const BODIES: &[(&str, &[&[&str]])] = &[
-    ("openai-codex", &[
-        &["grant_type", "client_id", "code", "code_verifier", "redirect_uri"],
-        &["grant_type", "refresh_token", "client_id"],
-        &["client_id"],
-        &["device_auth_id", "user_code"],
-    ]),
-    ("openai-chatgpt", &[
-        &["grant_type", "client_id", "code", "code_verifier", "redirect_uri", "resource"],
-        &["grant_type", "client_id", "refresh_token", "resource"],
-        &["client_id", "agent_name_hint", "ext_agent_host_id", "response_type", "redirect_uri", "resource", "scope", "state", "code_challenge", "code_challenge_method", "nonce"],
-    ]),
-    ("github-copilot", &[&["client_id", "scope"], &["client_id", "device_code", "grant_type"], &["state"]]),
-    ("kimi-coding", &[&["client_id"], &["client_id", "device_code", "grant_type"], &["client_id", "grant_type", "refresh_token"]]),
-    ("xai", &[&["client_id", "scope", "referrer"], &["grant_type", "client_id", "device_code"], &["grant_type", "client_id", "refresh_token"]]),
-    ("meta", &[&["client_id"], &["grant_type", "device_code", "client_id"]]),
-    ("openrouter", &[&["code", "code_verifier", "code_challenge_method"], &["callback_url", "code_challenge", "code_challenge_method"]]),
+    (
+        "openai-codex",
+        &[
+            &[
+                "grant_type",
+                "client_id",
+                "code",
+                "code_verifier",
+                "redirect_uri",
+            ],
+            &["grant_type", "refresh_token", "client_id"],
+            &["client_id"],
+            &["device_auth_id", "user_code"],
+        ],
+    ),
+    (
+        "openai-chatgpt",
+        &[
+            &[
+                "grant_type",
+                "client_id",
+                "code",
+                "code_verifier",
+                "redirect_uri",
+                "resource",
+            ],
+            &["grant_type", "client_id", "refresh_token", "resource"],
+            &[
+                "client_id",
+                "agent_name_hint",
+                "ext_agent_host_id",
+                "response_type",
+                "redirect_uri",
+                "resource",
+                "scope",
+                "state",
+                "code_challenge",
+                "code_challenge_method",
+                "nonce",
+            ],
+        ],
+    ),
+    (
+        "github-copilot",
+        &[
+            &["client_id", "scope"],
+            &["client_id", "device_code", "grant_type"],
+            &["state"],
+        ],
+    ),
+    (
+        "kimi-coding",
+        &[
+            &["client_id"],
+            &["client_id", "device_code", "grant_type"],
+            &["client_id", "grant_type", "refresh_token"],
+        ],
+    ),
+    (
+        "xai",
+        &[
+            &["client_id", "scope", "referrer"],
+            &["grant_type", "client_id", "device_code"],
+            &["grant_type", "client_id", "refresh_token"],
+        ],
+    ),
+    (
+        "meta",
+        &[&["client_id"], &["grant_type", "device_code", "client_id"]],
+    ),
+    (
+        "openrouter",
+        &[
+            &["code", "code_verifier", "code_challenge_method"],
+            &["callback_url", "code_challenge", "code_challenge_method"],
+        ],
+    ),
 ];
 
 #[test]
 fn drift() {
     let pi: Value = serde_json::from_str(AUTH_PI).unwrap();
-    assert_eq!(pi["source"]["version"], "1.5.0", "update the port with the version");
+    assert_eq!(
+        pi["source"]["version"], "1.5.0",
+        "update the port with the version"
+    );
     let oauth = pi["oauth"].as_object().unwrap();
     let deviations = deviations();
     let ported = ported();
 
     // Every module is ported, a helper, or left out on purpose.
-    let flows_ported = ["github-copilot", "kimi-coding", "meta", "openai-chatgpt", "openai-codex", "openrouter", "xai"];
+    let flows_ported = [
+        "github-copilot",
+        "kimi-coding",
+        "meta",
+        "openai-chatgpt",
+        "openai-codex",
+        "openrouter",
+        "xai",
+    ];
     for module in oauth.keys() {
         assert!(
             flows_ported.contains(&module.as_str())
@@ -849,8 +1300,14 @@ fn drift() {
             continue;
         }
         for (name, value) in body["constants"].as_object().unwrap() {
-            if let Some((.., pis, why)) = deviations.iter().find(|(m, n, ..)| m == module && n == name) {
-                assert_eq!(value, pis, "{module}.{name} changed in Pi (Kintsugi differs: {why})");
+            if let Some((.., pis, why)) = deviations
+                .iter()
+                .find(|(m, n, ..)| m == module && n == name)
+            {
+                assert_eq!(
+                    value, pis,
+                    "{module}.{name} changed in Pi (Kintsugi differs: {why})"
+                );
             } else {
                 let ours = ported
                     .iter()
@@ -861,31 +1318,145 @@ fn drift() {
         }
     }
     for (module, name, _) in &ported {
-        assert!(oauth[*module]["constants"].get(*name).is_some(), "Pi no longer has {module}.{name}");
+        assert!(
+            oauth[*module]["constants"].get(*name).is_some(),
+            "Pi no longer has {module}.{name}"
+        );
     }
     for (module, literal) in LITERALS {
         let strings = oauth[*module]["strings"].as_array().unwrap();
-        assert!(strings.iter().any(|s| s == literal), "Pi's {module} no longer has {literal:?}");
+        assert!(
+            strings.iter().any(|s| s == literal),
+            "Pi's {module} no longer has {literal:?}"
+        );
     }
     for (module, bodies) in BODIES {
-        assert_eq!(oauth[*module]["bodies"], json!(bodies), "the requests {module} builds changed in Pi");
+        assert_eq!(
+            oauth[*module]["bodies"],
+            json!(bodies),
+            "the requests {module} builds changed in Pi"
+        );
     }
     for (header, value) in pi_auth::COPILOT_HEADERS {
         let strings = oauth["github-copilot"]["strings"].as_array().unwrap();
-        assert!(strings.iter().any(|s| s == header) && strings.iter().any(|s| s == value), "{header}");
+        assert!(
+            strings.iter().any(|s| s == header) && strings.iter().any(|s| s == value),
+            "{header}"
+        );
     }
 
     // Providers: a key wherever Pi takes one, by Pi's environment names; a
     // sign-in wherever Pi has one, but Claude's.
     let providers = pi["providers"].as_object().unwrap();
     for p in crate::ai::wire::PROVIDERS.iter().filter(|p| !p.keyless) {
-        let pis = providers.get(p.id).unwrap_or_else(|| panic!("Pi has no provider {}", p.id));
+        let pis = providers
+            .get(p.id)
+            .unwrap_or_else(|| panic!("Pi has no provider {}", p.id));
         match &pis["apiKey"] {
             env @ Value::Array(_) => assert_eq!(env, &json!(p.env_keys), "{}", p.id),
             Value::String(custom) => assert_eq!(custom, "custom", "{}", p.id),
             _ => assert_eq!(p.id, "openai-codex", "Pi takes no key for {}", p.id),
         }
         let login = pis["oauth"].as_str();
-        assert_eq!(can_sign_in(p.id), login.is_some() && p.id != "anthropic", "{}", p.id);
+        assert_eq!(
+            can_sign_in(p.id),
+            login.is_some() && p.id != "anthropic",
+            "{}",
+            p.id
+        );
     }
+}
+
+#[test]
+fn server_times_never_panic_huge_nan_or_negative() {
+    let rt = runtime();
+    rt.block_on(async {
+        let second = Duration::from_millis(5);
+        let options = |interval, expires_in, wait_first| device::Options {
+            interval,
+            expires_in,
+            wait_first,
+            second,
+        };
+        // The arithmetic on what the server said: none of it may panic.
+        for (interval, expires_in) in [
+            (Some(f64::MAX), Some(f64::MAX)),
+            (Some(1e308), Some(f64::NAN)),
+            (Some(f64::NAN), Some(f64::INFINITY)),
+            (Some(-1.0), Some(-5.0)),
+            (Some(f64::INFINITY), None),
+        ] {
+            let done = device::poll(options(interval, expires_in, false), || async {
+                Ok(Poll::Complete(()))
+            });
+            let result = tokio::time::timeout(Duration::from_secs(5), done)
+                .await
+                .expect("ends");
+            // A negative lifetime is already over; the rest poll once.
+            assert_eq!(
+                result.is_ok(),
+                expires_in != Some(-5.0),
+                "{interval:?} {expires_in:?}"
+            );
+        }
+        // slow_down asking for an absurd interval stays within the lifetime.
+        for asked in [
+            Some(f64::MAX),
+            Some(f64::NAN),
+            Some(-3.0),
+            Some(f64::INFINITY),
+        ] {
+            let done = device::poll(options(Some(f64::MAX), Some(4.0), true), || async move {
+                Ok(Poll::<()>::SlowDown(asked))
+            });
+            let result = tokio::time::timeout(Duration::from_secs(5), done)
+                .await
+                .expect("ends at the code's expiry");
+            assert!(result.unwrap_err().starts_with("Device flow timed out"));
+        }
+    });
+}
+
+#[test]
+fn device_logins_survive_absurd_numbers_from_the_server() {
+    let rt = runtime();
+    rt.block_on(async {
+        let (base, _) = server(|req, _| match req.path.as_str() {
+            // xAI: a lifetime of 2 seconds but an interval of 1e308.
+            "/oauth2/device/code" => (200, json!({ "device_code": "d", "user_code": "u", "verification_uri": "https://x.ai/d", "expires_in": 2, "interval": 1e308 })),
+            "/oauth2/token" => (400, json!({ "error": "slow_down", "interval": 1e308 })),
+            // Copilot: nothing is filtered before polling; negative and huge.
+            "/login/device/code" => (200, json!({ "device_code": "dc", "user_code": "C", "verification_uri": "https://github.com/login/device", "interval": -5, "expires_in": 1e308 })),
+            "/login/oauth/access_token" => (200, json!({ "access_token": "gho" })),
+            "/copilot_internal/v2/token" => (200, json!({ "token": "t", "expires_at": 1e308 })),
+            "/models" => (200, json!({ "data": [] })),
+            _ => (404, json!({})),
+        })
+        .await;
+        let (xai, events, _) = drive("xai", endpoints(&base), &[], no_browser()).await;
+        // Waited out the code's two seconds (not 1e308 of them), then stopped.
+        assert_eq!(xai.unwrap_err(), device::TIMED_OUT);
+        assert!(events.iter().any(|e| matches!(e, Event::DeviceCode { .. })));
+        let (copilot, ..) = drive("github-copilot", endpoints(&base), &[""], no_browser()).await;
+        let copilot = copilot.unwrap();
+        assert_eq!(copilot["refresh"], "gho");
+        assert!(copilot["expires"].as_u64().is_some());
+    });
+}
+
+#[test]
+fn codex_waits_for_a_paste_only_as_long_as_a_callback() {
+    let rt = runtime();
+    rt.block_on(async {
+        // Port taken (by the Codex CLI, say): only a paste could finish it.
+        let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut e = endpoints("http://127.0.0.1:1");
+        e.openai_callback_port = taken.local_addr().unwrap().port();
+        e.login_timeout = Duration::from_millis(100);
+        let (result, events, _) = drive("openai-codex", e, &["browser"], no_browser()).await;
+        assert_eq!(result.unwrap_err(), "OpenAI sign-in timed out");
+        assert!(events.iter().any(
+            |e| matches!(e, Event::Prompt { prompt, .. } if prompt.kind == PromptKind::Paste)
+        ));
+    });
 }
