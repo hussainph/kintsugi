@@ -49,7 +49,7 @@ async function knownApi(client: Remote): Promise<number> {
 export async function syncSection(client: Remote, section: 'feed' | 'ideas' | 'kin'): Promise<void> {
   try {
     if ((await knownApi(client)) < SECTIONS_API) return;
-    if (section === 'feed') await feed.sync(client);
+    if (section === 'feed') await feed.sync(client, macApi);
     if (section === 'kin') await kin.sync(client);
     if (section === 'ideas') {
       // An adopted idea is a new draft on the Mac: bring it to the phone.
@@ -57,6 +57,7 @@ export async function syncSection(client: Remote, section: 'feed' | 'ideas' | 'k
     }
   } catch (e) {
     if (e instanceof Unpaired) throw e;
+    if (e instanceof Offline && section === 'feed') feed.markOffline();
     if (!(e instanceof Offline)) console.warn(`${section}: ${String(e)}`);
   }
 }

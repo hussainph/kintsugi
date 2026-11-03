@@ -25,16 +25,22 @@ final class SectionsTests: XCTestCase {
     tap(feedEntry)
 
     XCTAssertTrue(heading("Picked for you").waitForExistence(timeout: 15), "no Picked for you")
-    XCTAssertTrue(heading("Newest").exists)
     shot("02-feed")
 
-    // A like from the list: the toast says what it changed in Picked for you.
+    // Likes are silent; ranking feedback no longer interrupts reading (KI-91).
     tap(app.buttons["Like"].firstMatch)
-    XCTAssertTrue(app.otherElements["toast"].waitForExistence(timeout: 15) || app.buttons["Undo"].waitForExistence(timeout: 5), "no toast after a like")
+    sleep(2)
+    XCTAssertFalse(app.otherElements["toast"].exists, "a like showed a ranking toast")
     shot("03-liked")
 
     // Read an item, note it and save it into Inspiration.
-    tap(button(beginning: "Mending as a design method"))
+    // Mending is now a multi-source story. Open the named article from its strip.
+    let story = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "feed-story-", "Mending")).firstMatch
+    tap(story)
+    let source = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "story-source-", "Mending as a design method")).firstMatch
+    var scrolls = 0
+    while !source.isHittable && scrolls < 12 { app.swipeUp(); scrolls += 1 }
+    tap(source)
     let text = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "visible repair")).firstMatch
     XCTAssertTrue(text.waitForExistence(timeout: 15), "the article never opened")
     let note = field("feed-note")
@@ -111,7 +117,7 @@ final class SectionsTests: XCTestCase {
     backToHome()
     tap(button(beginning: "Feed,"))
     XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Your Mac is offline")).firstMatch.waitForExistence(timeout: 20))
-    XCTAssertTrue(button(beginning: "Gold in the cracks").exists || button(beginning: "Small sites").exists, "the Feed isn’t kept on the phone")
+    XCTAssertTrue(button(beginning: "Mending").exists || button(beginning: "RSS").exists, "the Feed isn’t kept on the phone")
     shot("11-feed-offline")
   }
 

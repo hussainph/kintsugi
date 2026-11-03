@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { HttpError, Offline, Unpaired, version } from '@kintsugi/core/remote';
-import type { FeedItem, IdeasView, KinPage, ListedIdea, Pick as FeedPick } from '@kintsugi/core/sections';
+import type { FeedItem, Story, IdeasView, KinPage, ListedIdea, Pick as FeedPick } from '@kintsugi/core/sections';
 
-import { effectLine, Feed, type FeedClient } from './feed.ts';
+import { Feed, summaryStateLine, type FeedClient } from './feed.ts';
 import { groupIdeas, Ideas, type IdeasClient } from './ideas.ts';
 import { activeJobs, Kin, type KinClient, kinStatus, shown } from './kin.ts';
 import type { KV } from './library.ts';
@@ -82,7 +82,15 @@ function feedMac(items: FeedItem[]) {
     },
     feedSave: async (id) => (reach(), state.asked.push(`save ${id}`), set({ ...find(id), savedPath: `inspiration/item-${id}.md` }), find(id)),
     feedImpressions: async (list) => (reach(), state.asked.push(`impressions ${list.length}`), {}),
-    feedEffect: async () => ({ changes: [{ key: 'source:1', label: 'The Slow Workshop', before: 0.25, after: 0.4 }], added: [], removed: [] }),
+    feedEntries: async () => (reach(), { entries: state.items.filter((i) => !i.dismissed).map((item) => ({ kind: 'item' as const, item })), total: state.items.length }),
+    feedStory: async () => { throw new HttpError(404, 'No story'); },
+    feedWhy: async () => (reach(), [{ key: 'cold', label: 'Learning', removable: false }, { key: 'source:1', label: 'You like this source.', removable: true }]),
+    feedDismiss: async (ids, undo) => {
+      reach();
+      state.asked.push(`${undo ? 'restore' : 'dismiss'} ${ids.join(',')}`);
+      for (const id of ids) set({ ...find(id), dismissed: !undo });
+      return ids.map(find);
+    },
   };
   return { client, state };
 }
@@ -124,7 +132,7 @@ test('the feed is kept to read offline, and actions wait for the Mac in order', 
   assert.equal(snap.waiting, 0);
   assert.equal(snap.connection, 'online');
   assert.deepEqual(snap.items.map((i) => [i.id, i.liked, i.savedPath]), [[1, true, null], [3, false, 'inspiration/item-3.md']]);
-  assert.match(effectLine(snap.effect!.effect), /More like The Slow Workshop/);
+  assert.equal('effect' in snap, false, 'likes do not create ranking feedback');
 });
 
 test('a feed note is checked against the note it started from', async () => {
@@ -169,6 +177,124 @@ test('an action the Mac refuses is dropped with a reason; others still go', asyn
   await feed.sync(mac.client);
   assert.equal(feed.getSnapshot().waiting, 0);
   assert.equal(feed.getSnapshot().items.length, 0);
+});
+
+function story(items: FeedItem[]): Story {
+  return {
+    id: 10, title: 'Apple Q4 results', lead: items[0], items, image: null,
+    summaryState: 'ready', summary: { paragraphs: [[{ text: 'Apple reported Q4 results.', cites: [items[0].id, items[1].id] }]] },
+    sources: items.map((i) => ({ id: i.sourceId, title: i.sourceTitle, kind: i.sourceKind, site: null, items: 1 })),
+    sortAt: 1_000, updatedAt: 1_000,
+  };
+}
+
+test('API 7 keeps entries, stories, citations and source actions offline across relaunches', async () => {
+  const kv = memory();
+  const mac = feedMac([item(1), item(2, { sourceId: 2 }), item(3, { sourceId: 3 })]);
+  const whole = () => story(mac.state.items);
+  mac.client.feedEntries = async () => {
+    if (mac.state.away) throw new Offline();
+    return { entries: [{ kind: 'story', story: whole() }], total: 1 };
+  };
+  mac.client.picked = async () => ({ picks: [{ ...pick(mac.state.items[1]), story: whole(), storyId: 10 }], examples: 0, learnedShare: 0 });
+  mac.client.feedStory = async () => {
+    if (mac.state.away) throw new Offline();
+    return whole();
+  };
+  const feed = new Feed(kv);
+  await feed.sync(mac.client, 7);
+  await feed.readStory(mac.client, 10);
+  assert.equal(feed.getSnapshot().entries[0].kind, 'story');
+  assert.deepEqual(feed.story(10)?.summary?.paragraphs[0][0].cites, [1, 2]);
+  assert.equal(feed.getSnapshot().picks[0].id, 2, 'impressions stay on the ranked pick');
+  assert.equal(feed.getSnapshot().picks[0].story?.lead.id, 1, 'story actions target its lead, not the ranked pick');
+
+  mac.state.away = true;
+  feed.act(1, 'like');
+  feed.save(1);
+  feed.note(3, 'Read the other source');
+  feed.dismiss([1, 2, 3]);
+  assert.deepEqual(feed.getSnapshot().entries, []);
+  assert.deepEqual(feed.getSnapshot().picks, []);
+  feed.dismiss([1, 2, 3], true);
+  assert.equal(feed.getSnapshot().entries[0].kind, 'story');
+  await feed.sync(mac.client, 7);
+  const again = new Feed(kv);
+  assert.equal(again.getSnapshot().waiting, 5);
+  assert.equal(again.story(10)?.lead.liked, true);
+  assert.equal(again.story(10)?.lead.savedPath, '');
+  assert.equal(again.story(10)?.items[2].note, 'Read the other source');
+  assert.equal((await again.readStory(mac.client, 10))?.summaryState, 'ready');
+  mac.state.away = false;
+  await again.sync(mac.client, 7);
+  assert.deepEqual(mac.state.asked, ['like 1', 'save 1', 'note 3 Read the other source', 'dismiss 1,2,3', 'restore 1,2,3']);
+  assert.equal(again.getSnapshot().waiting, 0);
+  assert.equal(again.story(10)?.lead.savedPath, 'inspiration/item-1.md');
+});
+
+test('a waiting source dismiss collapses a story to one-source items, and Undo restores it', async () => {
+  const mac = feedMac([item(1), item(2, { sourceId: 2 })]);
+  mac.client.feedEntries = async () => ({ entries: [{ kind: 'story', story: story(mac.state.items) }], total: 1 });
+  const feed = new Feed(memory());
+  await feed.sync(mac.client, 7);
+  feed.dismiss([2]);
+  assert.deepEqual(feed.getSnapshot().entries.map((e) => e.kind), ['item']);
+  feed.dismiss([2], true);
+  assert.deepEqual(feed.getSnapshot().entries.map((e) => e.kind), ['story']);
+});
+
+test('Undo restores a cached story offline after the Mac removed it from the page', async () => {
+  const kv = memory();
+  const mac = feedMac([item(1), item(2, { sourceId: 2 })]);
+  mac.client.feedEntries = async () => {
+    if (mac.state.away) throw new Offline();
+    return { entries: mac.state.items.every((i) => i.dismissed) ? [] : [{ kind: 'story', story: story(mac.state.items) }], total: 1 };
+  };
+  const feed = new Feed(kv);
+  await feed.sync(mac.client, 7);
+  feed.dismiss([1, 2]);
+  await feed.sync(mac.client, 7);
+  assert.deepEqual(feed.getSnapshot().entries, []);
+  mac.state.away = true;
+  const again = new Feed(kv);
+  again.dismiss([1, 2], true);
+  await again.sync(mac.client, 7);
+  assert.equal(again.getSnapshot().connection, 'offline');
+  assert.equal(again.getSnapshot().entries[0].kind, 'story');
+  assert.equal(again.story(10)?.items.length, 2);
+});
+
+test('a pre-stories Mac keeps the item list and never calls API 7 routes', async () => {
+  const kv = memory();
+  const old = { items: [item(1)], total: 1, picks: [], texts: {}, conflicts: {} };
+  kv.setItemSync('feed:state', JSON.stringify(old));
+  const feed = new Feed(kv);
+  assert.equal(feed.getSnapshot().entries[0].kind, 'item', 'old offline storage migrates without a sync');
+  feed.markOffline();
+  assert.equal(feed.getSnapshot().connection, 'offline', 'a failed version probe marks a cold launch offline');
+  assert.equal(feed.getSnapshot().entries.length, 1);
+  const mac = feedMac([item(2)]);
+  mac.client.feedEntries = async () => { throw new Error('API 7 called on old Mac'); };
+  await feed.sync(mac.client, 6);
+  assert.equal(feed.getSnapshot().items[0].id, 2);
+  assert.equal(feed.getSnapshot().entries[0].kind, 'item');
+  assert.equal(feed.getSnapshot().problem, null);
+});
+
+test('reasons drop cold-start status and remain readable offline', async () => {
+  const kv = memory();
+  const mac = feedMac([item(1)]);
+  const feed = new Feed(kv);
+  assert.deepEqual((await feed.why(mac.client, 1)).map((r) => r.key), ['source:1']);
+  assert.deepEqual(new Feed(kv).reasons(1)?.map((r) => r.key), ['source:1']);
+});
+
+test('every unavailable summary has a plain fallback state', () => {
+  assert.equal(summaryStateLine('ready'), null);
+  assert.equal(summaryStateLine('pending'), 'Kin is writing a summary.');
+  assert.equal(summaryStateLine('failed'), "Couldn't write a summary, so this is the first article's text.");
+  assert.equal(summaryStateLine('capped'), "This month's AI limit is reached, so there's no summary yet.");
+  assert.equal(summaryStateLine('unavailable'), 'Set up an AI provider in Settings for summaries.');
 });
 
 function idea(id: string, change: Partial<ListedIdea> = {}): ListedIdea {

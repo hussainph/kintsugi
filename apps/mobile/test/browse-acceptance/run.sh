@@ -4,6 +4,7 @@
 #
 #   UDID=<a dedicated simulator> APP=<built Kintsugi.app (Release)> ./run.sh
 #
+# ONLY=stories runs KI-94's story screens and source context menus.
 # ONLY=inspiration runs KI-3's InspirationTests instead of BrowseTests (after
 # the first-launch approval). They stop the Mac midway, through a file in
 # $WORK/control, to browse offline. ONLY=sections runs KI-42's SectionsTests
@@ -52,7 +53,9 @@ xcrun simctl openurl "$UDID" "kintsugi://pair?url=http%3A%2F%2F127.0.0.1%3A$PORT
 
 xcodegen generate --quiet --spec "$HERE/project.yml" --project "$WORK" --project-root "$HERE"
 ONLY_TESTING=()
-if [ "${ONLY:-}" = sections ]; then
+if [ "${ONLY:-}" = stories ]; then
+  ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests/test0ApproveOpen -only-testing:BrowseHarnessUITests/StoriesTests)
+elif [ "${ONLY:-}" = sections ]; then
   ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests/test0ApproveOpen -only-testing:BrowseHarnessUITests/SectionsTests)
 elif [ "${ONLY:-}" = inspiration ]; then
   ONLY_TESTING=(-only-testing:BrowseHarnessUITests/BrowseTests/test0ApproveOpen -only-testing:BrowseHarnessUITests/InspirationTests)
