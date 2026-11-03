@@ -151,9 +151,3 @@ export function groupIdeas(ideas: LocalIdea[], keep: ReadonlySet<string> = new S
     faded: shown.filter((i) => i.stage === 'faded' && !i.dismissed),
   };
 }
-
-/** One per source, in Kin's order. */
-export function evidence(idea: ListedIdea) {
-  const seen = new Set<string>();
-  return idea.quotes.filter((q) => !seen.has(q.source) && seen.add(q.source));
-}

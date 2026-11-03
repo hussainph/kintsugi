@@ -527,7 +527,7 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   (out of steps, its reply spent on thinking, or empty).
 - Headless runs never start the daily Ideas batch on their own unless
   `KINTSUGI_HEADLESS_IDEAS_DAILY=1`, so a real-AI smoke test spends nothing
-  unasked; "Ask for more" still works. `KINTSUGI_HEADLESS_WIRE_TRACE=1` prints
+  unasked; `ideas_generate` (the phone's "Ask for more") still works. `KINTSUGI_HEADLESS_WIRE_TRACE=1` prints
   each model request's shape (item kinds, reasoning items carried, stop
   reason, output tokens; never content) to stderr.
 - Headless runs can try it all without a provider: `KINTSUGI_HEADLESS_KIN=mock`
@@ -545,9 +545,10 @@ Ideas opens from the sidebar or ⇧⌘E.
   `ideas` model task, so it is background work and waits at the monthly
   cap. Once a day (checked shortly after start, then every half hour) Kin
   asks for up to five, if a model for Ideas is set up and the cap allows;
-  "Ask for more" and "Find ideas for this draft" ask for up to three on
-  demand. The brief (`ideas/brief.rs`) carries the rules (never draft prose;
-  observed facts apart from the hunch; 2–4 verbatim quotes), the titles
+  "Find ideas for this draft" (and the phone's "Ask for more") ask for up to
+  three on demand. The brief (`ideas/brief.rs`) carries the rules (never
+  draft prose; the hunch and 1–3 observed facts; 2–3 verbatim quotes, cited
+  inline as `[1]`, `[2]` instead of a separate justification), the titles
   offered in the last two weeks, what Hussain did with earlier ideas, and
   the Feed items he liked, noted or saved. The helper searches and reads
   with Kin's tools and replies with JSON between `<ideas>` tags.
@@ -556,8 +557,8 @@ Ideas opens from the sidebar or ⇧⌘E.
   spacing, emphasis and blockquote markers aside; `…` marks an omission).
   One quote that isn't there drops the whole idea, as do fewer than two
   quotes, hidden or outside paths, a hunch with paragraphs, headings or
-  lists, and over-long fields. A reason's About you line is kept only if it
-  is really in USER.md. What was dropped, and why, goes in the helper's
+  lists, and over-long fields. A citation with no quote behind it is
+  removed. What was dropped, and why, goes in the helper's
   report in the conversation log. The footprint (searches, files read,
   seconds, cost) comes from the run itself, not from the model.
 - **App data, not the vault.** `<config>/kin/ideas/<vault key>/ideas.json`
@@ -595,9 +596,12 @@ Ideas opens from the sidebar or ⇧⌘E.
 - **Refine** is a helper job of kind `ideas-refine` with the idea and his
   request. The result passes the same checks, replaces the idea and keeps
   the earlier version; Undo restores it. **Discuss** opens the chat with an
-  `idea` chip; Kin reads it with the `idea` extra tool. **Why this?** lists
-  the reasons: "Not a reason" is a signal (with undo), and "Fix" opens About
-  you.
+  `idea` chip; Kin reads it with the `idea` extra tool; it's the way to
+  talk about an idea.
+- **An open idea** (KI-76) shows the hunch and its takeaways, nothing else.
+  Each `[n]` reveals its quote and source on hover or click; quotes nothing
+  cites (all of them, for ideas from before citations) hang off the end of
+  the hunch. Older ideas keep their stored steps and reasons, unshown.
 - **Ideas for this draft.** `openIdeas(path)` / `ideasForDraft(path)` in
   `src/ideas/api.ts` open Ideas filtered to ideas about, quoting or adopted
   into that document. The editor footer has an "Ideas" link, and ⌘K's
@@ -746,8 +750,8 @@ item being read, an open idea. Tapping the avatar opens the chat
 - **Ideas** (`app/ideas.tsx`, `lib/ideas.ts`): the Ledger
   (`components/ideas/Ledger.tsx`, the only layout-specific file;
   `components/ideas/parts.tsx` serves any layout). A row opens in place:
-  what Kin noticed, its hunch, the quoted evidence (tap to open a document
-  or clip), how it got here and Why this?, then Adopt, Discuss and Dismiss
+  the hunch and what Kin noticed, with inline citations (tap one for its
+  quote; tap the quote to open the document or clip), then Adopt, Discuss and Dismiss
   (with Undo). Adopt, Dismiss and Ask for more wait for the Mac like Kin's
   messages; an adopted draft is fetched into the phone's library and opens.
 

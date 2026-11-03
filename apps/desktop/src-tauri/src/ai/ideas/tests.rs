@@ -797,6 +797,27 @@ fn the_batch_brief_carries_rules_signals_and_the_feed() {
     assert!(text.contains("said \"A theme with saves and no post\" was not a reason"));
     assert!(text.contains("- feed:7 \"Tools shape us\" (HN): liked, noted \"yes!\""));
     assert!(text.contains(brief::FORMAT) && text.trim_end().ends_with("</ideas>"));
+    // Kin cites quotes inline and isn't asked to justify itself (KI-76).
+    assert!(text.contains("put [1] right after the claim"));
+    assert!(!text.contains("\"steps\"") && !text.contains("\"reasons\""));
+}
+
+#[test]
+fn citations_point_at_real_quotes() {
+    assert_eq!(
+        ground::keep_citations("Two drafts [1] and a clip [2] and [5].", 2),
+        "Two drafts [1] and a clip [2] and."
+    );
+    assert_eq!(ground::keep_citations("See [[notes/a]] [0]", 3), "See [[notes/a]]");
+    let root = vault();
+    let mut c = candidate("Cited", good_quotes());
+    c.hunch = "The cost side [1], not the care [3].".into();
+    c.observed = vec!["Two documents [2]".into()];
+    c.snippet = String::new();
+    let idea = ground::check_one(c, &sources(root.path()), &[], &Footprint::default()).unwrap();
+    assert_eq!(idea.hunch, "The cost side [1], not the care.");
+    assert_eq!(idea.observed, ["Two documents [2]"]);
+    assert_eq!(idea.snippet, "Two documents", "the list's snippet carries no markers");
 }
 
 #[test]

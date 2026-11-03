@@ -1,14 +1,15 @@
 /**
- * The pieces of an engaged idea, shared by every layout (KI-22): observed
- * vs hunch, quoted evidence, how Kin found it, Why this?, the actions, Adopt,
- * Refine and the dismissed row. A layout (Ledger today) only arranges them.
+ * The pieces of an engaged idea, shared by every layout (KI-22): the idea
+ * and its takeaways with inline citations, the actions, Adopt, Refine and
+ * the dismissed row. A layout (Ledger today) only arranges them.
  */
 import { useState, type ReactNode } from "react";
 import { Button } from "@kintsugi/ui/components/button";
+import { Popover } from "@kintsugi/ui/graphical";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { KinAvatar } from "@/kin/Avatar";
 import type { Idea, Listed, Quote } from "./api";
-import { ageLabel, DISMISS_REASONS, footprint, uniqueSources } from "./model";
+import { ageLabel, cite, DISMISS_REASONS, uncited, uniqueSources } from "./model";
 import type { IdeasModel } from "./useIdeas";
 
 export const serif = "font-[family-name:var(--font-prose)]";
@@ -39,34 +40,6 @@ export function Status({ idea, className }: { idea: Listed; className?: string }
   if (idea.refining) return <span className={cn("text-xs whitespace-nowrap text-muted-foreground", className)}>Refining…</span>;
   if (idea.age === 0) return null;
   return <span className={cn("text-xs whitespace-nowrap text-muted-foreground tabular-nums", className)}>{ageLabel(idea.age)}</span>;
-}
-
-export function Observed({ idea }: { idea: Idea }) {
-  return (
-    <section className="space-y-2" aria-label="Observed">
-      <Heading>Observed</Heading>
-      <ul className="space-y-1.5 text-sm leading-relaxed">
-        {idea.observed.map((fact) => (
-          <li key={fact} className="flex gap-2.5">
-            <span aria-hidden className="mt-[0.6em] size-1 shrink-0 rounded-full bg-muted-foreground/60" />
-            <span>{fact}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-export function Hunch({ idea }: { idea: Idea }) {
-  return (
-    <section className="space-y-2" aria-label="Hunch">
-      <div className="flex items-center gap-2">
-        <Heading>Hunch</Heading>
-        <KinMark size="xs">Kin's guess, not a fact</KinMark>
-      </div>
-      <p className={cn(serif, "border-l-2 border-[var(--seam)] pl-4 text-base leading-relaxed")}>{idea.hunch}</p>
-    </section>
-  );
 }
 
 /** Quotes stay verbatim; wikilinks inside them read as links, not brackets. */
@@ -100,92 +73,6 @@ export function ClipQuote({ quote, compact = false, onOpen }: { quote: Quote; co
         </button>
       </figcaption>
     </figure>
-  );
-}
-
-export function Evidence({ idea, onOpen }: { idea: Idea; onOpen: (q: Quote) => void }) {
-  return (
-    <section className="space-y-3" aria-label="Evidence">
-      <Heading>{idea.quotes.length === 1 ? "1 quote" : `${idea.quotes.length} quotes`}</Heading>
-      <div className="space-y-4">
-        {idea.quotes.map((quote) => (
-          <ClipQuote key={quote.source + quote.text} quote={quote} onOpen={onOpen} />
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/** Stream of thought, collapsed: what Kin did, in order, and what it cost. */
-export function HowIGotHere({ idea }: { idea: Idea }) {
-  return (
-    <details className="group text-sm">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
-        <span aria-hidden className="inline-block text-xxs transition-transform group-open:rotate-90 motion-reduce:transition-none">▸</span>
-        How Kin found this
-      </summary>
-      {idea.steps.length > 0 && (
-        <ol className="mt-3 ml-1 space-y-2 border-l pl-4">
-          {idea.steps.map((step) => (
-            <li key={step.did} className="relative leading-snug">
-              <span aria-hidden className="absolute top-[0.5em] -left-[19px] size-[5px] rounded-full bg-muted-foreground/50" />
-              {step.did}
-              {step.found && <span className="text-muted-foreground">: {step.found}</span>}
-            </li>
-          ))}
-        </ol>
-      )}
-      <p className="mt-3 ml-5 text-xs text-muted-foreground tabular-nums">{footprint(idea.footprint)}</p>
-    </details>
-  );
-}
-
-/** "Why this?" is the steering wheel: remove a reason, or fix a line in About you. */
-export function WhyThis({ idea, model }: { idea: Listed; model: IdeasModel }) {
-  const open = model.state.whyOpen === idea.id;
-  if (!idea.reasons.length) return null;
-  return (
-    <div className="text-sm">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => model.toggleWhy(idea.id)}
-        className="text-muted-foreground underline decoration-dotted underline-offset-4 hover:text-foreground"
-      >
-        Why this?
-      </button>
-      {open && (
-        <div className="mt-3 space-y-3 rounded-lg bg-muted/60 p-4">
-          <ul className="space-y-2.5">
-            {idea.reasons.map((reason) => (
-              <li key={reason.id} className={cn("space-y-1.5", reason.removed && "opacity-50")}>
-                <div className="flex items-start justify-between gap-3">
-                  <span className={cn(reason.removed && "line-through")}>{reason.text}</span>
-                  <button
-                    type="button"
-                    onClick={() => (reason.removed ? model.restoreReason(idea, reason) : model.removeReason(idea, reason))}
-                    className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
-                    aria-label={`${reason.removed ? "Count it again" : "Not a reason"}: ${reason.text}`}
-                  >
-                    {reason.removed ? "Count it again" : "Not a reason"}
-                  </button>
-                </div>
-                {reason.profileLine && !reason.removed && (
-                  <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-muted-foreground">
-                    <span>
-                      About you: <q className={cn(serif, "text-sm text-foreground")}>{reason.profileLine}</q>
-                    </span>
-                    <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={model.fixProfile}>
-                      Fix
-                    </button>
-                  </p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -359,24 +246,87 @@ export function Provenance({ idea, model, onOpenDoc }: { idea: Listed; model: Id
   );
 }
 
-/** The full engaged body, in Kin's order: facts, guess, evidence, then the workings. */
+/** `[1]`: the quote and its source on hover or click. */
+export function Citation({ n, quote, onOpen }: { n: number; quote: Quote; onOpen: (q: Quote) => void }) {
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        openOnHover
+        delay={150}
+        render={
+          <button
+            type="button"
+            aria-label={`Quote ${n}: ${quote.title}`}
+            className="mx-px inline-flex -translate-y-[0.35em] items-center rounded px-0.5 align-baseline font-sans text-xxs leading-none text-[var(--seam-ink)] tabular-nums hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none data-[popup-open]:bg-muted"
+          />
+        }
+      >
+        [{n}]
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="top" sideOffset={6} align="start">
+          <Popover.Popup className="w-80 max-w-[calc(100vw-2rem)] p-3.5">
+            <ClipQuote quote={quote} compact onOpen={onOpen} />
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
+/** Kin's text with its `[n]` markers as citations; `extra` cites more at the end. */
+function Cited({ text, idea, onOpen, extra = [] }: { text: string; idea: Idea; onOpen: (q: Quote) => void; extra?: number[] }) {
+  const pieces = cite(text, idea.quotes.length);
+  return (
+    <>
+      {pieces.map((p, i) =>
+        "text" in p ? p.text : <Citation key={i} n={p.quote + 1} quote={idea.quotes[p.quote]} onOpen={onOpen} />,
+      )}
+      {extra.map((q) => (
+        <Citation key={`x${q}`} n={q + 1} quote={idea.quotes[q]} onOpen={onOpen} />
+      ))}
+    </>
+  );
+}
+
+/**
+ * The engaged body: the idea, a few takeaways, the actions. Each claim
+ * cites its quote inline; quotes nothing cites (all of them, for ideas
+ * from before citations) hang off the end of the idea.
+ */
 export function Detail({ idea, model, onOpenDoc }: { idea: Listed; model: IdeasModel; onOpenDoc: (path: string) => void }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Provenance idea={idea} model={model} onOpenDoc={onOpenDoc} />
-      <div className="space-y-5">
-        <Observed idea={idea} />
-        <Hunch idea={idea} />
-      </div>
-      <Evidence idea={idea} onOpen={model.openQuote} />
-      <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
-        <HowIGotHere idea={idea} />
-        <WhyThis idea={idea} model={model} />
-      </div>
+      <p className={cn(serif, "border-l-2 border-[var(--seam)] pl-4 text-base leading-relaxed text-pretty")}>
+        <Cited text={idea.hunch} idea={idea} onOpen={model.openQuote} extra={uncited(idea)} />
+      </p>
+      {idea.observed.length > 0 && (
+        <ul className="space-y-1.5 text-sm leading-relaxed" aria-label="Takeaways">
+          {idea.observed.map((fact) => (
+            <li key={fact} className="flex gap-2.5">
+              <span aria-hidden className="mt-[0.6em] size-1 shrink-0 rounded-full bg-muted-foreground/60" />
+              <span className="text-pretty">
+                <Cited text={fact} idea={idea} onOpen={model.openQuote} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       <Actions idea={idea} model={model} />
       <AdoptChooser idea={idea} model={model} />
       <RefineBox idea={idea} model={model} />
     </div>
+  );
+}
+
+/** Ideas about one draft, on demand (the editor's "Ideas for this draft"). */
+export function FindForDraft({ model }: { model: IdeasModel }) {
+  if (!model.filter) return null;
+  return (
+    <Button size="sm" variant="outline" disabled={model.busy} onClick={() => model.generate()}>
+      Find ideas for this draft
+    </Button>
   );
 }
 
@@ -431,28 +381,3 @@ export function JobLine({ model }: { model: IdeasModel }) {
   return null;
 }
 
-/** Ideas on demand. */
-export function AskForMore({ model }: { model: IdeasModel }) {
-  const [focus, setFocus] = useState("");
-  return (
-    <form
-      className="flex items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        model.generate(focus.trim() || undefined);
-        setFocus("");
-      }}
-    >
-      <input
-        aria-label="What should the ideas be about?"
-        value={focus}
-        onChange={(e) => setFocus(e.target.value)}
-        placeholder={model.filter ? "Anything in particular about this draft?" : "Anything in particular? (optional)"}
-        className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2.5 text-sm outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-      />
-      <Button size="sm" variant="outline" type="submit" disabled={model.busy}>
-        {model.filter ? "Find ideas for this draft" : "Ask for more"}
-      </Button>
-    </form>
-  );
-}

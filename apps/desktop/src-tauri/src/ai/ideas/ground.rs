@@ -211,6 +211,36 @@ fn shorten(text: &str, max: usize) -> String {
     format!("{cut}…")
 }
 
+/// Drops inline citations (`[3]`) that point past the idea's `quotes`, so
+/// every marker left reveals a quote. Wikilinks (`[[a]]`) are untouched.
+pub fn keep_citations(text: &str, quotes: usize) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == '[' && (i == 0 || chars[i - 1] != '[') {
+            let digits = chars[i + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
+            let close = i + 1 + digits;
+            if (1..=2).contains(&digits)
+                && chars.get(close) == Some(&']')
+                && chars.get(close + 1) != Some(&']')
+            {
+                let n: usize = chars[i + 1..close].iter().collect::<String>().parse().unwrap_or(0);
+                if n == 0 || n > quotes {
+                    while out.ends_with(' ') {
+                        out.pop();
+                    }
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
 /// Draft prose has paragraphs, headings and lists; an idea's hunch is a
 /// sentence or two.
 fn reads_like_prose(text: &str) -> bool {
@@ -367,18 +397,26 @@ pub fn check_one(
         .unwrap_or_else(|| shorten(&title, 60));
     Ok(Content {
         kind: kind(&c.kind),
+        // The list shows the snippet as plain text: no citation markers.
         snippet: shorten(
-            if c.snippet.trim().is_empty() {
-                &observed[0]
-            } else {
-                &c.snippet
-            },
+            &keep_citations(
+                if c.snippet.trim().is_empty() {
+                    &observed[0]
+                } else {
+                    &c.snippet
+                },
+                0,
+            ),
             MAX_SNIPPET,
         ),
         title,
         draft_title,
-        observed: observed.into_iter().take(MAX_FACTS).collect(),
-        hunch: clean(&hunch),
+        observed: observed
+            .iter()
+            .take(MAX_FACTS)
+            .map(|f| keep_citations(f, quotes.len()))
+            .collect(),
+        hunch: keep_citations(&clean(&hunch), quotes.len()),
         quotes,
         steps,
         reasons,

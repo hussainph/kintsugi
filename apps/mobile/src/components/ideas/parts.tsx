@@ -1,13 +1,14 @@
 /**
- * The pieces every Ideas layout on the phone shares: an idea's detail
- * (observed apart from the hunch, the quoted evidence, "how I got here"),
- * its actions, and the short status line. The layout itself lives in one
- * file (Ledger.tsx today), as on the Mac.
+ * The pieces every Ideas layout on the phone shares: an idea's detail (the
+ * idea and its takeaways, with inline citations), its actions, and the
+ * short status line. The layout itself lives in one file (Ledger.tsx
+ * today), as on the Mac.
  */
+import { cite, uncited } from '@kintsugi/core/citations';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { evidence, type IdeasSnapshot, type LocalIdea } from '@/lib/ideas';
+import type { IdeasSnapshot, LocalIdea } from '@/lib/ideas';
 import { fonts, type Theme, useTheme } from '@/theme';
 
 /** What a layout needs: the list and what he can do with it. */
@@ -31,67 +32,64 @@ export function Status({ idea }: { idea: LocalIdea }) {
   return text ? <Text style={[styles.status, { color: idea.adopted ? theme.kinInk : theme.muted }]}>{text}</Text> : null;
 }
 
+/** Kin's text with its `[n]` markers; a tap shows that quote below. */
+function Cited({ text, idea, extra = [], shown, onCite }: { text: string; idea: LocalIdea; extra?: number[]; shown: number | null; onCite: (q: number) => void }) {
+  const theme = useTheme();
+  const mark = (q: number, key: string) => (
+    <Text
+      key={key}
+      accessibilityRole="button"
+      accessibilityLabel={`Quote ${q + 1}: ${idea.quotes[q].title}`}
+      onPress={() => onCite(q)}
+      style={[styles.cite, { color: theme.kinInk, backgroundColor: shown === q ? theme.surface : undefined }]}
+    >
+      {` [${q + 1}]`}
+    </Text>
+  );
+  return (
+    <>
+      {cite(text, idea.quotes.length).map((p, i) => ('text' in p ? p.text : mark(p.quote, `c${i}`)))}
+      {extra.map((q) => mark(q, `x${q}`))}
+    </>
+  );
+}
+
+/** The idea, a few takeaways, the actions; a citation opens its quote in place. */
 export function Detail({ idea, model }: { idea: LocalIdea; model: IdeasModel }) {
   const theme = useTheme();
-  const [how, setHow] = useState(false);
+  const [shown, setShown] = useState<number | null>(null);
+  const onCite = (q: number) => setShown(shown === q ? null : q);
+  const quote = shown == null ? null : idea.quotes[shown];
   return (
     <View style={styles.detail}>
+      <Text style={[styles.hunch, { color: theme.text, borderColor: theme.kin }]}>
+        <Cited text={idea.hunch} idea={idea} extra={uncited(idea)} shown={shown} onCite={onCite} />
+      </Text>
       {idea.observed.length > 0 && (
         <View style={styles.block}>
-          <Text style={[styles.label, { color: theme.text }]}>What Kin noticed</Text>
           {idea.observed.map((o, i) => (
             <Text key={i} style={[styles.text, { color: theme.text }]}>
-              {o}
+              {'· '}
+              <Cited text={o} idea={idea} shown={shown} onCite={onCite} />
             </Text>
           ))}
         </View>
       )}
-      <View style={styles.block}>
-        <Text style={[styles.label, { color: theme.kinInk }]}>Kin’s hunch</Text>
-        <Text style={[styles.hunch, { color: theme.text }]}>{idea.hunch}</Text>
-      </View>
-      <View style={styles.block}>
-        <Text style={[styles.label, { color: theme.text }]}>Evidence</Text>
-        {evidence(idea).map((q) => (
-          <Quote key={q.source} quote={q} theme={theme} onOpen={q.source.startsWith('feed:') ? undefined : () => model.openDraft(q.source)} />
-        ))}
-      </View>
-      {idea.steps.length > 0 && (
-        <View style={styles.block}>
-          <Pressable accessibilityRole="button" onPress={() => setHow(!how)}>
-            <Text style={[styles.link, { color: theme.muted }]}>{how ? 'Hide how Kin found this' : 'How Kin found this'}</Text>
-          </Pressable>
-          {how &&
-            idea.steps.map((s, i) => (
-              <Text key={i} style={[styles.small, { color: theme.muted }]}>
-                {i + 1}. {s.did}
-                {s.found ? ` → ${s.found}` : ''}
-              </Text>
-            ))}
-        </View>
-      )}
-      {idea.reasons.filter((r) => !r.removed).length > 0 && (
-        <View style={styles.block}>
-          <Text style={[styles.label, { color: theme.text }]}>Why this?</Text>
-          {idea.reasons
-            .filter((r) => !r.removed)
-            .map((r) => (
-              <Text key={r.id} style={[styles.small, { color: theme.muted }]}>
-                · {r.text}
-              </Text>
-            ))}
-        </View>
+      {quote && (
+        <Quote quote={quote} theme={theme} onOpen={quote.source.startsWith('feed:') ? undefined : () => model.openDraft(quote.source)} />
       )}
       <Actions idea={idea} model={model} />
     </View>
   );
 }
 
-function Quote({ quote, theme, onOpen }: { quote: { source: string; text: string; title: string }; theme: Theme; onOpen?: () => void }) {
+function Quote({ quote, theme, onOpen }: { quote: { source: string; text: string; title: string; origin: string }; theme: Theme; onOpen?: () => void }) {
   return (
-    <Pressable disabled={!onOpen} onPress={onOpen} style={[styles.quote, { borderColor: theme.kin }]}>
+    <Pressable disabled={!onOpen} onPress={onOpen} style={[styles.quote, { backgroundColor: theme.surface }]}>
       <Text style={[styles.quoteText, { color: theme.text }]}>“{quote.text}”</Text>
-      <Text style={[styles.small, { color: theme.muted }]}>{quote.title}</Text>
+      <Text style={[styles.small, { color: theme.muted }]}>
+        {quote.title} · {quote.origin}
+      </Text>
     </Pressable>
   );
 }
@@ -148,10 +146,10 @@ const styles = StyleSheet.create({
   status: { fontSize: 13 },
   detail: { gap: 16, paddingBottom: 8 },
   block: { gap: 6 },
-  label: { fontSize: 15, fontWeight: '600' },
   text: { fontSize: 15, lineHeight: 21 },
-  hunch: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 25 },
-  quote: { borderLeftWidth: 2, paddingLeft: 10, gap: 2, paddingVertical: 2 },
+  hunch: { fontFamily: fonts.serif, fontSize: 17, lineHeight: 25, borderLeftWidth: 2, paddingLeft: 12 },
+  cite: { fontSize: 12 },
+  quote: { borderRadius: 10, padding: 12, gap: 4 },
   quoteText: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 23 },
   small: { fontSize: 13, lineHeight: 18 },
   link: { fontSize: 14, fontWeight: '500' },

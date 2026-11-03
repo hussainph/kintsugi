@@ -3,7 +3,7 @@
  * could replace it without touching these): grouping, fading, filtering to
  * a document, and the labels the list shows.
  */
-import type { Footprint, Idea, Listed, Quote } from "./api.ts";
+import type { Idea, Listed, Quote } from "./api.ts";
 
 /** Days before an unused idea fades out of the list (mirrors store.rs). */
 export const FADE_DAYS = 7;
@@ -58,14 +58,7 @@ export function uniqueSources(quotes: Quote[]): Quote[] {
   return quotes.filter((q) => !seen.has(q.source) && seen.add(q.source));
 }
 
-const money = (usd: number) => (usd <= 0 ? "$0" : usd < 0.01 ? "under 1¢" : `$${usd.toFixed(2)}`);
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-/** "2 searches · 5 files read · 31 s · $0.04", for the whole run. */
-export function footprint(f: Footprint): string {
-  const parts = [plural(f.searches, "search", "searches"), `${plural(f.files, "file")} read`, `${f.seconds} s`, money(f.usd)];
-  return f.batch > 1 ? `${parts.join(" · ")} · for the batch of ${f.batch}` : parts.join(" · ");
-}
+export { cite, uncited, type Piece } from "@kintsugi/core/citations";
 
 /** The ids in a draft's `ideas:` frontmatter list. */
 export function adoptedIds(text: string): string[] {

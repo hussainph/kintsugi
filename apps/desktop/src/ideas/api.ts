@@ -57,7 +57,6 @@ export const ideas = {
   generate: (focus?: string, about?: string) => invoke<View>("ideas_generate", { focus, about }),
   dismiss: (id: string, reasons: string[] = []) => invoke<View>("ideas_dismiss", { id, reasons }),
   undismiss: (id: string) => invoke<View>("ideas_undismiss", { id }),
-  reason: (id: string, reason: string, removed: boolean) => invoke<View>("ideas_reason", { id, reason, removed }),
   refine: (id: string, ask: string) => invoke<View>("ideas_refine", { id, ask }),
   undoRefine: (id: string) => invoke<View>("ideas_refine_undo", { id }),
   discussed: (id: string) => invoke<void>("ideas_discussed", { id }),

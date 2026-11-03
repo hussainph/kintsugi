@@ -27,7 +27,6 @@ export function useIdeas({ filter, onFilter, onOpenDoc, drafts }: Props) {
   const [open, setOpen] = useState<string | null>(null);
   const [adopting, setAdopting] = useState<string | null>(null);
   const [refining, setRefining] = useState<string | null>(null);
-  const [whyOpen, setWhyOpen] = useState<string | null>(null);
   const [showFaded, setShowFaded] = useState(false);
   /** Dismissed in this visit: they keep their place, with reasons and Undo. */
   const [justDismissed, setJustDismissed] = useState<Set<string>>(new Set());
@@ -82,14 +81,13 @@ export function useIdeas({ filter, onFilter, onOpenDoc, drafts }: Props) {
     job,
     busy,
     drafts: drafts.filter((d) => d.path !== filter),
-    state: { open, adopting, refining, whyOpen, showFaded, justDismissed },
+    state: { open, adopting, refining, showFaded, justDismissed },
     byId,
     reload,
     toggle: (id: string) => {
       setOpen((o) => (o === id ? null : id));
       setAdopting(null);
       setRefining(null);
-      setWhyOpen(null);
     },
     startAdopt: (id: string) => {
       setAdopting((a) => (a === id ? null : id));
@@ -99,7 +97,6 @@ export function useIdeas({ filter, onFilter, onOpenDoc, drafts }: Props) {
       setRefining((r) => (r === id ? null : id));
       setAdopting(null);
     },
-    toggleWhy: (id: string) => setWhyOpen((w) => (w === id ? null : id)),
     toggleFaded: () => setShowFaded((s) => !s),
     clearFilter: () => onFilter(undefined),
 
@@ -131,16 +128,6 @@ export function useIdeas({ filter, onFilter, onOpenDoc, drafts }: Props) {
       });
       void run(ideas.undismiss(idea.id));
     },
-    removeReason(idea: Listed, reason: { id: string; text: string }) {
-      void run(ideas.reason(idea.id, reason.id, true), {
-        text: `Kin won't weigh “${reason.text}” for ideas like this.`,
-        undo: () => ideas.reason(idea.id, reason.id, false),
-      });
-    },
-    restoreReason(idea: Listed, reason: { id: string }) {
-      void run(ideas.reason(idea.id, reason.id, false));
-    },
-    fixProfile: () => openAboutYou(),
     refine(idea: Listed, ask: string) {
       setRefining(null);
       void run(ideas.refine(idea.id, ask), { text: "Kin is reworking it in the background. The earlier version is kept." });
@@ -152,8 +139,9 @@ export function useIdeas({ filter, onFilter, onOpenDoc, drafts }: Props) {
       discussWithKin({ kind: "idea", path: idea.id, label: idea.title });
       void ideas.discussed(idea.id).catch(() => {});
     },
-    generate(focus?: string) {
-      void run(ideas.generate(focus, filter), { text: filter ? "Kin is looking for ideas for this draft." : "Kin is looking for more ideas." });
+    /** Ideas on demand, for the filtered draft. */
+    generate() {
+      void run(ideas.generate(undefined, filter), { text: filter ? "Kin is looking for ideas for this draft." : "Kin is looking for more ideas." });
     },
     openQuote(quote: Quote) {
       if (quote.source.startsWith("feed:")) {
