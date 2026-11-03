@@ -160,7 +160,7 @@ async fn hello(State(ctx): State<Ctx>) -> Reply<serde_json::Value> {
     // 5: the phone browses inspiration: /v1/inspiration, clip images and
     //    sources, and version-checked note edits (PUT /v1/clip).
     // 6: the Feed, Ideas and Kin (`sections.rs`): /v1/feed…, /v1/ideas…, /v1/kin….
-    Ok(Json(json!({ "app": "kintsugi", "api": 6, "vault": name })))
+    Ok(Json(json!({ "app": "kintsugi", "api": 7, "vault": name })))
 }
 
 async fn tree(State(ctx): State<Ctx>) -> Reply<Vec<vault::Entry>> {
@@ -784,7 +784,7 @@ pub(super) mod tests {
             let body: serde_json::Value = response.json().await.unwrap();
             assert_eq!(
                 body,
-                json!({ "app": "kintsugi", "api": 6, "vault": root.file_name().unwrap().to_str().unwrap() })
+                json!({ "app": "kintsugi", "api": 7, "vault": root.file_name().unwrap().to_str().unwrap() })
             );
         });
     }

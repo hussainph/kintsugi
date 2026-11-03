@@ -100,6 +100,62 @@ pub(crate) async fn connect_to(task: Task, pick: Option<picks::Pick>) -> Result<
     }))
 }
 
+/// What one background request through Kin's connection came to.
+pub(crate) enum Oneshot {
+    Answer {
+        text: String,
+        /// `provider/model`.
+        model: String,
+        cost: f64,
+    },
+    /// The month's cap is reached; nothing was sent.
+    Capped,
+    /// No provider is set up.
+    Unavailable,
+    /// The request failed or timed out.
+    Failed { model: String },
+}
+
+/// One request, no tools, for background work (the Feed's story summaries):
+/// the task's model as `connect` picks it (the scripted mock in a headless
+/// mock run), refused at the cap, its cost recorded.
+pub(crate) async fn oneshot(
+    task: Task,
+    system: &str,
+    prompt: String,
+    max_tokens: u32,
+    timeout: std::time::Duration,
+) -> Oneshot {
+    use agent::Model;
+    if meter().allows(true).is_err() {
+        return Oneshot::Capped;
+    }
+    let Ok(model) = connect(task).await else {
+        return Oneshot::Unavailable;
+    };
+    let items = [wire::Item::User(prompt)];
+    let exchange = wire::Exchange {
+        model: &model.model().model,
+        system,
+        tools: &[],
+        items: &items,
+        max_tokens: Some(max_tokens),
+        temperature: None,
+        stop: None,
+        reasoning: model.model().reasoning.as_deref(),
+        cache_key: None,
+    };
+    let name = format!("{}/{}", model.model().provider, model.model().model);
+    match tokio::time::timeout(timeout, model.send(&exchange, &mut |_| {})).await {
+        Ok(Ok(reply)) => Oneshot::Answer {
+            cost: meter().record(task, model.model(), &reply.usage),
+            text: reply.text,
+            model: name,
+        },
+        _ => Oneshot::Failed { model: name },
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnRequest {

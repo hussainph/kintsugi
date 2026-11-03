@@ -50,9 +50,40 @@ export type FeedItem = {
   /** Discovered older writing; its original date is never replaced by discovery time. */
   backCatalogue?: boolean;
   suggestion?: { reason: string; sourceUrl: string } | null;
+  /** The source's site (or feed) URL, for its icon. */
+  sourceSite: string | null;
+  /** A Hacker News item's discussion page; `url` is the page it links to. */
+  discussion: string | null;
 };
 
 export type Page = { items: FeedItem[]; total: number };
+
+/** One sentence of Kin's story summary, and the items it came from. */
+export type Sentence = { text: string; cites: number[] };
+export type StorySummary = { paragraphs: Sentence[][] };
+/** pending, ready, failed, capped (the month's AI limit) or unavailable (no AI provider). */
+export type SummaryState = "pending" | "ready" | "failed" | "capped" | "unavailable";
+export type StorySource = { id: number; title: string | null; kind: SourceKind; site: string | null; items: number };
+/** Items about the same thing from two or more sources (KI-94). */
+export type Story = {
+  id: number;
+  /** Kin's title once summarised, else the lead article's. */
+  title: string;
+  summary: StorySummary | null;
+  summaryState: SummaryState;
+  /** The first article to cover it; the summary falls back to its text. */
+  lead: FeedItem;
+  image: string | null;
+  /** The lead first, then newest first. */
+  items: FeedItem[];
+  /** Most items first. */
+  sources: StorySource[];
+  sortAt: number;
+  updatedAt: number;
+};
+/** One entry of the Newest list: an item, or a story folded in at its newest item. */
+export type Entry = { kind: "item"; item: FeedItem } | { kind: "story"; story: Story };
+export type Entries = { entries: Entry[]; total: number };
 export type Reading = { item: FeedItem; text: string | null };
 export type Polled = { sourceId: number; added: number; error: string | null };
 export type Subscribed = { source: Source; added: number; error: string | null };
@@ -87,7 +118,8 @@ export type Impression = { id: number; position: number; surface: Surface };
 
 /** One reason behind a pick. Removable ones are corrections (KI-32). */
 export type Reason = { key: string; label: string; removable: boolean };
-export type Pick = { item: FeedItem; id: number; score: number; explore: boolean; reasons: Reason[] };
+/** For a story, `item` is its best item and `story` the story. */
+export type Pick = { item: FeedItem; id: number; score: number; explore: boolean; reasons: Reason[]; storyId?: number; story?: Story };
 export type Picked = { picks: Pick[]; examples: number; learnedShare: number };
 /** An affinity a like moved, from 0 to 1 (0.25 is "no opinion yet"). */
 export type Change = { key: string; label: string; before: number; after: number };
@@ -113,6 +145,11 @@ export const feed = {
   picked: (n?: number) => invoke<Picked>("feed_picked", { n }),
   correct: (reason: string, id?: number, undo = false) => invoke<void>("feed_correct", { reason, id, undo }),
   effect: (id: number) => invoke<Effect>("feed_effect", { id }),
+  entries: (query: { offset?: number; limit?: number } = {}) => invoke<Entries>("feed_entries", query),
+  story: (id: number) => invoke<Story>("feed_story", { id }),
+  why: (id: number) => invoke<Reason[]>("feed_why", { id }),
+  /** Not interested (or its undo) for several items: a whole story. */
+  dismissMany: (ids: number[], undo = false, place?: Place) => invoke<FeedItem[]>("feed_dismiss_many", { ids, undo, place }),
 };
 
 /** Picked for you reloads on this window event (likes, saves, corrections). */

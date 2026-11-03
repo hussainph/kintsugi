@@ -28,6 +28,9 @@ pub struct RankRow {
     pub suggested: bool,
     /// User state or a human event, including an undone/ignored action.
     pub has_signal: bool,
+    /// The story it is in, and whether clustering has placed it yet.
+    pub story: Option<i64>,
+    pub clustered: bool,
 }
 
 impl RankRow {
@@ -51,7 +54,8 @@ impl Store {
                    {visible}, i.saved_path, i.back_catalogue, ({pending}), s.suggested,
                    (i.liked_at IS NOT NULL OR i.note IS NOT NULL OR i.saved_path IS NOT NULL OR i.dismissed_at IS NOT NULL
                      OR EXISTS (SELECT 1 FROM events e WHERE e.item_id = i.id AND e.kind <> 'kin_pick'
-                       AND COALESCE(e.surface, '') <> 'kin'))
+                       AND COALESCE(e.surface, '') <> 'kin')),
+                   i.story_id, i.clustered_at IS NOT NULL
                  FROM items i JOIN sources s ON s.id = i.source_id ORDER BY i.id",
                 visible = super::VISIBLE,
                 pending = super::catalogue::PENDING
@@ -76,6 +80,8 @@ impl Store {
                     catalogue_candidate: r.get(13)?,
                     suggested: r.get(14)?,
                     has_signal: r.get(15)?,
+                    story: r.get(16)?,
+                    clustered: r.get(17)?,
                 })
             })
             .map_err(err)?;
@@ -232,6 +238,7 @@ mod tests {
                     published: row.sort_at,
                     length: row.length,
                     vector: text::hashed(&row.title, &row.text),
+                    story: row.story,
                 },
             );
         }

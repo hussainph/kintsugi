@@ -72,6 +72,7 @@ fn load(path: &str) -> Result<(World, Vec<Event>), String> {
                 media: Media::parse(&media),
                 published: r.get(8)?,
                 length: r.get::<_, i64>(6)? as usize,
+                story: None,
             })
         })
         .map_err(err)?;

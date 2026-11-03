@@ -84,6 +84,35 @@ CREATE TRIGGER events_no_delete BEFORE DELETE ON events
   BEGIN SELECT RAISE(ABORT, 'the feed event log is append-only'); END;
 ";
 
+/// Version 3 (KI-94, after KI-95's catalogue at 2): stories, items about the same thing from different
+/// sources. Clustering keeps its decisions here so a story keeps its id
+/// (and its summary) while sources join it.
+const STORIES: &str = "
+CREATE TABLE stories (
+  id INTEGER PRIMARY KEY,
+  -- Kin's title and summary (JSON: paragraphs of sentences with the item
+  -- ids each one cites), once written.
+  title TEXT,
+  summary TEXT,
+  -- pending, ready, failed, capped (the month's AI limit) or unavailable
+  -- (no AI provider).
+  summary_state TEXT NOT NULL DEFAULT 'pending',
+  -- How many items it had when last summarised, and how many times it was.
+  summary_items INTEGER NOT NULL DEFAULT 0,
+  summary_attempts INTEGER NOT NULL DEFAULT 0,
+  model TEXT,
+  cost_usd REAL NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+-- An item is in at most one story.
+ALTER TABLE items ADD COLUMN story_id INTEGER REFERENCES stories(id);
+-- When clustering last placed the item (NULL: not yet).
+ALTER TABLE items ADD COLUMN clustered_at INTEGER;
+CREATE INDEX items_story ON items (story_id);
+";
+const VERSION: i64 = 3;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SourceKind {
@@ -197,6 +226,15 @@ pub struct Item {
     pub has_content: bool,
     pub back_catalogue: bool,
     pub suggestion: Option<Suggestion>,
+    /// The source's site (or feed) URL, for its icon.
+    pub source_site: Option<String>,
+    /// A Hacker News item's discussion page; its `url` is the page it links to.
+    pub discussion: Option<String>,
+    /// The cluster it is in (`kintsugi_rank::stories`). Shown as a story
+    /// only when the cluster spans two sources, so the webview reads stories
+    /// from `feed_entries` and `feed_story`, never from this.
+    #[serde(skip)]
+    pub story_id: Option<i64>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -247,6 +285,10 @@ pub(super) mod mixing;
 /// What ranking (KI-32, `feed::picked`) reads: every item and source, and
 /// the event log from a cursor.
 mod ranking;
+/// Stories (KI-94): clustering's decisions, the Newest list with stories
+/// folded in, and Kin's summaries.
+mod stories;
+pub use stories::{Entry, Outcome, Sentence, Story, Summary, SummaryJob, SummaryState};
 
 const SOURCE_COLUMNS: &str = "s.id, s.url, s.kind, s.title, s.site_url, s.image, s.muted, s.added_at,
   s.last_fetch_at, s.last_success_at, s.last_status, s.last_error, s.failures, s.next_fetch_at,
@@ -260,7 +302,10 @@ const ITEM_COLUMNS: &str =
   i.image, i.media, i.published_at, i.fetched_at, i.sort_at, i.liked_at IS NOT NULL, i.note,
   i.saved_path, i.dismissed_at IS NOT NULL, i.content IS NOT NULL AND i.content <> '', i.back_catalogue,
   CASE WHEN s.suggested = 1 THEN i.suggestion_reason END,
-  CASE WHEN s.suggested = 1 THEN s.url END";
+  CASE WHEN s.suggested = 1 THEN s.url END,
+  COALESCE(s.site_url, s.url),
+  CASE WHEN s.kind = 'hn' AND i.guid LIKE 'rss:https://news.ycombinator.com/item?id=%' THEN substr(i.guid, 5) END,
+  i.story_id";
 
 /// In the feed: a live, unmuted source; not dismissed, not expired.
 const VISIBLE: &str =
@@ -328,6 +373,9 @@ fn item_row(row: &Row) -> rusqlite::Result<Item> {
         has_content: row.get(17)?,
         back_catalogue: row.get(18)?,
         suggestion,
+        source_site: row.get(21)?,
+        discussion: row.get(22)?,
+        story_id: row.get(23)?,
     })
 }
 
@@ -356,14 +404,22 @@ impl Store {
         let version: i64 = db
             .pragma_query_value(None, "user_version", |r| r.get(0))
             .map_err(err)?;
+        if version > VERSION {
+            return Err("the feed database was written by a newer Kintsugi".into());
+        }
         if version == 0 {
             db.execute_batch(&format!("BEGIN; {SCHEMA} PRAGMA user_version = 1; COMMIT;"))
                 .map_err(err)?;
-        } else if version > 2 {
-            return Err("the feed database was written by a newer Kintsugi".into());
         }
+        // Version 2 is KI-95's catalogue; version 3, stories, builds on it.
         if version < 2 {
             catalogue::migrate(&db)?;
+        }
+        if version < 3 {
+            db.execute_batch(&format!(
+                "BEGIN; {STORIES} PRAGMA user_version = 3; COMMIT;"
+            ))
+            .map_err(err)?;
         }
         // A process stopped mid-discovery must be able to claim the source again.
         db.execute(

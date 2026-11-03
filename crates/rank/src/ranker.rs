@@ -37,6 +37,10 @@ const AUTHOR_DECAY: f64 = 0.7;
 const SOURCE_DECAY: f64 = 0.85;
 /// Closer than this to an earlier pick is the same thing again.
 const NEAR_DUPLICATE: f32 = 0.92;
+/// A story scores as its best item plus this much per extra source…
+const STORY_SOURCE_BONUS: f64 = 0.03;
+/// …up to this much.
+const STORY_BONUS_CAP: f64 = 0.09;
 /// A nearest anchor this close is worth naming in "Why this?".
 const NAMEABLE_SIMILARITY: f32 = 0.25;
 /// At most this many anchors are compared (most recent first).
@@ -75,6 +79,9 @@ pub struct Item {
     pub length: usize,
     /// Normalized, or empty when unknown.
     pub vector: Vec<f32>,
+    /// The story (`crate::stories`) it is in. Picks treat a story spanning
+    /// two or more sources as one candidate.
+    pub story: Option<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -285,10 +292,14 @@ pub struct Reason {
 #[derive(Clone, Debug, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Pick {
+    /// The item picked; for a story, its best-scoring item.
     pub id: i64,
     pub score: f64,
     pub explore: bool,
     pub reasons: Vec<Reason>,
+    /// The story it stands for, when it is one.
+    #[serde(rename = "storyId", skip_serializing_if = "Option::is_none")]
+    pub story: Option<i64>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -320,6 +331,38 @@ pub struct Explained {
     pub nearest: Option<String>,
     pub features: Vec<FeatureValue>,
     pub reasons: Vec<Reason>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct StoryInfo {
+    sources: usize,
+    touched: bool,
+}
+
+/// The multi-source story an item stands for, if any.
+fn story_of(item: &Item, stories: &HashMap<i64, StoryInfo>) -> Option<i64> {
+    item.story.filter(|s| stories.contains_key(s))
+}
+
+fn story_bonus(sources: usize) -> f64 {
+    (STORY_SOURCE_BONUS * sources.saturating_sub(1) as f64).min(STORY_BONUS_CAP)
+}
+
+/// A story's fixed reason goes first: how many sources covered it.
+fn story_reasons(mut reasons: Vec<Reason>, sources: Option<usize>) -> Vec<Reason> {
+    if let Some(n) = sources {
+        reasons.insert(
+            0,
+            Reason {
+                key: "story".into(),
+                label: format!("{n} sources you follow covered this"),
+                removable: false,
+                weight: 2.0,
+            },
+        );
+        reasons.truncate(4);
+    }
+    reasons
 }
 
 struct Scored {
@@ -960,13 +1003,24 @@ impl Ranker {
         now_ms: i64,
         options: PickOptions,
     ) -> Vec<Pick> {
+        let stories = self.stories(world, candidates);
         let mut pool: Vec<(&Item, Scored)> = candidates
             .iter()
             .filter_map(|id| world.items.get(id))
             .filter(|item| !self.touched(item.id))
-            .map(|item| (item, self.score_item(item, now_ms)))
+            .filter(|item| story_of(item, &stories).is_none_or(|s| !stories[&s].touched))
+            .map(|item| {
+                let mut scored = self.score_item(item, now_ms);
+                if let Some(story) = story_of(item, &stories) {
+                    scored.score += story_bonus(stories[&story].sources);
+                }
+                (item, scored)
+            })
             .collect();
         pool.sort_by(|a, b| b.1.score.total_cmp(&a.1.score).then(b.0.id.cmp(&a.0.id)));
+        // A story is one candidate: its best item stands for it.
+        let mut seen = HashSet::new();
+        pool.retain(|(item, _)| story_of(item, &stories).is_none_or(|s| seen.insert(s)));
         pool.truncate(300);
         if pool.is_empty() || options.n == 0 {
             return Vec::new();
@@ -1063,7 +1117,11 @@ impl Ranker {
                 id: pool[i].0.id,
                 score: round(pool[i].1.score),
                 explore: false,
-                reasons: self.reasons(world, pool[i].0, &pool[i].1),
+                reasons: story_reasons(
+                    self.reasons(world, pool[i].0, &pool[i].1),
+                    story_of(pool[i].0, &stories).map(|s| stories[&s].sources),
+                ),
+                story: story_of(pool[i].0, &stories),
             })
             .collect();
         for (k, &i) in explored.iter().enumerate() {
@@ -1085,10 +1143,13 @@ impl Ranker {
                 weight: 1.0,
             }];
             reasons.extend(
-                self.reasons(world, item, scored)
-                    .into_iter()
-                    .filter(|r| r.key != "cold")
-                    .take(2),
+                story_reasons(
+                    self.reasons(world, item, scored),
+                    story_of(item, &stories).map(|s| stories[&s].sources),
+                )
+                .into_iter()
+                .filter(|r| r.key != "cold")
+                .take(2),
             );
             let at = ((k + 1) * options.n / (explore_slots + 1))
                 .saturating_sub(1)
@@ -1100,10 +1161,41 @@ impl Ranker {
                     score: round(scored.score),
                     explore: true,
                     reasons,
+                    story: story_of(item, &stories),
                 },
             );
         }
         picks
+    }
+
+    /// Stories among the candidates that span two or more sources, and
+    /// whether he already acted on (or ignored) any of their items, in or
+    /// out of the Feed.
+    fn stories(&self, world: &World, candidates: &[i64]) -> HashMap<i64, StoryInfo> {
+        let visible = candidates
+            .iter()
+            .filter_map(|id| world.items.get(id))
+            .map(|i| (i.id, i.story, i.source));
+        let mut out: HashMap<i64, StoryInfo> = crate::stories::multi_source(visible)
+            .into_iter()
+            .map(|(story, sources)| {
+                (
+                    story,
+                    StoryInfo {
+                        sources,
+                        touched: false,
+                    },
+                )
+            })
+            .collect();
+        for item in world.items.values() {
+            if let Some(info) = item.story.and_then(|s| out.get_mut(&s))
+                && self.touched(item.id)
+            {
+                info.touched = true;
+            }
+        }
+        out
     }
 
     /// Feed items nearest to a vector, excluding `except`.

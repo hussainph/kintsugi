@@ -16,7 +16,10 @@ import type {
   Picked,
   Place,
   Reading,
+  Reason,
   FeedItem,
+  Entries,
+  Story,
 } from "./sections";
 import type { Entry } from "./vault";
 
@@ -36,6 +39,8 @@ export type NoteSaved =
 export const INSPIRATION_API = 5;
 /** The first phone API with the Feed, Ideas and Kin (/v1/feed, /v1/ideas, /v1/kin). */
 export const SECTIONS_API = 6;
+/** The first phone API with Feed stories (/v1/feed/entries, /story, /why, /dismiss). */
+export const STORIES_API = 7;
 
 /** The Mac couldn't be reached: asleep, Kintsugi closed, or Tailscale off. */
 export class Offline extends Error {
@@ -180,6 +185,12 @@ export function remote({ url, token }: Pairing) {
     feedSave: (id: number, place?: Place) => call<FeedItem>("POST", "/v1/feed/save", { id, place }),
     feedImpressions: (impressions: Impression[]) => call<object>("POST", "/v1/feed/impressions", { impressions }),
     feedEffect: (id: number) => call<Effect>("GET", `/v1/feed/effect?id=${id}`),
+    // Stories (API 7).
+    feedEntries: (offset = 0, limit = 40) => call<Entries>("GET", `/v1/feed/entries?offset=${offset}&limit=${limit}`),
+    feedStory: (id: number) => call<Story>("GET", `/v1/feed/story?id=${id}`),
+    feedWhy: (id: number) => call<Reason[]>("GET", `/v1/feed/why?id=${id}`),
+    /** Not interested (or its undo) for a story's items. */
+    feedDismiss: (ids: number[], undo = false, place?: Place) => call<FeedItem[]>("POST", "/v1/feed/dismiss", { ids, undo, place }),
     ideas: () => call<IdeasView>("GET", "/v1/ideas"),
     moreIdeas: () => call<IdeasView>("POST", "/v1/ideas/more", {}),
     /** A new draft titled after the idea; adopting it again returns that draft. */

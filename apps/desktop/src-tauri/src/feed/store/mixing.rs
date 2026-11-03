@@ -123,6 +123,7 @@ mod tests {
                     published,
                     length: 4000,
                     vector,
+                    story: None,
                 },
             );
         }

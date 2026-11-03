@@ -1,4 +1,4 @@
-/** The Feed, Ideas and Kin as the phone API sends them (API 6). Mirrors the
+/** The Feed, Ideas and Kin as the phone API sends them (API 6; stories 7). Mirrors the
  *  desktop's own types (apps/desktop/src/feed/api.ts, src/ideas/api.ts,
  *  src/lib/chat.ts) and the Rust structs behind them; the phone reads only
  *  what it shows, so fields it doesn't use may be missing from older Macs. */
@@ -28,7 +28,39 @@ export type FeedItem = {
   hasContent: boolean;
   backCatalogue?: boolean;
   suggestion?: { reason: string; sourceUrl: string } | null;
+  /** The source's site (or feed) URL, for its icon (API 7). */
+  sourceSite?: string | null;
+  /** A Hacker News item's discussion page; `url` is what it links to (API 7). */
+  discussion?: string | null;
 };
+
+/** One sentence of Kin's story summary, and the items it came from. */
+export type Sentence = { text: string; cites: number[] };
+export type StorySummary = { paragraphs: Sentence[][] };
+/** Why a story has no summary yet: pending, failed, capped (the month's AI
+ *  limit) or unavailable (no AI provider). */
+export type SummaryState = "pending" | "ready" | "failed" | "capped" | "unavailable";
+export type StorySource = { id: number; title: string | null; kind: string; site: string | null; items: number };
+/** Items about the same thing from two or more sources (API 7). */
+export type Story = {
+  id: number;
+  /** Kin's title once summarised, else the lead article's. */
+  title: string;
+  summary: StorySummary | null;
+  summaryState: SummaryState;
+  /** The first article to cover it; the summary falls back to its text. */
+  lead: FeedItem;
+  image: string | null;
+  /** The lead first, then newest first. */
+  items: FeedItem[];
+  /** Most items first. */
+  sources: StorySource[];
+  sortAt: number;
+  updatedAt: number;
+};
+/** One entry of the Newest list (API 7). */
+export type FeedEntry = { kind: "item"; item: FeedItem } | { kind: "story"; story: Story };
+export type Entries = { entries: FeedEntry[]; total: number };
 
 export type FeedPage = { items: FeedItem[]; total: number };
 export type Reading = { item: FeedItem; text: string | null };
@@ -38,7 +70,8 @@ export type Place = { surface: Surface; position: number };
 export type FeedAction = "like" | "unlike" | "notInterested" | "undoNotInterested" | "openOriginal" | "discuss";
 export type Impression = { id: number; position: number; surface: Surface };
 export type Reason = { key: string; label: string; removable: boolean };
-export type Pick = { item: FeedItem; id: number; score: number; explore: boolean; reasons: Reason[] };
+/** For a story (API 7), `item` is its best item and `story` the story. */
+export type Pick = { item: FeedItem; id: number; score: number; explore: boolean; reasons: Reason[]; storyId?: number; story?: Story };
 export type Picked = { picks: Pick[]; examples: number; learnedShare: number };
 export type Change = { key: string; label: string; before: number; after: number };
 export type Effect = { changes: Change[]; added: { id: number; title: string }[]; removed: { id: number; title: string }[] };

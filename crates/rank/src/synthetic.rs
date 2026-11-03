@@ -198,6 +198,7 @@ pub fn fixture(seed: u64, days: i64, start_ms: i64) -> Fixture {
                         published: published / 1000,
                         length: body.len() * (5 + rng.below(20)),
                         vector: text::hashed(&title, &body),
+                        story: None,
                     },
                 );
                 let _ = name;

@@ -52,6 +52,14 @@ async fn run(app: AppHandle, op: Op) -> Outcome {
             value(feed::feed_impressions(app, impressions).map(|()| json!({})))
         }
         Op::FeedEffect { id } => value(picked::feed_effect(app, id)),
+        Op::FeedEntries { offset, limit } => {
+            value(feed::feed_entries(app, Some(offset), Some(limit)))
+        }
+        Op::FeedStory { id } => value(feed::feed_story(app, id)),
+        Op::FeedWhy { id } => value(picked::feed_why(app, id)),
+        Op::FeedDismiss { ids, undo, place } => {
+            value(feed::feed_dismiss_many(app, ids, Some(undo), Some(place)))
+        }
         Op::Ideas => value(ideas::ideas_list(app)),
         Op::IdeasMore => value(ideas::ideas_generate(app, None, None)),
         Op::IdeaAdopt { id, title } => {

@@ -72,7 +72,8 @@ fn v1_migration_keeps_decisions_text_dates_and_events() {
             .raw()
             .pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))
             .unwrap(),
-        2
+        // Stories (KI-94) migrate on top of the catalogue.
+        3
     );
     assert_eq!(store.sources().unwrap().len(), 7);
     for s in store.sources().unwrap() {
