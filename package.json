@@ -16,6 +16,7 @@
     "release:desktop": "node scripts/release-desktop.mjs",
     "lint:copy": "node scripts/lint-copy.mjs",
     "copy:inventory": "node scripts/copy-inventory.mjs",
+    "shortcuts:readme": "node apps/desktop/scripts/shortcuts-readme.ts",
     "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true"
   },
   "packageManager": "pnpm@9.12.0",

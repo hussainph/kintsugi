@@ -1,15 +1,16 @@
-import { defaultKeymap, history, historyKeymap, toggleBlockComment, toggleComment } from "@codemirror/commands";
+import { history } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { syntaxHighlighting } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
-import { search, searchKeymap } from "@codemirror/search";
+import { search } from "@codemirror/search";
 import { EditorSelection, EditorState, Transaction, type Extension } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { RefObject, useEffect, useRef } from "react";
 import { frontmatter } from "@kintsugi/core/frontmatter";
 import { frontmatterLines, highlight, spacingLines, theme } from "./theme";
 import { formatKeymap, underlines } from "./format";
+import { builtinKeymap } from "./keymaps";
 import { commandExtensions, refreshCommands, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
 import { commentExtensions, refreshComments, type Comments } from "./comments";
@@ -24,9 +25,6 @@ export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPl
 export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
 export { heldPassage, holdPassage, releasePassage, type Passage } from "./passages";
 export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
-
-/** CodeMirror's comment toggles write `<!-- -->` even in MDX; ⌘/ dims instead (KI-88). */
-const baseKeymap = defaultKeymap.filter((binding) => binding.run !== toggleComment && binding.run !== toggleBlockComment);
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -81,7 +79,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         drawSelection(),
         EditorView.lineWrapping,
         search({ top: true }),
-        keymap.of([...formatKeymap, ...baseKeymap, ...historyKeymap, ...searchKeymap]),
+        keymap.of([...formatKeymap, ...builtinKeymap]),
         yamlFrontmatter({ content: markdown({ base: markdownLanguage, codeLanguages: languages }) }),
         syntaxHighlighting(highlight),
         frontmatterLines,

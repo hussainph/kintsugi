@@ -40,11 +40,13 @@ export const menuTheme = EditorView.theme({
   ".cm-kintsugi-menu-labels": { minWidth: "0", flex: "1" },
   ".cm-kintsugi-menu-title": { fontWeight: "500", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
   ".cm-kintsugi-menu-meta": { color: "var(--muted-foreground)", fontSize: "11px", marginTop: "2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  ".cm-kintsugi-menu-key": { flexShrink: "0" },
   ".cm-kintsugi-menu-hint": { padding: "8px 10px", borderTop: "1px solid var(--border)", fontSize: "10px", color: "var(--muted-foreground)", lineHeight: "1.5" },
   ".cm-kintsugi-menu-touch": { display: "none" },
   "@media (hover: none), (pointer: coarse)": {
     ".cm-kintsugi-menu-option": { minHeight: "44px" },
     ".cm-kintsugi-menu-keys": { display: "none" },
+    ".cm-kintsugi-menu-key": { display: "none" },
     ".cm-kintsugi-menu-touch": { display: "inline" },
   },
 });

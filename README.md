@@ -6,29 +6,117 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 
 ## Shortcuts
 
-Hold ⌘ for a moment to see the shortcuts that work where you are, beside their buttons and in a list. They're defined once, in `apps/desktop/src/lib/shortcuts.ts` (the editor's formatting keys in `packages/editor/src/format.ts`).
+Hold ⌘ for a moment to see the shortcuts that work where you are, beside their buttons and in a list. ⇧⌘/ or the keyboard button under a document lists them all; type to filter. Right-click a selection (or press ⇧F10) for what you can do with it, each with its key.
+
+⌥⌘T, ⌥⌘R, ⌥⌘P, ⌥⌘F and ⌥⌘S run ⌘K's edits on the selection (or the paragraph) straight away, and show the result to accept or discard like ⌘K. In ⌘P, `#tag` filters by tag. ⌘= and ⌘− are also in Settings › General.
+
+Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the editor's formatting keys in `packages/editor/src/format.ts`). The tests fail on a key that's taken twice, CodeMirror's and the Mac's own keys included, and on tables below that don't match; `pnpm shortcuts:readme` rewrites them.
+
+<!-- shortcuts:start (generated from apps/desktop/src/lib/shortcuts.ts; run pnpm shortcuts:readme) -->
+
+### App
 
 | Keys | Action |
 | --- | --- |
-| ⌘N / ⇧⌘N | New document / folder |
-| ⌘P | Jump to a document; `#tag` filters by tag |
-| ⌘\ | Collapse the sidebar to icons, or expand it |
-| ⌘K | Edit the selection (or paragraph) with AI: tighten, rephrase, synonyms, your `/` skills; or find supporting clips, ask who disagrees, discuss it with Kin, see ideas for this draft |
-| `/` | Insert a block (headings, lists, quote, callout, code, table…) or run a skill on the paragraph |
-| `@` or `[[` | Link a document or clip; `@Kin` asks Kin about the paragraph |
-| ⌘B / ⌘I / ⌘U | Bold / italic / underline (`<u>…</u>`) on the selection or the word |
-| ⌘E / ⇧⌘X / ⌘L | Inline code / strikethrough / link |
-| ⌥⌘1–6 / ⌥⌘0 | Heading 1–6 / plain text |
-| ⇧⌘7 / ⇧⌘8 / ⇧⌘9 / ⇧⌘. | Numbered list / bullets / to-do / quote |
-| ⌘/ | Dim the selection (or the line) in place, or undim it; dimmed text is left out of publish and export |
-| ⌘= / ⌘− / ⌘0 | Larger / smaller / default text size (also in Settings › General) |
-| ⇧⌘D | Toggle draft / complete |
-| ⌘F | Find in document |
-| ⇧⌘O | Open a different vault |
-| ⇧⌘I / ⇧⌘F / ⇧⌘E | Inspiration / Feed / Ideas |
-| ⌘J | Show or hide Kin's chat |
-| ⇧⌘P / ⌥⌘E | Publish / export the document |
-| F2, ⌘⌫ (in the sidebar) | Rename, move to Trash |
+| ⌘N | New document |
+| ⇧⌘N | New folder |
+| ⌘P | Open a document |
+| ⇧⌘F | Feed |
+| ⇧⌘I | Inspiration |
+| ⇧⌘E | Ideas |
+| ⌘J | Kin |
+| `⌘\` | Sidebar |
+| ⌘, | Settings |
+| ⇧⌘O | Open another vault |
+| `⇧⌘/` | Keyboard shortcuts |
+
+### Document
+
+| Keys | Action |
+| --- | --- |
+| ⌘S | Save |
+| ⇧⌘D | Toggle status |
+| ⇧⌘P | Publish |
+| ⌥⌘E | Export |
+| ⌘= | Larger text |
+| ⌘− | Smaller text |
+| ⌘0 | Actual size |
+
+### Kin
+
+| Keys | Action |
+| --- | --- |
+| ⌘K | Edit with Kin |
+| ⌥⌘T | Tighten |
+| ⌥⌘R | Rephrase |
+| ⌥⌘P | Simplify |
+| ⌥⌘F | Fix grammar and spelling |
+| ⌥⌘S | Synonyms |
+| ⇧F10 | Selection menu |
+
+### Formatting
+
+| Keys | Action |
+| --- | --- |
+| `/` | Insert a block |
+| `@` `[[` | Link a document or clip |
+| ⌘B | Bold |
+| ⌘I | Italic |
+| ⌘U | Underline |
+| ⌘E | Code |
+| ⇧⌘X | Strikethrough |
+| ⌘L | Link |
+| ⌥⌘1–6 | Heading |
+| ⌥⌘0 | Plain text |
+| ⇧⌘7 | Numbered list |
+| ⇧⌘8 | Bulleted list |
+| ⇧⌘9 | To-do list |
+| ⇧⌘. | Quote |
+
+### Text
+
+| Keys | Action |
+| --- | --- |
+| ⌘X | Cut |
+| ⌘C | Copy |
+| ⌘V | Paste |
+| ⌘Z | Undo |
+| ⇧⌘Z | Redo |
+| ⌘F | Find |
+| ⌘G | Find next |
+| ⇧⌘G | Find previous |
+| ⌘D | Select next match |
+| ⇧⌘L | Select all matches |
+| ⌥↑ | Move line up |
+| ⌥↓ | Move line down |
+| ⌥⌘G | Go to line |
+
+### Reviewing an edit
+
+| Keys | Action |
+| --- | --- |
+| ↩ | Accept |
+| ⌘R | Another version |
+| ← | Previous version |
+| → | Next version |
+| 1–6 | Pick a synonym |
+| ⌫ | Back to the list |
+| Esc | Discard |
+
+### Sidebar
+
+| Keys | Action |
+| --- | --- |
+| F2 | Rename |
+| ⌘⌫ | Move to Trash |
+
+### Settings
+
+| Keys | Action |
+| --- | --- |
+| Esc `⌘[` | Back |
+
+<!-- shortcuts:end -->
 
 ## Your phone
 

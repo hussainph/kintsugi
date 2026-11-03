@@ -833,6 +833,19 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   *Ideas for this draft* (`ideasForDraft(path)`).
   In a read-only mirror (KI-9) only the actions that write nothing are
   offered, and a supporting clip can only be opened.
+- **Keys of their own (KI-85).** Tighten ⌥⌘T, Rephrase ⌥⌘R, Simplify ⌥⌘P,
+  Fix grammar and spelling ⌥⌘F and Synonyms ⌥⌘S run on the selection (else
+  the paragraph) without ⌘K's list, and land in the same review: a diff to
+  accept with Enter. ⌘K's rows show these keys. One chord beats a letter
+  inside ⌘K: it works from the selection in one step, and a typed instruction
+  can still start with any letter. Synonyms need four words or fewer; a
+  read-only mirror refuses them.
+- **Right-click on a selection** (or ⇧F10, or the context-menu key) opens
+  `src/refine/SelectionMenu.tsx`: those edits, *Edit with Kin…* (⌘K), *Ask
+  Kin* (⌘J; the chat with the passage attached), then Cut and Copy, each row
+  with its key. A right-click anywhere else keeps the Mac's menu and its
+  spelling suggestions. Alternatives, dim and stash (KI-86, KI-88, KI-89) add
+  their rows; their keys are already held in `src/lib/shortcuts.ts`.
 - **Phone width.** Both menus fit `100vw − 16px`, rows are at least 44 px
   on a coarse pointer, and touch hints replace the key hints there.
 - **Headless.** With `KINTSUGI_HEADLESS_KIN=mock`, `ai_providers` offers the

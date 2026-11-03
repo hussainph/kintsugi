@@ -212,3 +212,13 @@ test("skills that arrive while the menu is open are listed", async () => {
   e.view.dispatch({ effects: refreshCommands.of(null) });
   assert.equal(e.menu(), true);
 });
+
+test("the / menu's blocks show the formatting key that does the same", async () => {
+  const { blockKey } = await import("../src/commands.ts");
+  const { keysOf } = await import("../src/keys.ts");
+  assert.equal(keysOf(blockKey("h2")!), "⌥⌘2");
+  assert.equal(keysOf(blockKey("text")!), "⌥⌘0");
+  assert.equal(keysOf(blockKey("bullets")!), "⇧⌘8");
+  assert.equal(keysOf(blockKey("quote")!), "⇧⌘.");
+  assert.equal(blockKey("table"), undefined);
+});

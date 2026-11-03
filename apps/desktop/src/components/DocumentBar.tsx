@@ -1,4 +1,4 @@
-import { AlertCircle, CircleCheckIcon, FileExport, Globe, Lightbulb, NotebookPen } from "@kintsugi/ui/icons";
+import { AlertCircle, CircleCheckIcon, FileExport, Globe, Keyboard, Lightbulb, NotebookPen } from "@kintsugi/ui/icons";
 import { Toolbar } from "@kintsugi/ui/graphical";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import type { ComponentProps, ReactNode } from "react";
@@ -22,6 +22,7 @@ export function DocumentBar({
   onIdeas,
   words,
   save,
+  onShortcuts,
 }: {
   /** The blog repository a read-only mirror comes from, if it is one. */
   mirror: string | null;
@@ -34,6 +35,7 @@ export function DocumentBar({
   onIdeas: () => void;
   words: number;
   save: Save;
+  onShortcuts: () => void;
 }) {
   return (
     <footer className="ki-document-bar ki-text-xs">
@@ -75,6 +77,9 @@ export function DocumentBar({
         </ExportMenu>
         <BarButton label="Ideas" tip="Ideas for this draft" onClick={onIdeas}>
           <Lightbulb />
+        </BarButton>
+        <BarButton label="Keyboard shortcuts" tip="Keyboard shortcuts" shortcut="shortcuts" onClick={onShortcuts}>
+          <Keyboard />
         </BarButton>
       </Toolbar.Root>
       <div className="ki-document-bar-info">

@@ -10,8 +10,9 @@ import { OutsideChoice, OutsideDialog } from "@/components/OutsideDialog";
 import { Sidebar, useSidebarOpen } from "@/components/Sidebar";
 import { DocumentBar } from "@/components/DocumentBar";
 import { Shortcut, ShortcutsOverlay } from "@/components/Shortcuts";
+import { Cheatsheet } from "@/components/Cheatsheet";
 import { matches } from "@/lib/keys";
-import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
+import { EDIT_KEYS, SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
 import { External, paragraphRange, replaceText } from "@kintsugi/editor/Editor";
@@ -19,7 +20,8 @@ import { setTextSize, textSizeForKey } from "@/lib/textSize";
 import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
 import { Refine } from "@/refine/Refine";
-import type { Action } from "@/refine/prompts";
+import { ACTIONS, type Action } from "@/refine/prompts";
+import { fits } from "@/refine/direct";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { KinChat } from "@/kin/Chat";
 import { onOpenLink, resolveTarget } from "@/kin/links";
@@ -87,7 +89,9 @@ export default function App() {
   const [selectedDir, setSelectedDir] = useState("");
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [save, setSave] = useState<SaveState>("saved");
-  const [refine, setRefine] = useState<{ from: number; to: number; action?: Action } | null>(null);
+  // `seq` starts it afresh when another edit's key is pressed while it's open.
+  const [refine, setRefine] = useState<{ from: number; to: number; action?: Action; seq: number } | null>(null);
+  const [cheatsheet, setCheatsheet] = useState(false);
   const [external, setExternal] = useState<External | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [feedOpen, setFeedOpen] = useState(false);
@@ -758,14 +762,20 @@ export default function App() {
     if (change) view.dispatch({ changes: change });
   };
 
-  // ⌘K: the selection, or the paragraph under the cursor when nothing is selected.
-  const openRefine = () => {
+  // ⌘K: the selection, or the paragraph under the cursor when nothing is
+  // selected. An edit's own key (⌥⌘T…) runs that edit on it straight away.
+  const openRefine = (action?: Action) => {
     const view = viewRef.current;
     if (!view) return;
     let { from, to } = view.state.selection.main;
     if (from === to) ({ from, to } = paragraphRange(view.state) ?? view.state.doc.lineAt(from));
-    if (!view.state.sliceDoc(from, to).trim()) return toast("Select some text to edit.");
-    setRefine({ from, to });
+    const passage = view.state.sliceDoc(from, to);
+    if (!passage.trim()) return toast("Select some text to edit.");
+    if (action) {
+      const problem = fits(action, passage, view.state.readOnly);
+      if (problem) return toast(problem);
+    }
+    setRefine({ from, to, action, seq: Date.now() });
   };
 
   const openVault = async () => {
@@ -859,7 +869,7 @@ export default function App() {
   // App shortcuts run in the capture phase so they win over the editor's keymap.
   const shortcuts = useRef<(e: KeyboardEvent) => void>(() => {});
   shortcuts.current = (e) => {
-    if (!e.metaKey || e.altKey || e.ctrlKey) return;
+    if (!e.metaKey || e.ctrlKey) return;
     const run = (action: () => void) => {
       e.preventDefault();
       e.stopPropagation();
@@ -867,12 +877,13 @@ export default function App() {
     };
     const is = (id: ShortcutId) => matches(e, SHORTCUTS[id].key);
     if (is("settings")) return run(() => showSettings());
+    if (is("shortcuts")) return run(() => setCheatsheet((open) => !open));
     // Settings covers the app; its shortcuts wait until he's back.
     if (settingsAt) return;
     // Text size while writing (SHORTCUTS.textLarger and co.; ⌘+ too). Taken
     // here so the webview never zooms instead.
     const size = doc && !away ? textSizeForKey(e.key) : null;
-    if (size !== null && (!e.shiftKey || e.key === "+" || e.key === "_")) return run(() => setTextSize(size));
+    if (size !== null && !e.altKey && (!e.shiftKey || e.key === "+" || e.key === "_")) return run(() => setTextSize(size));
     if (is("find")) run(() => setPalette({ kind: "open" }));
     else if (is("newDoc")) run(() => setPalette({ kind: "new-doc", dir: selectedDir }));
     else if (is("newFolder")) run(() => setPalette({ kind: "new-folder", dir: selectedDir }));
@@ -882,7 +893,12 @@ export default function App() {
     else if (is("status") && !away) run(toggleStatus);
     else if (is("save")) run(() => { if (libraryOpen) void libraryRef.current?.flush(); else if (!feedOpen) void flush(); });
     else if (is("openVault")) run(openVault);
-    else if (is("refine") && doc && !away) run(openRefine);
+    else if (is("refine") && doc && !away) run(() => openRefine());
+    else if (doc && !away) {
+      const edit = (Object.keys(EDIT_KEYS) as (keyof typeof EDIT_KEYS)[]).find((id) => is(EDIT_KEYS[id]));
+      const action = edit && ACTIONS.find((a) => a.id === edit);
+      if (action) run(() => openRefine(action));
+    }
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => shortcuts.current(e);
@@ -950,7 +966,7 @@ export default function App() {
             root={root}
             onOpenDoc={openDoc}
             onOpenClip={requestClip}
-            onRefine={(from, to, action) => setRefine({ from, to, action })}
+            onRefine={(from, to, action) => setRefine({ from, to, action, seq: Date.now() })}
             path={doc.path}
             text={doc.text}
             onChange={onChange}
@@ -981,11 +997,13 @@ export default function App() {
             onIdeas={() => ideasForDraft(doc.path)}
             words={wordCount(text)}
             save={save}
+            onShortcuts={() => setCheatsheet(true)}
           />
         )}
       </SidebarInset>
       {refine && viewRef.current && doc && (
         <Refine
+          key={refine.seq}
           view={viewRef.current}
           from={refine.from}
           to={refine.to}
@@ -998,6 +1016,7 @@ export default function App() {
           }}
         />
       )}
+      <Cheatsheet open={cheatsheet} onClose={() => setCheatsheet(false)} />
       <ShortcutsOverlay screen={settingsAt ? "settings" : doc && !away ? "writing" : "app"} />
       <Palette mode={palette} docs={docs} onOpen={openDoc} onCreate={create} onClose={() => setPalette(null)} />
       <UnsavedDialog failures={blocked?.failures ?? null} action={blocked?.action ?? ""} onChoose={answer} />
