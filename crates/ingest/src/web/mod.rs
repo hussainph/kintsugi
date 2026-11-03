@@ -14,6 +14,7 @@
 //! discards what was already collected.
 
 mod extract;
+pub mod guard;
 mod oembed;
 pub mod render;
 pub mod watch;
@@ -72,6 +73,10 @@ pub struct WebAdapter {
     client: Client,
     limits: Limits,
     renderer: Option<Arc<dyn Renderer>>,
+    /// Only the public internet (see [`guard`]).
+    public_only: bool,
+    /// Plain text, Markdown and JSON pages are read as they are.
+    plain_text: bool,
 }
 
 impl WebAdapter {
@@ -80,35 +85,79 @@ impl WebAdapter {
     }
 
     pub fn with_limits(limits: Limits) -> Result<Self> {
-        let client = Client::builder()
+        Self::build(limits, None)
+    }
+
+    /// A page reader for an agent (Kin's `web_fetch`): only public
+    /// addresses, every redirect and resolved address re-checked (see
+    /// [`guard`]), never rendered in a webview, and plain-text pages read
+    /// as they are.
+    pub fn reader(limits: Limits) -> Result<Self> {
+        Self::build(limits, Some(&[]))
+    }
+
+    /// [`reader`](Self::reader), with names pinned to addresses that skip
+    /// the resolver's check. For tests that stand a loopback server in for
+    /// a public host.
+    #[doc(hidden)]
+    pub fn reader_pinned(limits: Limits, pinned: &[(&str, std::net::SocketAddr)]) -> Result<Self> {
+        Self::build(limits, Some(pinned))
+    }
+
+    fn build(limits: Limits, guarded: Option<&[(&str, std::net::SocketAddr)]>) -> Result<Self> {
+        let public_only = guarded.is_some();
+        let mut builder = Client::builder()
             .user_agent(USER_AGENT)
             .connect_timeout(limits.connect_timeout)
             .timeout(limits.request_timeout)
-            .redirect(reqwest::redirect::Policy::custom(|attempt| {
-                if attempt.previous().len() >= 5 || !allowed_url(attempt.url()) {
+            .redirect(reqwest::redirect::Policy::custom(move |attempt| {
+                let ok = if public_only {
+                    guard::public_url(attempt.url())
+                } else {
+                    allowed_url(attempt.url())
+                };
+                if attempt.previous().len() >= 5 || !ok {
                     attempt.error("unsupported redirect")
                 } else {
                     attempt.follow()
                 }
-            }))
-            .build()
-            .map_err(|_| Error::Setup)?;
+            }));
+        if let Some(pinned) = guarded {
+            builder = builder.no_proxy().dns_resolver(guard::PublicResolver);
+            for (name, addr) in pinned {
+                builder = builder.resolve(name, *addr);
+            }
+        }
+        let client = builder.build().map_err(|_| Error::Setup)?;
         Ok(Self {
             client,
             limits,
             renderer: None,
+            public_only,
+            plain_text: public_only,
         })
+    }
+
+    fn allowed(&self, url: &Url) -> bool {
+        if self.public_only {
+            guard::public_url(url)
+        } else {
+            allowed_url(url)
+        }
     }
 
     /// Enables the JavaScript fallback. Without one (headless runs, tests),
     /// static extraction is all there is.
+    /// A guarded reader never renders: the webview would fetch past the guard.
     pub fn with_renderer(mut self, renderer: Arc<dyn Renderer>) -> Self {
-        self.renderer = Some(renderer);
+        if !self.public_only {
+            self.renderer = Some(renderer);
+        }
         self
     }
 
     pub async fn fetch(&self, url: &Url, options: CaptureOptions) -> Result<Item> {
-        if !allowed_url(url) {
+        if !self.allowed(url) {
             return Err(Error::InvalidUrl);
         }
         let deadline = Instant::now() + self.limits.deadline;
@@ -160,6 +209,12 @@ impl WebAdapter {
                     &String::from_utf8_lossy(&body.bytes),
                     &body.url,
                 ));
+            }
+            Ok(body) if self.plain_text && is_plain_text(body) => {
+                draft.final_url = body.url.clone();
+                draft.useful = true;
+                draft.extractor = "text";
+                draft.body = markdown::body(&String::from_utf8_lossy(&body.bytes), crate::FULL_CHARS);
             }
             // A directly shared image URL need not pretend to be an HTML page.
             Ok(body) => {
@@ -242,7 +297,7 @@ impl WebAdapter {
         limit: usize,
         image_limit: Option<usize>,
     ) -> std::result::Result<Body, Fail> {
-        if !allowed_url(&url) {
+        if !self.allowed(&url) {
             return Err(Fail::Other(Error::InvalidUrl));
         }
         let response = self
@@ -288,7 +343,7 @@ impl Adapter for WebAdapter {
     }
 
     fn matches(&self, target: &Target) -> bool {
-        matches!(target, Target::Url(url) if allowed_url(url))
+        matches!(target, Target::Url(url) if self.allowed(url))
     }
 
     fn capture<'a>(
@@ -495,6 +550,14 @@ pub fn canonical_url(url: &Url) -> Url {
         url.query_pairs_mut().clear().extend_pairs(kept);
     }
     url
+}
+
+/// Text a reader can take as it is: plain text, Markdown, JSON.
+fn is_plain_text(body: &Body) -> bool {
+    (body.mime.starts_with("text/")
+        || body.mime.starts_with("application/json")
+        || body.mime.contains("+json"))
+        && !body.bytes.contains(&0)
 }
 
 fn is_html(body: &Body) -> bool {

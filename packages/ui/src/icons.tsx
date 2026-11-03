@@ -14,7 +14,7 @@ import {
   SparklesIcon, SquareIcon, Sword01Icon, Tag01Icon, Tick02Icon, Undo02Icon,
   Upload01Icon, UserCircleIcon, Video01Icon, ViewOffIcon, Brain02Icon, Key01Icon,
   Globe02Icon, LockIcon, FileExportIcon, YoutubeIcon, NewTwitterIcon, PodcastIcon,
-  BrowserIcon, BookUserIcon,
+  BrowserIcon, BookUserIcon, Link01Icon,
   TriangleAlertIcon as WarningGlyph, OctagonXIcon as ErrorGlyph,
 } from "@hugeicons/core-free-icons";
 
@@ -70,6 +70,7 @@ export const ImageOff = glyph(ImageOffIcon);
 export const ImagePlus = glyph(ImageAdd01Icon);
 export const Info = glyph(InformationCircleIcon);
 export const Key = glyph(Key01Icon);
+export const Link = glyph(Link01Icon);
 export const Lightbulb = glyph(BulbIcon);
 export const Loader2 = glyph(Loading03Icon);
 export const Lock = glyph(LockIcon);

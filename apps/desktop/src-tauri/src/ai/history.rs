@@ -117,6 +117,10 @@ pub struct Entry {
     /// turn, which leaves comment threads, not by the chat.
     #[serde(default, skip_serializing_if = "is_false")]
     pub review: bool,
+    /// Kin's reply: the web searches and pages it used (KI-78), shown as
+    /// its sources. Never sent back to the model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub web: Vec<super::web::WebCall>,
 }
 
 /// What a new entry says; the log assigns `seq` and `at`.
@@ -132,6 +136,7 @@ pub struct Draft {
     pub usd: Option<f64>,
     pub comment: Option<String>,
     pub review: bool,
+    pub web: Vec<super::web::WebCall>,
 }
 
 /// A topic, as inferred for one message.
@@ -350,6 +355,7 @@ impl Log {
             usd: draft.usd,
             comment: draft.comment,
             review: draft.review,
+            web: draft.web,
         };
         self.push(entry, topic)
     }

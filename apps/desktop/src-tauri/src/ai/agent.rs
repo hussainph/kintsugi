@@ -11,7 +11,7 @@
 use super::cost::Meter;
 use super::pi_auth::Auth;
 use super::prompt::{self, Chip, Memory};
-use super::tools::{self, Tools};
+use super::tools::Tools;
 use super::wire::{self, Endpoint, Exchange, Item, Reply, Route, ToolResult, Usage};
 use super::{ModelRef, Task};
 use futures_util::future::{Either, select};
@@ -210,6 +210,9 @@ pub enum KinEvent {
         id: String,
         is_error: bool,
         preview: String,
+        /// A web tool's results, for the chat to show with its sources.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        web: Option<super::web::WebCall>,
     },
     /// A step finished and was charged. Its tool calls follow.
     #[serde(rename_all = "camelCase")]
@@ -321,7 +324,7 @@ async fn steps(
         let exchange = Exchange {
             model: &reference.model,
             system: &system,
-            tools: tools::specs(),
+            tools: tools.specs(),
             items: &items,
             max_tokens: Some(limits.max_tokens),
             temperature: None,
@@ -374,23 +377,36 @@ async fn steps(
             break;
         }
         let mut results = Vec::with_capacity(reply.calls.len());
+        let mut stopped = false;
         for call in &reply.calls {
             emit(KinEvent::ToolCall {
                 id: call.id.clone(),
                 name: call.name.clone(),
                 arguments: call.arguments.clone(),
             });
-            let output = tools.run(call);
+            // A web call can take seconds; Stop doesn't wait for it.
+            let output = match select(pin!(tools.call(call)), pin!(cancel.cancelled())).await {
+                Either::Left((output, _)) => output,
+                Either::Right(_) => {
+                    stopped = true;
+                    break;
+                }
+            };
             emit(KinEvent::ToolResult {
                 id: call.id.clone(),
                 is_error: output.is_error,
                 preview: output.content.chars().take(PREVIEW_CHARS).collect(),
+                web: output.web,
             });
             results.push(ToolResult {
                 call_id: call.id.clone(),
                 content: output.content,
                 is_error: output.is_error,
             });
+        }
+        if stopped {
+            summary.stop = Stop::Cancelled;
+            break;
         }
         summary.tool_calls += results.len();
         // Codex's reasoning goes back with its step: the model keeps its

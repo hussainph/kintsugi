@@ -198,10 +198,13 @@ async fn start(
         source: Source::chat(&turn.id, &turn.question),
         remember: turn.remember,
     };
-    let tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?
+    let mut tools = Tools::new(&root, meter.outputs_dir(), &turn.id)?
         .with_memory(access)
         .with_searcher(crate::search::searcher(app))
         .with_feed(crate::feed::kin_hook(app));
+    if let Some(web) = super::web::for_turn() {
+        tools = tools.with_web(web);
+    }
     let request = agent::Turn {
         task,
         background: turn.background,

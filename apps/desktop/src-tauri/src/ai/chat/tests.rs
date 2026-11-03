@@ -89,6 +89,8 @@ struct TestBrain {
     finished: Arc<Mutex<Vec<(String, Trace)>>>,
     /// Every model asked for: the task and the conversation's pick.
     connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>>,
+    /// Web tools on (scripted results, KI-78).
+    web: Arc<Mutex<bool>>,
 }
 
 impl Brain for TestBrain {
@@ -123,6 +125,10 @@ impl Brain for TestBrain {
         &self.meter
     }
 
+    fn web(&self) -> Option<Arc<crate::ai::web::Web>> {
+        (*self.web.lock().unwrap()).then(|| Arc::new(crate::ai::web::Web::scripted()))
+    }
+
     fn finish_job(&self, job: &Job, report: String, trace: &Trace) -> Result<String> {
         self.finished
             .lock()
@@ -149,6 +155,7 @@ struct Fixture {
     script: Arc<Script>,
     events: Arc<Mutex<Vec<ChatEvent>>>,
     connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>>,
+    web: Arc<Mutex<bool>>,
     _vault: tempfile::TempDir,
     _ledger: tempfile::TempDir,
 }
@@ -171,7 +178,9 @@ fn fixture_in(
     let script = Script::new(replies, delay);
     let events: Arc<Mutex<Vec<ChatEvent>>> = Arc::default();
     let connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>> = Arc::default();
+    let web: Arc<Mutex<bool>> = Arc::default();
     let brain = TestBrain {
+        web: web.clone(),
         script: script.clone(),
         vault: Mutex::new(vault.path().into()),
         meter: Meter::with_clock(Some(ledger.path().into()), || "2026-11".into()),
@@ -185,6 +194,7 @@ fn fixture_in(
         script,
         events,
         connected,
+        web,
         _vault: vault,
         _ledger: ledger,
     }
@@ -291,6 +301,35 @@ fn a_burst_of_messages_is_one_turn() {
         .filter(|e| matches!(e, ChatEvent::TurnStarted { .. }))
         .collect();
     assert_eq!(started.len(), 1);
+}
+
+/// KI-78: a reply keeps the web searches and pages its turn used, for the
+/// chat to show as sources, and the turn's tool list grows by the web tools.
+#[test]
+fn a_reply_keeps_its_web_sources() {
+    let f = fixture(
+        vec![
+            calls(&[("w1", "web_search", json!({ "query": "golden joinery" }))], ""),
+            calls(&[("w2", "web_fetch", json!({ "url": "https://example.org/essays/x" }))], ""),
+            answer("Two sources say so."),
+        ],
+        Duration::ZERO,
+    );
+    *f.web.lock().unwrap() = true;
+    f.engine.send("What do others say about golden joinery?", vec![]).unwrap();
+    let reply = f.wait_replies(1).remove(0);
+    assert_eq!(reply.text, "Two sources say so.");
+    assert_eq!(reply.web.len(), 2);
+    assert_eq!(reply.web[0].tool, "search");
+    assert_eq!(reply.web[0].query.as_deref(), Some("golden joinery"));
+    assert_eq!(reply.web[0].results.len(), 3);
+    assert_eq!(reply.web[1].tool, "fetch");
+    assert_eq!(reply.web[1].results[0].url, "https://example.org/essays/x");
+    let seen = f.script.seen();
+    assert_eq!(seen[0].tools, crate::ai::tools::specs_with_web().len());
+    // Sources are for the chat; the next turn's history carries only text.
+    let line = serde_json::to_value(&reply).unwrap();
+    assert_eq!(line["web"][0]["results"][0]["date"], "2025-06-14");
 }
 
 #[test]

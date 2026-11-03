@@ -119,7 +119,18 @@ impl Model for Scripted {
             )
         } else if let Some(Item::User(message)) = ex.items.last() {
             // First step of a turn: look something up.
+            let asked = said(message).to_lowercase();
             let call = match first_chip(message) {
+                // The web tools (KI-78): a scripted search, then a page.
+                _ if ex.tools.iter().any(|t| t.name == "web_search")
+                    && (asked.contains("web") || asked.contains("online")) =>
+                {
+                    ToolCall {
+                        id: "mock-1".into(),
+                        name: "web_search".into(),
+                        arguments: json!({ "query": web_query(said(message)) }),
+                    }
+                }
                 // The Feed's ranking tools, so headless runs can drive them.
                 _ if said(message).to_lowercase().contains("shortlist") => ToolCall {
                     id: "mock-1".into(),
@@ -144,6 +155,8 @@ impl Model for Scripted {
                 }
             };
             return Ok(reply(String::new(), vec![call]));
+        } else if let Some(call) = read_first_web_result(ex.items) {
+            return Ok(reply(String::new(), vec![call]));
         } else {
             let looked = ex.items.iter().rev().find_map(|i| match i {
                 Item::Assistant { calls, .. } => {
@@ -157,7 +170,8 @@ impl Model for Scripted {
                     let text = r
                         .content
                         .replace("<data tool=\"read\">", "")
-                        .replace("<data tool=\"tool\">", "");
+                        .replace("<data tool=\"tool\">", "")
+                        .replace("<data tool=\"web_fetch\">", "");
                     text.split_whitespace()
                         .collect::<Vec<_>>()
                         .join(" ")
@@ -197,6 +211,49 @@ impl Model for Scripted {
         }
         Ok(reply(text, vec![]))
     }
+}
+
+/// "Search the web for golden joinery" asks the scripted provider for
+/// "golden joinery".
+fn web_query(said: &str) -> String {
+    let lower = said.to_lowercase();
+    let mut query = said;
+    for lead in ["search the web for", "search online for", "look up online", "on the web", "online", "the web", "web"] {
+        if let Some(at) = lower.find(lead)
+            && let (Some(before), Some(rest)) = (said.get(..at), said.get(at + lead.len()..))
+        {
+            query = if rest.trim().len() > 2 { rest.trim() } else { before.trim() };
+            break;
+        }
+    }
+    let query = query.trim_matches(|c: char| !c.is_alphanumeric());
+    let query: String = query.chars().take(80).collect();
+    if query.is_empty() { "kintsugi".into() } else { query }
+}
+
+/// After a web search, read its first result.
+fn read_first_web_result(items: &[Item]) -> Option<ToolCall> {
+    let Some(Item::Assistant { calls, .. }) = items.iter().rev().nth(1) else {
+        return None;
+    };
+    if calls.first()?.name != "web_search" {
+        return None;
+    }
+    let Some(Item::Results(results)) = items.last() else {
+        return None;
+    };
+    let content = &results.first()?.content;
+    let url = content
+        .split("\"url\":\"")
+        .nth(1)?
+        .split('"')
+        .next()?
+        .to_string();
+    Some(ToolCall {
+        id: "mock-2".into(),
+        name: "web_fetch".into(),
+        arguments: json!({ "url": url }),
+    })
 }
 
 /// Comment threads and reviews (KI-38): a reviewer's note that names what
@@ -790,5 +847,88 @@ mod edit_tests {
                 .count(),
             3
         );
+    }
+}
+
+#[cfg(test)]
+mod web_tests {
+    use super::super::Task;
+    use super::super::agent::tests::block_on;
+    use super::super::agent::{self, Cancel, Harness, KinEvent, Limits, Turn};
+    use super::super::cost::Meter;
+    use super::super::prompt::Memory;
+    use super::super::tools::Tools;
+    use super::super::web::Web;
+    use super::*;
+    use std::sync::Arc;
+
+    /// KI-78: the mock searches the web (scripted results, no network),
+    /// reads the first result, and the results reach the events the chat
+    /// keeps as sources.
+    #[test]
+    fn the_mock_searches_the_web_and_reads_the_first_result() {
+        let vault = tempfile::tempdir().unwrap();
+        let outputs = tempfile::tempdir().unwrap();
+        let meter = Meter::open(None);
+        let tools = Tools::new(vault.path(), outputs.path().into(), "t")
+            .unwrap()
+            .with_web(Arc::new(Web::scripted()));
+        let memory = Memory::default();
+        let cancel = Cancel::default();
+        let harness = Harness {
+            tools: &tools,
+            meter: &meter,
+            memory: &memory,
+            cancel: &cancel,
+            limits: Limits::default(),
+        };
+        let turn = Turn {
+            task: Task::Chat,
+            background: false,
+            question: "Search the web for golden joinery".into(),
+            chips: vec![],
+            today: "2026-11-03".into(),
+            remember: true,
+            history: vec![],
+            recap: None,
+        };
+        let mut events = vec![];
+        let summary = block_on(agent::run(&Scripted::default(), &harness, &turn, &mut |e| {
+            events.push(e)
+        }))
+        .unwrap();
+        let calls: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                KinEvent::ToolCall { name, arguments, .. } => Some((name.clone(), arguments.clone())),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(calls[0], ("web_search".into(), json!({ "query": "golden joinery" })));
+        assert_eq!(
+            calls[1],
+            ("web_fetch".into(), json!({ "url": "https://en.wikipedia.org/wiki/golden-joinery" }))
+        );
+        let web: Vec<_> = events
+            .iter()
+            .filter_map(|e| match e {
+                KinEvent::ToolResult { web: Some(call), .. } => Some(call.tool.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(web, ["search", "fetch"]);
+        assert!(summary.text.contains("It returned: # Mock page at en.wikipedia.org"), "{}", summary.text);
+
+        // Without web tools, the mock never asks for them.
+        let plain = Tools::new(vault.path(), outputs.path().into(), "t2").unwrap();
+        let harness = Harness { tools: &plain, ..harness };
+        let mut names = vec![];
+        block_on(agent::run(&Scripted::default(), &harness, &turn, &mut |e| {
+            if let KinEvent::ToolCall { name, .. } = e {
+                names.push(name);
+            }
+        }))
+        .unwrap();
+        assert_eq!(names, ["search"]);
     }
 }

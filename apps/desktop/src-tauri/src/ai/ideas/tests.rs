@@ -331,6 +331,7 @@ fn a_batch_is_checked_stored_and_reported() {
         usd: 0.031,
         model: "anthropic/x".into(),
         steps: vec![],
+        web: vec![],
     };
     let ideas = serde_json::json!([
         { "title": "Repair's cost", "hunch": "The cost side.", "observed": ["2 docs"], "quotes": [{ "source": "posts/on-craft", "text": "It is a record of care." }, { "source": "notes/repair", "text": "The patch is not hidden." }] },

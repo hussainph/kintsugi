@@ -168,6 +168,31 @@ test("typing interrupts Kin; the next turn answers what was waiting", { timeout:
   assert.equal(await kinReplies().count(), before + 2, "an interrupted reply and a full one");
 });
 
+test("Kin searches the web (scripted) and shows its sources with their actions", { timeout: 90_000 }, async () => {
+  const before = await kinReplies().count();
+  await say("Search the web for golden joinery");
+  // Live: what Kin is doing, then the sources as they arrive.
+  await panel().locator("[data-live]").getByText("Searched the web for “golden joinery”").waitFor({ timeout: 30_000 });
+  const reply = kinReplies().nth(before);
+  await reply.getByText("It returned: # Mock page at en.wikipedia.org", { exact: false }).waitFor({ timeout: 30_000 });
+  const sources = reply.locator("[data-web-sources]");
+  await sources.getByRole("button", { name: "3 web sources" }).click();
+  await sources.getByText("Searched “golden joinery” · read 1 page").waitFor();
+  const first = sources.locator('[data-web-source="https://en.wikipedia.org/wiki/golden-joinery"]');
+  await first.getByText("Mock page at en.wikipedia.org").waitFor();
+  await first.getByText("wikipedia.org · 2025-06-14", { exact: false }).waitFor();
+  await first.hover();
+  await first.getByRole("button", { name: "Save to Inspiration" }).waitFor();
+  await first.getByRole("button", { name: "Turn into an idea" }).waitFor();
+  await shot("03b-web-sources");
+  // The draft is on screen: the link goes in after the cursor.
+  await first.getByRole("button", { name: "Add link to the document" }).click();
+  await page.locator(".cm-content").getByText("(https://en.wikipedia.org/wiki/golden-joinery)", { exact: false }).waitFor();
+  // The sources are kept with the reply in the vault's log.
+  const log = readFileSync(resolve(vault, ".kintsugi/kin/log.jsonl"), "utf8");
+  assert.ok(log.includes('"web":[{"tool":"search","query":"golden joinery","provider":"mock"'), "the reply keeps its web calls");
+});
+
 test("Discuss on a clip opens the chat with the clip; returning to the draft resumes its thread", { timeout: 120_000 }, async () => {
   await panel().getByRole("button", { name: "Close Kin" }).first().click();
   await page.keyboard.press("Meta+Shift+i");

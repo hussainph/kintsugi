@@ -10,11 +10,13 @@ import { chat, type ChatEvent, type Entry, type Job, jobs, onDiscuss, onOpenKin,
 import { type Chip, chipKey, chipTitle, mergeChips, snippet, throttle } from "@/lib/chips";
 import { KinAvatar } from "./Avatar";
 import { ChatModelPicker } from "./ModelPicker";
+import { WebSources } from "./WebSources";
+import { domain, type WebCall } from "@/lib/web";
 
 const EMPTY: Page = { entries: [], threads: [], pending: [], running: null };
 const ACTIVE: Job["status"][] = ["queued", "running", "waiting"];
 
-type Live = { turn: string; text: string; looking: string[] };
+type Live = { turn: string; text: string; looking: string[]; web: WebCall[] };
 
 const chipIcon = (kind: string) =>
   kind === "clip" ? Bookmark : kind === "feed" ? Rss : kind === "idea" ? Lightbulb : kind === "paragraph" || kind === "selection" ? Pilcrow : FileText;
@@ -25,6 +27,8 @@ function describe(name: string, args: unknown): string {
   if (name === "search") return `Searched “${String(a.query ?? "")}”`;
   if (name === "read") return `Read ${String(a.path ?? "")}`;
   if (name === "list") return `Looked in ${String(a.path || "the vault")}`;
+  if (name === "web_search") return `Searched the web for “${String(a.query ?? "")}”`;
+  if (name === "web_fetch") return `Read ${domain(String(a.url ?? "")) ?? "a web page"}`;
   if (name === "tool") {
     const inner = (a.args ?? {}) as Record<string, unknown>;
     if (a.name === "history") return inner.query ? `Searched our history for “${String(inner.query)}”` : "Read our history";
@@ -102,6 +106,7 @@ function Message({ entry, waiting }: { entry: Entry; waiting: boolean }) {
             {entry.interrupted && <span className="ml-1 text-xs text-muted-foreground" data-interrupted>(interrupted)</span>}
           </p>
         )}
+        {!!entry.web?.length && <WebSources calls={entry.web} />}
         {entry.comment && <CommentTag />}
       </div>
     </div>
@@ -188,7 +193,7 @@ export function KinChat() {
           if (event.entry.role !== "owner" && !event.entry.comment && !openRef.current) setUnread(true);
           return void reload();
         case "turnStarted":
-          setLive({ turn: event.turn, text: "", looking: [] });
+          setLive({ turn: event.turn, text: "", looking: [], web: [] });
           return void reload();
         case "turn": {
           const e = event.event;
@@ -196,6 +201,7 @@ export function KinChat() {
             if (!l || l.turn !== event.turn) return l;
             if (e.type === "text") return { ...l, text: l.text + e.delta };
             if (e.type === "toolCall") return { ...l, text: "", looking: [...l.looking, describe(e.name, e.arguments)] };
+            if (e.type === "toolResult" && e.web) return { ...l, web: [...l.web, e.web] };
             return l;
           });
         }
@@ -424,6 +430,7 @@ export function KinChat() {
                   {live.looking.map((l, i) => (
                     <p key={i} className="text-xs text-muted-foreground">{l}</p>
                   ))}
+                  {live.web.length > 0 && <WebSources calls={live.web} />}
                   <p className="text-sm leading-relaxed whitespace-pre-wrap select-text">
                     {live.text || <span className="text-muted-foreground">Thinking…</span>}
                     <span className="ml-0.5 inline-block h-3.5 w-1.5 translate-y-0.5 bg-foreground/50 motion-safe:animate-pulse" aria-hidden />

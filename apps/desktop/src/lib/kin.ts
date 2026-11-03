@@ -1,6 +1,7 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ModelRef, ThinkingLevel } from "./ai";
 import type { Chip } from "./chips";
+import type { WebCall } from "./web";
 
 /** Mirrors `ai::Task::KIN` in src-tauri/src/ai/mod.rs. */
 export type KinTask = "chat" | "ideas" | "triage";
@@ -24,7 +25,7 @@ export type Summary = {
 export type KinEvent =
   | { type: "text"; delta: string }
   | { type: "toolCall"; id: string; name: string; arguments: unknown }
-  | { type: "toolResult"; id: string; isError: boolean; preview: string }
+  | { type: "toolResult"; id: string; isError: boolean; preview: string; web?: WebCall }
   | { type: "step"; step: number; usage: Usage; usd: number; stopReason: string | null; textChars: number }
   | { type: "done"; summary: Summary }
   | { type: "error"; message: string };
@@ -148,7 +149,7 @@ export const dollars = (usd: number) =>
   usd === 0 ? "$0" : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
 
 /** Settings' sections, in the order its sidebar lists them. */
-export type SettingsSection = "general" | "kin" | "providers" | "phone" | "blog" | "export" | "privacy";
+export type SettingsSection = "general" | "kin" | "providers" | "web" | "phone" | "blog" | "export" | "privacy";
 
 /** Opens Settings (at a section) or the Kin developer panel from anywhere. */
 export const openSettings = (section?: SettingsSection) =>
