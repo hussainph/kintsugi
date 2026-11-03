@@ -1,6 +1,7 @@
 // The over-explaining rule (docs/voice.md › Let the components do the
-// talking). Deterministic: string lengths by role, a few set phrases, and
-// the shape of the JSX around a string. No model.
+// talking) and its sibling, the shortcut-note rule: a note may carry a fact
+// the control can't show, never a key. Deterministic: string lengths by
+// role, a few set phrases, and the shape of the JSX around a string. No model.
 
 /** Most words a button, label or title may have. */
 export const LABEL_WORDS = 5;
@@ -122,6 +123,66 @@ function hasLiteral(t, node) {
   let found = false;
   t.forEachChild(node, (c) => { if (!found && hasLiteral(t, c)) found = true; });
   return found;
+}
+
+// ---- Shortcut notes -----------------------------------------------------
+
+/** Attributes that hold the one line under a control (`Row`'s `note` and kin). */
+const NOTE_ATTR = /^(?:note|hint|helper|helperText|lede|blurb|caption|subtext)$/;
+/** A note-styled element: `<span className="ki-settings-note">`, `styles.note`. */
+const NOTE_STYLE = /\bki-settings-note\b|\bstyles\.note\b/;
+/** Elements that render one key chip: `<Shortcut>`, `<ShortcutHint>`, `<Kbd>`, `<kbd>`. */
+const KEY_TAG = /^(?:[\w.]*Shortcut(?:Hint)?|[\w.]*Kbd|kbd)$/;
+/** The keys as the chips draw them: `⌘`, `⇧`, `⌥`, `⌃`, `⌫`, `↩`. */
+const KEY_GLYPH = /[⌘⇧⌥⌃⌫⌦⎋↩⏎⌤⇥]/u;
+
+/** Is this node inside a JSX attribute? Attributes are checked as a whole. */
+function inAttribute(t, node) {
+  for (let p = node.parent; p; p = p.parent) if (t.isJsxAttribute(p)) return true;
+  return false;
+}
+
+/** Does this subtree show a key: a glyph in its text, or a key-chip element? */
+function showsKeys(t, root, sf) {
+  let found = false;
+  const visit = (node) => {
+    if (found) return;
+    if (t.isJsxText(node)) { if (KEY_GLYPH.test(node.text)) found = true; return; }
+    if (t.isStringLiteral(node) || t.isNoSubstitutionTemplateLiteral(node) || t.isTemplateExpression(node)) {
+      if (KEY_GLYPH.test(node.getText(sf))) found = true;
+      if (t.isTemplateExpression(node)) node.templateSpans.forEach((s) => visit(s.expression));
+      return;
+    }
+    if (isElement(t, node) && KEY_TAG.test(tagOf(node, sf))) { found = true; return; }
+    t.forEachChild(node, visit);
+  };
+  visit(root);
+  return found;
+}
+
+/**
+ * Notes that print keys. A note earns its place with a fact the control can't
+ * show (a limit, a cost, what leaves the Mac); the keys live in the chips
+ * beside the control and the ⇧⌘/ list, so a note never needs one.
+ * Returns [{ pos, rule, detail }].
+ */
+export function shortcutNotes(t, sf) {
+  const out = [];
+  const report = (pos) => out.push({ pos, rule: 'shortcut-note', detail: 'a note that shows keys, which the chips and the ⇧⌘/ list already show' });
+  const visit = (node) => {
+    if (isElement(t, node) && !t.isJsxFragment(node)) {
+      const open = node.openingElement ?? node;
+      if (t.isJsxElement(node) && !inAttribute(t, node) && NOTE_STYLE.test(attrsText(node, sf)) && showsKeys(t, node, sf)) report(node.getStart(sf));
+      for (const attr of open.attributes.properties) {
+        if (!t.isJsxAttribute(attr)) continue;
+        const name = t.isIdentifier(attr.name) ? attr.name.text : attr.name.getText(sf);
+        if (!inAttribute(t, attr) && NOTE_ATTR.test(name) && attr.initializer && showsKeys(t, attr.initializer, sf)) report(attr.getStart(sf));
+      }
+    }
+    t.forEachChild(node, visit);
+  };
+  visit(sf);
+  return out;
 }
 
 export function wordCount(text) {

@@ -215,6 +215,7 @@ export const HINTS = {
   'colon-reveal': 'make it a plain sentence',
   'allow-reason': 'copy-lint-allow needs a reason: "copy-lint-allow: <why>"',
   'over-explaining': 'let the components do the talking: delete it, or keep one short line with a fact the UI can\'t show (a limit, a cost, what leaves the device)',
+  'shortcut-note': 'a note is for a fact the control can\'t show, never a key: the hold-⌘ chips and the ⇧⌘/ list show those, so delete the note',
 };
 
 /** Text rules: run over a piece of user-visible text. Returns [{rule, index, length, detail}]. */

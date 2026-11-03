@@ -3,7 +3,7 @@ import { Minus, Plus } from "@kintsugi/ui/icons";
 import { setTextSize, stepSize, TEXT_SIZES, useTextSize } from "@/lib/textSize";
 import { Group, Page, Row } from "./parts";
 import { OptionalTools } from "./OptionalTools";
-import { Shortcut, ShortcutHint } from "@/components/Shortcuts";
+import { ShortcutHint } from "@/components/Shortcuts";
 
 type Props = {
   /** The open vault's folder. */
@@ -24,7 +24,7 @@ export function GeneralSettings({ root, onOpenVault }: Props) {
         </Row>
       </Group>
       <Group title="Writing">
-        <Row label="Text size" note={<><Shortcut id="textSmaller" /> <Shortcut id="textLarger" /> while writing, <Shortcut id="textReset" /> to reset</>}>
+        <Row label="Text size">
           <div className="ki-settings-inline" role="group" aria-label="Text size">
             <Button size="icon-sm" variant="outline" aria-label="Smaller text" disabled={size === TEXT_SIZES[0]} onClick={() => setTextSize(stepSize(size, -1))}>
               <Minus />

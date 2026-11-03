@@ -71,7 +71,7 @@ export function ExportSettings() {
         <Row label="Sources appendix">
           <Switch checked={settings?.appendix ?? false} disabled={!settings} onCheckedChange={(on) => void change({ appendix: on })} aria-label="Sources appendix by default" />
         </Row>
-        <Row label="“Written by a human” statement" note="Text you accept from ⌘K is written by AI.">
+        <Row label="“Written by a human” statement">
           <Switch checked={settings?.statement ?? false} disabled={!settings} onCheckedChange={(on) => void change({ statement: on })} aria-label="Add a “written by a human” statement" />
         </Row>
         <div className="ki-settings-row ki-settings-row-block">
