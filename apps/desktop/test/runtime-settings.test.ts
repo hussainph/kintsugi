@@ -39,7 +39,7 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  app?.stop();
+  await app?.stop();
 });
 
 const shot = async (name: string) => {
@@ -173,7 +173,8 @@ test("the pickers offer a short list; a model turned on in Settings and a defaul
   await effort.focus();
   await page.keyboard.press("ArrowRight");
   await until(() => json(resolve(app.config, "kin/settings.json")), (s) => s?.efforts?.chat === "high", "the chat effort reaches kin/settings.json");
-  assert.equal(await effort.getAttribute("aria-valuetext"), "High");
+  // The slider shows the level once the save answers, just after the file is written.
+  await effort.and(page.locator('[aria-valuetext="High"]')).waitFor();
   await page.waitForTimeout(300);
   await shot("02-kin-and-models-effort");
 

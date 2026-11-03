@@ -20,8 +20,34 @@ const freePort = () =>
     });
   });
 
-/** `output`: everything the runner (backend and Vite) printed so far. */
-export type App = { url: string; scratch: string; vault: string; config: string; shots: string; output: () => string; stop: () => void };
+/** `output`: everything the runner (backend and Vite) printed so far. `stop` resolves once the app is down. */
+export type App = { url: string; scratch: string; vault: string; config: string; shots: string; output: () => string; stop: () => Promise<void> };
+
+/**
+ * Stops a `desktop:headless` runner and resolves once it, the backend and
+ * Vite have all exited (they share its stdout, so its streams close last).
+ * Awaited in `after`, so nothing of this file's app is still running, writing
+ * or failing once node:test considers the file finished, and the next file
+ * doesn't start beside it.
+ */
+export async function stopRunner(runner: ChildProcess | undefined, output = () => ""): Promise<void> {
+  if (!runner?.pid || runner.exitCode !== null || runner.signalCode !== null) return;
+  const closed = new Promise<void>((done) => runner.once("close", () => done()));
+  try {
+    process.kill(-runner.pid, "SIGTERM");
+  } catch {
+    return; // Already gone.
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stuck = new Promise<never>((_, fail) => {
+    timer = setTimeout(() => fail(new Error(`desktop:headless didn't stop within 30 s:\n${output().slice(-2000)}`)), 30_000);
+  });
+  try {
+    await Promise.race([closed, stuck]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** `prepare` runs on the seeded vault before the app starts. */
 export async function startApp(prefix: string, env: Record<string, string>, prepare?: (vault: string) => void): Promise<App> {
@@ -70,13 +96,6 @@ export async function startApp(prefix: string, env: Record<string, string>, prep
       await new Promise((r) => setTimeout(r, 100));
     }
   }
-  const stop = () => {
-    if (!runner.pid) return;
-    try {
-      process.kill(-runner.pid, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
-  };
+  const stop = () => stopRunner(runner, () => output);
   return { url, scratch, vault, config, shots, output: () => output, stop };
 }

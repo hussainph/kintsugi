@@ -775,16 +775,22 @@ impl<B: Brain> Engine<B> {
         let engine = self.clone();
         async_runtime::spawn(async move {
             tokio::time::sleep(idle).await;
-            {
-                let mut live = engine.0.live.lock().unwrap();
-                if live.activity != activity || live.running.is_some() || live.summarizing {
-                    return;
-                }
-                live.summarizing = true;
-            }
-            engine.summarize().await;
-            engine.0.live.lock().unwrap().summarizing = false;
+            engine.idle_since(activity).await;
         });
+    }
+
+    /// The idle timer firing: summarizes only if nothing happened since
+    /// `activity` was read, no turn is running and no summary is under way.
+    async fn idle_since(&self, activity: u64) {
+        {
+            let mut live = self.0.live.lock().unwrap();
+            if live.activity != activity || live.running.is_some() || live.summarizing {
+                return;
+            }
+            live.summarizing = true;
+        }
+        self.summarize().await;
+        self.0.live.lock().unwrap().summarizing = false;
     }
 
     /// Brings stale thread summaries up to date. Background work: it stops

@@ -166,3 +166,27 @@ Patterns that made the suite fail now and then, mostly on a loaded machine:
 
 Sleeps that remain are for screenshots or before checking that something
 did *not* happen; those can only pass wrongly, never fail spuriously.
+
+KI-82 found more of the same:
+
+- **Reading the file instead of the screen.** Settings writes
+  `kin/settings.json` before the save answers, and the effort slider shows
+  the new level only then. After the file changes, wait for the slider too.
+- **Counting on the layout.** An impression counts once half an item is on
+  screen. Picked for you, above the Feed's list, can arrive before the list
+  was first seen and push all but its top item below the fold. Scroll the
+  items you expect into view.
+- **Racing a timer in a Rust test.** A test that typed every 100 ms to keep
+  a 300 ms idle timer from firing failed when its thread was paused for
+  longer. The timer's check (`idle_since`) is now a method the test calls
+  itself, so the outcome no longer depends on scheduling.
+- **Leaving the app running after the file ends.** `after` used to send
+  SIGTERM and return. The app then stopped while node:test was already
+  finishing the file, or while the next file started beside it (or, in the
+  Ideas test, a restarted app on the same vault). `stopRunner` in
+  `test/headless-app.ts` now waits until the runner, backend and Vite have
+  exited.
+- **Errors after a test ends.** node:test reports those as a diagnostic and
+  fails the file with only "test failed". The reporter used to drop that
+  diagnostic. It now prints it (with a ⚠) and says how the file's process
+  ended (exit code or signal).

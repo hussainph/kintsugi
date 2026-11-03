@@ -16,6 +16,7 @@ import { dirname, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
+import { stopRunner } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DRAFT = "drafts/kintsugi-and-gold.md";
@@ -94,13 +95,7 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  if (runner?.pid) {
-    try {
-      process.kill(-runner.pid, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
-  }
+  await stopRunner(runner, () => output);
 });
 
 const panel = () => page.getByRole("dialog", { name: "Kin" });

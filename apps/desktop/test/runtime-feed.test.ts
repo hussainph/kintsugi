@@ -20,6 +20,7 @@ import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
+import { stopRunner } from "./headless-app.ts";
 import { BLOG_TITLES, WORKSHOP, startFeedFixtures, type Fixtures } from "./feed-fixtures.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -103,13 +104,7 @@ before(async () => {
 after(async () => {
   await browser?.close();
   await fixtures?.close();
-  if (runner?.pid) {
-    try {
-      process.kill(-runner.pid, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
-  }
+  await stopRunner(runner, () => output);
 });
 
 // The newest-first list; Picked for you (KI-32) shows some of the same items above it.
@@ -175,6 +170,10 @@ test("follow sources and read them newest first", { timeout: TIMEOUT }, async ()
   await shot("03-feed-reading");
 
   // Impressions were logged with their positions (sent in batches, 1.5 s after the first).
+  // An item counts once half of it is on screen. Picked for you, above the
+  // list, can arrive before the list was first seen and push all but the
+  // top item below the fold, so bring the next two into view.
+  for (const position of [1, 2]) await feedItems().nth(position).scrollIntoViewIfNeeded();
   const newestSeen = () => events("impression").filter((e) => e.surface === "newest");
   await until(() => newestSeen().length >= 3, () => `impressions: ${JSON.stringify(newestSeen())}`);
   const seen = newestSeen();
