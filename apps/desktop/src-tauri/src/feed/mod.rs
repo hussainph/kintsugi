@@ -9,8 +9,11 @@
 //! feed only carries an excerpt), and its author adapter followed authors. This module decides what to
 //! poll when, and keeps the store.
 
+mod catalogue;
+mod neighbours;
 mod opml;
 pub(crate) mod picked;
+pub use catalogue::{feed_catalogue, feed_follow_suggestion};
 mod presets;
 mod store;
 
@@ -61,6 +64,8 @@ pub struct Feed {
     /// One poll pass at a time, so a manual refresh and the timer don't
     /// fetch the same source twice.
     polling: tokio::sync::Mutex<()>,
+    /// Archive scans never delay a normal refresh or a subscription.
+    cataloguing: tokio::sync::Mutex<()>,
     /// Picked for you's ranker (KI-32), derived from the event log.
     ranking: picked::Ranking,
 }
@@ -200,7 +205,8 @@ async fn full_text(app: &AppHandle, item: &Item) -> Result<()> {
     // A page change's text is the change, and a book's is its listing: the
     // page behind either link isn't "the rest of the article".
     let article = item.media == "article"
-        && !matches!(item.source_kind, SourceKind::Page | SourceKind::Author);
+        && (item.back_catalogue
+            || !matches!(item.source_kind, SourceKind::Page | SourceKind::Author));
     let Some(url) = item.url.as_deref().filter(|_| short && !tried && article) else {
         return Ok(());
     };
@@ -213,6 +219,19 @@ async fn full_text(app: &AppHandle, item: &Item) -> Result<()> {
         .capture(&target, CaptureOptions::default())
         .await
         .ok();
+    let published = fetched
+        .as_ref()
+        .and_then(|page| page.published.as_ref())
+        .and_then(|date| chrono::DateTime::parse_from_rfc3339(date).ok())
+        .map(|date| date.timestamp());
+    with(app, |s| {
+        s.set_catalogue_metadata(
+            item.id,
+            fetched.as_ref().and_then(|page| page.title.as_deref()),
+            fetched.as_ref().and_then(|page| page.author.as_deref()),
+            published,
+        )
+    })?;
     let longer = fetched
         .map(|page| page.body)
         .filter(|body| body.chars().count() > content.as_deref().map_or(0, |c| c.chars().count()));
@@ -499,6 +518,7 @@ pub fn start(app: &AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
             let _ = poll_due(&app, false, None).await;
+            catalogue::start(&app);
             let feed = app.state::<Feed>();
             let _ = tokio::time::timeout(TICK, feed.wake.notified()).await;
         }
@@ -614,6 +634,7 @@ pub async fn feed_subscribe(app: AppHandle, input: Subscribe) -> Result<Subscrib
     })?;
     let polled = poll_due(&app, true, Some(source.id)).await?;
     let first = polled.into_iter().next();
+    catalogue::start(&app);
     Ok(Subscribed {
         source: with(&app, |s| s.source(source.id))?,
         added: first.as_ref().map_or(0, |p| p.added),
@@ -747,6 +768,7 @@ pub fn feed_items(
     limit: Option<i64>,
     source: Option<i64>,
 ) -> Result<Page> {
+    picked::prepare_catalogue(&app)?;
     with(&app, |s| {
         s.items(
             offset.unwrap_or(0).max(0),

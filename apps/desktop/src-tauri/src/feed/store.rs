@@ -12,8 +12,8 @@ type Result<T> = std::result::Result<T, String>;
 
 /// Ignored items (no like, note, save or Not interested) drop out after this.
 pub const EXPIRE_AFTER: i64 = 30 * 24 * 60 * 60;
-/// On a source's first fetch, this many entries show even if they are old,
-/// so subscribing to a quiet blog shows something.
+/// Non-article sources keep a few older entries on their first fetch.
+/// Article sources instead admit older work through the catalogue quota.
 const FIRST_FETCH_KEEP: usize = 3;
 /// One poll never floods the feed with a podcast's whole back catalogue.
 pub const MAX_ENTRIES_PER_POLL: usize = 100;
@@ -144,6 +144,10 @@ pub struct Source {
     pub next_fetch_at: i64,
     /// Items from this source currently in the feed.
     pub items: i64,
+    pub catalogue_enabled: bool,
+    pub catalogue_state: String,
+    pub catalogue_count: i64,
+    pub catalogue_error: Option<String>,
 }
 
 /// What a poll needs to make a conditional request.
@@ -191,6 +195,15 @@ pub struct Item {
     pub saved_path: Option<String>,
     pub dismissed: bool,
     pub has_content: bool,
+    pub back_catalogue: bool,
+    pub suggestion: Option<Suggestion>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Suggestion {
+    pub reason: String,
+    pub source_url: String,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -229,22 +242,32 @@ pub struct Store {
     db: Connection,
 }
 
+mod catalogue;
+pub(super) mod mixing;
 /// What ranking (KI-32, `feed::picked`) reads: every item and source, and
 /// the event log from a cursor.
 mod ranking;
+pub use catalogue::FavouriteLink;
 
 const SOURCE_COLUMNS: &str = "s.id, s.url, s.kind, s.title, s.site_url, s.image, s.muted, s.added_at,
   s.last_fetch_at, s.last_success_at, s.last_status, s.last_error, s.failures, s.next_fetch_at,
-  (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.dismissed_at IS NULL AND i.expired_at IS NULL)";
+  (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.dismissed_at IS NULL AND i.expired_at IS NULL
+     AND (i.back_catalogue = 0 OR (s.catalogue_enabled = 1 AND i.catalogue_released_at IS NOT NULL))),
+  s.catalogue_enabled, s.catalogue_state,
+  (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.back_catalogue = 1), s.catalogue_error";
 
 const ITEM_COLUMNS: &str =
     "i.id, i.source_id, s.title, s.kind, i.url, i.title, i.author, i.summary,
   i.image, i.media, i.published_at, i.fetched_at, i.sort_at, i.liked_at IS NOT NULL, i.note,
-  i.saved_path, i.dismissed_at IS NOT NULL, i.content IS NOT NULL AND i.content <> ''";
+  i.saved_path, i.dismissed_at IS NOT NULL, i.content IS NOT NULL AND i.content <> '', i.back_catalogue,
+  CASE WHEN s.suggested = 1 THEN i.suggestion_reason END,
+  CASE WHEN s.suggested = 1 THEN s.url END";
 
 /// In the feed: a live, unmuted source; not dismissed, not expired.
 const VISIBLE: &str =
-    "s.removed_at IS NULL AND s.muted = 0 AND i.dismissed_at IS NULL AND i.expired_at IS NULL";
+    "s.removed_at IS NULL AND s.muted = 0 AND i.dismissed_at IS NULL AND i.expired_at IS NULL
+     AND ((i.back_catalogue = 0 AND s.suggested = 0)
+       OR (i.back_catalogue = 1 AND s.catalogue_enabled = 1 AND i.catalogue_released_at IS NOT NULL))";
 
 fn kind(row: &Row, index: usize) -> rusqlite::Result<SourceKind> {
     let text: String = row.get(index)?;
@@ -270,10 +293,21 @@ fn source_row(row: &Row) -> rusqlite::Result<Source> {
         failures: row.get(12)?,
         next_fetch_at: row.get(13)?,
         items: row.get(14)?,
+        catalogue_enabled: row.get(15)?,
+        catalogue_state: row.get(16)?,
+        catalogue_count: row.get(17)?,
+        catalogue_error: row.get(18)?,
     })
 }
 
 fn item_row(row: &Row) -> rusqlite::Result<Item> {
+    let suggestion = match row.get::<_, Option<String>>(19)? {
+        Some(reason) => Some(Suggestion {
+            reason,
+            source_url: row.get(20)?,
+        }),
+        None => None,
+    };
     Ok(Item {
         id: row.get(0)?,
         source_id: row.get(1)?,
@@ -293,6 +327,8 @@ fn item_row(row: &Row) -> rusqlite::Result<Item> {
         saved_path: row.get(15)?,
         dismissed: row.get(16)?,
         has_content: row.get(17)?,
+        back_catalogue: row.get(18)?,
+        suggestion,
     })
 }
 
@@ -324,9 +360,18 @@ impl Store {
         if version == 0 {
             db.execute_batch(&format!("BEGIN; {SCHEMA} PRAGMA user_version = 1; COMMIT;"))
                 .map_err(err)?;
-        } else if version > 1 {
+        } else if version > 2 {
             return Err("the feed database was written by a newer Kintsugi".into());
         }
+        if version < 2 {
+            catalogue::migrate(&db)?;
+        }
+        // A process stopped mid-discovery must be able to claim the source again.
+        db.execute(
+            "UPDATE sources SET catalogue_state = 'queued' WHERE catalogue_state = 'discovering'",
+            [],
+        )
+        .map_err(err)?;
         Ok(Self { db })
     }
 
@@ -341,31 +386,33 @@ impl Store {
         title: Option<&str>,
         now: i64,
     ) -> Result<(Source, bool)> {
-        let existing: Option<(i64, Option<i64>)> = self
+        let existing: Option<(i64, Option<i64>, bool)> = self
             .db
             .query_row(
-                "SELECT id, removed_at FROM sources WHERE url = ?1",
+                "SELECT id, removed_at, suggested FROM sources WHERE url = ?1",
                 [url],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()
             .map_err(err)?;
         let (id, added) = match existing {
-            Some((id, removed)) => {
+            Some((id, removed, suggested)) => {
                 self.db
                     .execute(
                         "UPDATE sources SET removed_at = NULL, muted = 0, next_fetch_at = 0,
-                           title = COALESCE(title, ?2) WHERE id = ?1",
+                           catalogue_state = CASE WHEN suggested = 1 AND catalogue_enabled = 1 THEN 'queued' ELSE catalogue_state END,
+                           suggested = 0, title = COALESCE(title, ?2) WHERE id = ?1",
                         params![id, title],
                     )
                     .map_err(err)?;
-                (id, removed.is_some())
+                (id, removed.is_some() || suggested)
             }
             None => {
                 self.db
                     .execute(
-                        "INSERT INTO sources (url, kind, title, added_at) VALUES (?1, ?2, ?3, ?4)",
-                        params![url, kind.as_str(), title, now],
+                        "INSERT INTO sources (url, kind, title, added_at, catalogue_enabled, catalogue_state)
+                         VALUES (?1, ?2, ?3, ?4, ?5, CASE WHEN ?5 THEN 'queued' ELSE 'disabled' END)",
+                        params![url, kind.as_str(), title, now, catalogue::supported(kind)],
                     )
                     .map_err(err)?;
                 (self.db.last_insert_rowid(), true)
@@ -376,7 +423,7 @@ impl Store {
 
     pub fn source(&self, id: i64) -> Result<Source> {
         self.db
-            .query_row(&format!("SELECT {SOURCE_COLUMNS} FROM sources s WHERE s.id = ?1 AND s.removed_at IS NULL"), [id], source_row)
+            .query_row(&format!("SELECT {SOURCE_COLUMNS} FROM sources s WHERE s.id = ?1 AND s.removed_at IS NULL AND s.suggested = 0"), [id], source_row)
             .optional()
             .map_err(err)?
             .ok_or_else(|| "no such source".into())
@@ -387,7 +434,7 @@ impl Store {
         let mut statement = self
             .db
             .prepare(&format!(
-                "SELECT {SOURCE_COLUMNS} FROM sources s WHERE s.removed_at IS NULL
+                "SELECT {SOURCE_COLUMNS} FROM sources s WHERE s.removed_at IS NULL AND s.suggested = 0
                  ORDER BY lower(COALESCE(s.title, s.url)), s.id"
             ))
             .map_err(err)?;
@@ -430,7 +477,7 @@ impl Store {
             .db
             .prepare(
                 "SELECT id, url, kind, cursor, failures, last_success_at IS NULL FROM sources
-                 WHERE removed_at IS NULL AND muted = 0 AND (?2 OR next_fetch_at <= ?1) ORDER BY next_fetch_at, id",
+                 WHERE removed_at IS NULL AND muted = 0 AND suggested = 0 AND (?2 OR next_fetch_at <= ?1) ORDER BY next_fetch_at, id",
             )
             .map_err(err)?;
         statement
@@ -510,48 +557,48 @@ impl Store {
         first: bool,
     ) -> Result<usize> {
         let tx = self.db.unchecked_transaction().map_err(err)?;
+        let source_kind = tx
+            .query_row("SELECT kind FROM sources WHERE id = ?1", [source], |r| {
+                kind(r, 0)
+            })
+            .map_err(err)?;
+        let pool_old = catalogue::supported(source_kind);
         let mut added = 0;
         let mut order: Vec<&NewItem> = entries.iter().take(MAX_ENTRIES_PER_POLL).collect();
         // Newest by date first; undated entries keep the feed's own order.
         order.sort_by_key(|e| std::cmp::Reverse(e.published_at.map(|p| p.min(now)).unwrap_or(now)));
         // Insert oldest first so ties on sort_at break by id, newest on top.
         for (rank, entry) in order.iter().enumerate().rev() {
-            let known: bool = tx
-                .query_row(
-                    "SELECT 1 FROM items WHERE source_id = ?1 AND guid = ?2",
-                    params![source, entry.guid],
-                    |_| Ok(true),
-                )
-                .optional()
-                .map_err(err)?
-                .unwrap_or(false);
-            if known {
-                tx.execute(
-                    "UPDATE items SET url = ?3, title = ?4, author = ?5, summary = ?6,
-                       content = CASE WHEN full_text_at IS NULL THEN ?7 ELSE content END, image = ?8, media = ?9
-                     WHERE source_id = ?1 AND guid = ?2 AND expired_at IS NULL",
-                    params![source, entry.guid, entry.url, entry.title, entry.author, entry.summary, entry.content, entry.image, entry.media],
-                )
-                .map_err(err)?;
+            let url_key = entry.url.as_deref().and_then(catalogue::url_key);
+            let known = catalogue::known_item(&tx, source, &entry.guid, url_key.as_deref())?;
+            if let Some((id, owner)) = known {
+                // A URL discovered under another source keeps its identity and actions.
+                if owner == source {
+                    tx.execute(
+                        "UPDATE items SET url = COALESCE(?2, url), url_key = COALESCE(?3, url_key),
+                           title = COALESCE(?4, title), author = COALESCE(?5, author), summary = COALESCE(?6, summary),
+                           content = CASE WHEN full_text_at IS NULL AND back_catalogue = 0 THEN COALESCE(?7, content) ELSE content END,
+                           image = COALESCE(?8, image), media = ?9
+                         WHERE id = ?1 AND expired_at IS NULL AND dismissed_at IS NULL",
+                        params![id, entry.url, url_key, entry.title, entry.author, entry.summary, entry.content, entry.image, entry.media],
+                    ).map_err(err)?;
+                }
                 continue;
             }
-            // A feed's future-dated entry still sorts as "now".
-            let published = entry.published_at.map(|p| p.min(now));
-            let sort_at = published.unwrap_or(now);
-            // Old back-catalogue entries are recorded (so they never come back)
-            // but start out expired, except a few on the first fetch.
-            let stale = now - sort_at > EXPIRE_AFTER && !(first && rank < FIRST_FETCH_KEEP);
+            // Preserve the original publication date; only the sort key clamps future dates.
+            let published = entry.published_at;
+            let sort_at = published.map(|p| p.min(now)).unwrap_or(now);
+            let old = now - sort_at > EXPIRE_AFTER;
+            let pooled = old && pool_old;
+            let stale = old && !pooled && !(first && rank < FIRST_FETCH_KEEP);
             tx.execute(
-                "INSERT INTO items (source_id, guid, url, title, author, summary, content, image, media,
-                   published_at, fetched_at, sort_at, expired_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, CASE WHEN ?13 IS NULL THEN ?7 END, ?8, ?9, ?10, ?11, ?12, ?13)",
-                params![
-                    source, entry.guid, entry.url, entry.title, entry.author, entry.summary, entry.content,
-                    entry.image, entry.media, published, now, sort_at, stale.then_some(now)
-                ],
-            )
-            .map_err(err)?;
-            if !stale {
+                "INSERT INTO items (source_id, guid, url, url_key, title, author, summary, content, image, media,
+                   published_at, fetched_at, sort_at, expired_at, back_catalogue)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, CASE WHEN ?14 IS NULL AND NOT ?15 THEN ?8 END, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                params![source, entry.guid, entry.url, url_key, entry.title, entry.author, entry.summary, entry.content,
+                    entry.image, entry.media, published, now, sort_at, stale.then_some(now), pooled],
+            ).map_err(err)?;
+            if !stale && !pooled {
                 added += 1;
             }
         }
@@ -561,7 +608,15 @@ impl Store {
 
     /// Newest first: live, unmuted sources; no dismissed or expired items.
     pub fn items(&self, offset: i64, limit: i64, source: Option<i64>) -> Result<Page> {
-        let filter = format!("{VISIBLE} AND (?1 IS NULL OR i.source_id = ?1)");
+        // Keep the original dates on returned items. Placement uses release time,
+        // with at most two catalogue pieces even when many days have accumulated.
+        let filter = format!(
+            "{VISIBLE} AND (?1 IS NULL OR i.source_id = ?1)
+            AND (i.back_catalogue = 0 OR i.id IN (
+              SELECT i.id FROM items i JOIN sources s ON s.id = i.source_id
+              WHERE {VISIBLE} AND i.back_catalogue = 1 AND (?1 IS NULL OR i.source_id = ?1)
+              ORDER BY i.catalogue_released_at DESC, i.id DESC LIMIT 2))"
+        );
         let total = self
             .db
             .query_row(&format!("SELECT COUNT(*) FROM items i JOIN sources s ON s.id = i.source_id WHERE {filter}"), [source], |r| r.get(0))
@@ -570,7 +625,8 @@ impl Store {
             .db
             .prepare(&format!(
                 "SELECT {ITEM_COLUMNS} FROM items i JOIN sources s ON s.id = i.source_id WHERE {filter}
-                 ORDER BY i.sort_at DESC, i.id DESC LIMIT ?2 OFFSET ?3"
+                 ORDER BY CASE WHEN i.back_catalogue = 1 THEN i.catalogue_released_at ELSE i.sort_at END DESC,
+                   i.id DESC LIMIT ?2 OFFSET ?3"
             ))
             .map_err(err)?;
         let items = statement
@@ -713,23 +769,34 @@ impl Store {
         self.item(id)
     }
 
-    /// Ignored items drop out after 30 days. Anything he acted on stays (it's
-    /// a ranking signal); a dismissed item keeps its row but not its text.
+    /// Unseen articles age into the catalogue. Pending metadata never expires;
+    /// ignored releases expire 30 days after release. Reacted items stay, while
+    /// dismissed items retain their decisions but eventually lose their text.
     pub fn expire(&self, now: i64) -> Result<usize> {
         let cutoff = now - EXPIRE_AFTER;
-        let expired = self
-            .db
-            .execute(
-                "UPDATE items SET expired_at = ?1, content = NULL
-                 WHERE expired_at IS NULL AND fetched_at < ?2 AND liked_at IS NULL AND note IS NULL
-                   AND saved_path IS NULL AND dismissed_at IS NULL",
-                params![now, cutoff],
-            )
-            .map_err(err)?;
+        let tx = self.db.unchecked_transaction().map_err(err)?;
+        // Unseen feed entries age into the pool. Human exposure still expires
+        // normally, rather than recommending something he already ignored.
+        let pooled = tx.execute(
+            "UPDATE items SET back_catalogue = 1, content = CASE WHEN full_text_at IS NULL THEN NULL ELSE content END
+             WHERE back_catalogue = 0 AND expired_at IS NULL AND fetched_at < ?1
+               AND liked_at IS NULL AND note IS NULL AND saved_path IS NULL AND dismissed_at IS NULL
+               AND source_id IN (SELECT id FROM sources WHERE kind IN ('feed', 'page'))
+               AND NOT EXISTS (SELECT 1 FROM events e WHERE e.item_id = items.id AND e.kind <> 'kin_pick')",
+            [cutoff],
+        ).map_err(err)?;
+        let expired = tx.execute(
+            "UPDATE items SET expired_at = ?1, content = NULL
+             WHERE expired_at IS NULL AND liked_at IS NULL AND note IS NULL AND saved_path IS NULL AND dismissed_at IS NULL
+               AND ((back_catalogue = 0 AND fetched_at < ?2)
+                 OR (back_catalogue = 1 AND catalogue_released_at < ?2))",
+            params![now, cutoff],
+        ).map_err(err)?;
+        tx.commit().map_err(err)?;
         self.db
             .execute("UPDATE items SET content = NULL WHERE dismissed_at IS NOT NULL AND dismissed_at < ?1 AND content IS NOT NULL", [cutoff])
             .map_err(err)?;
-        Ok(expired)
+        Ok(expired + pooled)
     }
 
     // ── Event log ──────────────────────────────────────────────────────────
@@ -947,7 +1014,7 @@ mod tests {
     }
 
     #[test]
-    fn back_catalogue_starts_expired_except_a_few_on_first_fetch() {
+    fn non_article_back_catalogue_keeps_legacy_first_fetch_limit() {
         let store = Store::memory();
         let (source, _) = store
             .add_source(
@@ -973,7 +1040,7 @@ mod tests {
     }
 
     #[test]
-    fn ignored_items_expire_after_thirty_days_but_acted_ones_stay() {
+    fn ignored_feed_items_join_catalogue_after_thirty_days_but_acted_ones_stay() {
         let store = Store::memory();
         let (source, _) = store
             .add_source("https://example.com/feed", SourceKind::Feed, None, NOW)
@@ -1005,7 +1072,8 @@ mod tests {
             .collect();
         assert_eq!(left.len(), 2);
         assert!(left.contains(&"liked".to_string()) && left.contains(&"noted".to_string()));
-        // The expired item's text is gone, and a later poll doesn't revive it.
+        // The pooled item stays metadata-only and a later poll cannot release it.
+        assert!(store.item(id("ignored")).unwrap().back_catalogue);
         assert_eq!(store.content(id("ignored")).unwrap(), None);
         assert_eq!(store.content(id("dismissed")).unwrap(), None);
         store

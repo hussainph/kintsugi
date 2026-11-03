@@ -13,6 +13,9 @@
 //!   with surface `kin`, which the ranker never learns from.
 //! - No LLM calls anywhere here.
 
+use super::store::mixing::{
+    MetadataVectors, age_neutral_world, mixed_candidates, neighbour_matches,
+};
 use super::{Event as LogEvent, Item, now_ms, with};
 use crate::AppHandle;
 use kintsugi_rank::{self as rank, Clip, Pick, PickOptions, Ranker, World, text};
@@ -20,7 +23,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 use tauri::Manager;
 
@@ -46,6 +49,8 @@ struct State {
     clips: u64,
     /// What Picked for you showed last, for "what a like changed".
     shown: Vec<i64>,
+    /// Dates are neutralized only for catalogue scoring, never for training.
+    catalogue: Vec<i64>,
 }
 
 /// Clips are read from the vault only when `inspiration/` changes.
@@ -54,6 +59,9 @@ struct ClipCache {
     stamp: Option<(std::path::PathBuf, SystemTime, usize)>,
     clips: Vec<kintsugi_vault::ClipSummary>,
 }
+
+static CATALOGUE_VECTORS: LazyLock<Mutex<MetadataVectors>> =
+    LazyLock::new(|| Mutex::new(MetadataVectors::default()));
 
 static CLIPS: Mutex<ClipCache> = Mutex::new(ClipCache {
     stamp: None,
@@ -106,8 +114,16 @@ fn normalized(mut vector: Vec<f32>) -> Vec<f32> {
     vector
 }
 
-/// Everything the ranker reads, with pick candidates (visible items).
-fn world(app: &AppHandle) -> Result<(World, Vec<i64>, Space, u64)> {
+#[derive(Default)]
+struct Candidates {
+    fresh: Vec<i64>,
+    catalogue: Vec<i64>,
+    pending: Vec<i64>,
+    neighbours: Vec<i64>,
+}
+
+/// Everything the ranker reads, including pending metadata for local scoring.
+fn world(app: &AppHandle) -> Result<(World, Candidates, Space, u64)> {
     let (rows, sources) = with(app, |s| Ok((s.rank_rows()?, s.rank_sources()?)))?;
     let root = crate::vault::current(app).ok();
     let vectors = app
@@ -118,6 +134,11 @@ fn world(app: &AppHandle) -> Result<(World, Vec<i64>, Space, u64)> {
     } else {
         Space::Hashed
     };
+    // A changed model instance is a different space even when both are Model.
+    let vector_space = vectors
+        .as_ref()
+        .map_or(0, |v| Arc::as_ptr(&v.embedder) as *const () as usize as u64);
+    let mut metadata_vectors = CATALOGUE_VECTORS.lock().unwrap_or_else(|e| e.into_inner());
     let embed = |key: Option<&Vec<f32>>, title: &str, body: &str| -> Vec<f32> {
         match (&vectors, key) {
             (Some(_), Some(found)) => found.clone(),
@@ -134,7 +155,7 @@ fn world(app: &AppHandle) -> Result<(World, Vec<i64>, Space, u64)> {
     for (id, title, added) in sources {
         world.sources.insert(id, rank::Source { id, title, added });
     }
-    let mut candidates = Vec::new();
+    let mut candidates = Candidates::default();
     let mut saved: HashMap<String, i64> = HashMap::new();
     for row in rows {
         let body = if row.text.is_empty() {
@@ -145,9 +166,24 @@ fn world(app: &AppHandle) -> Result<(World, Vec<i64>, Space, u64)> {
         let key = vectors
             .as_ref()
             .and_then(|v| v.feed.get(&super::search_id(row.id)));
-        let vector = embed(key, &row.title, &body);
-        if row.visible {
-            candidates.push(row.id);
+        let vector = if row.back_catalogue && key.is_none() {
+            metadata_vectors.vector(row.id, &row.title, &body, vector_space, || {
+                embed(None, &row.title, &body)
+            })
+        } else {
+            embed(key, &row.title, &body)
+        };
+        if row.visible && !row.back_catalogue {
+            candidates.fresh.push(row.id);
+        }
+        if row.back_catalogue {
+            candidates.catalogue.push(row.id);
+        }
+        if row.catalogue_candidate {
+            candidates.pending.push(row.id);
+        }
+        if row.suggested {
+            candidates.neighbours.push(row.id);
         }
         if let Some(path) = &row.saved_path {
             saved.insert(path.clone(), row.id);
@@ -168,6 +204,7 @@ fn world(app: &AppHandle) -> Result<(World, Vec<i64>, Space, u64)> {
             },
         );
     }
+    drop(metadata_vectors);
     // Which clips (and their tags) the ranker was built from; a change rebuilds it.
     let mut clip_stamp = std::collections::hash_map::DefaultHasher::new();
     if let Some(root) = &root {
@@ -218,7 +255,7 @@ fn ranked<T>(
     app: &AppHandle,
     f: impl FnOnce(&mut State, &World, &[i64], i64) -> Result<T>,
 ) -> Result<T> {
-    let (world, candidates, space, clips) = world(app)?;
+    let (world, pool, space, clips) = world(app)?;
     let ranking = &app.state::<super::Feed>().ranking;
     let mut slot = ranking
         .0
@@ -246,14 +283,47 @@ fn ranked<T>(
             space,
             clips,
             shown,
+            catalogue: Vec::new(),
         });
     }
-    f(
-        slot.as_mut().expect("ranker was just built"),
-        &world,
-        &candidates,
-        now,
-    )
+    let state = slot.as_mut().expect("ranker was just built");
+    state.catalogue = pool.catalogue;
+    let scoring = age_neutral_world(&world, &state.catalogue, now);
+    // Release decisions depend on taste and the UTC day, never on n or the
+    // surface. The durable ledger prevents refresh/restart from buying slots.
+    let order: Vec<i64> = state
+        .ranker
+        .scores(&scoring, &pool.pending, now)
+        .into_iter()
+        .map(|(id, _)| id)
+        .filter(|id| !state.ranker.touched(*id))
+        .filter(|id| {
+            !pool.neighbours.contains(id) || neighbour_matches(&state.ranker, &scoring, *id, now)
+        })
+        .collect();
+    let released = with(app, |s| {
+        s.release_catalogue(&order, now / 1000)?;
+        s.catalogue_visible_ids()
+    })?;
+    let candidates = mixed_candidates(&state.ranker, &scoring, &pool.fresh, &released, now);
+    f(state, &world, &candidates, now)
+}
+
+/// Newest-first requests share the same durable daily admission decision as
+/// Picked for you. Call before reading Store::items, outside its store lock.
+pub(super) fn prepare_catalogue(app: &AppHandle) -> Result<()> {
+    ranked(app, |_, _, _, _| Ok(()))
+}
+
+fn mixed_pick(
+    state: &State,
+    world: &World,
+    candidates: &[i64],
+    now: i64,
+    options: PickOptions,
+) -> Vec<Pick> {
+    let scoring = age_neutral_world(world, &state.catalogue, now);
+    state.ranker.pick(&scoring, candidates, now, options)
 }
 
 /// Stable within a day, so the section doesn't reshuffle on every visit.
@@ -284,11 +354,21 @@ fn picked_items(app: &AppHandle, picks: Vec<Pick>) -> Result<Vec<PickedItem>> {
     with(app, |s| {
         Ok(picks
             .into_iter()
-            .filter_map(|pick| {
-                Some(PickedItem {
-                    item: s.item(pick.id).ok()?,
-                    pick,
-                })
+            .filter_map(|mut pick| {
+                let item = s.item(pick.id).ok()?;
+                if item.back_catalogue {
+                    let (key, label) = match &item.suggestion {
+                        Some(suggestion) => ("suggestion", suggestion.reason.clone()),
+                        None => ("catalogue", "Older writing from a source you follow".into()),
+                    };
+                    pick.reasons.push(rank::Reason {
+                        key: key.into(),
+                        label,
+                        removable: false,
+                        weight: 0.0,
+                    });
+                }
+                Some(PickedItem { item, pick })
             })
             .collect())
     })
@@ -300,7 +380,8 @@ fn picked_items(app: &AppHandle, picks: Vec<Pick>) -> Result<Vec<PickedItem>> {
 pub fn feed_picked(app: AppHandle, n: Option<usize>) -> Result<Picked> {
     let n = n.unwrap_or(PICKED).clamp(1, 20);
     let (picks, examples, learned_share) = ranked(&app, |state, world, candidates, now| {
-        let picks = state.ranker.pick(
+        let picks = mixed_pick(
+            state,
             world,
             candidates,
             now,
@@ -393,21 +474,20 @@ pub fn feed_effect(app: AppHandle, id: i64) -> Result<LikeEffect> {
                 .total_cmp(&(a.after - a.before).abs())
         });
         changes.truncate(3);
-        let picks: Vec<i64> = state
-            .ranker
-            .pick(
-                world,
-                candidates,
-                now,
-                PickOptions {
-                    n: PICKED,
-                    explore: true,
-                    seed: seed(now),
-                },
-            )
-            .iter()
-            .map(|p| p.id)
-            .collect();
+        let picks: Vec<i64> = mixed_pick(
+            state,
+            world,
+            candidates,
+            now,
+            PickOptions {
+                n: PICKED,
+                explore: true,
+                seed: seed(now),
+            },
+        )
+        .iter()
+        .map(|p| p.id)
+        .collect();
         let title = |id: &i64| Titled {
             id: *id,
             title: world
@@ -563,7 +643,8 @@ pub fn kin_tool(app: &AppHandle, name: &str, args: &Value) -> Result<String> {
                 .as_u64()
                 .map_or(SHORTLIST_DEFAULT, |n| (n as usize).clamp(1, SHORTLIST_MAX));
             let (out, ids) = ranked(app, |state, world, candidates, now| {
-                let picks = state.ranker.pick(
+                let picks = mixed_pick(
+                    state,
                     world,
                     candidates,
                     now,
@@ -658,9 +739,10 @@ pub fn kin_tool(app: &AppHandle, name: &str, args: &Value) -> Result<String> {
         "explain" => {
             let id = feed_id(&args["item"]).ok_or("explain needs an item: feed:<id>")?;
             ranked(app, |state, world, _, now| {
+                let scoring = age_neutral_world(world, &state.catalogue, now);
                 let explained = state
                     .ranker
-                    .explain(world, id, now)
+                    .explain(&scoring, id, now)
                     .ok_or("no such feed item")?;
                 Ok(serde_json::to_string(&explained).unwrap_or_default())
             })

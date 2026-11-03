@@ -1,0 +1,5 @@
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Example writing</title><id>urn:example:writing</id><updated>2024-01-01T00:00:00Z</updated>
+<link rel="next" href="/history.atom"/>
+<entry><title>Older &amp; wiser</title><id>urn:old</id><link href="/older?utm_source=feed#part"/><published>2010-06-01T12:30:00Z</published><updated>2024-01-01T00:00:00Z</updated><content type="html">&lt;img src="/never-image"/&gt;Never fetch me</content></entry>
+</feed>

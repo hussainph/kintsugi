@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components
 import { cn } from "@kintsugi/ui/lib/utils";
 import { feed, HN_LISTS, type HnList, type Podcast, type Source, type SourceKind, type Subscribe } from "./api";
 import { health, sourceLogos, sourceName } from "./model";
+import { CatalogueControl } from "./CatalogueControl";
 
 type Props = {
   open: boolean;
@@ -270,7 +271,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                 const state = health(source);
                 const name = sourceName(source);
                 return (
-                  <li key={source.id} aria-label={name} className={cn("group/source flex items-start gap-3 rounded-md py-2", source.muted && "opacity-60")}>
+                  <li key={source.id} aria-label={name} className={cn("group/source rounded-md py-2", source.muted && "opacity-60")}>
+                    <div className="flex items-start gap-3">
                     <SourceLogo source={source} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm" title={source.url}>{name}</p>
@@ -288,6 +290,8 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                         {confirmRemove === source.id ? "Unfollow" : <Trash2 />}
                       </Button>
                     </div>
+                    </div>
+                    <CatalogueControl source={source} onChanged={onChanged} />
                   </li>
                 );
               })}

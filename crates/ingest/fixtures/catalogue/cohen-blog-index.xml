@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap><loc>https://blog.asmartbear.com/site.xml</loc></sitemap>
+  <sitemap><loc>https://blog.asmartbear.com/post.xml</loc></sitemap>
+  <sitemap><loc>https://blog.asmartbear.com/page.xml</loc></sitemap>
+  <sitemap><loc>https://blog.asmartbear.com/taxonomy_category.xml</loc></sitemap>
+</sitemapindex>

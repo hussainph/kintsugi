@@ -26,6 +26,8 @@ export type FeedItem = {
   savedPath: string | null;
   dismissed: boolean;
   hasContent: boolean;
+  backCatalogue?: boolean;
+  suggestion?: { reason: string; sourceUrl: string } | null;
 };
 
 export type FeedPage = { items: FeedItem[]; total: number };

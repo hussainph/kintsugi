@@ -37,6 +37,21 @@ export function health(source: Source, now = Date.now() / 1000): Health {
   return { tone: "ok", label: `Updated ${/^\d/.test(when) ? `${when} ago` : when}` };
 }
 
+/** The source row reports discovery separately from ordinary feed refresh. */
+export function catalogueStatus(source: Source): string {
+  if (!source.catalogueEnabled) return "Off";
+  if (source.catalogueState === "discovering") return "Finding older writing…";
+  if (source.catalogueState === "queued") return "Waiting to fetch";
+  if (source.catalogueError) return source.catalogueError;
+  if (source.catalogueCount > 0) return `${source.catalogueCount} found`;
+  return "Nothing found";
+}
+
+export function itemDate(item: Pick<FeedItem, "publishedAt" | "fetchedAt" | "backCatalogue">): string {
+  if (item.backCatalogue && item.publishedAt == null) return "Date unknown";
+  return ago(item.publishedAt ?? item.fetchedAt);
+}
+
 export const sourceName = (source: Pick<Source, "title" | "url">) => source.title || hostname(source.url) || source.url;
 
 export function hostname(url: string | null): string | null {

@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Impression, Source } from "./api.ts";
-import { ago, health, Impressions, itemTitle, paragraphs, sourceLogos, sourceName, webUrl } from "./model.ts";
+import { ago, catalogueStatus, itemDate, health, Impressions, itemTitle, paragraphs, sourceLogos, sourceName, webUrl } from "./model.ts";
 
 const NOW = 1_800_000_000;
 const source = (patch: Partial<Source> = {}): Source => ({
   id: 1, url: "https://www.quiet.example/feed.xml", kind: "feed", title: null, siteUrl: null, image: null, muted: false,
+  catalogueEnabled: true, catalogueState: "queued", catalogueCount: 0, catalogueError: null,
   addedAt: NOW, lastFetchAt: null, lastSuccessAt: null, lastStatus: null, lastError: null, failures: 0, nextFetchAt: 0, items: 0,
   ...patch,
 });
@@ -16,6 +17,17 @@ test("times read as short ages", () => {
   assert.equal(ago(NOW - 3 * 3600, NOW), "3h");
   assert.equal(ago(NOW - 2 * 86400, NOW), "2d");
   assert.match(ago(NOW - 40 * 86400, NOW), /\w+ \d+/);
+});
+
+test("catalogue progress is separate from polling and never invents an old date", () => {
+  assert.equal(catalogueStatus(source()), "Waiting to fetch");
+  assert.equal(catalogueStatus(source({ catalogueState: "discovering" })), "Finding older writing…");
+  assert.equal(catalogueStatus(source({ catalogueState: "ready", catalogueCount: 240 })), "240 found");
+  assert.equal(catalogueStatus(source({ catalogueState: "ready" })), "Nothing found");
+  assert.equal(catalogueStatus(source({ catalogueState: "error", catalogueError: "HTTP 503" })), "HTTP 503");
+  assert.equal(catalogueStatus(source({ catalogueEnabled: false })), "Off");
+  assert.equal(itemDate({ backCatalogue: true, publishedAt: null, fetchedAt: NOW }), "Date unknown");
+  assert.match(itemDate({ backCatalogue: true, publishedAt: 1136073600, fetchedAt: NOW }), /2006/);
 });
 
 test("source health says when it worked, or why not and when it retries", () => {
