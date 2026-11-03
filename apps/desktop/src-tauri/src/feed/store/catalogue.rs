@@ -200,6 +200,28 @@ impl Store {
         Ok(added)
     }
 
+    /// A cheap gate for newest-first reads: no ranking or embeddings when the
+    /// day's quota is full, or only neighbours remain after their one slot.
+    pub fn catalogue_release_due(&self, now: i64) -> Result<bool> {
+        let (used, neighbours): (i64, i64) = self.db.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(suggested), 0) FROM catalogue_releases WHERE day = ?1",
+            [now.div_euclid(DAY)], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).map_err(err)?;
+        if used >= 2 {
+            return Ok(false);
+        }
+        self.db
+            .query_row(
+                &format!(
+                    "SELECT EXISTS (SELECT 1 FROM items i JOIN sources s ON s.id = i.source_id
+                WHERE {PENDING} AND (?1 OR s.suggested = 0))"
+                ),
+                [neighbours < 1],
+                |r| r.get(0),
+            )
+            .map_err(err)
+    }
+
     /// IDs in taste order, independent of the requested batch size. Ledger
     /// slots are never refunded by hide/dismiss/unfollow, nor by a restart.
     pub fn release_catalogue(&self, ranked: &[i64], now: i64) -> Result<Vec<i64>> {
@@ -266,13 +288,25 @@ impl Store {
     ) -> Result<()> {
         let title = title.map(str::trim).filter(|s| !s.is_empty());
         let author = author.map(str::trim).filter(|s| !s.is_empty());
+        let url: Option<String> = self
+            .db
+            .query_row(
+                "SELECT url FROM items WHERE id = ?1 AND back_catalogue = 1",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(err)?
+            .flatten();
+        let fallback = url.as_deref().and_then(url_title);
         self.db
             .execute(
-                "UPDATE items SET title = COALESCE(?2, title), author = COALESCE(author, ?3),
+                "UPDATE items SET title = CASE WHEN title IS NULL OR trim(title) = '' OR title = ?5
+                   THEN COALESCE(?2, title) ELSE title END, author = COALESCE(author, ?3),
                sort_at = CASE WHEN published_at IS NULL AND ?4 IS NOT NULL THEN ?4 ELSE sort_at END,
                published_at = COALESCE(published_at, ?4)
              WHERE id = ?1 AND back_catalogue = 1",
-                params![id, title, author, published],
+                params![id, title, author, published, fallback],
             )
             .map_err(err)?;
         Ok(())
@@ -519,6 +553,33 @@ fn insert_metadata(
         ).map_err(err)?;
     }
     Ok(added)
+}
+
+/// Match ingest's sitemap URL-title fallback, not a publisher's real title.
+/// Keep this local so lazy capture cannot replace authoritative titles with SEO.
+fn url_title(raw: &str) -> Option<String> {
+    let url = Url::parse(raw).ok()?;
+    let slug = url
+        .path()
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or("");
+    let slug = slug
+        .strip_suffix(".html")
+        .or_else(|| slug.strip_suffix(".htm"))
+        .unwrap_or(slug);
+    let flat = slug
+        .replace(['-', '_'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    Some(
+        flat.chars()
+            .filter(|c| !matches!(c, '[' | ']' | '<' | '>'))
+            .take(300)
+            .collect(),
+    )
 }
 
 fn links_to(content: &str, target: &str) -> bool {

@@ -769,9 +769,9 @@ impl Store {
         self.item(id)
     }
 
-    /// Unseen articles age into the catalogue. Pending metadata never expires;
-    /// ignored releases expire 30 days after release. Reacted items stay, while
-    /// dismissed items retain their decisions but eventually lose their text.
+    /// Unseen articles age into the catalogue. Pending and unseen releases
+    /// never expire; ignored releases expire 30 days after their first human
+    /// exposure. Reacted items stay, while dismissed items eventually lose text.
     pub fn expire(&self, now: i64) -> Result<usize> {
         let cutoff = now - EXPIRE_AFTER;
         let tx = self.db.unchecked_transaction().map_err(err)?;
@@ -789,7 +789,10 @@ impl Store {
             "UPDATE items SET expired_at = ?1, content = NULL
              WHERE expired_at IS NULL AND liked_at IS NULL AND note IS NULL AND saved_path IS NULL AND dismissed_at IS NULL
                AND ((back_catalogue = 0 AND fetched_at < ?2)
-                 OR (back_catalogue = 1 AND catalogue_released_at < ?2))",
+                 OR (back_catalogue = 1 AND catalogue_released_at IS NOT NULL
+                   AND (SELECT MIN(e.at) FROM events e WHERE e.item_id = items.id
+                     AND e.kind <> 'kin_pick' AND COALESCE(e.surface, '') <> 'kin'
+                     AND e.at >= items.catalogue_released_at * 1000) < ?2 * 1000))",
             params![now, cutoff],
         ).map_err(err)?;
         tx.commit().map_err(err)?;

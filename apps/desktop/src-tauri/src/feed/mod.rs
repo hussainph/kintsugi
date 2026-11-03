@@ -9,11 +9,10 @@
 //! feed only carries an excerpt), and its author adapter followed authors. This module decides what to
 //! poll when, and keeps the store.
 
-mod catalogue;
+pub(crate) mod catalogue;
 mod neighbours;
 mod opml;
 pub(crate) mod picked;
-pub use catalogue::{feed_catalogue, feed_follow_suggestion};
 mod presets;
 mod store;
 
@@ -32,6 +31,7 @@ use presets::{Subscribe, Youtube};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use store::{Due, Event, Item, NewItem, Page, Source, SourceKind, Store};
@@ -66,6 +66,8 @@ pub struct Feed {
     polling: tokio::sync::Mutex<()>,
     /// Archive scans never delay a normal refresh or a subscription.
     cataloguing: tokio::sync::Mutex<()>,
+    /// Reconsider outgoing links only when actions or readable text change.
+    neighbours_dirty: AtomicBool,
     /// Picked for you's ranker (KI-32), derived from the event log.
     ranking: picked::Ranking,
 }
@@ -219,23 +221,30 @@ async fn full_text(app: &AppHandle, item: &Item) -> Result<()> {
         .capture(&target, CaptureOptions::default())
         .await
         .ok();
-    let published = fetched
-        .as_ref()
-        .and_then(|page| page.published.as_ref())
-        .and_then(|date| chrono::DateTime::parse_from_rfc3339(date).ok())
-        .map(|date| date.timestamp());
-    with(app, |s| {
-        s.set_catalogue_metadata(
-            item.id,
-            fetched.as_ref().and_then(|page| page.title.as_deref()),
-            fetched.as_ref().and_then(|page| page.author.as_deref()),
-            published,
-        )
-    })?;
+    if item.back_catalogue
+        && let Some(page) = fetched.as_ref()
+    {
+        let published = page
+            .published
+            .as_ref()
+            .and_then(|date| chrono::DateTime::parse_from_rfc3339(date).ok())
+            .map(|date| date.timestamp());
+        with(app, |s| {
+            s.set_catalogue_metadata(
+                item.id,
+                page.title.as_deref(),
+                page.author.as_deref(),
+                published,
+            )
+        })?;
+    }
     let longer = fetched
         .map(|page| page.body)
         .filter(|body| body.chars().count() > content.as_deref().map_or(0, |c| c.chars().count()));
     with(app, |s| s.set_full_text(item.id, longer.as_deref(), now()))?;
+    if longer.is_some() {
+        catalogue::mark_neighbours(app);
+    }
     crate::search::feed_changed(app);
     Ok(())
 }
@@ -514,6 +523,9 @@ async fn poll_due(app: &AppHandle, all: bool, only: Option<i64>) -> Result<Vec<P
 /// One background task polls due sources every minute, or when woken by a
 /// subscribe, import or unmute.
 pub fn start(app: &AppHandle) {
+    app.state::<Feed>()
+        .neighbours_dirty
+        .store(true, Ordering::Relaxed);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         loop {
@@ -768,7 +780,8 @@ pub fn feed_items(
     limit: Option<i64>,
     source: Option<i64>,
 ) -> Result<Page> {
-    picked::prepare_catalogue(&app)?;
+    // A ranking failure must never prevent reading items already here.
+    let _ = picked::prepare_catalogue(&app);
     with(&app, |s| {
         s.items(
             offset.unwrap_or(0).max(0),
@@ -864,6 +877,12 @@ pub fn feed_act(app: AppHandle, id: i64, action: Action, place: Option<Place>) -
         s.log(&event(kind, &before, &place))?;
         Ok(item)
     })?;
+    if matches!(
+        action,
+        Action::Like | Action::Unlike | Action::NotInterested | Action::UndoNotInterested
+    ) {
+        catalogue::mark_neighbours(&app);
+    }
     if matches!(action, Action::NotInterested | Action::UndoNotInterested) {
         changed(&app);
     }
@@ -904,7 +923,7 @@ pub fn note_checked(
     if note.len() > 20_000 {
         return Err("that note is too long for a feed item".into());
     }
-    with(app, |s| {
+    let result = with(app, |s| {
         let before = s.item(id)?;
         if base.is_some_and(|b| b != note_version(&before)) {
             // Already what the phone wanted: no conflict to show.
@@ -932,7 +951,9 @@ pub fn note_checked(
             s.log(&logged)?;
         }
         Ok(NoteWrite::Saved(item))
-    })
+    })?;
+    catalogue::mark_neighbours(app);
+    Ok(result)
 }
 
 #[derive(Deserialize)]
@@ -1020,13 +1041,15 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
         }
         crate::vault::clips_changed(&app, &created.path);
     }
-    with(&app, |s| {
+    let saved = with(&app, |s| {
         let saved = s.set_saved(id, &created.path)?;
         let mut logged = event("save", &item, &place);
         logged.data = Some(json!({ "path": created.path }));
         s.log(&logged)?;
         Ok(saved)
-    })
+    })?;
+    catalogue::mark_neighbours(&app);
+    Ok(saved)
 }
 
 /// A small sample Feed for driving the phone in the Simulator against a

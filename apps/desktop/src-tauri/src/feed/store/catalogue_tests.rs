@@ -343,6 +343,15 @@ fn old_poll_entries_wait_indefinitely_and_keep_original_dates() {
     let item = store.items(0, 10, None).unwrap().items.remove(0);
     assert_eq!(item.published_at, original.published_at);
     assert_eq!(item.sort_at, original.sort_at);
+    store
+        .log(&super::super::Event {
+            at: release * 1000,
+            kind: "impression".into(),
+            item_id: Some(item.id),
+            surface: Some("newest".into()),
+            ..Default::default()
+        })
+        .unwrap();
     assert_eq!(store.expire(release + EXPIRE_AFTER - 1).unwrap(), 0);
     assert_eq!(store.expire(release + EXPIRE_AFTER + 1).unwrap(), 1);
     assert!(store.items(0, 10, None).unwrap().items.is_empty());
@@ -550,6 +559,7 @@ fn lazy_catalogue_metadata_fills_unknown_date_without_replacing_known_dates() {
     let store = Store::memory();
     let source = source(&store);
     let mut unknown = entry("slug-title", 0);
+    unknown.title = Some("slug title".into());
     unknown.published_at = None;
     store
         .insert_catalogue_items(source.id, &[unknown, entry("dated", 500)], NOW)
@@ -782,4 +792,234 @@ fn seen_ignored_articles_expire_but_unseen_work_can_enter_the_pool() {
     let seen = rows.iter().find(|row| row.id == seen).unwrap();
     assert!(!seen.visible && !seen.back_catalogue && !seen.catalogue_candidate);
     assert_eq!(rows.iter().filter(|row| row.catalogue_candidate).count(), 1);
+}
+
+#[test]
+fn release_due_gate_checks_quota_candidates_and_source_switches() {
+    let store = Store::memory();
+    let source = source(&store);
+    assert!(!store.catalogue_release_due(NOW).unwrap());
+    let entries: Vec<_> = (0..4).map(|n| entry(&format!("old{n}"), 300)).collect();
+    store
+        .insert_catalogue_items(source.id, &entries, NOW)
+        .unwrap();
+    assert!(store.catalogue_release_due(NOW).unwrap());
+    store.set_catalogue_enabled(source.id, false).unwrap();
+    assert!(!store.catalogue_release_due(NOW).unwrap());
+    store.set_catalogue_enabled(source.id, true).unwrap();
+    store.set_muted(source.id, true).unwrap();
+    assert!(!store.catalogue_release_due(NOW).unwrap());
+    store.set_muted(source.id, false).unwrap();
+    store.release_catalogue(&ids(&store), NOW).unwrap();
+    assert!(!store.catalogue_release_due(NOW + 1).unwrap());
+    assert!(store.catalogue_release_due(NOW + DAY).unwrap());
+}
+
+#[test]
+fn release_due_gate_honours_neighbour_slot_before_total_quota_is_full() {
+    let store = Store::memory();
+    let first = suggested_item(&store, "https://a.example");
+    suggested_item(&store, "https://b.example");
+    let second = ids(&store).into_iter().find(|id| *id != first).unwrap();
+    assert!(store.catalogue_release_due(NOW).unwrap());
+    store.release_catalogue(&[first], NOW).unwrap();
+    assert!(
+        !store.catalogue_release_due(NOW).unwrap(),
+        "only a second neighbour remains"
+    );
+    let source = source(&store);
+    store
+        .insert_catalogue_items(source.id, &[entry("followed", 300)], NOW)
+        .unwrap();
+    assert!(store.catalogue_release_due(NOW).unwrap());
+    store.set_catalogue_enabled(source.id, false).unwrap();
+    assert!(!store.catalogue_release_due(NOW).unwrap());
+    assert!(store.catalogue_release_due(NOW + DAY).unwrap());
+    assert!(
+        store
+            .rank_rows()
+            .unwrap()
+            .iter()
+            .any(|r| r.id == second && r.catalogue_candidate)
+    );
+}
+
+#[test]
+fn dormant_metadata_skips_vectors_but_all_training_examples_remain() {
+    let store = Store::memory();
+    let source = source(&store);
+    let entries: Vec<_> = [
+        "plain",
+        "liked",
+        "noted",
+        "saved",
+        "dismissed",
+        "human",
+        "kin",
+        "kin-surface",
+    ]
+    .iter()
+    .map(|guid| entry(guid, 300))
+    .collect();
+    store
+        .insert_catalogue_items(source.id, &entries, NOW)
+        .unwrap();
+    let rows = store.rank_rows().unwrap();
+    let id = |guid: &str| {
+        rows.iter()
+            .find(|r| r.title == format!("Essay {guid}"))
+            .unwrap()
+            .id
+    };
+    store.set_liked(id("liked"), true, NOW).unwrap();
+    store.set_note(id("noted"), "A note", NOW).unwrap();
+    store
+        .set_saved(id("saved"), "inspiration/saved.md")
+        .unwrap();
+    store.set_dismissed(id("dismissed"), true, NOW).unwrap();
+    for (guid, kind, surface) in [
+        ("human", "impression", "newest"),
+        ("kin", "kin_pick", "kin"),
+        ("kin-surface", "open", "kin"),
+    ] {
+        store
+            .log(&super::super::Event {
+                at: NOW * 1000,
+                kind: kind.into(),
+                item_id: Some(id(guid)),
+                surface: Some(surface.into()),
+                ..Default::default()
+            })
+            .unwrap();
+    }
+    for row in store.rank_rows().unwrap() {
+        let signal = [
+            "Essay liked",
+            "Essay noted",
+            "Essay saved",
+            "Essay dismissed",
+            "Essay human",
+        ]
+        .contains(&row.title.as_str());
+        assert_eq!(row.has_signal, signal, "{}", row.title);
+        assert_eq!(row.needed_for_ranking(false), signal, "{}", row.title);
+        assert!(row.needed_for_ranking(true));
+    }
+    // A prior human action still trains after undo and source disablement.
+    store.set_liked(id("liked"), false, NOW + 1).unwrap();
+    store
+        .log(&super::super::Event {
+            at: (NOW + 1) * 1000,
+            kind: "unlike".into(),
+            item_id: Some(id("liked")),
+            ..Default::default()
+        })
+        .unwrap();
+    store.set_catalogue_enabled(source.id, false).unwrap();
+    let rows = store.rank_rows().unwrap();
+    assert!(
+        rows.iter()
+            .find(|r| r.id == id("liked"))
+            .unwrap()
+            .needed_for_ranking(false)
+    );
+    assert!(
+        !rows
+            .iter()
+            .find(|r| r.id == id("plain"))
+            .unwrap()
+            .needed_for_ranking(true)
+    );
+}
+
+#[test]
+fn lazy_capture_preserves_authoritative_title_while_filling_unknown_metadata() {
+    let store = Store::memory();
+    let source = source(&store);
+    let mut known = entry("accurate-title.html", 0);
+    known.title = Some("The publisher's actual title".into());
+    known.published_at = None;
+    store
+        .insert_catalogue_items(source.id, &[known], NOW)
+        .unwrap();
+    let id = ids(&store)[0];
+    store
+        .set_catalogue_metadata(
+            id,
+            Some("SEO title | Website"),
+            Some("Author"),
+            Some(NOW - 700 * DAY),
+        )
+        .unwrap();
+    let item = store.item(id).unwrap();
+    assert_eq!(item.title.as_deref(), Some("The publisher's actual title"));
+    assert_eq!(item.author.as_deref(), Some("Author"));
+    assert_eq!(item.published_at, Some(NOW - 700 * DAY));
+    store
+        .set_catalogue_metadata(
+            id,
+            Some("Another SEO title"),
+            Some("Other author"),
+            Some(NOW),
+        )
+        .unwrap();
+    assert_eq!(store.item(id).unwrap(), item);
+    assert_eq!(
+        url_title("https://a.example/posts/a-useful_essay.html/"),
+        Some("a useful essay".into())
+    );
+    assert_eq!(
+        url_title("https://a.example/a_useful-essay.htm"),
+        Some("a useful essay".into())
+    );
+}
+
+#[test]
+fn unseen_releases_wait_for_human_exposure_before_expiry_clock_starts() {
+    let store = Store::memory();
+    let source = source(&store);
+    store
+        .insert_catalogue_items(
+            source.id,
+            &[entry("unseen", 300), entry("seen-later", 300)],
+            NOW,
+        )
+        .unwrap();
+    let order = ids(&store);
+    store.release_catalogue(&order, NOW).unwrap();
+    for (kind, surface) in [("kin_pick", "kin"), ("open", "kin")] {
+        store
+            .log(&super::super::Event {
+                at: NOW * 1000,
+                kind: kind.into(),
+                item_id: Some(order[0]),
+                surface: Some(surface.into()),
+                ..Default::default()
+            })
+            .unwrap();
+    }
+    let first_exposure = NOW + 100 * DAY;
+    assert_eq!(store.expire(first_exposure).unwrap(), 0);
+    assert_eq!(store.catalogue_visible_ids().unwrap(), order);
+    assert!(
+        store
+            .rank_rows()
+            .unwrap()
+            .iter()
+            .filter(|r| r.back_catalogue)
+            .all(|r| r.needed_for_ranking(false))
+    );
+    store
+        .log(&super::super::Event {
+            at: first_exposure * 1000,
+            kind: "impression".into(),
+            item_id: Some(order[1]),
+            surface: Some("picked".into()),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(store.expire(first_exposure + 1).unwrap(), 0);
+    assert_eq!(store.expire(first_exposure + EXPIRE_AFTER - 1).unwrap(), 0);
+    assert_eq!(store.expire(first_exposure + EXPIRE_AFTER + 1).unwrap(), 1);
+    assert_eq!(store.catalogue_visible_ids().unwrap(), [order[0]]);
 }

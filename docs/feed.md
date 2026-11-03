@@ -148,6 +148,8 @@ still supply taste, through local embeddings or the hashed fallback.
 Picked for you and Newest each show at most two older candidates even after
 several days of releases. Newest places them by when they were offered;
 the date beside each piece is its original date, with **Older writing**.
+Unseen releases remain eligible for future picks. Seen, ignored pieces expire
+after 30 days; Kin's reads and picks do not start that clock.
 Full text is fetched only when opened. Discovery and ranking make no model
 calls; no summaries are generated here.
 
@@ -172,7 +174,8 @@ its homepage as a Page. Unfollowed sources are never revived by discovery.
 Newest first by publish time (capped at "now"; undated entries use the
 fetch time and keep the feed's order). Muted and unfollowed sources,
 dismissed and expired items are hidden. Items he never acted on (no like,
-note, save or Not interested) expire 30 days after they were first seen (older writing: after release): the
+note, save or Not interested) expire 30 days after they were first seen (older writing: first human exposure
+after release): the
 row stays, so a later poll can't revive them, but their text is dropped.
 Dismissed items keep their row as a negative signal and lose their text
 after 30 days.
