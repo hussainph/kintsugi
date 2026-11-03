@@ -18,6 +18,7 @@ pub mod model;
 pub mod ranker;
 pub mod replay;
 pub mod rng;
+pub mod stories;
 pub mod synthetic;
 pub mod text;
 pub mod vector;
@@ -26,6 +27,7 @@ pub use ranker::{
     Change, Clip, DAY_MS, Effect, Event, Explained, HOUR_MS, Item, KIN_SURFACE, Media, Pick,
     PickOptions, Profile, Ranker, Reason, Source, TopicWeight, World, effective, needs_rebuild,
 };
+pub use stories::Space as StorySpace;
 
 #[cfg(test)]
 mod tests;

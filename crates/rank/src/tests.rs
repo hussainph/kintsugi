@@ -16,6 +16,7 @@ fn item(id: i64, source: i64, title: &str, body: &str, hours_ago: i64) -> Item {
         published: (NOW - hours_ago * HOUR_MS) / 1000,
         length: body.len(),
         vector: text::hashed(title, body),
+        story: None,
     }
 }
 
@@ -264,6 +265,52 @@ fn picks_diversify_explore_and_drop_near_duplicates() {
             )
             .iter()
             .all(|p| !p.explore)
+    );
+}
+
+#[test]
+fn a_story_takes_one_slot_and_says_how_many_sources_covered_it() {
+    let mut world = world();
+    // Two items about the derby from two sources, and a lone one from a
+    // single source (a cluster, but not a story).
+    world.items.insert(
+        7,
+        item(
+            7,
+            1,
+            "Derby goalkeeper heroics",
+            "The goalkeeper saved the derby.",
+            4,
+        ),
+    );
+    world.items.get_mut(&4).unwrap().story = Some(70);
+    world.items.get_mut(&7).unwrap().story = Some(70);
+    world.items.get_mut(&5).unwrap().story = Some(71);
+    let all: Vec<i64> = world.items.keys().copied().collect();
+    let options = PickOptions {
+        n: 8,
+        explore: false,
+        seed: 1,
+    };
+    let ranker = Ranker::build(&world, &[], NOW);
+    let picks = ranker.pick(&world, &all, NOW, options);
+    let derby: Vec<&Pick> = picks.iter().filter(|p| p.story == Some(70)).collect();
+    assert_eq!(derby.len(), 1, "{picks:?}");
+    assert!([4, 7].contains(&derby[0].id));
+    assert_eq!(derby[0].reasons[0].key, "story");
+    assert_eq!(
+        derby[0].reasons[0].label,
+        "2 sources you follow covered this"
+    );
+    assert!(!derby[0].reasons[0].removable);
+    let lone = picks.iter().find(|p| p.id == 5).unwrap();
+    assert_eq!(lone.story, None, "one source is not a story");
+    // Once he acts on any of its items, the story leaves the picks.
+    let acted = Ranker::build(&world, &[event(1, "like", 7, 1)], NOW);
+    let after = acted.pick(&world, &all, NOW, options);
+    assert!(
+        after.iter().all(|p| p.story != Some(70) && p.id != 4),
+        "{after:?}"
     );
 }
 

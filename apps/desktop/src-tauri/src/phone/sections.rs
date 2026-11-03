@@ -1,4 +1,4 @@
-//! The Feed, Ideas and Kin on the phone (phone API 6). They live in the
+//! The Feed, Ideas and Kin on the phone (phone API 6; stories since 7). They live in the
 //! app's data, not the vault, and the desktop does all the work: ranking,
 //! full text, Kin's turns and its helper jobs all run on the Mac. The phone
 //! only reads and asks; it never calls a model and never holds a key.
@@ -56,6 +56,25 @@ pub enum Op {
     /// What a like changed in Picked for you.
     FeedEffect {
         id: i64,
+    },
+    /// The Newest list with stories folded in (`feed_entries`, API 7).
+    FeedEntries {
+        offset: usize,
+        limit: usize,
+    },
+    /// One story (`feed_story`, API 7).
+    FeedStory {
+        id: i64,
+    },
+    /// An item's reasons, for its (?) card (`feed_why`, API 7).
+    FeedWhy {
+        id: i64,
+    },
+    /// Not interested (or undo) for a story's items (`feed_dismiss_many`, API 7).
+    FeedDismiss {
+        ids: Vec<i64>,
+        undo: bool,
+        place: Place,
     },
     Ideas,
     /// "Ask for more": a few ideas on demand.
@@ -152,6 +171,10 @@ pub(super) fn routes() -> Router<Ctx> {
         .route("/v1/feed/save", post(feed_save))
         .route("/v1/feed/impressions", post(feed_impressions))
         .route("/v1/feed/effect", get(feed_effect))
+        .route("/v1/feed/entries", get(feed_entries))
+        .route("/v1/feed/story", get(feed_story))
+        .route("/v1/feed/why", get(feed_why))
+        .route("/v1/feed/dismiss", post(feed_dismiss))
         .route("/v1/ideas", get(ideas))
         .route("/v1/ideas/more", post(ideas_more))
         .route("/v1/ideas/adopt", post(idea_adopt))
@@ -309,6 +332,56 @@ struct IdQuery {
 async fn feed_effect(State(ctx): State<Ctx>, q: Result<Query<IdQuery>, QueryRejection>) -> Reply {
     let q = query(q)?;
     Ok(Json(ask(&ctx, Op::FeedEffect { id: q.id }).await?))
+}
+
+async fn feed_entries(
+    State(ctx): State<Ctx>,
+    q: Result<Query<PageQuery>, QueryRejection>,
+) -> Reply {
+    let q = query(q)?;
+    let op = Op::FeedEntries {
+        offset: q.offset.unwrap_or(0).max(0) as usize,
+        limit: q.limit.unwrap_or(40).clamp(1, 100) as usize,
+    };
+    Ok(Json(ask(&ctx, op).await?))
+}
+
+async fn feed_story(State(ctx): State<Ctx>, q: Result<Query<IdQuery>, QueryRejection>) -> Reply {
+    let q = query(q)?;
+    Ok(Json(ask(&ctx, Op::FeedStory { id: q.id }).await?))
+}
+
+async fn feed_why(State(ctx): State<Ctx>, q: Result<Query<IdQuery>, QueryRejection>) -> Reply {
+    let q = query(q)?;
+    Ok(Json(ask(&ctx, Op::FeedWhy { id: q.id }).await?))
+}
+
+#[derive(Deserialize)]
+struct ItemsDismissBody {
+    ids: Vec<i64>,
+    #[serde(default)]
+    undo: bool,
+    #[serde(default)]
+    place: Option<Place>,
+}
+
+async fn feed_dismiss(
+    State(ctx): State<Ctx>,
+    b: Result<Json<ItemsDismissBody>, JsonRejection>,
+) -> Reply {
+    let b = body(b)?;
+    if b.ids.is_empty() || b.ids.len() > 200 {
+        return Err(Error(
+            StatusCode::BAD_REQUEST,
+            "Send 1 to 200 items.".into(),
+        ));
+    }
+    let op = Op::FeedDismiss {
+        ids: b.ids,
+        undo: b.undo,
+        place: b.place.unwrap_or_default(),
+    };
+    Ok(Json(ask(&ctx, op).await?))
 }
 
 // ── Ideas ─────────────────────────────────────────────────────────────────
@@ -553,6 +626,16 @@ mod tests {
                 ),
                 Op::FeedImpressions(list) => (format!("impressions {}", list.len()), Ok(json!({}))),
                 Op::FeedEffect { id } => (format!("effect {id}"), Ok(json!({ "changes": [] }))),
+                Op::FeedEntries { offset, limit } => (
+                    format!("entries {offset} {limit}"),
+                    Ok(json!({ "entries": [], "total": 0 })),
+                ),
+                Op::FeedStory { id } => (format!("story {id}"), Ok(json!({ "id": id }))),
+                Op::FeedWhy { id } => (format!("why {id}"), Ok(json!([]))),
+                Op::FeedDismiss { ids, undo, place } => (
+                    format!("dismiss {ids:?} {undo} {:?}", place.surface),
+                    Ok(json!([])),
+                ),
                 Op::Ideas => ("ideas".into(), Ok(json!({ "ideas": [] }))),
                 Op::IdeasMore => (
                     "more".into(),
@@ -680,6 +763,29 @@ mod tests {
             );
             assert_eq!(get("/v1/feed/effect?id=4").await.unwrap().status(), 200);
             assert_eq!(get("/v1/feed/effect?id=four").await.unwrap().status(), 400);
+            assert_eq!(
+                get("/v1/feed/entries?offset=2&limit=500")
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
+            assert_eq!(get("/v1/feed/story?id=9").await.unwrap().status(), 200);
+            assert_eq!(get("/v1/feed/why?id=4").await.unwrap().status(), 200);
+            assert_eq!(
+                post("/v1/feed/dismiss", json!({ "ids": [4, 5], "place": place }))
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
+            assert_eq!(
+                post("/v1/feed/dismiss", json!({ "ids": [] }))
+                    .await
+                    .unwrap()
+                    .status(),
+                400
+            );
             assert_eq!(get("/v1/ideas").await.unwrap().status(), 200);
             let busy = post("/v1/ideas/more", json!({})).await.unwrap();
             assert_eq!(busy.status(), 400);
@@ -724,6 +830,10 @@ mod tests {
                 "save 4",
                 "impressions 1",
                 "effect 4",
+                "entries 2 100",
+                "story 9",
+                "why 4",
+                "dismiss [4, 5] false Some(\"picked\")",
                 "ideas",
                 "more",
                 "adopt idea-1 None",

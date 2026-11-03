@@ -11,7 +11,8 @@ One SQLite file, `feed.sqlite`, in the app's data directory
 (`~/Library/Application Support/dev.phalasiya.kintsugi/`), never the vault.
 Headless runs keep it in `$KINTSUGI_CONFIG_DIR`; a debug run with
 `KINTSUGI_CONFIG_DIR` uses that folder, and a scratch-vault run without one
-uses a temporary folder. Schema version is `PRAGMA user_version` (2).
+uses a temporary folder. Schema version is `PRAGMA user_version` (3: the
+catalogue came in 2, stories in 3; older files migrate in place).
 
 - `sources`: URL (unique), kind (`feed`, `hn`, `youtube`, `podcast`, `x`,
   `page`, `author`), title,
@@ -29,11 +30,17 @@ uses a temporary folder. Schema version is `PRAGMA user_version` (2).
   was fetched). Older metadata has `back_catalogue` and a nullable
   `catalogue_released_at`. Sources keep discovery state and their switch;
   `catalogue_releases` records admissions by UTC day, and
-  `catalogue_neighbours` records links already considered.
+  `catalogue_neighbours` records links already considered. Since version 3,
+  `story_id` (the story it's in; at most one) and `clustered_at` (when
+  clustering placed it).
+- `stories` (version 3): Kin's `title` and `summary` (JSON: paragraphs of
+  sentences, each with the item ids it cites), `summary_state`, how many
+  items it had when last summarised and how many times it was, the `model`,
+  its total `cost_usd`, and when it was created and changed. See Stories.
 - `events`: **append-only** (triggers reject UPDATE and DELETE). Every
   impression and every action, with time in ms, item, source, `surface`
   (`newest`, `picked` for Picked for you, `kin` for Kin's picks) and
-  `position`. Kinds:
+  `position`. An event on an item in a story carries `data.story`. Kinds:
   `impression`, `open` (read in the app), `open_original`, `like`, `unlike`,
   `note`, `note_cleared`, `save`, `not_interested`, `undo_not_interested`,
   `discuss`, `subscribe`, `unsubscribe`, `mute`, `unmute`, and from ranking
@@ -204,6 +211,64 @@ static only in headless) and keeps the longer text. A failure keeps the
 feed's text and isn't retried. Saving never waits on the network: the clip
 gets the best text already stored, and clip enrichment fetches the rest.
 
+## Stories
+
+Items about the same thing from different sources are one **story**
+(KI-94, from the KI-72 exploration). A story is shown, ranked and acted on
+as a unit only while its visible items span **two or more sources**; a
+cluster from one source shows its items as plain items. Items stay items:
+every like, note, save and Not interested is still on an item.
+
+**Clustering** (`kintsugi_rank::stories`, local, no model calls). Each new
+visible item is compared with items published within **72 hours of its own
+publish date** (never "now", so an older post groups only with posts from
+its own time). It joins the closest story whose centroid it clears, or
+starts one with the closest single item, when:
+
+- the cosine is at least **0.6** with the search index's model2vec vectors,
+  or **0.35** with the hashed fallback (headless runs, tests, first launch),
+  **and** the titles share a name or number (a capitalised word such as
+  "Apple" or "iPhone", or a token with a digit such as "Q4" or "$114.5"; a
+  bare year doesn't count);
+- or it links to the same page (an HN item and the article it points at).
+
+Decisions are kept (`items.story_id`), so a story keeps its id and summary
+while sources join. Clustering runs when ranking builds its world (it has
+the vectors): after a poll that added items, and before the Newest list
+when new items are waiting. The thresholds came from one hand-labelled day
+of the KI-72 run (The Verge, 9to5Mac, Ars Technica, Simon Willison, HN):
+Apple's quarter and Claude Code's game rule group, nothing else does.
+
+**Summaries.** Each story gets a title and a summary from the `triage`
+task's light model (`modelFor("triage")`, GLM-5.3-Flash first), one story
+at a time in the background:
+
+- Only stories with two or more sources; single items keep their feed's
+  own summary. A story is summarised once, and again when a source joins,
+  at most three times.
+- The input is each article's title, source and first 1,200 characters, as
+  numbered `<article>` data, never instructions. The answer is JSON:
+  paragraphs of sentences, each citing the articles (`A1`, `A2`) it comes
+  from. A sentence with no valid citation, or with a filler word from the
+  voice rules, is dropped; nothing left is a failure.
+- The cost goes through the monthly cap: at the cap the story waits
+  (`capped`) and nothing is sent; with no provider it's `unavailable`.
+  Either way, and after a failure (`failed`), the story shows its lead
+  article's own title and text. A later rewrite that fails keeps the
+  earlier summary.
+- About $0.0005 a call; a typical day is about $0.03.
+- Headless runs with `KINTSUGI_HEADLESS_KIN=mock` summarise with Kin's
+  scripted model ($0). It writes a paragraph per article (up to four, to
+  test long summaries), plus one uncited sentence and one citing an
+  article that isn't there, which must be dropped. An article titled with
+  `[mock-fail]` makes it fail.
+
+**Acting on a story.** Like and Save on the story act on its lead article.
+Not interested hides every item in it (`feed_dismiss_many`, with Undo). On
+the story page each article in the source strip has its own Like, Save,
+Note, Discuss, Open and Not interested, and saving keeps one clip per
+article saved.
+
 ## Search
 
 Visible items are also in the shared search index ([search.md](search.md)),
@@ -232,9 +297,12 @@ state, and lets the poller fetch new sources in the background.
 `feed_podcast_search({ term })`, `feed_opml_import`, `feed_opml_export`,
 `feed_items({ offset?, limit?, source? })`, `feed_read({ id, place? })`,
 `feed_act({ id, action, place? })`, `feed_note({ id, note, place? })`,
-`feed_save({ id, place? })`, `feed_impressions({ impressions })`, and
-ranking's `feed_picked({ n? })`, `feed_correct({ reason, id?, undo? })`,
-`feed_effect({ id })` ([ranking.md](ranking.md)). `place` is
+`feed_save({ id, place? })`, `feed_impressions({ impressions })`, the
+stories' `feed_entries({ offset?, limit? })` (the Newest list with each
+story folded into one entry at its newest item), `feed_story({ id })` and
+`feed_dismiss_many({ ids, undo?, place? })`, and ranking's
+`feed_picked({ n? })`, `feed_correct({ reason, id?, undo? })`,
+`feed_effect({ id })` and `feed_why({ id })` ([ranking.md](ranking.md)). `place` is
 `{ surface, position }`. Changes emit `feed:changed`. Types live in
 `apps/desktop/src/feed/api.ts`.
 
@@ -254,7 +322,7 @@ HN, YouTube, X and authors always use their type icon.
 
 ## On the phone (KI-42)
 
-The phone reaches the Feed through the phone API (version 6,
+The phone reaches the Feed through the phone API (version 6, stories since 7,
 `apps/desktop/src-tauri/src/phone/sections.rs`; client methods in
 `packages/core/src/remote.ts`, types in `@kintsugi/core/sections`). Every
 route calls the same command as the Mac's webview (`phone/desk.rs`), so the
@@ -271,6 +339,10 @@ never ranks, fetches or calls a model.
 | `POST /v1/feed/save {id, place?}` | `feed_save` (already idempotent through its `save_id`) |
 | `POST /v1/feed/impressions {impressions}` | `feed_impressions` (at most 500) |
 | `GET /v1/feed/effect?id` | `feed_effect` |
+| `GET /v1/feed/entries?offset&limit` | `feed_entries` (API 7) |
+| `GET /v1/feed/story?id` | `feed_story` (API 7) |
+| `GET /v1/feed/why?id` | `feed_why` (API 7) |
+| `POST /v1/feed/dismiss {ids, undo?, place?}` | `feed_dismiss_many` (API 7; 1 to 200 ids) |
 
 Unknown items and refusals are 400 with the command's message; an unknown
 action is 422. A server without the app behind it (the bare

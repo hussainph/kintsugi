@@ -121,6 +121,9 @@ struct Candidates {
     pending: Vec<i64>,
     neighbours: Vec<i64>,
     release_due: bool,
+    /// Every visible item, and those clustering hasn't placed yet (KI-94).
+    visible: Vec<i64>,
+    unclustered: Vec<i64>,
 }
 
 /// Everything the ranker reads, including pending metadata for local scoring.
@@ -198,6 +201,12 @@ fn world(app: &AppHandle, now: i64) -> Result<(World, Candidates, Space, u64)> {
         if row.suggested {
             candidates.neighbours.push(row.id);
         }
+        if row.visible {
+            candidates.visible.push(row.id);
+            if !row.clustered {
+                candidates.unclustered.push(row.id);
+            }
+        }
         if let Some(path) = &row.saved_path {
             saved.insert(path.clone(), row.id);
         }
@@ -214,6 +223,7 @@ fn world(app: &AppHandle, now: i64) -> Result<(World, Candidates, Space, u64)> {
                 published: row.sort_at,
                 length: row.length.max(row.summary.chars().count()),
                 vector,
+                story: row.story,
             },
         );
     }
@@ -269,8 +279,22 @@ fn ranked<T>(
     f: impl FnOnce(&mut State, &World, &[i64], i64) -> Result<T>,
 ) -> Result<T> {
     let now = now_ms();
-    let (world, pool, space, clips) = world(app, now)?;
-    let ranking = &app.state::<super::Feed>().ranking;
+    let feed = app.state::<super::Feed>();
+    // One clustering pass at a time, or two could start the same story.
+    let clustering = feed
+        .clustering
+        .lock()
+        .map_err(|_| "ranking is unavailable".to_string())?;
+    let (mut world, pool, space, clips) = world(app, now)?;
+    super::stories::cluster(
+        app,
+        &mut world,
+        &pool.visible,
+        &pool.unclustered,
+        space == Space::Model,
+    )?;
+    drop(clustering);
+    let ranking = &feed.ranking;
     let mut slot = ranking
         .0
         .lock()
@@ -344,6 +368,11 @@ fn mixed_pick(
     state.ranker.pick(&scoring, candidates, now, options)
 }
 
+/// Brings clustering and the ranker up to date with the Feed.
+pub(super) fn refresh(app: &AppHandle) -> Result<()> {
+    ranked(app, |_, _, _, _| Ok(()))
+}
+
 /// Stable within a day, so the section doesn't reshuffle on every visit.
 fn seed(now: i64) -> u64 {
     (now / rank::DAY_MS) as u64
@@ -366,6 +395,9 @@ pub struct PickedItem {
     pub item: Item,
     #[serde(flatten)]
     pub pick: Pick,
+    /// The story the pick stands for (since KI-94): `item` is its best item.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub story: Option<super::store::Story>,
 }
 
 fn picked_items(app: &AppHandle, picks: Vec<Pick>) -> Result<Vec<PickedItem>> {
@@ -386,9 +418,43 @@ fn picked_items(app: &AppHandle, picks: Vec<Pick>) -> Result<Vec<PickedItem>> {
                         weight: 0.0,
                     });
                 }
-                Some(PickedItem { item, pick })
+                Some(PickedItem {
+                    story: pick.story.and_then(|id| s.story(id).ok()),
+                    item,
+                    pick,
+                })
             })
             .collect())
+    })
+}
+
+/// The reasons behind any item, for its (?) card: what Picked for you
+/// would say about it, and for a story how many sources covered it.
+#[tauri::command]
+pub fn feed_why(app: AppHandle, id: i64) -> Result<Vec<rank::Reason>> {
+    let story = with(&app, |s| {
+        let item = s.item(id)?;
+        Ok(s.story_of(&item)?.map(|story| story.sources.len()))
+    })?;
+    ranked(&app, |state, world, _, now| {
+        let mut reasons = state
+            .ranker
+            .explain(world, id, now)
+            .ok_or("no such feed item")?
+            .reasons;
+        if let Some(n) = story {
+            reasons.insert(
+                0,
+                rank::Reason {
+                    key: "story".into(),
+                    label: format!("{n} sources you follow covered this"),
+                    removable: false,
+                    weight: 2.0,
+                },
+            );
+            reasons.truncate(4);
+        }
+        Ok(reasons)
     })
 }
 

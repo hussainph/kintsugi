@@ -223,6 +223,57 @@ fn points(items: &[Item]) -> String {
     )
 }
 
+/// The Feed's story summary (KI-94), from the articles in the prompt: a
+/// paragraph per article (up to four, so long summaries get tested), each
+/// sentence citing it; plus a sentence with no citation and one citing an
+/// article that isn't there, which the Feed must drop. An article titled
+/// with "[mock-fail]" makes it answer with no JSON at all.
+pub(crate) fn story_summary(prompt: &str) -> String {
+    let articles: Vec<(String, String, String, String)> = prompt
+        .split("<article id=\"")
+        .skip(1)
+        .filter_map(|part| {
+            let (id, rest) = part.split_once('"')?;
+            let source = rest.split("source=\"").nth(1)?.split('"').next()?;
+            let body = rest.split_once('\n')?.1;
+            let title = body.lines().next()?.trim_start_matches("Title: ").trim();
+            let text = body
+                .lines()
+                .skip(1)
+                .take_while(|l| !l.starts_with("</article>"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let first = text
+                .split(". ")
+                .next()
+                .unwrap_or_default()
+                .trim()
+                .trim_end_matches('.');
+            Some((id.into(), source.into(), title.into(), first.into()))
+        })
+        .collect();
+    if articles.is_empty() || articles.iter().any(|a| a.2.contains("[mock-fail]")) {
+        return "Sorry, I couldn't summarise that.".into();
+    }
+    let mut paragraphs: Vec<serde_json::Value> = articles
+        .iter()
+        .take(4)
+        .map(|(id, source, title, first)| {
+            let mut sentences =
+                vec![json!({ "text": format!("{source} reports: {title}."), "cite": [id] })];
+            if !first.is_empty() {
+                sentences.push(json!({ "text": format!("{first}."), "cite": [id] }));
+            }
+            json!(sentences)
+        })
+        .collect();
+    paragraphs.push(json!([
+        { "text": "This sentence cites nothing.", "cite": [] },
+        { "text": "This one cites an article that isn't there.", "cite": ["A99"] }
+    ]));
+    json!({ "title": articles[0].2, "paragraphs": paragraphs }).to_string()
+}
+
 fn reply(text: String, calls: Vec<ToolCall>) -> Reply {
     Reply {
         text,
@@ -254,6 +305,11 @@ impl Model for Scripted {
         }) else {
             return Err("nothing to answer".into());
         };
+        if ex.system.starts_with(crate::feed::STORY_SUMMARIZER) {
+            let text = story_summary(question);
+            on_text(&text);
+            return Ok(reply(text, vec![]));
+        }
         if let Some(Item::User(brief)) = ex.items.first()
             && brief.contains(super::ideas::brief::FORMAT)
         {

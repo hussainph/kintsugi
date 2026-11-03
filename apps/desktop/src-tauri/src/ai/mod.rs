@@ -41,7 +41,7 @@ pub mod picks;
 pub mod prompt;
 mod providers;
 #[cfg(feature = "headless")]
-mod scripted;
+pub(crate) mod scripted;
 pub mod sign_in;
 pub(crate) mod tools;
 pub mod web;

@@ -95,14 +95,25 @@ most telling words of a title (`text::topics`, at most three).
    through the list (position 4 of 8).
 5. The seed is the UTC day, so the section is stable within a day.
 
+**Stories** ([feed.md](feed.md) › Stories) rank as a unit. Before MMR, a
+story spanning two or more visible sources is one candidate: its
+best-scoring item stands for it, plus **0.03 per extra source** (at most
+0.09). A story he acted on (or ignored) in any of its items is skipped,
+like a touched item. The pick carries `storyId`, and `feed_picked` adds
+the story.
+
 ## Why this?
 
-Each pick carries up to four reasons, strongest first. Removable ones are
+Each pick carries up to four reasons, strongest first. A story's first
+reason is fixed: "N sources you follow covered this". Removable ones are
 **corrections**: "Close to “X”, in Inspiration / which you kept"
 (`anchor:clip:<path>` / `anchor:item:<id>`), "You often keep things from S"
 (`source:<id>`), "You’ve liked A before" (`author:<name>`), "About T, a
 topic you keep" (`topic:<t>`). Fixed ones explain: "Exploring: S is new to
 you", "New: 3 hours ago", "Still learning…".
+
+`feed_why({ id })` returns the same reasons for any item (with the story
+reason when it's in one), for the (?) card on items outside Picked for you.
 
 Removing one calls `feed_correct({ reason, id })`, which logs a `correction`
 event (`data: { reason }`, surface `picked`); the ranker then treats that

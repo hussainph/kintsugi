@@ -15,8 +15,11 @@ mod opml;
 pub(crate) mod picked;
 mod presets;
 mod store;
+mod stories;
 
 pub use picked::kin_hook;
+#[cfg(feature = "headless")]
+pub(crate) use stories::STORY_SUMMARIZER;
 
 use crate::AppHandle;
 use kintsugi_ingest::{
@@ -35,7 +38,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-use store::{Due, Event, Item, NewItem, Page, Source, SourceKind, Store};
+use store::{Due, Entry, Event, Item, NewItem, Page, Source, SourceKind, Store, Story};
 use tauri::{Emitter, Manager};
 use tokio::sync::Notify;
 
@@ -71,6 +74,10 @@ pub struct Feed {
     neighbours_dirty: AtomicBool,
     /// Picked for you's ranker (KI-32), derived from the event log.
     ranking: picked::Ranking,
+    /// One clustering pass at a time (KI-94).
+    clustering: Mutex<()>,
+    /// Kin's story summaries, in the background (KI-94).
+    summaries: stories::Summaries,
 }
 
 /// The engine (feed, X and author adapters for polling, the web adapter for
@@ -521,6 +528,15 @@ async fn poll_due(app: &AppHandle, all: bool, only: Option<i64>) -> Result<Vec<P
     if !polled.is_empty() || expired > 0 {
         changed(app);
     }
+    if polled.iter().any(|p| p.added > 0) {
+        // New items join stories (and stories get summaries) off this path.
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if picked::refresh(&app).is_ok() {
+                changed(&app);
+            }
+        });
+    }
     Ok(polled)
 }
 
@@ -795,6 +811,78 @@ pub fn feed_items(
     })
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Entries {
+    pub entries: Vec<Entry>,
+    pub total: usize,
+}
+
+/// The Newest list with each story (items about the same thing from two or
+/// more sources) folded into one entry at its newest item. New items are
+/// placed into stories first.
+#[tauri::command]
+pub fn feed_entries(
+    app: AppHandle,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<Entries> {
+    // The same daily release of older writing as `feed_items` (KI-95).
+    let _ = picked::prepare_catalogue(&app);
+    stories::cluster_waiting(&app)?;
+    let (entries, total) = with(&app, |s| {
+        s.entries(offset.unwrap_or(0), limit.unwrap_or(40).clamp(1, 100))
+    })?;
+    if entries.iter().any(|e| matches!(e, Entry::Story { story } if story.summary_state != store::SummaryState::Ready)) {
+        stories::summarize_soon(&app);
+    }
+    Ok(Entries { entries, total })
+}
+
+/// One story with its items and Kin's summary (or why there isn't one).
+#[tauri::command]
+pub fn feed_story(app: AppHandle, id: i64) -> Result<Story> {
+    let story = with(&app, |s| s.story(id))?;
+    if story.summary_state != store::SummaryState::Ready {
+        stories::summarize_soon(&app);
+    }
+    Ok(story)
+}
+
+/// Not interested (or its undo) for several items at once: a whole story.
+#[tauri::command]
+pub fn feed_dismiss_many(
+    app: AppHandle,
+    ids: Vec<i64>,
+    undo: Option<bool>,
+    place: Option<Place>,
+) -> Result<Vec<Item>> {
+    if ids.len() > 200 {
+        return Err("too many items at once".into());
+    }
+    let undo = undo.unwrap_or(false);
+    let place = place.unwrap_or_default();
+    let items = with(&app, |s| {
+        let mut out = Vec::new();
+        for id in ids {
+            let before = s.item(id)?;
+            if before.dismissed != undo {
+                continue;
+            }
+            out.push(s.set_dismissed(id, !undo, now())?);
+            let kind = if undo {
+                "undo_not_interested"
+            } else {
+                "not_interested"
+            };
+            s.log(&event(kind, &before, &place))?;
+        }
+        Ok(out)
+    })?;
+    changed(&app);
+    Ok(items)
+}
+
 /// Where an action or impression happened: the list ("newest", or KI-32's
 /// "picked") and the item's position in it.
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -811,6 +899,8 @@ fn surface(place: &Place) -> Option<String> {
         .filter(|s| matches!(s.as_str(), "newest" | "picked" | "source"))
 }
 
+/// An event on an item. One in a story carries `data.story`, so ranking
+/// can learn per story (KI-94).
 fn event(kind: &str, item: &Item, place: &Place) -> Event {
     Event {
         at: now_ms(),
@@ -819,8 +909,18 @@ fn event(kind: &str, item: &Item, place: &Place) -> Event {
         source_id: Some(item.source_id),
         surface: surface(place),
         position: place.position.filter(|p| *p >= 0),
-        data: None,
+        data: item.story_id.map(|story| json!({ "story": story })),
     }
+}
+
+/// `data` for an event, keeping its `story`.
+fn with_data(mut event: Event, data: serde_json::Value) -> Event {
+    let mut merged = event.data.take().unwrap_or_else(|| json!({}));
+    if let (Some(into), Some(from)) = (merged.as_object_mut(), data.as_object()) {
+        into.extend(from.clone());
+    }
+    event.data = Some(merged);
+    event
 }
 
 #[derive(Serialize)]
@@ -941,7 +1041,7 @@ pub fn note_checked(
         }
         let item = s.set_note(id, note, now())?;
         if item.note != before.note {
-            let mut logged = event(
+            let logged = event(
                 if item.note.is_some() {
                     "note"
                 } else {
@@ -950,9 +1050,8 @@ pub fn note_checked(
                 &before,
                 &place,
             );
-            logged.data =
-                Some(json!({ "chars": item.note.as_deref().map_or(0, |n| n.chars().count()) }));
-            s.log(&logged)?;
+            let chars = item.note.as_deref().map_or(0, |n| n.chars().count());
+            s.log(&with_data(logged, json!({ "chars": chars })))?;
         }
         Ok(NoteWrite::Saved(item))
     })?;
@@ -1047,9 +1146,8 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
     }
     let saved = with(&app, |s| {
         let saved = s.set_saved(id, &created.path)?;
-        let mut logged = event("save", &item, &place);
-        logged.data = Some(json!({ "path": created.path }));
-        s.log(&logged)?;
+        let logged = event("save", &item, &place);
+        s.log(&with_data(logged, json!({ "path": created.path })))?;
         Ok(saved)
     })?;
     catalogue::mark_neighbours(&app);
