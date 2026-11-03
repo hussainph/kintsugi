@@ -3,7 +3,15 @@
 use super::{Feed, NewItem, Result, changed, now, with};
 use crate::AppHandle;
 use kintsugi_ingest::{Url, catalogue::Catalogue};
+use std::sync::atomic::Ordering;
 use tauri::Manager;
+
+pub(super) fn mark_neighbours(app: &AppHandle) {
+    app.state::<Feed>()
+        .neighbours_dirty
+        .store(true, Ordering::Relaxed);
+    super::wake(app);
+}
 
 pub(super) fn start(app: &AppHandle) {
     let app = app.clone();
@@ -12,9 +20,21 @@ pub(super) fn start(app: &AppHandle) {
         let Ok(_pass) = feed.cataloguing.try_lock() else {
             return;
         };
-        let _ = discover(&app).await;
-        let _ = super::neighbours::discover(&app);
-        if super::picked::prepare_catalogue(&app).is_ok() {
+        let queued = with(&app, |s| s.due_catalogues()).is_ok_and(|sources| !sources.is_empty());
+        let neighbours = feed.neighbours_dirty.swap(false, Ordering::Relaxed);
+        let release = with(&app, |s| s.catalogue_release_due(now())).unwrap_or(false);
+        if !queued && !neighbours && !release {
+            return;
+        }
+        if queued {
+            let _ = discover(&app).await;
+        }
+        if neighbours {
+            let _ = super::neighbours::discover(&app);
+        }
+        if with(&app, |s| s.catalogue_release_due(now())).unwrap_or(false)
+            && super::picked::prepare_catalogue(&app).is_ok()
+        {
             changed(&app);
         }
     });

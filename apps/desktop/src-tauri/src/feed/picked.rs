@@ -120,11 +120,18 @@ struct Candidates {
     catalogue: Vec<i64>,
     pending: Vec<i64>,
     neighbours: Vec<i64>,
+    release_due: bool,
 }
 
 /// Everything the ranker reads, including pending metadata for local scoring.
-fn world(app: &AppHandle) -> Result<(World, Candidates, Space, u64)> {
-    let (rows, sources) = with(app, |s| Ok((s.rank_rows()?, s.rank_sources()?)))?;
+fn world(app: &AppHandle, now: i64) -> Result<(World, Candidates, Space, u64)> {
+    let (rows, sources, release_due) = with(app, |s| {
+        Ok((
+            s.rank_rows()?,
+            s.rank_sources()?,
+            s.catalogue_release_due(now / 1000)?,
+        ))
+    })?;
     let root = crate::vault::current(app).ok();
     let vectors = app
         .state::<crate::search::Search>()
@@ -155,9 +162,15 @@ fn world(app: &AppHandle) -> Result<(World, Candidates, Space, u64)> {
     for (id, title, added) in sources {
         world.sources.insert(id, rank::Source { id, title, added });
     }
-    let mut candidates = Candidates::default();
+    let mut candidates = Candidates {
+        release_due,
+        ..Default::default()
+    };
     let mut saved: HashMap<String, i64> = HashMap::new();
     for row in rows {
+        if !row.needed_for_ranking(release_due) {
+            continue;
+        }
         let body = if row.text.is_empty() {
             row.summary.clone()
         } else {
@@ -179,7 +192,7 @@ fn world(app: &AppHandle) -> Result<(World, Candidates, Space, u64)> {
         if row.back_catalogue {
             candidates.catalogue.push(row.id);
         }
-        if row.catalogue_candidate {
+        if release_due && row.catalogue_candidate {
             candidates.pending.push(row.id);
         }
         if row.suggested {
@@ -255,13 +268,13 @@ fn ranked<T>(
     app: &AppHandle,
     f: impl FnOnce(&mut State, &World, &[i64], i64) -> Result<T>,
 ) -> Result<T> {
-    let (world, pool, space, clips) = world(app)?;
+    let now = now_ms();
+    let (world, pool, space, clips) = world(app, now)?;
     let ranking = &app.state::<super::Feed>().ranking;
     let mut slot = ranking
         .0
         .lock()
         .map_err(|_| "ranking is unavailable".to_string())?;
-    let now = now_ms();
     let fresh = match slot.as_mut() {
         Some(state) if state.space == space && state.clips == clips => {
             let events = with(app, |s| s.events_after(state.ranker.cursor))?;
@@ -302,7 +315,9 @@ fn ranked<T>(
         })
         .collect();
     let released = with(app, |s| {
-        s.release_catalogue(&order, now / 1000)?;
+        if pool.release_due {
+            s.release_catalogue(&order, now / 1000)?;
+        }
         s.catalogue_visible_ids()
     })?;
     let candidates = mixed_candidates(&state.ranker, &scoring, &pool.fresh, &released, now);
@@ -312,6 +327,9 @@ fn ranked<T>(
 /// Newest-first requests share the same durable daily admission decision as
 /// Picked for you. Call before reading Store::items, outside its store lock.
 pub(super) fn prepare_catalogue(app: &AppHandle) -> Result<()> {
+    if !with(app, |s| s.catalogue_release_due(now_ms() / 1000))? {
+        return Ok(());
+    }
     ranked(app, |_, _, _, _| Ok(()))
 }
 

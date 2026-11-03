@@ -26,6 +26,19 @@ pub struct RankRow {
     /// Pending metadata eligible for a durable daily release decision.
     pub catalogue_candidate: bool,
     pub suggested: bool,
+    /// User state or a human event, including an undone/ignored action.
+    pub has_signal: bool,
+}
+
+impl RankRow {
+    /// Dormant archive metadata needs neither vectors nor topics. Historical
+    /// training examples remain available even when hidden or quota-blocked.
+    pub fn needed_for_ranking(&self, release_due: bool) -> bool {
+        !self.back_catalogue
+            || self.visible
+            || (self.catalogue_candidate && release_due)
+            || self.has_signal
+    }
 }
 
 impl Store {
@@ -35,7 +48,10 @@ impl Store {
             .prepare(&format!(
                 "SELECT i.id, i.source_id, i.author, COALESCE(i.title, ''), i.url, COALESCE(i.summary, ''),
                    substr(COALESCE(i.content, ''), 1, 4000), length(COALESCE(i.content, '')), i.media, i.sort_at,
-                   {visible}, i.saved_path, i.back_catalogue, ({pending}), s.suggested
+                   {visible}, i.saved_path, i.back_catalogue, ({pending}), s.suggested,
+                   (i.liked_at IS NOT NULL OR i.note IS NOT NULL OR i.saved_path IS NOT NULL OR i.dismissed_at IS NOT NULL
+                     OR EXISTS (SELECT 1 FROM events e WHERE e.item_id = i.id AND e.kind <> 'kin_pick'
+                       AND COALESCE(e.surface, '') <> 'kin'))
                  FROM items i JOIN sources s ON s.id = i.source_id ORDER BY i.id",
                 visible = super::VISIBLE,
                 pending = super::catalogue::PENDING
@@ -59,6 +75,7 @@ impl Store {
                     back_catalogue: r.get(12)?,
                     catalogue_candidate: r.get(13)?,
                     suggested: r.get(14)?,
+                    has_signal: r.get(15)?,
                 })
             })
             .map_err(err)?;
