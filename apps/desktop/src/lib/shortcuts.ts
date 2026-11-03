@@ -129,6 +129,13 @@ export const SHORTCUTS = {
   refineAlternatives: { key: "Shift-Enter", label: "Keep as alternatives", scope: "refine", soon: "KI-87" },
   stash: { key: "Mod-Alt-x", label: "Stash", scope: "editor", soon: "KI-89" },
   unstash: { key: "Mod-Alt-v", label: "Put back from stash", scope: "editor", soon: "KI-89" },
+  // PROTOTYPE (KI-96): proposed keys for Kin's suggestions, checked here only.
+  suggestions: { key: "Mod-Alt-k", label: "Suggestions", scope: "writing", soon: "KI-96" },
+  nextSuggestion: { key: "Mod-'", label: "Next suggestion", scope: "writing", soon: "KI-96" },
+  previousSuggestion: { key: "Mod-Shift-'", label: "Previous suggestion", scope: "writing", soon: "KI-96" },
+  acceptSuggestion: { key: "Alt-Enter", label: "Accept", scope: "editor", soon: "KI-96" },
+  dismissSuggestion: { key: "Mod-Alt-Backspace", label: "Dismiss", scope: "editor", soon: "KI-96" },
+  discussSuggestion: { key: "Mod-Shift-j", label: "Discuss", scope: "writing", soon: "KI-96" },
 } as const satisfies Record<string, Shortcut>;
 
 export type ShortcutId = keyof typeof SHORTCUTS;

@@ -2,7 +2,7 @@ import { EditorView } from "@codemirror/view";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as pickFolder } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Palette, PaletteMode } from "@/components/Palette";
 import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
@@ -39,6 +39,7 @@ import { Publish } from "@/publish/Publish";
 import { openPublish } from "@/lib/blog";
 import { Picked } from "@/feed/Picked";
 import { Export } from "@/export/Export";
+import { PROTO, ProtoElsewhere, ProtoProvider, ProtoWriting } from "@/prototype-kin-surface/Surface";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
 import { canMove, type FolderStyle, type FolderStyles } from "@kintsugi/core/folders";
@@ -915,7 +916,9 @@ export default function App() {
   const tagsInUse = useMemo(() => vocabulary(docs.map((d) => d.tags)), [docs]);
   const vaultName = root?.split("/").filter(Boolean).pop() ?? "";
 
+  const Proto = PROTO ? ProtoProvider : Fragment;
   return (
+    <Proto>
     <SidebarProvider open={navOpen} onOpenChange={setNavOpen}>
       <Sidebar
         tree={tree}
@@ -958,9 +961,15 @@ export default function App() {
             drafts={docs.filter((d) => d.status !== "complete").map((d) => ({ path: d.path, title: d.title ?? d.name }))}
           />
         )}
-        {doc && !away && <IdeasBeside path={doc.path} text={text} onOpenDoc={openDoc} />}
+        {doc && !away && !PROTO && <IdeasBeside path={doc.path} text={text} onOpenDoc={openDoc} />}
         <div inert={away} className={away ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
-        {doc ? (
+        {PROTO ? (
+          <ProtoWriting
+            footer={(extra) => (
+              <DocumentBar mirror={null} tags={["kintsugi", "repair"]} vocabulary={tagsInUse} onTags={() => {}} status="draft" onToggleStatus={() => {}} onPublish={() => {}} onIdeas={() => {}} words={230} save="saved" onShortcuts={() => setCheatsheet(true)} extra={extra} />
+            )}
+          />
+        ) : doc ? (
           <Writing
             key={root}
             root={root}
@@ -985,7 +994,7 @@ export default function App() {
           </div>
         )}
         </div>
-        {doc && !away && (
+        {doc && !away && !PROTO && (
           <DocumentBar
             mirror={mirror}
             tags={docTags}
@@ -1036,8 +1045,9 @@ export default function App() {
       )}
       <AboutYou />
       <KinDev />
-      <KinChat />
+      {PROTO ? <ProtoElsewhere on={away || !!settingsAt} /> : <KinChat />}
       <Toaster position="bottom-center" />
     </SidebarProvider>
+    </Proto>
   );
 }

@@ -23,6 +23,7 @@ export function DocumentBar({
   words,
   save,
   onShortcuts,
+  extra,
 }: {
   /** The blog repository a read-only mirror comes from, if it is one. */
   mirror: string | null;
@@ -36,6 +37,8 @@ export function DocumentBar({
   words: number;
   save: Save;
   onShortcuts: () => void;
+  /** PROTOTYPE (KI-96): controls the Kin surface prototype adds. */
+  extra?: ReactNode;
 }) {
   return (
     <footer className="ki-document-bar ki-text-xs">
@@ -64,6 +67,7 @@ export function DocumentBar({
           </>
         )}
       </div>
+      {extra}
       <Toolbar.Root className="ki-document-bar-actions" aria-label="Document actions">
         {!mirror && status === "complete" && (
           <BarButton label="Publish…" tip="Publish to the blog" shortcut="publish" onClick={onPublish}>
