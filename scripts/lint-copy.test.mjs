@@ -130,6 +130,32 @@ test('over-explaining fails on the phone and the Mac, and only reports in packag
   assert.deepEqual(lintSource('docs/x.md', 'Tap to open the menu. This lets you pick one.\n'), []);
 });
 
+test('shortcut notes: keys belong to the chips and the cheatsheet, never to a note', () => {
+  const page = (body) => `export function P() {\n  return (\n    <div>\n${body}\n    </div>\n  );\n}\n`;
+  const rules = (body, path = 'apps/desktop/src/settings/x.tsx') => lintSource(path, page(body)).map((f) => f.rule);
+  // A note that prints keys, as JSX chips or as glyphs, is out.
+  assert.deepEqual(rules('<Row label="Text size" note={<><Shortcut id="textSmaller" /> <Shortcut id="textLarger" /> while writing, <Shortcut id="textReset" /> to reset</>} />'), ['shortcut-note']);
+  assert.deepEqual(rules('<Row label="Statement" note="Text you accept from ⌘K is written by AI." />'), ['shortcut-note']);
+  assert.deepEqual(rules('<Row label="Kin" note={<ShortcutHint keys="⌘↩" />} />'), ['shortcut-note']);
+  assert.deepEqual(rules('<span className="ki-settings-note">Press ⌘, for Settings.</span>'), ['shortcut-note']);
+  assert.deepEqual(rules('<Text style={styles.note}>Press ⌘, for Settings.</Text>', 'apps/mobile/src/components/x.tsx'), ['shortcut-note']);
+  // A fact the control can't show stays, and a chip beside a control is not a note.
+  assert.deepEqual(rules('<Row label="Monthly cap" note="US dollars. Subscriptions count as $0." />'), []);
+  assert.deepEqual(rules('<Row label="Phone access" note="Over Tailscale, while this Mac is awake and Kintsugi is open." />'), []);
+  assert.deepEqual(rules('<Button>Open another…<ShortcutHint id="openVault" side="end" /></Button>'), []);
+  assert.deepEqual(rules('<dl><dt>Open another folder</dt><dd><Kbd>⌘O</Kbd></dd></dl>'), []);
+});
+
+test('shortcut notes fail on both apps and only report in packages', () => {
+  const source = read('fail/shortcut-notes.tsx');
+  for (const path of ['apps/desktop/src/settings/x.tsx', 'apps/mobile/src/components/x.tsx']) {
+    const found = lintSource(path, source).filter((f) => f.rule === 'shortcut-note');
+    assert.ok(found.length > 0 && found.every((f) => !f.report), path);
+  }
+  const pkg = lintSource('packages/ui/src/x.tsx', source).filter((f) => f.rule === 'shortcut-note');
+  assert.ok(pkg.length > 0 && pkg.every((f) => f.report));
+});
+
 test('--report verbose is a flag, not a path', () => {
   const cli = new URL('./lint-copy.mjs', import.meta.url).pathname;
   const pass = new URL('pass/explaining.tsx', dir).pathname;

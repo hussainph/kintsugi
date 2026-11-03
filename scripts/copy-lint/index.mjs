@@ -23,12 +23,13 @@ export const SCOPE = [
 ];
 
 /**
- * Where the over-explaining rule only reports (`pnpm lint:copy --report
- * verbose`) and doesn't fail yet. It is on everywhere else: the phone app
- * and, since KI-61, the Mac app.
+ * Where the over-explaining and shortcut-note rules only report (`pnpm
+ * lint:copy --report verbose`) and don't fail yet. They are on everywhere
+ * else: the phone app and, since KI-61, the Mac app.
  */
 export const REPORT_ONLY = [
   [/^packages\//, 'over-explaining', 'shared packages have not been swept yet'],
+  [/^packages\//, 'shortcut-note', 'shared packages have not been swept yet'],
 ];
 export const reportOnly = (path, rule) => REPORT_ONLY.some(([re, r]) => r === rule && re.test(path));
 
@@ -98,9 +99,9 @@ export function lintSource(path, source) {
   const { texts, styles, explains = [] } = extract(path, source);
   const findings = [];
   for (const s of styles) findings.push({ file: path, line: s.line, rule: s.rule, detail: s.detail });
-  // Over-explaining is about UI strings, so TS/TSX only.
+  // Over-explaining and shortcut notes are about UI strings, so TS/TSX only.
   const ui = /\.tsx?$/.test(path);
-  if (ui) for (const e of explains) findings.push({ file: path, line: e.line, rule: 'over-explaining', detail: e.detail });
+  if (ui) for (const e of explains) findings.push({ file: path, line: e.line, rule: e.rule ?? 'over-explaining', detail: e.detail });
   for (const item of texts) {
     const found = checkText(item.text);
     if (ui) found.push(...checkExplaining(item.text, item.role ?? ''));

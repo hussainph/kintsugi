@@ -50,12 +50,12 @@ export function WebSettings() {
         <Row
           label="Web search and pages"
           htmlFor="web-tools"
-          note={enabled && settings && !settings.active ? "No search key yet. Kin can still read pages." : "Searches go to the provider below."}
+          note={enabled && settings && !settings.active ? "No search key yet. Kin can still read pages." : undefined}
         >
           <Switch id="web-tools" checked={enabled} disabled={busy || !settings} onCheckedChange={(on) => void run(() => web.setEnabled(on))} />
         </Row>
         {enabled && (
-          <Row label="Background helpers can use it" htmlFor="web-helpers" note="Such as the daily Ideas batch.">
+          <Row label="Background helpers can use it" htmlFor="web-helpers">
             <Switch
               id="web-helpers"
               checked={settings?.helpers ?? false}

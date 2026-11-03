@@ -2,7 +2,7 @@
 // TypeScript parser (syntax only, no type checking).
 import { createRequire } from 'node:module';
 import { checkStyleString, positiveSpacing } from './rules.mjs';
-import { HELPER_PROP, jsxRole, explainerElements } from './explain.mjs';
+import { HELPER_PROP, jsxRole, explainerElements, shortcutNotes } from './explain.mjs';
 
 const require = createRequire(import.meta.url);
 let ts;
@@ -246,6 +246,6 @@ export function extractTs(file, source) {
     t.forEachChild(node, visit);
   };
   visit(sf);
-  const explains = explainerElements(t, sf).map((e) => ({ line: lineOf(e.pos), detail: e.detail }));
+  const explains = [...explainerElements(t, sf), ...shortcutNotes(t, sf)].map((e) => ({ line: lineOf(e.pos), rule: e.rule ?? 'over-explaining', detail: e.detail }));
   return { texts, styles, explains };
 }
