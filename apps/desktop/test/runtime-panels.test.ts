@@ -46,7 +46,7 @@ const editorWidth = async () => (await page.locator(".cm-editor").boundingBox())
 
 async function openDoc(title: string) {
   await nav().getByRole("button", { name: new RegExp(`^${title}`) }).click();
-  await page.locator(".cm-content").waitFor();
+  await page.locator(".cm-line", { hasText: `# ${title}` }).waitFor();
 }
 
 /** Clicks into a paragraph and gives the margin's search time to settle. */
@@ -57,7 +57,7 @@ async function cursorIn(text: string) {
 
 test("the margin stays open, then closed, as the cursor moves between paragraphs", { timeout: 120_000 }, async () => {
   await openDoc("Friction");
-  await cursorIn("Repair is a kind");
+  await cursorIn("kintsugi makes the repair");
   await margin().getByRole("heading", { name: "Along this paragraph" }).waitFor();
   const width = await editorWidth();
   await shot("01-margin-related");
@@ -74,14 +74,14 @@ test("the margin stays open, then closed, as the cursor moves between paragraphs
   assert.equal(await editorWidth(), width);
   await shot("02-margin-empty");
 
-  await cursorIn("Repair is a kind");
+  await cursorIn("kintsugi makes the repair");
   assert.ok(await margin().isVisible());
 
   // Closed by him, it stays closed wherever the cursor goes.
   await page.getByRole("button", { name: "Hide reference margin" }).click();
   await margin().waitFor({ state: "detached" });
   const closed = await editorWidth();
-  for (const text of ["Zzq blorp", "Repair is a kind", "Zzq blorp"]) {
+  for (const text of ["Zzq blorp", "kintsugi makes the repair", "Zzq blorp"]) {
     await cursorIn(text);
     assert.equal(await margin().count(), 0, `closed in "${text}"`);
     assert.equal(await editorWidth(), closed);
@@ -93,7 +93,7 @@ test("the margin stays open, then closed, as the cursor moves between paragraphs
   assert.equal(await margin().count(), 0, "still closed in another document");
   await page.reload();
   await openDoc("Friction");
-  await cursorIn("Repair is a kind");
+  await cursorIn("kintsugi makes the repair");
   assert.equal(await margin().count(), 0, "still closed after a reload");
 
   // And open again the same way.

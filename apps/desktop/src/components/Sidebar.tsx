@@ -281,7 +281,7 @@ export function Sidebar(props: Props) {
               <TooltipTrigger asChild>
                 <SidebarMenuButton size="sm" className="relative size-8! justify-center!" onClick={props.onPhone} aria-label={phoneLabel}>
                   <Smartphone />
-                  <span className="ki-phone-dot" data-phone-on={props.phoneOn} />
+                  <span className="ki-phone-dot" data-phone-on={props.phoneOn} aria-hidden="true" />
                 </SidebarMenuButton>
               </TooltipTrigger>
               <TooltipContent side={collapsed ? "right" : "top"}>{phoneLabel}</TooltipContent>
