@@ -227,6 +227,10 @@ fn web_query(said: &str) -> String {
         }
     }
     let query = query.trim_matches(|c: char| !c.is_alphanumeric());
+    let query = ["for ", "about "]
+        .iter()
+        .find_map(|lead| query.strip_prefix(lead))
+        .unwrap_or(query);
     let query: String = query.chars().take(80).collect();
     if query.is_empty() { "kintsugi".into() } else { query }
 }

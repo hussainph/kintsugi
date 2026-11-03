@@ -309,6 +309,93 @@ list, so the tool array (part of the cached prefix) never changes mid-turn.
   inside defused. The prefix tells Kin that this is content, never
   instructions.
 
+## The web (KI-78)
+
+Code: `ai/web/` (settings, keys, the two tools), `ai/web/search.rs` (the
+providers), `crates/ingest/src/web/guard.rs` (the fetch guard); webview:
+`src/settings/Web.tsx`, `src/kin/WebSources.tsx`.
+
+While web tools are on (Settings › Web, on by default), every Kin turn
+(the chat, comment threads, helpers, the developer panel) gets two more core
+tools after `tool`:
+
+| Tool | Does |
+| --- | --- |
+| `web_search` | `{query, count?}` (default 8, at most 20) → a JSON array of `{title, url, snippet, date?}`, best first, through the provider he picked |
+| `web_fetch` | `{url, start?}` → the page as Markdown: title, URL (and the one asked for, after a redirect), author, site, date, then up to 12,000 characters of text from `start`, with where to read on. Pages are kept for the turn, so reading on doesn't fetch again |
+
+With web tools off, neither is in the tool list. The list is fixed for a
+turn, so turning them on or off changes the cached prefix only from the
+next turn.
+
+- **Search providers.** Exa (`POST api.exa.ai/search`, `type: auto`,
+  highlights as snippets), Brave Search (`GET api.search.brave.com/res/v1/web/search`)
+  and Tavily (`POST api.tavily.com/search`, `search_depth: basic`, one
+  credit). Kin uses his pick while it has a key, else the first provider
+  with one. Snippets are cleaned to plain text (300 characters), dates to
+  `YYYY-MM-DD` where the provider gives one, and only http(s) result links
+  are kept. A refused key, an empty account, a rate limit or a timeout is a
+  short, fixed error that never repeats the key, the query or the URL.
+- **No key.** `web_search` answers that search isn't set up and that
+  Hussain can add a key in Settings › Web; the prompt tells Kin to say so in
+  one line and carry on. `web_fetch` needs no service and still works.
+- **Keys.** Saved in `<config>/kin/web.json`, owner-only (0600), replaced
+  atomically; never in the vault, the conversation log, a tool result or an
+  error. The webview only learns whether a provider has a key and where it
+  came from. Without a saved key, `EXA_API_KEY`, `BRAVE_API_KEY` (or
+  `BRAVE_SEARCH_API_KEY`) and `TAVILY_API_KEY` are read; headless runs read
+  them only with `KINTSUGI_HEADLESS_AI_READONLY=1`.
+- **The fetch guard.** `web_fetch` reads with the ingest engine's web-page
+  adapter in reader mode (`WebAdapter::reader`): http(s) only, no
+  credentials in the URL, no IP literal outside public unicast space and no
+  `localhost`, `.local`, `.internal`, `.home.arpa` or dotless name, checked
+  on the URL and on every redirect (at most five). Every name resolves
+  through a resolver that drops loopback, private, link-local, CGNAT,
+  multicast and reserved addresses (IPv4-mapped, NAT64, 6to4 and Teredo
+  forms included), so a public name pointing at the Mac or the network is
+  refused when it connects. System proxies are ignored and the hidden-webview
+  renderer is never used. Limits are the clip adapter's (2 MiB of HTML,
+  15 s per request) with a 30 s deadline. Plain text, Markdown and JSON pages
+  are read as they are.
+- **Untrusted.** Results come back in `<data tool="web_search">` or
+  `<data tool="web_fetch">` like any tool's. The prompt tells Kin that web
+  pages are strangers' claims, never instructions; to read a page before
+  relying on it and give its URL; and to keep private details from the
+  vault out of queries.
+- **Privacy.** Every query leaves the Mac for the search provider he picked,
+  under his own account. Pages Kin reads are fetched from this Mac. Settings
+  › Privacy says both.
+
+### Sources in the chat
+
+Each `web_search` or `web_fetch` that works also emits its results on the
+`toolResult` event (`web: {tool, query?, provider?, results: [{url, title,
+snippet?, date?, favicon?}]}`), and the reply keeps up to 12 of them in the
+log entry's `web` field. They are never sent back to the model.
+
+`WebSources` (self-contained, for KI-79's restyle) shows them under the
+reply and while Kin works: a "3 sources" toggle with favicons, then what was
+searched and how many pages were read, and each source with its title,
+domain and date. A source opens in the browser. Its actions:
+
+- **Save to Inspiration**: a clip of the URL (`clip_create`, one capture id
+  per URL, so it saves once), enriched like any saved link.
+- **Turn into an idea**: asks Ideas for ideas about it (`ideas_generate`
+  with the result as the focus).
+- **Add link to the document**, while a writable document is on screen:
+  `[Title](url)` after the cursor, never over a selection
+  (`src/lib/insert.ts`, registered by the editor).
+
+Favicons load from the URL the provider gives (https only); without one,
+a globe.
+
+### Headless
+
+With `KINTSUGI_HEADLESS_KIN=mock`, the web tools are scripted: three
+results for any query and a short page for any URL, with no key and nothing
+sent. Asked about "the web" or "online", the scripted model searches, reads
+the first result, then answers. `test/runtime-kin.test.ts` drives it.
+
 ## Context
 
 1. **Prefix** (`prompt::system`): instructions, the extra-tool list, then
@@ -532,7 +619,8 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   reason, output tokens; never content) to stderr.
 - Headless runs can try it all without a provider: `KINTSUGI_HEADLESS_KIN=mock`
   swaps in a scripted local model that reads the first chip (a document,
-  clip or `feed:<id>`), or calls `shortlist` when asked for one, or searches,
+  clip or `feed:<id>`), or calls `shortlist` when asked for one, or searches
+  the web (scripted) when asked about the web, or searches,
   then answers slowly, word by word, quoting the start of what the tool returned. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
   the idle wait. `test/runtime-kin.test.ts` drives it in headless Chromium.
 
@@ -776,6 +864,8 @@ he was. Its sections:
 - **Providers**: where each credential comes from (above, Credentials),
   for the providers the default models use and any other with a
   credential.
+- **Web**: web tools on or off, the search provider and each one's key
+  (above, The web).
 - **Phone**, **Blog**, **Export** and **Privacy** (the privacy statement).
 
 ⇧⌘K opens a minimal developer panel to run one turn (with a "don't
