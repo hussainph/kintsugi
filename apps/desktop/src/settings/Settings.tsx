@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ArrowLeft, Brain, FileExport, Globe, Key, Lock, Search, Settings as SettingsIcon, Smartphone } from "@kintsugi/ui/icons";
+import { ArrowLeft, Brain, FileExport, Globe, Key, Lock, Search, Settings as SettingsIcon, SlidersHorizontal, Smartphone } from "@kintsugi/ui/icons";
 import {
   Sidebar,
   SidebarContent,
@@ -14,6 +14,7 @@ import type { PhoneStatus } from "@/lib/phone";
 import { BlogSettings } from "./Blog";
 import { ExportSettings } from "./Export";
 import { GeneralSettings } from "./General";
+import { AppearanceSettings } from "./Appearance";
 import { ModelSettings } from "./Models";
 import { PhoneSettings } from "./Phone";
 import { PrivacySettings } from "./Privacy";
@@ -25,6 +26,7 @@ import { ShortcutHint } from "@/components/Shortcuts";
 
 export const SECTIONS: { id: SettingsSection; label: string; icon: typeof SettingsIcon }[] = [
   { id: "general", label: "General", icon: SettingsIcon },
+  { id: "appearance", label: "Appearance", icon: SlidersHorizontal },
   { id: "kin", label: "Kin and models", icon: Brain },
   { id: "providers", label: "Providers", icon: Key },
   { id: "web", label: "Web", icon: Search },
@@ -109,6 +111,7 @@ export function Settings(props: Props) {
       <main ref={main} className="ki-settings-main inspiration-scroll">
         <div className="ki-settings-drag" data-tauri-drag-region />
         {section === "general" && <GeneralSettings root={props.root} onOpenVault={props.onOpenVault} />}
+        {section === "appearance" && <AppearanceSettings />}
         {section === "kin" && <ModelSettings />}
         {section === "providers" && <ProviderSettings />}
         {section === "web" && <WebSettings />}
