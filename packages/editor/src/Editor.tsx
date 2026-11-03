@@ -1,4 +1,4 @@
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, toggleBlockComment, toggleComment } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { syntaxHighlighting } from "@codemirror/language";
@@ -14,6 +14,7 @@ import { commandExtensions, refreshCommands, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
 import { commentExtensions, refreshComments, type Comments } from "./comments";
 import { heldPassages } from "./passages";
+import { dimExtensions } from "./dim";
 
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
@@ -22,6 +23,10 @@ export { formatKeymap, formatShortcuts, setHeading, toggleLink, toggleList, togg
 export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPlace, Comments, CommentThread } from "./comments";
 export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
 export { heldPassage, holdPassage, releasePassage, type Passage } from "./passages";
+export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
+
+/** CodeMirror's comment toggles write `<!-- -->` even in MDX; ⌘/ dims instead (KI-88). */
+const baseKeymap = defaultKeymap.filter((binding) => binding.run !== toggleComment && binding.run !== toggleBlockComment);
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -76,12 +81,13 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         drawSelection(),
         EditorView.lineWrapping,
         search({ top: true }),
-        keymap.of([...formatKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+        keymap.of([...formatKeymap, ...baseKeymap, ...historyKeymap, ...searchKeymap]),
         yamlFrontmatter({ content: markdown({ base: markdownLanguage, codeLanguages: languages }) }),
         syntaxHighlighting(highlight),
         frontmatterLines,
         spacingLines,
         underlines,
+        dimExtensions(docPath),
         theme,
         placeholder("Start writing…"),
         EditorState.readOnly.of(readOnly),

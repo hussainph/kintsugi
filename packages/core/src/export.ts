@@ -15,6 +15,7 @@ import {
   type Check, type ClipInfo, type Edit, type ImageRef, type PublishedDoc,
 } from "./publish.ts";
 import type { ReferenceSource } from "./references.ts";
+import { cutRange } from "./dim.ts";
 import { renderHtml } from "./export-html.ts";
 import { renderText } from "./export-text.ts";
 import { renderTypst } from "./export-typst.ts";
@@ -91,8 +92,8 @@ export function preparePiece(input: ExportInput): Piece {
     const lineEnd = original.indexOf("\n", start);
     edits.push({ from: 0, to: lineEnd === -1 ? original.length : lineEnd + 1, insert: "" });
   }
-  // HTML comments are notes to self.
-  for (const span of comments) edits.push({ from: span.from, to: span.to, insert: "" });
+  // Dimmed text and other comments are notes to self.
+  for (const span of comments) edits.push({ ...cutRange(original, span), insert: "" });
 
   // Images: local ones become assets once the backend has found them.
   const imageRefs: ImageRef[] = [];
@@ -171,8 +172,8 @@ const sourceItem = (clip: ClipInfo): SourceItem => ({
 });
 
 /** MDX's code (imports, exports, components) and Obsidian-only marks have no
- *  meaning outside the blog: imports go, components go with a warning,
- *  `%%comments%%` go and `==highlights==` keep their words. */
+ *  meaning outside the blog: imports go, components go with a warning and
+ *  `==highlights==` keep their words. Comments are already gone. */
 function withoutMdx(markdown: string, say: (level: Check["level"], message: string) => void): string {
   const { code } = protectedSpans(markdown);
   const inCode = (at: number) => code.some((s) => at >= s.from && at < s.to);
@@ -195,7 +196,7 @@ function withoutMdx(markdown: string, say: (level: Check["level"], message: stri
       if (!/\/>\s*$|<\/[A-Z][\w.]*>\s*$/.test(line)) island = tag[1];
       continue;
     }
-    out.push(line.replace(/%%[\s\S]*?%%/g, "").replace(/==([^=\s][^=]*?)==/g, "$1"));
+    out.push(line.replace(/==([^=\s][^=]*?)==/g, "$1"));
   }
   for (const name of components) say("warning", `<${name}> is an MDX component; it only renders on the blog, so it's left out.`);
   return out.join("\n");

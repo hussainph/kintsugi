@@ -15,7 +15,8 @@
     "./books": "./src/books.ts",
     "./export": "./src/export.ts",
     "./tags": "./src/tags.ts",
-    "./folders": "./src/folders.ts"
+    "./folders": "./src/folders.ts",
+    "./dim": "./src/dim.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.ts",

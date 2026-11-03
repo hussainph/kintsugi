@@ -1,5 +1,7 @@
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { EditorSelection, RangeSetBuilder, type ChangeSpec, type EditorState, type SelectionRange, type StateCommand } from "@codemirror/state";
+import { MARKER } from "./markers.ts";
+import { toggleDim } from "./dim.ts";
 import { Decoration, type DecorationSet, type EditorView, type KeyBinding, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
 /** Formatting shortcuts (KI-65): inline marks toggle on a selection or at
@@ -22,8 +24,7 @@ const MARKS: Record<Mark, MarkSyntax> = {
 /** A formatted run: `from`/`to` include its marks, `inner` is the text. */
 type Span = { from: number; to: number; innerFrom: number; innerTo: number };
 
-/** The block marker a line starts with: heading, to-do, bullet, number or quote. */
-export const MARKER = /^(?:#{1,6}\s+|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d{1,9}[.)]\s+|>\s?(?:\[![A-Za-z]+\]\s*)?)/;
+export { MARKER } from "./markers.ts";
 
 function tree(state: EditorState, upTo: number) {
   return ensureSyntaxTree(state, upTo, 50) ?? syntaxTree(state);
@@ -274,6 +275,7 @@ const FORMATS: { key: string; label: string; run: StateCommand }[] = [
   { key: "Mod-Shift-8", label: "Bulleted list", run: toggleList("bullets") },
   { key: "Mod-Shift-9", label: "To-do list", run: toggleList("todo") },
   { key: "Mod-Shift-.", label: "Quote", run: toggleList("quote") },
+  { key: "Mod-/", label: "Dim", run: toggleDim },
 ];
 
 export const formatKeymap: KeyBinding[] = FORMATS.map(({ key, run }) => ({ key, run, preventDefault: true }));

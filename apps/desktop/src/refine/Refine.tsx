@@ -1,10 +1,10 @@
 import { EditorView } from "@codemirror/view";
-import { heldPassage, holdPassage, releasePassage } from "@kintsugi/editor/Editor";
+import { heldPassage, holdPassage, isDimmed, releasePassage, toggleDimRange } from "@kintsugi/editor/Editor";
 import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandMeta } from "@kintsugi/ui/components/command";
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandMeta, CommandShortcut } from "@kintsugi/ui/components/command";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@kintsugi/ui/components/popover";
 import { Cancelled, Message, stream } from "@/lib/ai";
@@ -12,6 +12,7 @@ import { discuss } from "@/lib/chat";
 import { beginComment, reviewDraft } from "@/comments/api";
 import { memory, type Skill } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
+import { keysOf } from "@/lib/keys";
 import { modelFor } from "@/lib/models";
 import { passageChips } from "@/kin/screen";
 import { Action, ACTIONS, ask, choices, clean } from "./prompts";
@@ -94,6 +95,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
   const words = original.trim().split(/\s+/).length;
   // A read-only mirror (KI-9) keeps the actions that write nothing.
   const locked = view.state.readOnly;
+  const dimmed = isDimmed(view.state, from, to);
   const actions = ACTIONS.filter((a) => a.shape !== "choices" || words <= 4);
 
   const run = async (next: Action, retry = false) => {
@@ -249,6 +251,16 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                 </CommandGroup>
               )}
               {!locked && <CommandGroup heading="Edit">
+                {/* Writes the passage's comment markers; no model involved (KI-88). */}
+                <CommandItem value={dimmed ? "Undim" : "Dim"} onSelect={() => {
+                  const at = here();
+                  if (!at) return;
+                  toggleDimRange(view, at.from, at.to);
+                  onClose();
+                }}>
+                  {dimmed ? "Undim" : "Dim"}
+                  <CommandShortcut>{keysOf("Mod-/")}</CommandShortcut>
+                </CommandItem>
                 {actions.map((a) => (
                   <CommandItem key={a.id} value={a.label} onSelect={() => run(a)}>
                     {a.label}

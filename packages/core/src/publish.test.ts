@@ -70,7 +70,7 @@ test("turns wikilinks into blog links and unpublished targets into plain text", 
   const warnings = levels(plan, "warning");
   assert.ok(warnings.some((m) => m.startsWith("[[Repair is a kind of attention]]") && m.includes("not published")));
   assert.ok(warnings.some((m) => m.startsWith("[[nowhere-yet]]") && m.includes("not found")));
-  assert.ok(levels(plan, "note").some((m) => m.includes("HTML comment")));
+  assert.ok(levels(plan, "note").some((m) => m.includes("dimmed passage")));
 });
 
 test("a draft, a mirror and an untitled essay can't be written", () => {
@@ -158,4 +158,16 @@ test("helpers: slugs, tags and image candidates", () => {
   assert.deepEqual(blogTags(["#Design", "design", "!!"]), { tags: ["design"], changed: ["#Design → design", "!! (dropped)"] });
   assert.deepEqual(imageCandidates("/media/a%20b.png", "posts/x.md"), ["media/a b.png"]);
   assert.deepEqual(imageCandidates("../../../escape.png", "posts/x.md"), []);
+});
+
+test("dimmed text in every comment form is left out without a warning", () => {
+  const text = `---\ntitle: "Dimmed"\nstatus: complete\n---\n\nKeep this. {/* not this */} And this.\n\n<!-- Not this paragraph. -->\n\n- one\n{/* - not this item */}\n- two\n\nAlso %%not this%% here.\n`;
+  const plan = planPublish(base(text, { path: "posts/dimmed.mdx", check: checked() }));
+  assert.ok(!/not this|Not this/.test(plan.body), plan.body);
+  assert.ok(plan.body.includes("Keep this.  And this.") && plan.body.includes("- one\n- two") && plan.body.includes("Also  here."), plan.body);
+  assert.deepEqual(levels(plan, "warning"), []);
+  assert.ok(levels(plan, "note").some((m) => m.includes("4 dimmed passages were left out")));
+  assert.equal(plan.ready, true);
+  // An unmatched %% is still typed text on the blog.
+  assert.ok(levels(planPublish(base(text.replace("Keep this.", "100%% sure."), { check: checked() })), "warning").some((m) => m.includes("%%")));
 });
