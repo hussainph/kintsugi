@@ -75,13 +75,15 @@ async function selected(name: Section) {
 async function font(element: Locator, token: "--font-editorial" | "--font-ui") {
   const { actual, expected } = await element.evaluate((el, token) => {
     const probe = document.createElement("span");
-    probe.style.fontFamily = `var(${token})`;
+    probe.style.fontFamily = getComputedStyle(el).getPropertyValue(token);
     probe.style.display = "none";
-    el.append(probe);
+    // Void elements (notably inputs) cannot give a child a computed style.
+    el.parentElement!.append(probe);
     const expected = getComputedStyle(probe).fontFamily;
     probe.remove();
     return { actual: getComputedStyle(el).fontFamily, expected };
   }, token);
+  assert.ok(expected, `${token} resolves to a family`);
   assert.equal(actual, expected, `${await element.textContent()} uses ${token}`);
 }
 
@@ -283,6 +285,13 @@ test("the overlay preserves the document and the Settings section that launched 
 });
 
 test("a small window keeps the sidebar and Close visible while detail scrolls", { timeout: 120_000 }, async () => {
+  // Enough real journal content to scroll, independent of earlier tests.
+  await page.evaluate(async () => {
+    const { invoke } = (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__;
+    const entries = Array.from({ length: 8 }, (_, i) => `Scroll check ${i + 1}`);
+    await invoke("kin_memory_edit", { file: "notes", edits: entries.map((text) => ({ op: "add", text })) });
+    await invoke("kin_memory_edit", { file: "notes", edits: entries.map((old) => ({ op: "remove", old })) });
+  });
   await footerAbout().click();
   await selected("You");
   await page.setViewportSize({ width: 640, height: 420 });
