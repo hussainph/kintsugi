@@ -17,7 +17,7 @@ import { commentExtensions, refreshComments, type Comments } from "./comments";
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
 export { paragraphNear, paragraphRange } from "./references";
-export { formatKeymap, setHeading, toggleLink, toggleList, toggleMark, type ListKind, type Mark } from "./format";
+export { formatKeymap, formatShortcuts, setHeading, toggleLink, toggleList, toggleMark, type ListKind, type Mark } from "./format";
 export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPlace, Comments, CommentThread } from "./comments";
 export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
 

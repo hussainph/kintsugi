@@ -1,9 +1,9 @@
 import { Button } from "@kintsugi/ui/components/button";
-import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Minus, Plus } from "@kintsugi/ui/icons";
 import { setTextSize, stepSize, TEXT_SIZES, useTextSize } from "@/lib/textSize";
 import { Group, Page, Row } from "./parts";
 import { OptionalTools } from "./OptionalTools";
+import { Shortcut, ShortcutHint } from "@/components/Shortcuts";
 
 type Props = {
   /** The open vault's folder. */
@@ -18,13 +18,13 @@ export function GeneralSettings({ root, onOpenVault }: Props) {
     <Page title="General">
       <Group>
         <Row label="Vault" note={root && <span className="ki-data">{root}</span>}>
-          <Button size="sm" variant="outline" onClick={onOpenVault}>
-            Open another… <Kbd>⇧⌘O</Kbd>
+          <Button size="sm" variant="outline" className="relative" onClick={onOpenVault}>
+            Open another…<ShortcutHint id="openVault" side="end" />
           </Button>
         </Row>
       </Group>
       <Group title="Writing">
-        <Row label="Text size" note="⌘− and ⌘= while writing, ⌘0 to reset">
+        <Row label="Text size" note={<><Shortcut id="textSmaller" /> <Shortcut id="textLarger" /> while writing, <Shortcut id="textReset" /> to reset</>}>
           <div className="ki-settings-inline" role="group" aria-label="Text size">
             <Button size="icon-sm" variant="outline" aria-label="Smaller text" disabled={size === TEXT_SIZES[0]} onClick={() => setTextSize(stepSize(size, -1))}>
               <Minus />

@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { chat, type ChatEvent, type Entry, type Job, jobs, onDiscuss, onOpenKin, onScreenChanged, type Page, screenChips, type Topic } from "@/lib/chat";
 import { type Chip, chipKey, mergeChips, throttle } from "@/lib/chips";
 import type { WebCall } from "@/lib/web";
+import { matches } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
 
 const EMPTY: Page = { entries: [], threads: [], pending: [], running: null };
 export const ACTIVE: Job["status"][] = ["queued", "running", "waiting"];
@@ -190,7 +192,7 @@ export function useKinChat() {
   // ⌘J, the avatar, openKin() and discuss() all open the one chat.
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === "j") {
+      if (matches(e, SHORTCUTS.kin.key)) {
         e.preventDefault();
         e.stopPropagation();
         if (openRef.current) hide();

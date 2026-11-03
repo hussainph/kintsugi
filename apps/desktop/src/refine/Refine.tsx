@@ -290,7 +290,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
             </div>
             <div className="ki-refine-footer ki-divider-top ki-text-xs ki-muted flex flex-wrap items-center gap-x-[var(--space-s)] gap-y-[var(--space-xxs)]">
               <span>
-                <Kbd>↵</Kbd> accept
+                <Kbd>↩</Kbd> accept
               </span>
               <span>
                 <Kbd>⌘R</Kbd> another
@@ -305,7 +305,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                 <Kbd>⌫</Kbd> back
               </span>
               <span className="ml-auto">
-                <Kbd>esc</Kbd> discard
+                <Kbd>Esc</Kbd> discard
               </span>
             </div>
           </div>
@@ -364,9 +364,9 @@ function Supporting({ found, onReference, onOpen, onBack }: {
         )}
       </CommandList>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t px-3 py-2 text-xs text-muted-foreground">
-        <span><Kbd>↵</Kbd> {onReference ? "add its link after the passage" : "open it"}</span>
+        <span><Kbd>↩</Kbd> {onReference ? "add its link after the passage" : "open it"}</span>
         <span><Kbd>⌫</Kbd> back</span>
-        <span className="ml-auto"><Kbd>esc</Kbd> close</span>
+        <span className="ml-auto"><Kbd>Esc</Kbd> close</span>
       </div>
     </Command>
   );

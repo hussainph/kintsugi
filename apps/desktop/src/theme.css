@@ -272,6 +272,25 @@
 .ki-edit-status svg { width: 1em; height: 1em; }
 .ki-edit[data-applied] .ki-edit-body { opacity: 0.7; }
 
+/* Hold ⌘: the key chips beside their controls and the list of what can be
+   pressed here (ShortcutsOverlay sets the root's data-shortcuts). */
+.ki-shortcut-hint { display: none; }
+:root[data-shortcuts] .ki-shortcut-hint { display: inline-flex; animation: ki-shortcut-in var(--motion-duration) var(--motion-easing); }
+.ki-shortcut-hint[data-side='inline'] { margin-inline-start: auto; }
+.ki-status-chip .ki-shortcut-hint[data-side='inline'] { margin-inline-start: var(--space-xxs); }
+/* The rail has no room beside its icons; the list still has them. */
+:root[data-shortcuts] [data-collapsible='icon'] .ki-shortcut-hint[data-side='inline'] { display: none; }
+.ki-shortcut-hint:is([data-side='above'], [data-side='below'], [data-side='end']) { position: absolute; z-index: 20; box-shadow: var(--border-shadow-s), var(--shadow-s); background: var(--neutral-1); }
+.ki-shortcut-hint[data-side='above'] { bottom: calc(100% + var(--space-xxs)); left: 50%; translate: -50% 0; }
+.ki-shortcut-hint[data-side='below'] { top: calc(100% + var(--space-xxs)); left: 50%; translate: -50% 0; }
+.ki-shortcut-hint[data-side='end'] { left: calc(100% + var(--space-xs)); top: 50%; translate: 0 -50%; }
+@keyframes ki-shortcut-in { from { opacity: 0; } }
+.ki-shortcuts-panel { position: fixed; z-index: 60; left: 50%; top: 50%; translate: -50% -50%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(200px, max-content); gap: var(--space-l); width: max-content; max-width: calc(100vw - var(--space-xl)); max-height: calc(100vh - var(--space-xl) * 4); overflow: auto; padding: var(--space-m); border-radius: var(--radius-m); background: var(--neutral-1); box-shadow: var(--border-shadow-s), var(--shadow-l); color: var(--neutral-10); pointer-events: none; animation: ki-shortcut-in var(--motion-duration) var(--motion-easing); }
+.ki-shortcuts-heading { margin: 0 0 var(--space-xs); font-family: var(--font-ui); font-weight: var(--weight-ui-medium); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); color: var(--neutral-10); }
+.ki-shortcuts-group dl { display: grid; gap: var(--space-xxs); margin: 0; }
+.ki-shortcuts-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-m); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); color: var(--neutral-8); }
+.ki-shortcuts-row dd { display: flex; gap: var(--space-xxs); margin: 0; }
+
 /* The headless transport uses a real native <dialog>, inside the theme scope,
    rather than an unobservable browser prompt. Keep its keyboard contract. */
 [data-headless-dialog] { margin: auto; min-width: min(360px, calc(100vw - var(--space-xl))); max-width: min(560px, calc(100vw - var(--space-xl))); max-height: calc(100vh - var(--space-xl)); overflow: auto; padding: var(--space-l); border: 0; border-radius: var(--radius-m); color: var(--neutral-10); background: var(--neutral-1); box-shadow: var(--border-shadow-s), var(--shadow-l); font-family: var(--font-ui); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); font-weight: var(--weight-ui-regular); text-wrap: pretty; }
@@ -290,4 +309,5 @@
   .ki-kin-launcher-dot-busy { animation: none; }
   .ki-kin-helper-row[data-job="running"] .ki-kin-helper-icon { animation-duration: 2.4s; }
   .ki-clip-card:active, .ki-refine-choice:active { transform: none; }
+  :root[data-shortcuts] .ki-shortcut-hint, .ki-shortcuts-panel { animation: none; }
 }

@@ -13,6 +13,8 @@ import { openSettings } from "@/lib/kin";
 import { usePieceSources } from "@/export/sources";
 import { Preview } from "./Preview";
 import "./publish.css";
+import { matches } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
 
 type Props = {
   root: string | null;
@@ -98,7 +100,7 @@ export function Publish({ root, path, viewRef, flush }: Props) {
   useEffect(() => {
     const onEvent = () => open();
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.shiftKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === "p" && path) {
+      if (matches(e, SHORTCUTS.publish.key) && path) {
         e.preventDefault();
         e.stopPropagation();
         open();

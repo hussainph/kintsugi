@@ -6,6 +6,9 @@ import { snippet } from "@/lib/chips";
 import { KinAvatar } from "./Avatar";
 import { KinComposer, KinHelpers, KinLog, KinSummary } from "./Conversation";
 import { useKinChat, type KinChatState } from "./useKinChat";
+import { keysOf } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
+import { ShortcutHint } from "@/components/Shortcuts";
 
 const EVERYTHING = "\u0000everything";
 
@@ -63,12 +66,13 @@ export function KinChat() {
       <button
         type="button"
         aria-label={open ? "Hide Kin" : "Ask Kin"}
-        title="Kin (⌘J)"
+        title={`Kin (${keysOf(SHORTCUTS.kin.key)})`}
         aria-expanded={open}
         onClick={() => (open ? hide() : show())}
         className="ki-kin-launcher"
       >
         <KinAvatar talking={talking} />
+        <ShortcutHint id="kin" side="above" />
         {(unread || busy) && <span aria-hidden data-kin-unread={unread || undefined} className={cn("ki-kin-launcher-dot", !unread && "ki-kin-launcher-dot-busy")} />}
       </button>
 
@@ -88,7 +92,7 @@ export function KinChat() {
           <header className="ki-kin-header">
             <KinAvatar className="ki-kin-header-avatar" talking={talking} />
             <ThreadMenu chat={chat} />
-            <Button variant="ghost" size="icon-sm" aria-label="Hide Kin" title="Hide (⌘J)" onClick={hide}>
+            <Button variant="ghost" size="icon-sm" aria-label="Hide Kin" title={`Hide (${keysOf(SHORTCUTS.kin.key)})`} onClick={hide}>
               <Minus />
             </Button>
           </header>

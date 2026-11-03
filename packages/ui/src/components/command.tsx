@@ -188,12 +188,13 @@ function CommandMeta({
   )
 }
 
+/** A key chip, the same as `Kbd` (see `.ui-menu-shortcut`). */
 function CommandShortcut({
   className,
   ...props
-}: React.ComponentProps<"span">) {
+}: React.ComponentProps<"kbd">) {
   return (
-    <span
+    <kbd
       data-slot="command-shortcut"
       className={cn(
         "ui-menu-shortcut ml-auto",
