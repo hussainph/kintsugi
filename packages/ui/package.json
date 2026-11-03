@@ -10,7 +10,8 @@
     "./graphical": "./components/graphical/index.ts",
     "./graphical/styles.css": "./components/graphical/styles.css",
     "./provider": "./src/provider.tsx",
-    "./icons": "./src/icons.tsx"
+    "./icons": "./src/icons.tsx",
+    "./ai": "./src/components/ai/index.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -44,6 +45,6 @@
   },
   "scripts": {
     "typecheck": "tsc",
-    "test": "node --import tsx --test src/components/graphical.test.ts src/contrast.test.ts src/fonts/font-assets.test.ts"
+    "test": "node --import tsx --test src/components/graphical.test.ts src/contrast.test.ts src/fonts/font-assets.test.ts src/components/ai/markdown.test.ts"
   }
 }

@@ -1,0 +1,139 @@
+/* Chat components (KI-79), after Vercel's AI Elements, on the Graphical
+   theme's tokens. Motion uses the theme's curves; everything that moves has a
+   reduced-motion fallback at the end. */
+
+/* Conversation ------------------------------------------------------------ */
+.ki-conversation { position: relative; display: flex; min-height: 0; flex: 1 1 auto; flex-direction: column; }
+.ki-conversation-scroller { min-height: 0; flex: 1 1 auto; overflow-y: auto; overflow-anchor: none; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--neutral-4) transparent; }
+.ki-conversation-log { display: flex; min-height: 100%; flex-direction: column; gap: var(--space-l); padding: var(--space-m) var(--space-m) var(--space-l); }
+.ki-conversation-empty { display: flex; flex: 1 1 auto; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-s); padding: var(--space-xl) var(--space-m); text-align: center; color: var(--neutral-7); }
+.ki-conversation-empty-title { margin: 0; max-width: 22rem; font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); text-wrap: balance; }
+.ki-conversation-scroll-button { position: absolute; bottom: var(--space-s); left: 50%; z-index: 1; border-radius: var(--radius-full) !important; background: var(--neutral-1) !important; box-shadow: var(--border-shadow-s), var(--shadow-m) !important; translate: -50% 0; transition: opacity var(--motion-duration) var(--motion-easing), scale var(--motion-duration) var(--motion-easing); }
+.ki-conversation-scroll-button[data-hidden] { pointer-events: none; opacity: 0; scale: 0.9; }
+
+/* Message ----------------------------------------------------------------- */
+.ki-message { display: flex; min-width: 0; gap: var(--space-s); }
+.ki-message[data-from="owner"] { flex-direction: column; align-items: flex-end; gap: var(--space-xxs); }
+.ki-message[data-from="assistant"] { align-items: flex-start; }
+.ki-message-avatar { display: flex; flex-shrink: 0; padding-top: 1px; }
+.ki-message-avatar > svg { width: var(--space-l); height: var(--space-l); }
+.ki-message-content { min-width: 0; color: var(--neutral-10); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); overflow-wrap: anywhere; }
+.ki-message[data-from="assistant"] > .ki-message-content { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-xs); }
+.ki-message[data-from="owner"] > .ki-message-content { max-width: 85%; border-radius: var(--radius-l); border-bottom-right-radius: var(--radius-xs); padding: var(--space-xs) var(--space-s); background: var(--neutral-3); white-space: pre-wrap; user-select: text; }
+.ki-message[data-from="helper"] > .ki-message-content { flex: 1 1 auto; border-radius: var(--radius-m); padding: var(--space-xs) var(--space-s); color: var(--neutral-8); background: var(--neutral-2); box-shadow: inset var(--border-l) 0 0 var(--kin), var(--border-shadow-s); }
+.ki-message-footer { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; align-items: center; gap: var(--space-xxs); }
+.ki-message[data-from="owner"] > .ki-message-footer { max-width: 85%; justify-content: flex-end; }
+.ki-message-status { display: inline-flex; align-items: center; gap: var(--space-xxs); color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-message-status > svg { width: 1em; height: 1em; }
+.ki-message-actions { display: flex; align-items: center; gap: var(--space-xxs); margin-inline-start: calc(-1 * var(--space-xxs)); opacity: 0; transition: opacity var(--motion-duration) var(--motion-easing); }
+.ki-message:hover .ki-message-actions, .ki-message-actions:focus-within, .ki-message-actions[data-pinned] { opacity: 1; }
+.ki-message-actions .ki-message-meta { margin-inline-start: var(--space-xxs); color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ki-message-action { color: var(--neutral-7); }
+/* A message that arrives while the log is open settles in from just below. */
+.ki-message[data-fresh] { transition: opacity calc(var(--motion-duration) * 1.4) var(--motion-easing), translate calc(var(--motion-duration) * 1.4) var(--motion-easing); }
+@starting-style { .ki-message[data-fresh] { opacity: 0; translate: 0 var(--space-xs); } }
+
+/* Response (Markdown) ----------------------------------------------------- */
+.ki-response { min-width: 0; color: var(--neutral-10); font-size: var(--size-s); line-height: var(--line-m); letter-spacing: var(--letter-spacing-s); user-select: text; text-wrap: pretty; }
+.ki-response :where(p, ul, ol, blockquote, hr) { margin: 0; }
+.ki-response > * + *, .ki-response li > * + *, .ki-response blockquote > * + * { margin-block-start: var(--space-s); }
+.ki-response :is(ul, ol) { padding-inline-start: var(--space-l); }
+.ki-response ul { list-style: disc; }
+.ki-response ol { list-style: decimal; }
+.ki-response li + li { margin-block-start: var(--space-xxs); }
+.ki-response li::marker { color: var(--neutral-7); }
+.ki-response strong { font-weight: var(--weight-ui-medium); }
+.ki-response blockquote { padding-inline-start: var(--space-s); color: var(--neutral-8); font-family: var(--font-editorial); font-size: var(--size-m); line-height: var(--line-m); box-shadow: inset var(--border-l) 0 0 var(--neutral-4); }
+.ki-response hr { height: var(--border-s); border: 0; background: var(--neutral-4); }
+.ki-response-heading { font-weight: var(--weight-ui-medium); }
+.ki-response-heading[data-level="1"], .ki-response-heading[data-level="2"] { font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); }
+.ki-response-inline-code { border-radius: var(--radius-xs); padding: 0 var(--space-xxs); font-family: var(--font-data); font-size: 0.92em; background: var(--neutral-3); overflow-wrap: anywhere; }
+.ki-response-link { color: inherit; text-decoration: underline; text-decoration-color: var(--neutral-5); text-underline-offset: var(--space-xxs); transition: text-decoration-color var(--motion-duration) var(--motion-easing); }
+.ki-response-link:hover { text-decoration-color: currentColor; }
+.ki-response-caret { display: inline-block; width: 0.45em; height: 1em; margin-inline-start: 2px; vertical-align: -0.15em; border-radius: 1px; background: var(--kin); animation: ki-caret 1.1s var(--motion-easing) infinite alternate; }
+@keyframes ki-caret { from { opacity: 1; } to { opacity: 0.35; } }
+
+/* Code block --------------------------------------------------------------- */
+.ki-code-block { position: relative; overflow: hidden; border-radius: var(--radius-m); background: var(--neutral-2); box-shadow: var(--border-shadow-s); }
+.ki-code-block pre { margin: 0; overflow-x: auto; padding: var(--space-s) var(--space-xl) var(--space-s) var(--space-s); font-family: var(--font-data); font-size: var(--size-xs); line-height: var(--line-s); letter-spacing: 0; white-space: pre; scrollbar-width: thin; }
+.ki-code-block-actions { position: absolute; top: var(--space-xxs); right: var(--space-xxs); display: flex; gap: var(--space-xxs); opacity: 0; transition: opacity var(--motion-duration) var(--motion-easing); }
+.ki-code-block:hover .ki-code-block-actions, .ki-code-block-actions:focus-within { opacity: 1; }
+
+/* Shimmer ------------------------------------------------------------------ */
+.ki-shimmer { color: transparent; background: linear-gradient(90deg, var(--neutral-7) 0%, var(--neutral-7) 35%, var(--neutral-10) 50%, var(--neutral-7) 65%, var(--neutral-7) 100%) 0 0 / 250% 100%; -webkit-background-clip: text; background-clip: text; animation: ki-shimmer 2.2s linear infinite; }
+@keyframes ki-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+
+/* Chain of thought ----------------------------------------------------------- */
+.ki-chain { display: flex; min-width: 0; flex-direction: column; }
+.ki-chain[data-state="open"] { gap: var(--space-xxs); }
+.ki-chain-header { display: inline-flex; max-width: 100%; align-items: center; gap: var(--space-xs); align-self: flex-start; min-height: var(--space-l); border: 0; border-radius: var(--radius-s); padding: 0; color: var(--neutral-7); background: transparent; font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); text-align: start; }
+.ki-chain-toggle { margin-inline: calc(-1 * var(--space-xs)); padding-inline: var(--space-xs); transition: color var(--motion-duration) var(--motion-easing), background-color var(--motion-duration) var(--motion-easing); }
+.ki-chain-toggle:hover { color: var(--neutral-10); background: var(--neutral-3); }
+.ki-chain-header-icon, .ki-chain-chevron { width: 1em; height: 1em; flex-shrink: 0; }
+.ki-chain-header-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ki-chain-chevron { transition: rotate var(--motion-large-duration) var(--motion-large-easing); }
+.ki-chain[data-state="open"] .ki-chain-chevron { rotate: 180deg; }
+.ki-chain .ki-disclosure { background: transparent; box-shadow: none; }
+.ki-chain .ui-disclosure-content { padding: 0; }
+.ki-chain-steps { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
+.ki-chain-step { position: relative; display: grid; grid-template-columns: 1em minmax(0, 1fr) 1em; align-items: start; column-gap: var(--space-xs); padding-block: var(--space-xxs); color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); transition: opacity var(--motion-duration) var(--motion-easing), translate var(--motion-duration) var(--motion-easing); }
+@starting-style { .ki-chain-step { opacity: 0; translate: 0 calc(-1 * var(--space-xxs)); } }
+/* A thread between the steps' icons. */
+.ki-chain-step + .ki-chain-step::before { content: ""; position: absolute; top: calc(-0.5 * var(--line-xs) + var(--space-xxs)); left: calc(0.5em - var(--border-s) / 2); width: var(--border-s); height: calc(var(--line-xs) - var(--space-xxs)); background: var(--neutral-4); }
+.ki-chain-step-icon, .ki-chain-step-status { display: flex; height: var(--line-xs); align-items: center; }
+.ki-chain-step-icon svg, .ki-chain-step-status svg { width: 1em; height: 1em; }
+.ki-chain-step-body { min-width: 0; }
+.ki-chain-step-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--neutral-8); }
+.ki-chain-step-status { color: var(--neutral-6); }
+.ki-chain-step[data-status="running"] .ki-chain-step-status svg { animation: ki-spin 0.9s linear infinite; }
+.ki-chain-step[data-status="running"] .ki-chain-step-label { color: var(--neutral-10); }
+.ki-chain-step[data-status="error"] .ki-chain-step-status { color: var(--error); }
+.ki-chain-step-status svg { transition: opacity var(--motion-duration) var(--motion-easing), scale var(--motion-duration) var(--motion-easing); }
+@starting-style { .ki-chain-step-status svg { opacity: 0; scale: 0.6; } }
+@keyframes ki-spin { to { rotate: 360deg; } }
+
+/* Prompt input ---------------------------------------------------------------- */
+.ki-prompt-input { display: flex; flex-direction: column; gap: var(--space-xxs); border-radius: var(--radius-l); padding: var(--space-xs); background: transparent; box-shadow: 0 0 0 var(--border-s) var(--neutral-4), var(--shadow-s); transition: box-shadow var(--motion-duration) var(--motion-easing); }
+.ki-prompt-input:focus-within { box-shadow: 0 0 0 var(--border-s) var(--neutral-6), var(--shadow-s); }
+.ki-prompt-input-header { display: flex; min-width: 0; flex-wrap: wrap; gap: var(--space-xxs); padding: 0 0 var(--space-xxs); }
+.ki-prompt-input-textarea { display: block; width: 100%; max-height: 10rem; min-height: calc(var(--line-s) + var(--space-xs) * 2); resize: none; border: 0; padding: var(--space-xs) var(--space-xs); color: var(--neutral-10); background: transparent; font-family: var(--font-ui); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); field-sizing: content; outline: none; overflow-y: auto; }
+.graphical-theme .ki-prompt-input-textarea:focus-visible { outline: none; }
+.ki-prompt-input-textarea::placeholder { color: var(--neutral-6); }
+.ki-prompt-input-toolbar { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-xs); }
+.ki-prompt-input-tools { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: var(--space-xs); }
+.ki-prompt-input-submit { flex-shrink: 0; border-radius: var(--radius-full) !important; }
+.ki-prompt-input-stop { width: 0.75em !important; height: 0.75em !important; fill: currentColor; }
+.ki-prompt-chip { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: var(--space-xxs); border-radius: var(--radius-s); padding: 1px var(--space-xxs) 1px var(--space-xs); color: var(--neutral-8); background: var(--neutral-3); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-prompt-chip-icon { width: 1em; height: 1em; flex-shrink: 0; color: var(--neutral-7); }
+.ki-prompt-chip-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ki-prompt-chip:not(:has(.ki-prompt-chip-remove)) { padding-inline-end: var(--space-xs); }
+.ki-prompt-chip-remove { display: inline-flex; flex-shrink: 0; border: 0; border-radius: var(--radius-xs); padding: 2px; color: var(--neutral-7); background: transparent; transition: color var(--motion-duration) var(--motion-easing), background-color var(--motion-duration) var(--motion-easing); }
+.ki-prompt-chip-remove:hover { color: var(--neutral-10); background: var(--neutral-4); }
+.ki-prompt-chip-remove svg { width: 0.9em; height: 0.9em; }
+
+/* Suggestions ------------------------------------------------------------------ */
+.ki-suggestions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-xs); }
+.ki-suggestion { border: 0; border-radius: var(--radius-full); padding: var(--space-xxs) var(--space-s); color: var(--neutral-10); background: var(--neutral-1); box-shadow: inset 0 0 0 var(--border-s) var(--neutral-4); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); transition: background-color var(--motion-duration) var(--motion-easing), box-shadow var(--motion-duration) var(--motion-easing), transform var(--motion-duration) var(--motion-easing); }
+.ki-suggestion:hover { background: var(--neutral-2); box-shadow: inset 0 0 0 var(--border-s) var(--neutral-6); }
+.ki-suggestion:active { transform: translateY(var(--motion-press-distance)); }
+
+/* Notice ------------------------------------------------------------------------ */
+.ki-chat-notice { display: flex; align-items: flex-start; gap: var(--space-xs); border-radius: var(--radius-m); padding: var(--space-xs) var(--space-s); color: var(--neutral-10); background: var(--neutral-2); box-shadow: var(--border-shadow-s); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-chat-notice[data-tone="error"] { background: var(--error-transparent); box-shadow: none; }
+.ki-chat-notice[data-tone="warning"] { background: color-mix(in srgb, var(--warning) 14%, transparent); box-shadow: none; }
+.ki-chat-notice-icon { width: 1.15em; height: 1.15em; flex-shrink: 0; margin-top: 1px; color: var(--neutral-7); }
+.ki-chat-notice[data-tone="error"] .ki-chat-notice-icon { color: var(--error); }
+.ki-chat-notice[data-tone="warning"] .ki-chat-notice-icon { color: var(--warning); }
+.ki-chat-notice-body { display: flex; min-width: 0; flex: 1 1 auto; flex-direction: column; gap: 2px; }
+.ki-chat-notice-title { margin: 0; font-weight: var(--weight-ui-medium); }
+.ki-chat-notice-detail { margin: 0; color: var(--neutral-7); overflow-wrap: anywhere; }
+.ki-chat-notice-actions { display: flex; flex-wrap: wrap; gap: var(--space-xxs); margin-top: var(--space-xxs); margin-inline-start: calc(-1 * var(--space-xs)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ki-message[data-fresh], .ki-chain-step, .ki-chain-step-status svg, .ki-conversation-scroll-button { transition: opacity var(--motion-duration) linear; translate: none; scale: none; }
+  .ki-shimmer { color: var(--neutral-7); background: none; animation: none; }
+  .ki-response-caret { animation: none; }
+  .ki-chain-step[data-status="running"] .ki-chain-step-status svg { animation-duration: 2.4s; }
+  .ki-chain-chevron, .ki-suggestion, .ki-message-actions, .ki-code-block-actions { transition: none; }
+  .ki-suggestion:active { transform: none; }
+}

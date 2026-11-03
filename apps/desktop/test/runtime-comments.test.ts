@@ -191,7 +191,7 @@ test("threads are rows in Kin's one conversation log, about the document", { tim
   await chat.locator("[data-comment-tag]").first().waitFor();
   await chat.locator('[data-role="kin"][data-comment]').first().waitFor();
   await shot("07-in-the-log");
-  await chat.getByRole("button", { name: "Close Kin" }).first().click();
+  await chat.getByRole("button", { name: "Hide Kin" }).first().click();
 });
 
 test("⌘K › Kin, review this draft leaves comments on paragraphs", { timeout: 90_000 }, async () => {

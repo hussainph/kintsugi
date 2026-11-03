@@ -24,7 +24,18 @@ export type Entry = {
   review?: boolean;
   /** Kin's reply: the web searches and pages it used (KI-78). */
   web?: WebCall[];
+  /** Kin's reply: the tools it used on the way, in order (KI-79). */
+  tools?: ToolUse[];
+  /** Kin's reply: how long the turn took, in milliseconds. */
+  ms?: number;
+  /** Kin's reply: `provider/model`. */
+  model?: string;
+  /** Kin's reply ran with the month's cap already reached. */
+  capReached?: boolean;
 };
+
+/** Mirrors `history::ToolUse`: one tool call in a reply. */
+export type ToolUse = { name: string; arguments: unknown; error?: boolean };
 
 /** Mirrors `history::Thread`: a view of the one log, with a running summary. */
 export type Thread = {

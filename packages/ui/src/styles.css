@@ -7,6 +7,7 @@
 /* Receiving adapters must follow vendor rules within the same layer. Import
    centrally, not from JS modules whose stylesheet execution order can vary. */
 @import "./components/graphical.css";
+@import "./components/ai/ai.css";
 @import "./fonts/geist-mono.css";
 @import "./fonts/superior-serif.css";
 @import "./fonts/timeless-sans.css";

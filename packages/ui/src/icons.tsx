@@ -17,6 +17,8 @@ import {
   BrowserIcon, BookUserIcon, Link01Icon, PencilEdit02Icon, Redo02Icon,
   InboxIcon, Note01Icon, Book02Icon, StarIcon, CodeIcon, MusicNote01Icon,
   Camera01Icon, Briefcase01Icon, Archive02Icon,
+  MinusSignIcon, ArrowUp02Icon, ArrowDown02Icon, Clock01Icon, Coins01Icon, HourglassIcon,
+  FolderOpenIcon, WifiDisconnected01Icon,
   TriangleAlertIcon as WarningGlyph, OctagonXIcon as ErrorGlyph,
 } from "@hugeicons/core-free-icons";
 
@@ -50,7 +52,9 @@ export const Music = glyph(MusicNote01Icon);
 export const Note = glyph(Note01Icon);
 export const Star = glyph(StarIcon);
 export const AlertTriangle = glyph(Alert01Icon);
+export const ArrowDown = glyph(ArrowDown02Icon);
 export const ArrowLeft = glyph(ArrowLeft02Icon);
+export const ArrowUp = glyph(ArrowUp02Icon);
 export const ArrowUpRight = glyph(ArrowUpRight01Icon);
 export const AtSign = glyph(AtIcon);
 export const Bookmark = glyph(Bookmark01Icon);
@@ -63,6 +67,8 @@ export const Brain = glyph(Brain02Icon);
 export const Check = glyph(Tick02Icon);
 export const ChevronDown = glyph(ArrowDown01Icon);
 export const ChevronRight = glyph(ArrowRight01Icon);
+export const Clock = glyph(Clock01Icon);
+export const Coins = glyph(Coins01Icon);
 export const Compass = glyph(CompassIcon);
 export const Copy = glyph(Copy01Icon);
 export const Download = glyph(Download01Icon);
@@ -72,9 +78,11 @@ export const FileDiff = glyph(FileDiffIcon);
 export const FilePlus = glyph(FileAddIcon);
 export const FileText = glyph(File01Icon);
 export const Folder = glyph(Folder01Icon);
+export const FolderOpen = glyph(FolderOpenIcon);
 export const FolderPlus = glyph(FolderAddIcon);
 export const Globe = glyph(Globe02Icon);
 export const Headphones = glyph(HeadphonesIcon);
+export const Hourglass = glyph(HourglassIcon);
 export const Heart = glyph(FavouriteIcon);
 export const ImageIcon = glyph(Image01Icon);
 export const ImageOff = glyph(ImageOffIcon);
@@ -86,6 +94,7 @@ export const Lightbulb = glyph(BulbIcon);
 export const Loader2 = glyph(Loading03Icon);
 export const Lock = glyph(LockIcon);
 export const MessageCircle = glyph(BubbleChatIcon);
+export const Minus = glyph(MinusSignIcon);
 export const MessagesSquare = glyph(MessageMultiple01Icon);
 export const Newspaper = glyph(NewsIcon);
 export const NotebookPen = glyph(Notebook01Icon);
@@ -112,6 +121,7 @@ export const Swords = glyph(Sword01Icon);
 export const Tag = glyph(Tag01Icon);
 export const Trash2 = glyph(Delete02Icon);
 export const Undo2 = glyph(Undo02Icon);
+export const Unplug = glyph(WifiDisconnected01Icon);
 export const Upload = glyph(Upload01Icon);
 export const UserRound = glyph(UserCircleIcon);
 export const Video = glyph(Video01Icon);

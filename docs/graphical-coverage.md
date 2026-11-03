@@ -93,6 +93,17 @@ Settings, and About you's count bars), `Tabs` (About you), `SelectField` and `Ch
 panel). The rest are ready to import; they are covered by the specification
 tests, not yet by a rendered screen.
 
+## Chat components
+
+`@kintsugi/ui/ai` (`packages/ui/src/components/ai/`, KI-79) holds the chat's
+components, after Vercel's AI Elements: `Conversation` (with
+`ConversationContent`, `ConversationEmptyState`, `ConversationScrollButton`),
+`Message` and its parts, `Response` (Markdown), `CodeBlock`,
+`ChainOfThought` (steps and their status), `Shimmer`, `PromptInput` and its
+parts, `Suggestion` and `ChatNotice`. They use the shared `Button` and
+`Collapsible` and the theme's tokens (`ai/ai.css`, imported by
+`@kintsugi/ui/styles.css`). See `docs/kin.md` › The chat's interface.
+
 ## Shared components
 
 `@kintsugi/ui/components/<name>` keeps its import paths and APIs. Each one now

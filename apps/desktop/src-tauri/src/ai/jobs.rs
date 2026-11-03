@@ -124,6 +124,8 @@ pub struct Trace {
     pub steps: Vec<StepTrace>,
     /// The web searches and pages that worked, for the reply's sources.
     pub web: Vec<super::web::WebCall>,
+    /// Every tool call, for the reply's steps (KI-79), with its id.
+    pub uses: Vec<(String, super::history::ToolUse)>,
 }
 
 impl Trace {

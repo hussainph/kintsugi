@@ -19,6 +19,7 @@ import { Refine } from "@/refine/Refine";
 import type { Action } from "@/refine/prompts";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
 import { KinChat } from "@/kin/Chat";
+import { onOpenLink, resolveTarget } from "@/kin/links";
 import { KinDev } from "@/kin/KinDev";
 import { editorChips } from "@/kin/screen";
 import { useScreenContext } from "@/lib/chat";
@@ -825,6 +826,18 @@ export default function App() {
     window.addEventListener("kintsugi:open-clip", open);
     return () => window.removeEventListener("kintsugi:open-clip", open);
   }, [settle]);
+
+  // A path or [[link]] Kin named in the chat (KI-79).
+  useEffect(
+    () =>
+      onOpenLink((target) => {
+        const found = resolveTarget(target, docs);
+        if (!found) toast.error(`Couldn’t find ${target}.`);
+        else if ("doc" in found) void openDoc(found.doc);
+        else requestClip(found.clip);
+      }),
+    [docs, openDoc],
+  );
 
   // HTML drops must never navigate the webview to a Finder file. Components
   // still receive the event (the library captures images; CodeMirror edits text).

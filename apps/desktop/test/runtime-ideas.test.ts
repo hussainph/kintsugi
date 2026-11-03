@@ -192,7 +192,7 @@ test("Discuss opens Kin with the idea as a chip", { timeout: 60_000 }, async () 
   const panel = page.getByRole("dialog", { name: "Kin" });
   await panel.locator('[data-chip^="idea:idea-"]').waitFor();
   await shot("05-discuss");
-  await panel.getByRole("button", { name: "Close Kin" }).first().click();
+  await panel.getByRole("button", { name: "Hide Kin" }).first().click();
 });
 
 test("Adopt makes an empty draft with the idea beside it and in frontmatter", { timeout: 60_000 }, async () => {

@@ -8,9 +8,10 @@
     "build": "tsc && vite build",
     "typecheck": "tsc",
     "test:headless": "node --test src/headless/*.test.ts",
-    "test": "node --test src/inspiration/*.test.ts src/lib/*.test.ts src/feed/*.test.ts src/ideas/*.test.ts",
+    "test": "node --test src/inspiration/*.test.ts src/lib/*.test.ts src/feed/*.test.ts src/ideas/*.test.ts src/kin/*.test.ts",
     "test:runtime": "node --test --test-concurrency=1 --test-reporter=./test/reporter.ts test/runtime-*.test.ts",
     "test:references": "node --test test/reference-*.test.ts",
+    "kin:scenarios": "node test/kin-scenarios.ts",
     "preview": "vite preview",
     "tauri": "tauri"
   },

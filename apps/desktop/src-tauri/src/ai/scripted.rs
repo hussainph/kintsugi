@@ -19,6 +19,8 @@ use std::time::Duration;
 type Result<T> = std::result::Result<T, String>;
 
 const WORD_DELAY: Duration = Duration::from_millis(70);
+/// How long the mock "thinks" when asked to (KI-79).
+const THINKING: Duration = Duration::from_millis(3_000);
 
 pub struct Scripted {
     model: ModelRef,
@@ -60,6 +62,156 @@ fn first_chip(message: &str) -> Option<String> {
             (path.starts_with("feed:") || path.ends_with(".md") || path.ends_with(".mdx"))
                 .then(|| path.to_string())
         })
+}
+
+const EDIT: &[&str] = &["tighten", "rewrite", "edit"];
+
+/// Whether he used one of these words (or a longer form: "thinking").
+fn asks(asked: &str, words: &[&str]) -> bool {
+    asked
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|w| words.iter().any(|word| w.starts_with(word)))
+}
+
+/// The first paragraph chip: its document and line range.
+fn paragraph_chip(message: &str) -> Option<(String, u64, u64)> {
+    let context = message
+        .split("On screen (read these if they matter):")
+        .nth(1)?;
+    context.lines().skip(1).find_map(|line| {
+        let rest = line
+            .strip_prefix("- paragraph ")
+            .or_else(|| line.strip_prefix("- selection "))?;
+        let mut words = rest.split_whitespace();
+        let path = words.next()?.to_string();
+        let (from, to) = words.nth(1)?.split_once('-')?;
+        Some((path, from.parse().ok()?, to.parse().ok()?))
+    })
+}
+
+fn longest_word(said: &str) -> &str {
+    said.split(|c: char| !c.is_alphanumeric())
+        .max_by_key(|w| w.len())
+        .unwrap_or("kintsugi")
+}
+
+/// This turn's items: everything after his newest message.
+fn this_turn(items: &[Item]) -> &[Item] {
+    let start = items
+        .iter()
+        .rposition(|i| matches!(i, Item::User(_)))
+        .map_or(0, |at| at + 1);
+    &items[start..]
+}
+
+/// The tool results of the newest step, as they came back.
+fn last_results(items: &[Item]) -> Vec<&str> {
+    match items.last() {
+        Some(Item::Results(results)) => results.iter().map(|r| r.content.as_str()).collect(),
+        _ => vec![],
+    }
+}
+
+/// "Compare …" (KI-79): after a search and a list in one step, read the
+/// first two documents the search found, together.
+fn compare_reads(question: &str, items: &[Item]) -> Option<Vec<ToolCall>> {
+    if !asks(&said(question).to_lowercase(), &["compare"]) {
+        return None;
+    }
+    let steps = this_turn(items)
+        .iter()
+        .filter(|i| matches!(i, Item::Assistant { .. }))
+        .count();
+    if steps != 1 {
+        return None;
+    }
+    let found = last_results(items).first()?.to_string();
+    let paths: Vec<String> = found
+        .split("\"id\":")
+        .skip(1)
+        .filter_map(|rest| rest.trim_start().strip_prefix('"')?.split('"').next())
+        .filter(|id| id.ends_with(".md") || id.ends_with(".mdx"))
+        .take(2)
+        .map(String::from)
+        .collect();
+    (!paths.is_empty()).then(|| {
+        paths
+            .into_iter()
+            .enumerate()
+            .map(|(i, path)| ToolCall {
+                id: format!("mock-{}", 3 + i),
+                name: "read".into(),
+                arguments: json!({ "path": path, "limit": 20 }),
+            })
+            .collect()
+    })
+}
+
+/// "Tighten this" on a paragraph (KI-79): the passage it read, with filler
+/// words dropped (else its last sentence), as an edit block he can apply.
+fn proposed_edit(question: &str, items: &[Item]) -> Option<String> {
+    if !asks(&said(question).to_lowercase(), EDIT) {
+        return None;
+    }
+    let (path, ..) = paragraph_chip(question)?;
+    let content = last_results(items).into_iter().next()?;
+    let body = content.split_once('\n')?.1;
+    let passage: Vec<&str> = body
+        .lines()
+        .skip(1)
+        .filter_map(|l| {
+            let (n, text) = l.split_once(": ")?;
+            n.trim().parse::<u64>().ok().map(|_| text)
+        })
+        .collect();
+    let old = passage.join("\n").trim().to_string();
+    if old.is_empty() {
+        return None;
+    }
+    const FILLER: [&str; 6] = ["really", "very", "just", "actually", "quite", "basically"];
+    let mut new = old
+        .split(' ')
+        .filter(|w| {
+            !FILLER.contains(
+                &w.to_lowercase()
+                    .trim_matches(|c: char| !c.is_alphanumeric()),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if new == old {
+        let sentences: Vec<&str> = old.split_inclusive(". ").collect();
+        new = if sentences.len() > 1 {
+            sentences[..sentences.len() - 1].concat().trim().to_string()
+        } else {
+            format!("{} (mock edit)", old.trim_end_matches('.'))
+        };
+    }
+    Some(format!(
+        "This version is shorter and keeps your point.\n\n```edit {path}\n<<<<<<< SEARCH\n{old}\n=======\n{new}\n>>>>>>> REPLACE\n```\n\n(Headless mock model; nothing was sent to a provider.)"
+    ))
+}
+
+/// "The main points" (KI-79): an answer in Markdown, naming what it read.
+fn points(items: &[Item]) -> String {
+    let path = this_turn(items)
+        .iter()
+        .find_map(|i| match i {
+            Item::Assistant { calls, .. } => calls
+                .iter()
+                .find_map(|c| c.arguments["path"].as_str().map(String::from)),
+            _ => None,
+        })
+        .unwrap_or_else(|| "drafts/kintsugi-and-gold.md".into());
+    format!(
+        "Three things carry it:\n\n\
+         1. **The bowl.** The opening rests on one object, and it's a good one.\n\
+         2. **The repair.** You say it twice, in the second and the last paragraph. Keep one.\n\
+         3. **The cost.** Nobody pays for anything yet, so the ending reads light.\n\n\
+         From `{path}`. Compare [[golden-joinery]] for the part about lacquer.\n\n\
+         > The repair is not hidden.\n\n\
+         (Headless mock model; nothing was sent to a provider.)"
+    )
 }
 
 fn reply(text: String, calls: Vec<ToolCall>) -> Reply {
@@ -120,6 +272,47 @@ impl Model for Scripted {
         } else if let Some(Item::User(message)) = ex.items.last() {
             // First step of a turn: look something up.
             let asked = said(message).to_lowercase();
+            // The chat's design scenarios (KI-79), by what he asked.
+            if asks(&asked, &["timeout", "timed"]) {
+                tokio::time::sleep(Duration::from_millis(1_500)).await;
+                return Err("Mock stopped responding (nothing for 120 s)".into());
+            }
+            if asks(&asked, &["fail"]) {
+                return Err("Mock: 500 Internal Server Error".into());
+            }
+            if asks(&asked, &["think"]) {
+                // A reasoning model, thinking before it says or calls anything.
+                tokio::time::sleep(THINKING).await;
+            }
+            if let Some((path, from, to)) = paragraph_chip(message).filter(|_| asks(&asked, EDIT)) {
+                let call = ToolCall {
+                    id: "mock-1".into(),
+                    name: "read".into(),
+                    arguments: json!({ "path": path, "offset": from, "limit": to + 1 - from }),
+                };
+                return Ok(reply(String::new(), vec![call]));
+            }
+            if asks(&asked, &["compare"]) {
+                // What to compare: the longest word after "compare".
+                let word = longest_word(
+                    said(message)
+                        .split_once(|c: char| c.is_whitespace())
+                        .map_or(said(message), |(_, rest)| rest),
+                );
+                let calls = vec![
+                    ToolCall {
+                        id: "mock-1".into(),
+                        name: "search".into(),
+                        arguments: json!({ "query": word }),
+                    },
+                    ToolCall {
+                        id: "mock-2".into(),
+                        name: "list".into(),
+                        arguments: json!({ "path": "drafts" }),
+                    },
+                ];
+                return Ok(reply(String::new(), calls));
+            }
             let call = match first_chip(message) {
                 // The web tools (KI-78): a scripted search, then a page.
                 _ if ex.tools.iter().any(|t| t.name == "web_search")
@@ -157,6 +350,12 @@ impl Model for Scripted {
             return Ok(reply(String::new(), vec![call]));
         } else if let Some(call) = read_first_web_result(ex.items) {
             return Ok(reply(String::new(), vec![call]));
+        } else if let Some(calls) = compare_reads(question, ex.items) {
+            return Ok(reply(String::new(), calls));
+        } else if let Some(text) = proposed_edit(question, ex.items) {
+            text
+        } else if asks(&said(question).to_lowercase(), &["points", "markdown"]) {
+            points(ex.items)
         } else {
             let looked = ex.items.iter().rev().find_map(|i| match i {
                 Item::Assistant { calls, .. } => {
@@ -977,5 +1176,109 @@ mod web_tests {
         ))
         .unwrap();
         assert_eq!(names, ["search"]);
+    }
+}
+
+#[cfg(test)]
+mod scenario_tests {
+    use super::super::Task;
+    use super::super::agent::tests::block_on;
+    use super::super::agent::{self, Cancel, Harness, KinEvent, Limits, Turn};
+    use super::super::cost::Meter;
+    use super::super::prompt::{Chip, Memory};
+    use super::super::tools::Tools;
+    use super::*;
+    use std::fs;
+
+    fn run(
+        vault: &std::path::Path,
+        question: &str,
+        chips: Vec<Chip>,
+    ) -> (Vec<String>, Result<agent::Summary>) {
+        let outputs = tempfile::tempdir().unwrap();
+        let meter = Meter::open(None);
+        let tools = Tools::new(vault, outputs.path().into(), "t").unwrap();
+        let memory = Memory::default();
+        let cancel = Cancel::default();
+        let harness = Harness {
+            tools: &tools,
+            meter: &meter,
+            memory: &memory,
+            cancel: &cancel,
+            limits: Limits::default(),
+        };
+        let turn = Turn {
+            task: Task::Chat,
+            background: false,
+            question: question.into(),
+            chips,
+            today: "2026-11-03".into(),
+            remember: true,
+            history: vec![],
+            recap: None,
+        };
+        let mut calls = vec![];
+        let summary = block_on(agent::run(
+            &Scripted::default(),
+            &harness,
+            &turn,
+            &mut |e| {
+                if let KinEvent::ToolCall { name, .. } = e {
+                    calls.push(name);
+                }
+            },
+        ));
+        (calls, summary)
+    }
+
+    fn vault() -> tempfile::TempDir {
+        let vault = tempfile::tempdir().unwrap();
+        fs::create_dir_all(vault.path().join("drafts")).unwrap();
+        fs::create_dir_all(vault.path().join("notes")).unwrap();
+        fs::write(
+            vault.path().join("drafts/a.md"),
+            "# A\n\nRepair is really slow work.\n",
+        )
+        .unwrap();
+        fs::write(vault.path().join("notes/b.md"), "# B\n\nRepair, again.\n").unwrap();
+        vault
+    }
+
+    /// KI-79: "compare" runs two tools in one step, then reads two documents.
+    #[test]
+    fn compare_runs_several_tools_in_a_turn() {
+        let vault = vault();
+        let (calls, summary) = run(vault.path(), "Compare my notes about repair", vec![]);
+        assert_eq!(calls, ["search", "list", "read", "read"]);
+        assert!(summary.unwrap().text.starts_with("You said"));
+    }
+
+    /// KI-79: "tighten" on a paragraph proposes an edit block of its lines.
+    #[test]
+    fn tighten_proposes_an_edit() {
+        let vault = vault();
+        let chip = Chip {
+            kind: "paragraph".into(),
+            path: "drafts/a.md".into(),
+            label: None,
+            lines: Some([3, 3]),
+        };
+        let (calls, summary) = run(vault.path(), "Tighten this", vec![chip]);
+        assert_eq!(calls, ["read"]);
+        let text = summary.unwrap().text;
+        assert!(
+            text.contains("```edit drafts/a.md\n<<<<<<< SEARCH\nRepair is really slow work.\n=======\nRepair is slow work.\n>>>>>>> REPLACE\n```"),
+            "{text}"
+        );
+    }
+
+    /// KI-79: "fail" and "timeout" fail like a provider would.
+    #[test]
+    fn fail_and_timeout_are_errors() {
+        let vault = vault();
+        let (_, failed) = run(vault.path(), "This should fail", vec![]);
+        assert!(failed.unwrap_err().contains("500"));
+        let (_, stalled) = run(vault.path(), "Simulate a timeout", vec![]);
+        assert!(stalled.unwrap_err().contains("stopped responding"));
     }
 }
