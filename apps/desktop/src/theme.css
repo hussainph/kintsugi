@@ -207,6 +207,70 @@
 .ki-effort[data-disabled] .ki-effort-value { color: var(--neutral-6); }
 .ki-model-price { grid-column: 3; font-family: var(--font-data); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-variant-numeric: tabular-nums; color: var(--neutral-7); white-space: nowrap; }
 
+/* Kin's chat (KI-79): the floating pane's shell and the app's parts of the
+   chat. The chat components themselves are @kintsugi/ui/ai. */
+.ki-kin-launcher { position: fixed; right: var(--space-m); bottom: var(--space-m); z-index: 40; border: 0; border-radius: var(--radius-full); padding: 0; background: transparent; box-shadow: var(--shadow-m), 0 0 0 var(--border-s) var(--neutral-4-transparent); transition: transform var(--motion-duration) var(--motion-easing); }
+.ki-kin-launcher:hover { transform: scale(1.04); }
+.ki-kin-launcher:active { transform: scale(0.97); }
+.ki-kin-launcher > svg { display: block; }
+.ki-kin-launcher-dot { position: absolute; top: -2px; right: -2px; width: var(--space-s); height: var(--space-s); border-radius: var(--radius-full); background: var(--kin); box-shadow: 0 0 0 var(--border-l) var(--neutral-1); }
+.ki-kin-launcher-dot-busy { background: var(--neutral-7); animation: ki-kin-pulse 1.6s var(--motion-easing) infinite alternate; }
+@keyframes ki-kin-pulse { from { opacity: 1; } to { opacity: 0.4; } }
+.ki-kin-pane { position: fixed; right: var(--space-m); bottom: calc(var(--space-m) + 2.5rem + var(--space-s)); z-index: 40; display: flex; width: min(26rem, calc(100vw - 2rem)); height: min(42rem, calc(100svh - 6rem)); flex-direction: column; overflow: hidden; border-radius: var(--radius-xl); color: var(--neutral-10); background: var(--neutral-1); box-shadow: var(--border-shadow-s), var(--shadow-l); transform-origin: bottom right; }
+.dark .ki-kin-pane { background: var(--neutral-2); }
+.ki-kin-header { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-xs) var(--space-xs) var(--space-s); box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4-transparent); }
+.ki-kin-header-avatar { width: var(--space-l) !important; height: var(--space-l) !important; flex-shrink: 0; }
+.ki-kin-thread { display: inline-flex; min-width: 0; flex: 1 1 auto; align-items: center; justify-content: flex-start; gap: var(--space-xxs); box-shadow: none; border: 0; border-radius: var(--radius-s); padding: var(--space-xxs) var(--space-xs); color: var(--neutral-10); background: transparent; font-family: var(--font-ui); font-weight: var(--weight-ui-medium); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); text-align: start; transition: background-color var(--motion-duration) var(--motion-easing); }
+.ki-kin-thread:hover, .ki-kin-thread[data-popup-open] { background: var(--neutral-3); box-shadow: none; }
+.ki-kin-thread:active { transform: none; }
+.ki-kin-thread > svg { width: 1em; height: 1em; flex-shrink: 0; color: var(--neutral-7); }
+.ki-kin-thread-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ki-kin-thread-menu.ui-menu-detailed, .ki-kin-thread-menu { width: min(20rem, var(--available-width, 100vw)); max-height: min(24rem, var(--available-height, 24rem)); overflow-y: auto; }
+.ki-kin-thread-option { display: grid !important; grid-template-columns: 1em minmax(0, 1fr); column-gap: var(--space-xs); align-items: center; }
+.ki-kin-thread-name { grid-column: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ki-kin-thread-detail { grid-column: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-kin-summary { flex-shrink: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; border: 0; padding: var(--space-xs) var(--space-m); color: var(--neutral-7); background: var(--neutral-2); box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4-transparent); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); text-align: start; }
+.ki-kin-summary[data-open] { display: block; max-height: 12rem; overflow-y: auto; }
+.ki-kin-summary-lead { font-weight: var(--weight-ui-medium); color: var(--neutral-9); }
+.ki-kin-entry { display: flex; flex-direction: column; gap: var(--space-l); }
+.ki-kin-divider { display: flex; align-items: center; gap: var(--space-s); margin: 0; color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); white-space: nowrap; }
+.ki-kin-divider::before, .ki-kin-divider::after { content: ""; flex: 1 1 auto; height: var(--border-s); background: var(--neutral-4-transparent); }
+.ki-kin-reply { display: flex; flex-direction: column; gap: var(--space-xxs); }
+.ki-kin-empty-avatar { width: calc(var(--space-xl) + var(--space-s)) !important; height: calc(var(--space-xl) + var(--space-s)) !important; }
+.ki-kin-path { display: inline; border: 0; padding: 0; color: inherit; background: transparent; font: inherit; text-align: start; text-decoration: underline; text-decoration-color: var(--kin); text-decoration-thickness: var(--border-l); text-underline-offset: 0.2em; cursor: pointer; transition: color var(--motion-duration) var(--motion-easing); }
+.ki-kin-path:hover { color: var(--kin-ink); }
+.ki-kin-helper { position: relative; }
+.ki-kin-helper:not([data-expanded]) .ki-response { max-height: calc(var(--line-m) * 3); overflow: hidden; mask-image: linear-gradient(to bottom, black 55%, transparent); }
+.ki-kin-helper .ki-response { color: var(--neutral-8); font-size: var(--size-xs); line-height: var(--line-s); }
+.ki-kin-more { border: 0; padding: 0; margin-top: var(--space-xxs); color: var(--neutral-7); background: transparent; font-size: var(--size-xs); line-height: var(--line-xs); }
+.ki-kin-more:hover { color: var(--neutral-10); }
+.ki-kin-footer { flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-xs); padding: 0 var(--space-xs) var(--space-xs); }
+.ki-kin-helpers { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0 var(--space-xs); list-style: none; }
+.ki-kin-helper-row { display: flex; min-width: 0; align-items: center; gap: var(--space-xs); color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-kin-helper-icon { width: 1em; height: 1em; flex-shrink: 0; }
+.ki-kin-helper-row[data-job="running"] .ki-kin-helper-icon { animation: ki-spin 0.9s linear infinite; }
+.ki-kin-helper-text { min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ki-kin-helper-row button { opacity: 0; transition: opacity var(--motion-duration) var(--motion-easing); }
+.ki-kin-helper-row:hover button, .ki-kin-helper-row button:focus-visible { opacity: 1; }
+.ki-prompt-input-tools .ki-model-picker { margin-top: 0; gap: var(--space-xs); }
+.ki-prompt-input-tools .ki-model-trigger-compact { box-shadow: none; }
+
+/* An edit Kin proposed (KI-79). */
+.ki-edit { overflow: hidden; border-radius: var(--radius-m); background: var(--neutral-1); box-shadow: var(--border-shadow-s), var(--shadow-s); }
+.ki-edit-header { display: flex; min-width: 0; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-s); color: var(--neutral-7); background: var(--neutral-2); box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4-transparent); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-edit-icon { width: 1em; height: 1em; flex-shrink: 0; }
+.ki-edit-path { min-width: 0; overflow: hidden; border: 0; padding: 0; color: var(--neutral-9); background: transparent; font: inherit; font-weight: var(--weight-ui-medium); text-overflow: ellipsis; white-space: nowrap; }
+.ki-edit-path:hover { text-decoration: underline; text-underline-offset: var(--space-xxs); }
+.ki-edit-body { padding: var(--space-s); }
+.ki-edit-body > * + * { margin-top: var(--space-s); }
+.ki-edit-diff { margin: 0; font-family: var(--font-editorial); font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); white-space: pre-wrap; user-select: text; }
+.ki-edit-diff del { text-decoration-thickness: var(--border-s); }
+.ki-edit-footer { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xxs); padding: 0 var(--space-s) var(--space-s); }
+.ki-edit-status { display: inline-flex; align-items: center; gap: var(--space-xxs); color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-edit-status[data-applied] { color: var(--success); font-weight: var(--weight-ui-medium); }
+.ki-edit-status svg { width: 1em; height: 1em; }
+.ki-edit[data-applied] .ki-edit-body { opacity: 0.7; }
+
 /* The headless transport uses a real native <dialog>, inside the theme scope,
    rather than an unobservable browser prompt. Keep its keyboard contract. */
 [data-headless-dialog] { margin: auto; min-width: min(360px, calc(100vw - var(--space-xl))); max-width: min(560px, calc(100vw - var(--space-xl))); max-height: calc(100vh - var(--space-xl)); overflow: auto; padding: var(--space-l); border: 0; border-radius: var(--radius-m); color: var(--neutral-10); background: var(--neutral-1); box-shadow: var(--border-shadow-s), var(--shadow-l); font-family: var(--font-ui); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); font-weight: var(--weight-ui-regular); text-wrap: pretty; }
@@ -220,6 +284,9 @@
 [data-headless-dialog] :is(input, button):focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ki-tree-chevron, .ki-tree-folder, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-chip, .ki-model-trigger, [data-headless-dialog] button { transition: none; }
+  .ki-tree-chevron, .ki-tree-folder, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-chip, .ki-model-trigger, [data-headless-dialog] button, .ki-kin-launcher, .ki-kin-thread, .ki-kin-path, .ki-kin-helper-row button { transition: none; }
+  .ki-kin-launcher:hover, .ki-kin-launcher:active { transform: none; }
+  .ki-kin-launcher-dot-busy { animation: none; }
+  .ki-kin-helper-row[data-job="running"] .ki-kin-helper-icon { animation-duration: 2.4s; }
   .ki-clip-card:active, .ki-refine-choice:active { transform: none; }
 }

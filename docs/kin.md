@@ -373,7 +373,7 @@ Each `web_search` or `web_fetch` that works also emits its results on the
 snippet?, date?, favicon?}]}`), and the reply keeps up to 12 of them in the
 log entry's `web` field. They are never sent back to the model.
 
-`WebSources` (self-contained, for KI-79's restyle) shows them under the
+`WebSources` (self-contained) shows them under the
 reply and while Kin works: a "3 sources" toggle with favicons, then what was
 searched and how many pages were read, and each source with its title,
 domain and date. A source opens in the browser. Its actions:
@@ -631,6 +631,65 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   the web (scripted) when asked about the web, or searches,
   then answers slowly, word by word, quoting the start of what the tool returned. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
   the idle wait. `test/runtime-kin.test.ts` drives it in headless Chromium.
+  For the chat's design states (KI-79) it also answers by what it's asked:
+  "think" waits 3 s before it does anything, "compare" runs a search and a
+  list in one step and then reads two documents together, "points" answers
+  in Markdown, "tighten" (or "rewrite", "edit") on a selected paragraph
+  proposes an edit, "fail" fails like a provider error and "timeout" like a
+  provider that stopped responding. `pnpm --filter @kintsugi/desktop
+  kin:scenarios` (`test/kin-scenarios.ts`) walks through every state on a
+  fresh scratch vault, with a long conversation seeded into General, and
+  screenshots each one in light and dark.
+
+### The chat's interface (KI-79)
+
+Code: `packages/ui/src/components/ai/` (`@kintsugi/ui/ai`), the chat
+components; `src/kin/useKinChat.ts` (the chat's state), `Conversation.tsx`
+(the log, helpers and composer) and `Chat.tsx` (the floating pane and the
+avatar). The components follow the structure of Vercel's AI Elements
+(Conversation, Message, Response, PromptInput, ChainOfThought, Suggestion,
+CodeBlock, Shimmer), rebuilt on the Graphical theme and Base UI parts.
+They know nothing about Kin and nothing about where they're placed, so the
+pane, a sidebar (KI-63) or a comment thread can use them.
+
+- **The log** follows new words while he's at the bottom, stays put when
+  he's scrolled up to read, and shows a button back to the latest. Opening
+  the chat or another thread starts at the bottom.
+- **Kin's reply** is Markdown, rendered without HTML. Vault paths and
+  `[[links]]` in it open the document or clip (`kintsugi:open-link`, handled
+  in `App.tsx`); web links open in the browser.
+- **While Kin works** it says "Thinking" until it does something, then lists
+  each tool call as it runs ("Searched “repair”", "Read drafts/x.md") with its
+  status, then streams the reply with a caret. Done, the steps fold into
+  one line ("3 steps · 6s", or "Thought for 4s" with none), which opens to
+  the list. The reply keeps them in the log entry: `tools` (name, arguments
+  with long strings cut, whether it failed; at most 24), `ms` (how long the
+  turn took), `model` and `capReached`. None of it is sent back to the
+  model.
+- **Under a reply**: its web sources, Copy, and the model and cost, shown on
+  hover (always on the latest reply).
+- **Errors** say what failed: "Kin couldn’t answer" with the provider's
+  message, or "The model stopped responding" for a timeout, each with Try
+  again (it sends the messages the reply answered again). A reply that ran
+  with the month's cap reached says so, with Change cap.
+- **Edits.** When he asks Kin to edit a passage, Kin proposes it as a fenced
+  `edit <path>` block of search/replace pairs (the prompt asks for this; see
+  `prompt.rs`). The chat shows it as a word diff with Apply, which replaces
+  the passage in the open document as one undoable change
+  (`replaceInDocument` in `src/lib/insert.ts`, registered by the editor), and
+  Undo. Apply waits until the passage is in the document exactly once; with
+  the document closed, the button opens it. Nothing is written until he
+  applies it.
+- **An empty thread** shows one line and, with something on screen, a few
+  asks to send in one click ("Who disagrees?", "Find a clip").
+- **Helpers** at work sit above the composer, each with a way to stop it.
+- **Hide.** The pane's minus button and ⌘J hide it; the conversation and
+  Kin's turn carry on, and the avatar's dot says when Kin replied.
+- **Motion** is small and has a reduced-motion fallback: messages he sends
+  and helper reports settle in from just below, a step fades in as it
+  starts and its spinner turns into a check, "Thinking" shimmers, the caret
+  pulses, and the button back to the latest fades in. Opening the pane
+  isn't animated (⌘J opens it many times a day).
 
 ## Ideas (KI-39)
 

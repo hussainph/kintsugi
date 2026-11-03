@@ -121,6 +121,63 @@ pub struct Entry {
     /// its sources. Never sent back to the model.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub web: Vec<super::web::WebCall>,
+    /// Kin's reply: the tools it used on the way, in order (KI-79), shown
+    /// as its steps. Never sent back to the model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tools: Vec<ToolUse>,
+    /// Kin's reply: how long the turn took, in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ms: Option<u64>,
+    /// Kin's reply: `provider/model` it ran on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Kin's reply ran with the month's cap already reached.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub cap_reached: bool,
+}
+
+/// One tool call in a reply (KI-79): its name and arguments (long strings
+/// cut), and whether it failed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolUse {
+    pub name: String,
+    #[serde(default)]
+    pub arguments: serde_json::Value,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub error: bool,
+}
+
+/// The most tool calls one reply keeps.
+pub const MAX_TOOLS_PER_REPLY: usize = 24;
+
+impl ToolUse {
+    /// A tool call as the log keeps it: strings over 200 characters cut.
+    pub fn new(name: &str, arguments: &serde_json::Value) -> Self {
+        fn cut(value: &serde_json::Value, depth: usize) -> serde_json::Value {
+            use serde_json::Value;
+            match value {
+                Value::String(s) if s.chars().count() > 200 => {
+                    Value::String(format!("{}…", s.chars().take(200).collect::<String>()))
+                }
+                Value::Array(items) if depth < 3 => {
+                    Value::Array(items.iter().take(8).map(|v| cut(v, depth + 1)).collect())
+                }
+                Value::Object(map) if depth < 3 => Value::Object(
+                    map.iter()
+                        .map(|(k, v)| (k.clone(), cut(v, depth + 1)))
+                        .collect(),
+                ),
+                Value::Array(_) | Value::Object(_) => Value::Null,
+                other => other.clone(),
+            }
+        }
+        ToolUse {
+            name: name.into(),
+            arguments: cut(arguments, 0),
+            error: false,
+        }
+    }
 }
 
 /// What a new entry says; the log assigns `seq` and `at`.
@@ -137,6 +194,10 @@ pub struct Draft {
     pub comment: Option<String>,
     pub review: bool,
     pub web: Vec<super::web::WebCall>,
+    pub tools: Vec<ToolUse>,
+    pub ms: Option<u64>,
+    pub model: Option<String>,
+    pub cap_reached: bool,
 }
 
 /// A topic, as inferred for one message.
@@ -356,6 +417,10 @@ impl Log {
             comment: draft.comment,
             review: draft.review,
             web: draft.web,
+            tools: draft.tools,
+            ms: draft.ms,
+            model: draft.model,
+            cap_reached: draft.cap_reached,
         };
         self.push(entry, topic)
     }

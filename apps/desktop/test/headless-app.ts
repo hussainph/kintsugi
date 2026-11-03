@@ -35,7 +35,9 @@ export async function startApp(prefix: string, env: Record<string, string>, prep
   assert.equal(seeded.status, 0, seeded.stderr);
   prepare?.(vault);
 
-  const [frontend, backend] = [await freePort(), await freePort()];
+  // Fixed ports when asked for (a shared machine's assigned ports), else free ones.
+  const fixed = [env.KINTSUGI_FRONTEND_PORT, env.KINTSUGI_BACKEND_PORT].map(Number);
+  const [frontend, backend] = fixed.every((p) => p > 0) ? fixed : [await freePort(), await freePort()];
   const runner: ChildProcess = spawn(process.execPath, [resolve(root, "scripts/desktop-headless.mjs")], {
     cwd: root,
     detached: true,

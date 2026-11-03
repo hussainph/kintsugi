@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { beginComment, reviewDraft } from "@/comments/api";
 import { useComments } from "@/comments/useComments";
-import { registerInsert } from "@/lib/insert";
+import { registerInsert, type Found } from "@/lib/insert";
 import { memory } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
 import { type Action } from "@/refine/prompts";
@@ -116,7 +116,24 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     const replacement = before + text;
     view.dispatch({ changes: { from: at, insert: replacement }, selection: { anchor: at + replacement.length }, annotations: isolateHistory.of("full"), userEvent: "input.reference" });
   }, [editor.viewRef]);
-  useEffect(() => (editor.readOnly ? undefined : registerInsert(editor.path, append)), [editor.readOnly, editor.path, append]);
+  // An edit Kin proposed in the chat, which he applies (KI-79): the
+  // passage as Kin quoted it, found once in the document, replaced as one
+  // undoable change.
+  const find = useCallback((passage: string): Found => {
+    const view = editor.viewRef.current;
+    const text = view?.state.doc.toString() ?? "";
+    const at = passage ? text.indexOf(passage) : -1;
+    if (at < 0) return "missing";
+    return text.indexOf(passage, at + 1) >= 0 ? "ambiguous" : "once";
+  }, [editor.viewRef]);
+  const replace = useCallback((passage: string, next: string) => {
+    const view = editor.viewRef.current;
+    if (!view || find(passage) !== "once") return false;
+    const from = view.state.doc.toString().indexOf(passage);
+    view.dispatch({ changes: { from, to: from + passage.length, insert: next }, selection: { anchor: from + next.length }, scrollIntoView: true, annotations: isolateHistory.of("full"), userEvent: "input.kin" });
+    return true;
+  }, [editor.viewRef, find]);
+  useEffect(() => (editor.readOnly ? undefined : registerInsert(editor.path, append, { find, replace })), [editor.readOnly, editor.path, append, find, replace]);
   const quote = useCallback(async (source: ReferenceSource) => {
     const path = activePath.current;
     try {

@@ -342,6 +342,31 @@ fn a_reply_keeps_its_web_sources() {
     // Sources are for the chat; the next turn's history carries only text.
     let line = serde_json::to_value(&reply).unwrap();
     assert_eq!(line["web"][0]["results"][0]["date"], "2025-06-14");
+    // KI-79: and the tools it used, in order, with how long it took.
+    let names: Vec<_> = reply.tools.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(names, ["web_search", "web_fetch"]);
+    assert_eq!(
+        reply.tools[0].arguments,
+        json!({ "query": "golden joinery" })
+    );
+    assert!(!reply.tools[0].error && reply.ms.is_some() && !reply.cap_reached);
+    assert_eq!(line["tools"][1]["name"], "web_fetch");
+    assert!(
+        line.get("capReached").is_none(),
+        "false flags stay out of the log"
+    );
+}
+
+/// KI-79: a long argument is cut before it reaches the log.
+#[test]
+fn a_tool_use_cuts_long_strings() {
+    let long = "x".repeat(500);
+    let used = history::ToolUse::new("read", &json!({ "path": long, "n": 3 }));
+    assert_eq!(
+        used.arguments["path"].as_str().unwrap().chars().count(),
+        201
+    );
+    assert_eq!(used.arguments["n"], 3);
 }
 
 #[test]

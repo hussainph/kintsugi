@@ -194,7 +194,7 @@ test("Kin searches the web (scripted) and shows its sources with their actions",
 });
 
 test("Discuss on a clip opens the chat with the clip; returning to the draft resumes its thread", { timeout: 120_000 }, async () => {
-  await panel().getByRole("button", { name: "Close Kin" }).first().click();
+  await panel().getByRole("button", { name: "Hide Kin" }).first().click();
   await page.keyboard.press("Meta+Shift+i");
   await page.locator(`[data-clip-path="${CLIP}"]`).click();
   await page.getByRole("button", { name: "Discuss" }).click();
@@ -208,7 +208,7 @@ test("Discuss on a clip opens the chat with the clip; returning to the draft res
 
   // Back to the draft: the chat follows to the draft's thread, and once
   // he's idle Kin writes its running summary.
-  await panel().getByRole("button", { name: "Close Kin" }).first().click();
+  await panel().getByRole("button", { name: "Hide Kin" }).first().click();
   await openDoc(DRAFT);
   await page.getByRole("button", { name: "Ask Kin" }).click();
   await header().getByText("About Kintsugi and gold").waitFor();
@@ -219,13 +219,13 @@ test("Discuss on a clip opens the chat with the clip; returning to the draft res
 
   // Everything: the one log, all threads.
   await panel().getByRole("button", { name: "Conversation", exact: true }).click();
-  await page.getByRole("button", { name: /^Everything/ }).click();
+  await page.getByRole("menuitemradio", { name: /^Everything/ }).click();
   await mine("Why did I keep this?").waitFor();
   await mine("Is the gold metaphor overworked here?").waitFor();
 });
 
 test("helper jobs run in the background and report back quietly", { timeout: 60_000 }, async () => {
-  await panel().getByRole("button", { name: "Close Kin" }).first().click();
+  await panel().getByRole("button", { name: "Hide Kin" }).first().click();
   const job = await page.evaluate(() =>
     (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<{ id: string }> } })
       .__TAURI_INTERNALS__.invoke("kin_job_create", { job: { kind: "feed-ranking", task: "triage", brief: "Rank recent clips about repair." } }),
@@ -236,7 +236,7 @@ test("helper jobs run in the background and report back quietly", { timeout: 60_
   await shot("06-helper-unread");
   await page.getByRole("button", { name: "Ask Kin" }).click();
   await panel().getByRole("button", { name: "Conversation", exact: true }).click();
-  await page.getByRole("button", { name: /^Everything/ }).click();
+  await page.getByRole("menuitemradio", { name: /^Everything/ }).click();
   await panel().locator('[data-role="helper"]').getByText("You said: “", { exact: false }).waitFor();
   await shot("07-helper-report");
 
@@ -280,7 +280,7 @@ test("opening another vault switches the conversation", { timeout: 60_000 }, asy
 
   await open(vault);
   await panel().getByRole("button", { name: "Conversation", exact: true }).click();
-  await page.getByRole("button", { name: /^Everything/ }).click();
+  await page.getByRole("menuitemradio", { name: /^Everything/ }).click();
   await mine("Is the gold metaphor overworked here?").waitFor({ timeout: 10_000 });
   await shot("09-back");
 });

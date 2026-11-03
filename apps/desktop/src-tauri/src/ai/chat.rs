@@ -539,6 +539,9 @@ impl<B: Brain> Engine<B> {
             topic: info.topic.clone(),
             answers: info.answers.clone(),
             web: trace.web,
+            tools: trace.uses.into_iter().map(|(_, used)| used).collect(),
+            ms: Some(trace.millis),
+            model: Some(trace.model).filter(|m| !m.is_empty()),
             ..Draft::default()
         };
         let (draft, settled) = match result {
@@ -561,6 +564,7 @@ impl<B: Brain> Engine<B> {
                     Some(Draft {
                         text,
                         usd: Some(summary.usd),
+                        cap_reached: summary.cap_reached,
                         ..base
                     }),
                     true,
@@ -674,15 +678,31 @@ impl<B: Brain> Engine<B> {
                     } => trace.step(*step, stop_reason.as_deref(), *text_chars, usage.output),
                     // Text before a tool call was thinking aloud.
                     KinEvent::ToolCall {
-                        name, arguments, ..
+                        id,
+                        name,
+                        arguments,
                     } => {
                         streamed.clear();
                         trace.call(name, arguments);
+                        if trace.uses.len() < history::MAX_TOOLS_PER_REPLY {
+                            trace
+                                .uses
+                                .push((id.clone(), history::ToolUse::new(name, arguments)));
+                        }
                     }
                     KinEvent::ToolResult {
-                        web: Some(call), ..
-                    } if trace.web.len() < super::web::MAX_CALLS_PER_REPLY => {
-                        trace.web.push(call.clone());
+                        id, is_error, web, ..
+                    } => {
+                        if *is_error
+                            && let Some((_, used)) = trace.uses.iter_mut().find(|(i, _)| i == id)
+                        {
+                            used.error = true;
+                        }
+                        if let Some(call) = web
+                            && trace.web.len() < super::web::MAX_CALLS_PER_REPLY
+                        {
+                            trace.web.push(call.clone());
+                        }
                     }
                     _ => {}
                 }

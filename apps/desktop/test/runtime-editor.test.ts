@@ -65,7 +65,7 @@ const slash = () => page.locator(".cm-command-menu");
 const picker = () => page.locator(".cm-reference-picker");
 const refine = () => page.locator("[data-slot=popover-content]");
 const kin = () => page.getByRole("dialog", { name: "Kin" });
-const closeKin = () => kin().getByRole("button", { name: "Close Kin" }).first().click();
+const closeKin = () => kin().getByRole("button", { name: "Hide Kin" }).first().click();
 
 test("/ offers Markdown blocks and the skills flagged for it", { timeout: 120_000 }, async () => {
   await page.locator(`[title="${DOC}"]`).click();

@@ -37,6 +37,16 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## AI Elements (structure of the chat components)
+
+- What: Kin's chat components in `packages/ui/src/components/ai/` follow the
+  component structure and names of Vercel's AI Elements (Conversation,
+  Message, Response, PromptInput, ChainOfThought, Suggestion, CodeBlock,
+  Shimmer). They were written for Kintsugi on its Graphical/Base UI kit; no
+  AI Elements source is copied and the package isn't a dependency.
+- Source: https://github.com/vercel/ai-elements, https://ui.shadcn.com/docs/ai-elements
+- License: Apache-2.0 (Copyright 2023 Vercel, Inc.).
+
 ## potion-base-8M (search embedding model)
 
 - What: the model search uses to find things by meaning
