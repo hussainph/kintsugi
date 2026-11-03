@@ -47,6 +47,8 @@ export function ProviderSettings() {
   const [busy, setBusy] = useState(false);
   const [flow, setFlow] = useState<Flow | null>(null);
   const flowId = useRef<string | null>(null);
+  /** The sign-in this page is following; events from any other are dropped. */
+  const current = useRef<object | null>(null);
 
   const reload = useCallback(() => credentials.list().then(setList).catch((e) => toast.error(String(e))), []);
 
@@ -54,6 +56,7 @@ export function ProviderSettings() {
     void reload();
     // Leaving Settings ends a sign-in in progress.
     return () => {
+      current.current = null;
       if (flowId.current) void credentials.cancel(flowId.current);
     };
   }, [reload]);
@@ -81,8 +84,10 @@ export function ProviderSettings() {
     }
   };
 
-  const onEvent = (provider: CredentialView) => (event: SignInEvent) => {
+  const onEvent = (provider: CredentialView, token: object) => (event: SignInEvent) => {
+    if (current.current !== token) return;
     if (event.type === "done" || event.type === "failed") {
+      current.current = null;
       flowId.current = null;
       setFlow(null);
       setAnswer("");
@@ -102,7 +107,8 @@ export function ProviderSettings() {
         case "device_code":
           return { ...f, device: { userCode: event.userCode, verificationUri: event.verificationUri } };
         case "progress":
-          return { ...f, progress: event.message };
+          // Past the browser: nothing left to paste.
+          return { ...f, progress: event.message, prompt: f.prompt?.kind === "paste" ? null : f.prompt };
         default:
           return f;
       }
@@ -113,17 +119,25 @@ export function ProviderSettings() {
     setEditing(null);
     setAnswer("");
     setFlow({ provider: p.id, id: null, prompt: null, page: null, device: null, progress: null });
+    const token = {};
+    current.current = token;
+    flowId.current = null;
     try {
-      const id = await credentials.signIn(p.id, onEvent(p));
+      const id = await credentials.signIn(p.id, onEvent(p, token));
+      // Cancelled while it was starting: stop it now.
+      if (current.current !== token) return void credentials.cancel(id);
       flowId.current = id;
       setFlow((f) => (f && f.provider === p.id ? { ...f, id } : f));
     } catch (e) {
+      if (current.current !== token) return;
+      current.current = null;
       setFlow(null);
       toast.error(String(e));
     }
   };
 
   const cancel = () => {
+    current.current = null;
     if (flowId.current) void credentials.cancel(flowId.current);
     flowId.current = null;
     setFlow(null);

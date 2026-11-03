@@ -9,6 +9,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -74,17 +75,23 @@ impl Callback {
         let timeout = tokio::time::sleep(self.timeout);
         tokio::pin!(timeout);
         let mut complete = Some(complete);
+        // Dropped on return: idle browser connections close with the listener.
+        let mut readers = JoinSet::new();
         loop {
             tokio::select! {
                 _ = &mut timeout => return Err(format!("{} sign-in timed out", self.provider)),
                 accepted = self.listener.accept() => {
-                    if let Ok((mut stream, _)) = accepted {
-                        let tx = tx.clone();
-                        tokio::spawn(async move {
-                            if let Some((method, target)) = read_head(&mut stream).await {
-                                let _ = tx.send((method, target, stream)).await;
-                            }
-                        });
+                    match accepted {
+                        Ok((mut stream, _)) => {
+                            let tx = tx.clone();
+                            readers.spawn(async move {
+                                if let Some((method, target)) = read_head(&mut stream).await {
+                                    let _ = tx.send((method, target, stream)).await;
+                                }
+                            });
+                        }
+                        // Out of file descriptors, say: don't spin.
+                        Err(_) => tokio::time::sleep(Duration::from_millis(50)).await,
                     }
                 }
                 Some((method, target, stream)) = rx.recv() => {
