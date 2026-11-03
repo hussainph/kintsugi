@@ -218,11 +218,23 @@ impl Model for Scripted {
 fn web_query(said: &str) -> String {
     let lower = said.to_lowercase();
     let mut query = said;
-    for lead in ["search the web for", "search online for", "look up online", "on the web", "online", "the web", "web"] {
+    for lead in [
+        "search the web for",
+        "search online for",
+        "look up online",
+        "on the web",
+        "online",
+        "the web",
+        "web",
+    ] {
         if let Some(at) = lower.find(lead)
             && let (Some(before), Some(rest)) = (said.get(..at), said.get(at + lead.len()..))
         {
-            query = if rest.trim().len() > 2 { rest.trim() } else { before.trim() };
+            query = if rest.trim().len() > 2 {
+                rest.trim()
+            } else {
+                before.trim()
+            };
             break;
         }
     }
@@ -232,7 +244,11 @@ fn web_query(said: &str) -> String {
         .find_map(|lead| query.strip_prefix(lead))
         .unwrap_or(query);
     let query: String = query.chars().take(80).collect();
-    if query.is_empty() { "kintsugi".into() } else { query }
+    if query.is_empty() {
+        "kintsugi".into()
+    } else {
+        query
+    }
 }
 
 /// After a web search, read its first result.
@@ -897,41 +913,68 @@ mod web_tests {
             recap: None,
         };
         let mut events = vec![];
-        let summary = block_on(agent::run(&Scripted::default(), &harness, &turn, &mut |e| {
-            events.push(e)
-        }))
+        let summary = block_on(agent::run(
+            &Scripted::default(),
+            &harness,
+            &turn,
+            &mut |e| events.push(e),
+        ))
         .unwrap();
         let calls: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                KinEvent::ToolCall { name, arguments, .. } => Some((name.clone(), arguments.clone())),
+                KinEvent::ToolCall {
+                    name, arguments, ..
+                } => Some((name.clone(), arguments.clone())),
                 _ => None,
             })
             .collect();
-        assert_eq!(calls[0], ("web_search".into(), json!({ "query": "golden joinery" })));
+        assert_eq!(
+            calls[0],
+            ("web_search".into(), json!({ "query": "golden joinery" }))
+        );
         assert_eq!(
             calls[1],
-            ("web_fetch".into(), json!({ "url": "https://en.wikipedia.org/wiki/golden-joinery" }))
+            (
+                "web_fetch".into(),
+                json!({ "url": "https://en.wikipedia.org/wiki/golden-joinery" })
+            )
         );
         let web: Vec<_> = events
             .iter()
             .filter_map(|e| match e {
-                KinEvent::ToolResult { web: Some(call), .. } => Some(call.tool.clone()),
+                KinEvent::ToolResult {
+                    web: Some(call), ..
+                } => Some(call.tool.clone()),
                 _ => None,
             })
             .collect();
         assert_eq!(web, ["search", "fetch"]);
-        assert!(summary.text.contains("It returned: # Mock page at en.wikipedia.org"), "{}", summary.text);
+        assert!(
+            summary
+                .text
+                .contains("It returned: # Mock page at en.wikipedia.org"),
+            "{}",
+            summary.text
+        );
 
         // Without web tools, the mock never asks for them.
         let plain = Tools::new(vault.path(), outputs.path().into(), "t2").unwrap();
-        let harness = Harness { tools: &plain, ..harness };
+        let harness = Harness {
+            tools: &plain,
+            ..harness
+        };
         let mut names = vec![];
-        block_on(agent::run(&Scripted::default(), &harness, &turn, &mut |e| {
-            if let KinEvent::ToolCall { name, .. } = e {
-                names.push(name);
-            }
-        }))
+        block_on(agent::run(
+            &Scripted::default(),
+            &harness,
+            &turn,
+            &mut |e| {
+                if let KinEvent::ToolCall { name, .. } = e {
+                    names.push(name);
+                }
+            },
+        ))
         .unwrap();
         assert_eq!(names, ["search"]);
     }

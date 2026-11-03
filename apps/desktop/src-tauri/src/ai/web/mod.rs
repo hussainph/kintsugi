@@ -161,7 +161,10 @@ impl Store {
     }
 
     #[cfg(test)]
-    pub fn with_env(mut self, env: impl Fn(&str) -> Option<String> + Send + Sync + 'static) -> Self {
+    pub fn with_env(
+        mut self,
+        env: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
+    ) -> Self {
         self.env = Box::new(env);
         self
     }
@@ -179,10 +182,11 @@ impl Store {
     }
 
     fn active(&self, state: &Stored) -> Option<(Provider, String)> {
-        let order = state
-            .provider
-            .into_iter()
-            .chain(Provider::ALL.into_iter().filter(|p| Some(*p) != state.provider));
+        let order = state.provider.into_iter().chain(
+            Provider::ALL
+                .into_iter()
+                .filter(|p| Some(*p) != state.provider),
+        );
         for provider in order {
             if let Some((key, _)) = self.key_of(state, provider) {
                 return Some((provider, key));
@@ -401,7 +405,10 @@ impl Web {
     }
 
     #[cfg(test)]
-    fn for_tests(search: Option<search::Searcher>, pinned: Vec<(String, std::net::SocketAddr)>) -> Self {
+    fn for_tests(
+        search: Option<search::Searcher>,
+        pinned: Vec<(String, std::net::SocketAddr)>,
+    ) -> Self {
         Web::new(search, Reader::Pinned(pinned))
     }
 
@@ -413,7 +420,9 @@ impl Web {
         let count = args["count"]
             .as_u64()
             .or_else(|| args["k"].as_u64())
-            .map_or(search::DEFAULT_RESULTS, |n| (n as usize).clamp(1, search::MAX_RESULTS));
+            .map_or(search::DEFAULT_RESULTS, |n| {
+                (n as usize).clamp(1, search::MAX_RESULTS)
+            });
         let Some(searcher) = &self.search else {
             return Err("Web search isn't set up: there's no Exa, Brave Search or Tavily key. Hussain can add one in Settings › Web. web_fetch still works.".into());
         };
@@ -455,7 +464,9 @@ impl Web {
         let url = reqwest::Url::parse(raw)
             .ok()
             .filter(kintsugi_ingest::web::guard::public_url)
-            .ok_or("web_fetch reads public http(s) pages only: no local, private or file addresses.")?;
+            .ok_or(
+                "web_fetch reads public http(s) pages only: no local, private or file addresses.",
+            )?;
         let start = args["start"].as_u64().unwrap_or(0) as usize;
         let page = match self.cached(url.as_str()) {
             Some(page) => page,
@@ -478,7 +489,10 @@ impl Web {
                 results: vec![Source {
                     url: page.url.clone(),
                     title: page.title.clone().unwrap_or_default(),
-                    snippet: page.description.as_deref().map(|d| search::clean(d, search::SNIPPET_CHARS)),
+                    snippet: page
+                        .description
+                        .as_deref()
+                        .map(|d| search::clean(d, search::SNIPPET_CHARS)),
                     date: page.published.as_deref().map(search::day),
                     favicon: None,
                 }],
@@ -561,7 +575,9 @@ fn render(page: &Page, asked: &str, start: usize) -> String {
     let facts: Vec<String> = [
         page.author.as_ref().map(|a| format!("By {a}")),
         page.site.clone(),
-        page.published.as_ref().map(|p| format!("Published {}", search::day(p))),
+        page.published
+            .as_ref()
+            .map(|p| format!("Published {}", search::day(p))),
     ]
     .into_iter()
     .flatten()
@@ -576,7 +592,9 @@ fn render(page: &Page, asked: &str, start: usize) -> String {
         return out;
     }
     if start >= total {
-        out.push_str(&format!("\nThe page has {total} characters; start is past the end.\n"));
+        out.push_str(&format!(
+            "\nThe page has {total} characters; start is past the end.\n"
+        ));
         return out;
     }
     let text: String = page.body.chars().skip(start).take(PAGE_CHARS).collect();

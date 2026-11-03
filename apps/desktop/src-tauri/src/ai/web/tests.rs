@@ -27,11 +27,16 @@ async fn provider(status: u16, answer: Value) -> (String, Seen) {
               body: axum::body::Bytes| {
             let (log, answer) = (log.clone(), answer.clone());
             async move {
-                let auth = ["x-api-key", "x-subscription-token", "authorization", "accept"]
-                    .iter()
-                    .filter_map(|h| Some(format!("{h}={}", headers.get(*h)?.to_str().ok()?)))
-                    .collect::<Vec<_>>()
-                    .join(" ");
+                let auth = [
+                    "x-api-key",
+                    "x-subscription-token",
+                    "authorization",
+                    "accept",
+                ]
+                .iter()
+                .filter_map(|h| Some(format!("{h}={}", headers.get(*h)?.to_str().ok()?)))
+                .collect::<Vec<_>>()
+                .join(" ");
                 let body = if body.is_empty() {
                     json!(uri.query().unwrap_or_default())
                 } else {
@@ -175,11 +180,15 @@ fn provider_errors_are_plain_and_never_echo_the_key() {
             (500, "HTTP 500"),
         ] {
             let (base, _) = provider(status, json!({ "error": "secret-key-123 is bad" })).await;
-            let searcher = Searcher::at(Provider::Tavily, "secret-key-123", format!("{base}/search"));
+            let searcher =
+                Searcher::at(Provider::Tavily, "secret-key-123", format!("{base}/search"));
             let error = searcher.search("q", 3).await.unwrap_err();
             assert!(error.contains(says), "{status}: {error}");
             assert!(error.starts_with("Tavily"), "{error}");
-            assert!(!error.contains("secret-key-123") && !error.contains("127.0.0.1"), "{error}");
+            assert!(
+                !error.contains("secret-key-123") && !error.contains("127.0.0.1"),
+                "{error}"
+            );
         }
         let (base, _) = provider(200, json!("not results")).await;
         let none = Searcher::at(Provider::Exa, "k", format!("{base}/search"))
@@ -192,7 +201,10 @@ fn provider_errors_are_plain_and_never_echo_the_key() {
 
 #[test]
 fn snippets_and_dates_are_cleaned() {
-    assert_eq!(search::clean("a <b>bold</b>\n\n  move &lt;3", 100), "a bold move <3");
+    assert_eq!(
+        search::clean("a <b>bold</b>\n\n  move &lt;3", 100),
+        "a bold move <3"
+    );
     assert_eq!(search::clean(&"word ".repeat(100), 12), "word word wo…");
     assert_eq!(search::day("2024-01-02T03:04:05Z"), "2024-01-02");
     assert_eq!(search::day("Tue, 11 Mar 2025 17:00:00 GMT"), "2025-03-11");
@@ -209,7 +221,10 @@ fn without_a_key_web_search_says_how_to_set_one_up() {
         .block_on(web.search(&json!({ "query": "kintsugi" })))
         .err()
         .unwrap();
-    assert!(error.contains("Settings › Web") && error.contains("web_fetch still works"), "{error}");
+    assert!(
+        error.contains("Settings › Web") && error.contains("web_fetch still works"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -228,7 +243,10 @@ fn web_search_returns_compact_json_and_the_chat_call() {
     assert_eq!(answer.call.tool, "search");
     assert_eq!(answer.call.query.as_deref(), Some("golden joinery"));
     assert_eq!(answer.call.provider.as_deref(), Some("mock"));
-    assert_eq!(answer.call.results[0].url, "https://en.wikipedia.org/wiki/golden-joinery");
+    assert_eq!(
+        answer.call.results[0].url,
+        "https://en.wikipedia.org/wiki/golden-joinery"
+    );
     assert!(rt.block_on(web.search(&json!({ "query": " " }))).is_err());
 }
 
@@ -247,8 +265,14 @@ fn web_fetch_refuses_private_addresses_and_other_schemes() {
         "ftp://example.com/x",
         "not a url",
     ] {
-        let error = rt.block_on(web.fetch(&json!({ "url": url }))).err().unwrap();
-        assert!(error.contains("public http(s) pages only"), "{url}: {error}");
+        let error = rt
+            .block_on(web.fetch(&json!({ "url": url })))
+            .err()
+            .unwrap();
+        assert!(
+            error.contains("public http(s) pages only"),
+            "{url}: {error}"
+        );
     }
 }
 
@@ -263,7 +287,10 @@ async fn pages(body: String) -> (std::net::SocketAddr, Arc<StdMutex<usize>>) {
                 let (count, body) = (count.clone(), body.clone());
                 async move {
                     *count.lock().unwrap() += 1;
-                    ([(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")], body)
+                    (
+                        [(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                        body,
+                    )
                 }
             }),
         )
@@ -321,10 +348,19 @@ fn keys_are_saved_owner_only_and_never_shown() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(Some(dir.path().into())).with_env(|_| None);
     assert_eq!(store.view().active, None);
-    assert!(store.tools().unwrap().search.is_none(), "no key: no search, fetch still on");
+    assert!(
+        store.tools().unwrap().search.is_none(),
+        "no key: no search, fetch still on"
+    );
 
-    let view = store.set_key(Provider::Brave, Some("  brave-secret  ".into())).unwrap();
-    assert_eq!(view.provider, Some(Provider::Brave), "the first key picks the provider");
+    let view = store
+        .set_key(Provider::Brave, Some("  brave-secret  ".into()))
+        .unwrap();
+    assert_eq!(
+        view.provider,
+        Some(Provider::Brave),
+        "the first key picks the provider"
+    );
     assert_eq!(view.active, Some(Provider::Brave));
     let shown = serde_json::to_string(&view).unwrap();
     assert!(!shown.contains("brave-secret"), "{shown}");
@@ -333,18 +369,32 @@ fn keys_are_saved_owner_only_and_never_shown() {
     let path = dir.path().join(FILE);
     let mode = fs::metadata(&path).unwrap().permissions().mode();
     assert_eq!(mode & 0o777, 0o600);
-    assert!(fs::read_to_string(&path).unwrap().contains("\"brave\": \"brave-secret\""));
+    assert!(
+        fs::read_to_string(&path)
+            .unwrap()
+            .contains("\"brave\": \"brave-secret\"")
+    );
 
     // A pick without a key falls back to one that has a key.
     let view = store.set_provider(Some(Provider::Exa)).unwrap();
-    assert_eq!((view.provider, view.active), (Some(Provider::Exa), Some(Provider::Brave)));
-    assert_eq!(store.tools().unwrap().search.as_ref().unwrap().id(), "brave");
+    assert_eq!(
+        (view.provider, view.active),
+        (Some(Provider::Exa), Some(Provider::Brave))
+    );
+    assert_eq!(
+        store.tools().unwrap().search.as_ref().unwrap().id(),
+        "brave"
+    );
 
     // Reopened from disk, the same.
     let again = Store::open(Some(dir.path().into())).with_env(|_| None);
     assert_eq!(again.view(), store.view());
 
-    assert!(store.set_key(Provider::Exa, Some("two words".into())).is_err());
+    assert!(
+        store
+            .set_key(Provider::Exa, Some("two words".into()))
+            .is_err()
+    );
     let view = store.set_key(Provider::Brave, None).unwrap();
     assert_eq!(view.active, None);
     assert!(!fs::read_to_string(&path).unwrap().contains("brave-secret"));
@@ -356,11 +406,14 @@ fn keys_are_saved_owner_only_and_never_shown() {
 
 #[test]
 fn environment_keys_are_used_when_none_is_saved() {
-    let store = Store::open(None).with_env(|name| (name == "TAVILY_API_KEY").then(|| "tvly-env".into()));
+    let store =
+        Store::open(None).with_env(|name| (name == "TAVILY_API_KEY").then(|| "tvly-env".into()));
     let view = store.view();
     assert_eq!(view.active, Some(Provider::Tavily));
     assert_eq!(view.providers[2].key, Some(KeySource::Environment));
     assert_eq!(view.providers[0].key, None);
-    let view = store.set_key(Provider::Tavily, Some("tvly-saved".into())).unwrap();
+    let view = store
+        .set_key(Provider::Tavily, Some("tvly-saved".into()))
+        .unwrap();
     assert_eq!(view.providers[2].key, Some(KeySource::Settings));
 }

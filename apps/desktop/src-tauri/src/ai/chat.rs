@@ -679,9 +679,9 @@ impl<B: Brain> Engine<B> {
                         streamed.clear();
                         trace.call(name, arguments);
                     }
-                    KinEvent::ToolResult { web: Some(call), .. }
-                        if trace.web.len() < super::web::MAX_CALLS_PER_REPLY =>
-                    {
+                    KinEvent::ToolResult {
+                        web: Some(call), ..
+                    } if trace.web.len() < super::web::MAX_CALLS_PER_REPLY => {
                         trace.web.push(call.clone());
                     }
                     _ => {}
