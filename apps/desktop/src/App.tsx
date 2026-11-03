@@ -1,3 +1,4 @@
+import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -761,6 +762,15 @@ export default function App() {
     if (change) view.dispatch({ changes: change });
   };
 
+  const showRefine = (from: number, to: number, action?: Action) => {
+    const view = viewRef.current;
+    if (!view) return;
+    // Reveal the passage before Refine measures its anchor. Another surface
+    // can leave it off screen; for a long selection, its end is the anchor.
+    view.dispatch({ effects: EditorView.scrollIntoView(EditorSelection.range(from, to)) });
+    setRefine({ from, to, action, seq: Date.now() });
+  };
+
   // ⌘K: the selection, or the paragraph under the cursor when nothing is
   // selected. An edit's own key (⌥⌘T…) runs that edit on it straight away.
   const openRefine = (action?: Action) => {
@@ -774,7 +784,7 @@ export default function App() {
       const problem = fits(action, passage, view.state.readOnly);
       if (problem) return toast(problem);
     }
-    setRefine({ from, to, action, seq: Date.now() });
+    showRefine(from, to, action);
   };
 
   const openVault = async () => {
@@ -965,7 +975,7 @@ export default function App() {
             root={root}
             onOpenDoc={openDoc}
             onOpenClip={requestClip}
-            onRefine={(from, to, action) => setRefine({ from, to, action, seq: Date.now() })}
+            onRefine={showRefine}
             path={doc.path}
             text={doc.text}
             onChange={onChange}

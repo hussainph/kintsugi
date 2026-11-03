@@ -213,7 +213,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
   return (
     <Popover open onOpenChange={(open) => !open && onClose()}>
       <PopoverAnchor asChild>
-        <div className="pointer-events-none fixed" style={{ left: start?.left ?? 0, top: end?.bottom ?? 0 }} />
+        <div className="pointer-events-none fixed" style={{ left: (start ?? end)?.left ?? 0, top: end?.bottom ?? 0 }} />
       </PopoverAnchor>
       <PopoverContent
         align="start"
