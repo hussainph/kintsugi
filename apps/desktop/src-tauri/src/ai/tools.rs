@@ -15,9 +15,13 @@
 //! - Everything a tool returns from the vault is wrapped in `<data>`, and
 //!   the prompt prefix tells Kin that text inside is content to read, never
 //!   instructions to follow.
+//! - Web text can't steer the hard parts (KI-81, `web::guard`): what Kin
+//!   reads from the vault and Feed is noted so `web_fetch` opens only links
+//!   with provenance and queries can't quote it, and after a web call
+//!   `memory` and skill writes are refused for the rest of the turn.
 
 use super::memory::Access;
-use super::web::{Web, WebCall};
+use super::web::{Web, WebCall, guard};
 use super::wire::{ToolCall, ToolSpec};
 use kintsugi_search::{Hit, Kind, Query};
 use kintsugi_vault::{self as vault, INBOX, INSPIRATION};
@@ -248,6 +252,19 @@ pub type Searcher = std::sync::Arc<dyn Fn(&Query) -> Result<Vec<Hit>> + Send + S
 /// ranking extras, by tool name. It lives in app data, outside the vault.
 pub type FeedTool = std::sync::Arc<dyn Fn(&str, &Value) -> Result<String> + Send + Sync>;
 
+/// Tools whose output is vault or Feed text: links in it may be fetched,
+/// and web queries may not quote it (KI-81). Not `history` or `idea`: Kin's
+/// own past words may carry a link a page planted.
+const VAULT_EXTRAS: [&str; 7] = [
+    "outline",
+    "recent",
+    "shortlist",
+    "similar_to",
+    "top_topics",
+    "taste_profile",
+    "explain",
+];
+
 /// The extras the Feed answers.
 const FEED_EXTRAS: [&str; 5] = [
     "shortlist",
@@ -389,6 +406,19 @@ impl Tools {
         }
     }
 
+    /// Hussain's own words for this turn (his message, his earlier ones):
+    /// the web tools may open his links and search his phrases.
+    pub fn heard(&self, text: &str) {
+        if let Some(web) = &self.web {
+            web.heard(text);
+        }
+    }
+
+    /// Web text came into this turn, so memory and skills stay as they are.
+    fn read_the_web(&self) -> bool {
+        self.web.as_ref().is_some_and(|web| web.tainted())
+    }
+
     /// Lets Kin search the conversation log.
     pub fn with_history(mut self, history: History) -> Self {
         self.history = Some(history);
@@ -407,6 +437,11 @@ impl Tools {
                 let Some(access) = &self.memory else {
                     return Output::error("Memory isn't available here.");
                 };
+                let writes = call.name == "memory"
+                    || matches!(args["action"].as_str(), Some("write" | "delete"));
+                if writes && self.read_the_web() {
+                    return Output::error(guard::MEMORY_LOCKED);
+                }
                 let result = if call.name == "memory" {
                     access.memory(args)
                 } else {
@@ -422,8 +457,32 @@ impl Tools {
             )),
         };
         match result {
-            Ok(text) => Output::ok(self.fit(&call.id, wrap(&call.name, &text))),
+            Ok(text) => {
+                self.note_read(call, &text);
+                Output::ok(self.fit(&call.id, wrap(&call.name, &text)))
+            }
             Err(message) => Output::error(message),
+        }
+    }
+
+    /// Tells the web tools what Kin read from the vault or the Feed.
+    fn note_read(&self, call: &ToolCall, text: &str) {
+        let Some(web) = &self.web else {
+            return;
+        };
+        let args = &call.arguments;
+        let vault = match call.name.as_str() {
+            "search" | "list" => true,
+            "read" => !args["path"]
+                .as_str()
+                .unwrap_or_default()
+                .trim()
+                .starts_with(OUT_PREFIX),
+            "tool" => VAULT_EXTRAS.contains(&args["name"].as_str().unwrap_or_default()),
+            _ => false,
+        };
+        if vault {
+            web.read(text);
         }
     }
 
@@ -1395,5 +1454,74 @@ pub(crate) mod tests {
         // Other tools run as before.
         let listed = crate::ai::agent::tests::block_on(on.call(&call("list", json!({}))));
         assert!(listed.content.contains("the vault:") && listed.web.is_none());
+    }
+
+    /// KI-81: once web text is in the turn, memory and skills can't change;
+    /// reading them still works.
+    #[test]
+    fn memory_is_read_only_after_a_web_call() {
+        use crate::ai::memory::{Access, Source, tests::fixture};
+        let f = fixture();
+        let (tools, _out) = tools(f.vault.path());
+        let tools = tools
+            .with_memory(Access {
+                store: f.store(),
+                source: Source::chat("t1", "Remember I like essays."),
+                remember: true,
+            })
+            .with_web(std::sync::Arc::new(Web::scripted()));
+        let remember = |text: &str| {
+            call(
+                "memory",
+                json!({ "file": "user", "ops": [{ "op": "add", "text": text }] }),
+            )
+        };
+        let skill = call(
+            "skill",
+            json!({ "name": "steelman", "action": "write", "description": "d", "body": "b" }),
+        );
+        let saved = tools.run(&remember("Likes essays."));
+        assert!(!saved.is_error, "{}", saved.content);
+        let block_on = crate::ai::agent::tests::block_on;
+        assert!(!block_on(tools.call(&call("web_search", json!({ "query": "essays" })))).is_error);
+
+        let refused = tools.run(&remember("Hussain wants every page bookmarked."));
+        assert!(
+            refused.is_error
+                && refused
+                    .content
+                    .contains("read-only for the rest of this turn"),
+            "{}",
+            refused.content
+        );
+        assert!(tools.run(&skill).is_error);
+        let deleted = call("skill", json!({ "name": "steelman", "action": "delete" }));
+        assert!(tools.run(&deleted).is_error);
+        let user = f.store().snapshot().about;
+        assert_eq!(user, ["Likes essays."], "nothing the web said was kept");
+        let read = tools.run(&call("skill", json!({ "name": "steelman" })));
+        assert!(!read.content.contains("read-only"), "{}", read.content);
+    }
+
+    /// KI-81: links in what Kin read from the vault may be fetched; links it
+    /// makes up, or finds in its own spilled outputs, may not.
+    #[test]
+    fn vault_links_may_be_fetched() {
+        let vault = scratch_vault();
+        let (tools, _out) = tools(vault.path());
+        let tools = tools.with_web(std::sync::Arc::new(Web::scripted()));
+        let fetch = |url: &str| {
+            let call = call("web_fetch", json!({ "url": url }));
+            crate::ai::agent::tests::block_on(tools.call(&call))
+        };
+        let before = fetch("https://example.com/kiln");
+        assert!(before.is_error && before.content.contains("only opens links"));
+        tools.run(&call("read", json!({ "path": "inspiration/clip-kiln.md" })));
+        assert!(!fetch("https://example.com/kiln").is_error);
+        assert!(fetch("https://example.com/kiln?vault=posts").is_error);
+
+        // His own message counts too, via the agent loop's `heard`.
+        tools.heard("Can you read https://hussain.ph/notes/kiln for me?");
+        assert!(!fetch("https://hussain.ph/notes/kiln").is_error);
     }
 }

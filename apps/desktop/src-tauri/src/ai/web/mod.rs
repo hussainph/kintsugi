@@ -13,7 +13,13 @@
 //!   `web_fetch` still works: it needs no service.
 //! - **Untrusted.** Results are wrapped as `<data>` like every tool output,
 //!   and the prompt says pages are strangers' claims, never instructions.
+//!   [`guard`] adds hard limits (KI-81): `web_fetch` opens only links with
+//!   provenance in the turn, queries can't quote the vault, and after a web
+//!   call memory is read-only for the rest of the turn.
+//! - **Helpers.** Background helper jobs (the daily Ideas batch and the
+//!   rest) get web tools only while Settings › Web allows it; off by default.
 
+pub mod guard;
 pub mod search;
 
 use kintsugi_ingest::web::{Limits, WebAdapter};
@@ -82,6 +88,9 @@ struct Stored {
     provider: Option<Provider>,
     #[serde(default)]
     keys: BTreeMap<Provider, String>,
+    /// Background helpers may use the web too (KI-81).
+    #[serde(default)]
+    helpers: bool,
 }
 
 impl Default for Stored {
@@ -90,6 +99,7 @@ impl Default for Stored {
             enabled: true,
             provider: None,
             keys: BTreeMap::new(),
+            helpers: false,
         }
     }
 }
@@ -120,6 +130,8 @@ pub struct ProviderView {
 #[serde(rename_all = "camelCase")]
 pub struct View {
     pub enabled: bool,
+    /// Background helpers get the web tools too.
+    pub helpers: bool,
     /// His pick, if any.
     pub provider: Option<Provider>,
     /// What `web_search` uses now: his pick while it has a key, else the
@@ -199,6 +211,7 @@ impl Store {
         let state = self.state.lock().unwrap();
         View {
             enabled: state.enabled,
+            helpers: state.helpers,
             provider: state.provider,
             active: self.active(&state).map(|(p, _)| p),
             providers: Provider::ALL
@@ -229,6 +242,15 @@ impl Store {
         self.update(|s| s.enabled = enabled)
     }
 
+    /// Background helpers get the web tools too.
+    pub fn helpers(&self) -> bool {
+        self.state.lock().unwrap().helpers
+    }
+
+    pub fn set_helpers(&self, helpers: bool) -> Result<View> {
+        self.update(|s| s.helpers = helpers)
+    }
+
     pub fn set_provider(&self, provider: Option<Provider>) -> Result<View> {
         self.update(|s| s.provider = provider)
     }
@@ -256,10 +278,12 @@ impl Store {
         })
     }
 
-    /// The web tools for one turn, or `None` when they are off.
-    pub fn tools(&self) -> Option<Arc<Web>> {
+    /// The web tools for one turn, or `None` when they are off. A
+    /// `helper` (a background job nobody is watching) gets them only while
+    /// helpers are allowed.
+    pub fn tools(&self, helper: bool) -> Option<Arc<Web>> {
         let state = self.state.lock().unwrap();
-        if !state.enabled {
+        if !state.enabled || (helper && !state.helpers) {
             return None;
         }
         let search = self
@@ -302,10 +326,11 @@ pub fn init(dir: Option<PathBuf>) {
     let _ = STORE.set(Store::open(dir));
 }
 
-/// One turn's web tools, or `None` while they're off. The headless mock
-/// model gets scripted results: no keys, no network.
-pub fn for_turn() -> Option<Arc<Web>> {
-    let web = store().tools()?;
+/// One turn's web tools, or `None` while they're off (for a background
+/// `helper`, unless helpers are allowed). The headless mock model gets
+/// scripted results: no keys, no network.
+pub fn for_turn(helper: bool) -> Option<Arc<Web>> {
+    let web = store().tools(helper)?;
     #[cfg(feature = "headless")]
     if crate::headless::kin_mock() && !crate::headless::ai_enabled() {
         return Some(Arc::new(Web::scripted()));
@@ -380,6 +405,8 @@ pub struct Web {
     search: Option<search::Searcher>,
     reader: Reader,
     pages: Mutex<VecDeque<Arc<Page>>>,
+    /// What this turn may fetch and search, and whether web text came in.
+    guard: Mutex<guard::Guard>,
 }
 
 /// What a web tool returns: text for the model, and what the chat shows.
@@ -394,7 +421,25 @@ impl Web {
             search,
             reader,
             pages: Mutex::new(VecDeque::new()),
+            guard: Mutex::default(),
         }
+    }
+
+    /// Hussain's own words this turn: his links may be opened, his phrases
+    /// searched as written.
+    pub fn heard(&self, text: &str) {
+        self.guard.lock().unwrap().heard(text);
+    }
+
+    /// Vault or Feed text Kin read this turn: its links may be opened, and
+    /// queries may not quote it.
+    pub fn read(&self, text: &str) {
+        self.guard.lock().unwrap().read(text);
+    }
+
+    /// Web text came into this turn: memory and skills are read-only.
+    pub fn tainted(&self) -> bool {
+        self.guard.lock().unwrap().tainted()
     }
 
     /// The headless mock's web: scripted results and pages, no network,
@@ -417,6 +462,7 @@ impl Web {
         if query.is_empty() {
             return Err("web_search needs a query".into());
         }
+        self.guard.lock().unwrap().may_search(query)?;
         let count = args["count"]
             .as_u64()
             .or_else(|| args["k"].as_u64())
@@ -427,6 +473,10 @@ impl Web {
             return Err("Web search isn't set up: there's no Exa, Brave Search or Tavily key. Hussain can add one in Settings › Web. web_fetch still works.".into());
         };
         let results = searcher.search(query, count).await?;
+        self.guard
+            .lock()
+            .unwrap()
+            .searched(results.iter().map(|r| r.url.as_str()));
         let lines: Vec<String> = results
             .iter()
             .filter_map(|r| {
@@ -471,7 +521,12 @@ impl Web {
         let page = match self.cached(url.as_str()) {
             Some(page) => page,
             None => {
-                let page = Arc::new(self.read(&url).await?);
+                self.guard.lock().unwrap().may_fetch(&url)?;
+                let page = Arc::new(self.load(&url).await?);
+                self.guard
+                    .lock()
+                    .unwrap()
+                    .fetched(&url, &page.url, &page.body);
                 let mut pages = self.pages.lock().unwrap();
                 if pages.len() >= CACHED_PAGES {
                     pages.pop_front();
@@ -509,7 +564,7 @@ impl Web {
             .cloned()
     }
 
-    async fn read(&self, url: &reqwest::Url) -> Result<Page> {
+    async fn load(&self, url: &reqwest::Url) -> Result<Page> {
         let limits = Limits {
             deadline: Duration::from_secs(30),
             ..Limits::default()
@@ -623,6 +678,11 @@ pub fn web_settings() -> View {
 #[tauri::command]
 pub fn web_set_enabled(enabled: bool) -> Result<View> {
     store().set_enabled(enabled)
+}
+
+#[tauri::command]
+pub fn web_set_helpers(helpers: bool) -> Result<View> {
+    store().set_helpers(helpers)
 }
 
 #[tauri::command]

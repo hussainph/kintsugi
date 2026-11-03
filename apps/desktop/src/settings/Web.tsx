@@ -10,8 +10,9 @@ import { Group, Page, Row } from "./parts";
 
 const ENV: Record<WebProvider, string> = { exa: "EXA_API_KEY", brave: "BRAVE_API_KEY", tavily: "TAVILY_API_KEY" };
 
-/** Settings › Web: whether Kin may use the web, which search provider it
- *  uses, and each provider's key. Keys are saved in Rust and never read back. */
+/** Settings › Web: whether Kin may use the web (and its unattended helpers,
+ *  such as the daily Ideas batch), which search provider it uses, and each
+ *  provider's key. Keys are saved in Rust and never read back. */
 export function WebSettings() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [drafts, setDrafts] = useState<Partial<Record<WebProvider, string>>>({});
@@ -53,6 +54,16 @@ export function WebSettings() {
         >
           <Switch id="web-tools" checked={enabled} disabled={busy || !settings} onCheckedChange={(on) => void run(() => web.setEnabled(on))} />
         </Row>
+        {enabled && (
+          <Row label="Background helpers can use it" htmlFor="web-helpers" note="Such as the daily Ideas batch.">
+            <Switch
+              id="web-helpers"
+              checked={settings?.helpers ?? false}
+              disabled={busy || !settings}
+              onCheckedChange={(on) => void run(() => web.setHelpers(on))}
+            />
+          </Row>
+        )}
         {enabled && withKeys.length > 0 && (
           <Row label="Search provider" data-testid="web-provider" className="[&_.field-label]:sr-only">
             <SelectField<WebProvider>

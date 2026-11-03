@@ -113,6 +113,10 @@ pub trait Brain: Send + Sync + 'static {
     fn web(&self) -> Option<Arc<super::web::Web>> {
         None
     }
+    /// Background helpers get the web tools too (Settings › Web, KI-81).
+    fn web_for_helpers(&self) -> bool {
+        false
+    }
     fn meter(&self) -> &Meter;
     fn emit(&self, event: ChatEvent);
     fn today(&self) -> String {
@@ -644,7 +648,10 @@ impl<B: Brain> Engine<B> {
             if let Some(feed) = self.0.brain.feed() {
                 tools = tools.with_feed(feed);
             }
-            if let Some(web) = self.0.brain.web() {
+            // Helpers run unattended: web tools only while he allows it (KI-81).
+            if (chat || self.0.brain.web_for_helpers())
+                && let Some(web) = self.0.brain.web()
+            {
                 tools = tools.with_web(web);
             }
             if chat
@@ -1111,7 +1118,11 @@ impl Brain for AppBrain {
     }
 
     fn web(&self) -> Option<Arc<super::web::Web>> {
-        super::web::for_turn()
+        super::web::for_turn(false)
+    }
+
+    fn web_for_helpers(&self) -> bool {
+        super::web::store().helpers()
     }
 
     fn meter(&self) -> &Meter {
