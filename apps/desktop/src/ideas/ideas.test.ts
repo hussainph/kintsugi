@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Listed } from "./api.ts";
-import { adoptedIds, ageLabel, concerns, footprint, group, opacity } from "./model.ts";
+import { adoptedIds, ageLabel, concerns, group, opacity } from "./model.ts";
 
 const idea = (patch: Partial<Listed> = {}): Listed => ({
   id: "idea-1", created: "2026-11-01T09:00:00+01:00", job: "job-1", versions: [],
@@ -37,11 +37,6 @@ test("an idea concerns the documents it's about, quotes or was adopted into", ()
   assert.ok(concerns(idea(), "posts/on-craft.mdx"));
   assert.ok(!concerns(idea(), "notes/other.md"));
   assert.ok(concerns(idea({ adopted: { path: "notes/other.md", at: "x", new: false } }), "notes/other.md"));
-});
-
-test("the footprint reads as one line", () => {
-  assert.equal(footprint(idea().footprint), "2 searches · 5 files read · 31 s · $0.04 · for the batch of 3");
-  assert.equal(footprint({ searches: 1, files: 1, seconds: 3, usd: 0, model: "", batch: 1 }), "1 search · 1 file read · 3 s · $0");
 });
 
 test("adopted ids come from the ideas: frontmatter list only", () => {

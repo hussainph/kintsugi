@@ -4,7 +4,7 @@
 // (`KINTSUGI_HEADLESS_KIN=mock`): no credentials, no provider, no cost.
 //
 // Covers the daily batch (grounded quotes only; the mock's invented quote
-// is dropped), engaging an idea, Why this? as correction, Refine with undo,
+// is dropped), engaging an idea and its inline citations, Refine with undo,
 // Dismiss with reasons and undo, Discuss, Adopt into a new draft and into
 // one already started, "Ideas for this draft", and fading (by restarting
 // with the clock moved forward). Everything lives in a fresh scratch vault
@@ -141,22 +141,22 @@ test("the daily batch arrives, grounded in quotes that are really there", { time
   await shot("01-batch");
 });
 
-test("engaging shows observed vs hunch, quotes, how I got here; Why this? corrects", { timeout: 60_000 }, async () => {
+test("engaging shows the idea and its takeaways, citing quotes inline", { timeout: 60_000 }, async () => {
   await rows().first().locator("button[aria-expanded]").first().click();
   const first = rows().first();
-  await first.getByLabel("Observed").waitFor();
-  await first.getByText("Kin's guess, not a fact").waitFor();
-  assert.ok((await first.getByLabel("Evidence").locator("blockquote").count()) >= 2);
-  await first.getByText("How Kin found this").click();
-  await first.getByText(/\d+ search(es)? · \d+ files? read · \d+ s · \$0/).waitFor();
-  await first.getByRole("button", { name: "Why this?" }).click();
-  await first.getByText("About you:").waitFor();
-  await shot("02-engaged-why");
-  await first.getByRole("button", { name: /^Not a reason:/ }).first().click();
-  await page.getByText(/Kin won't weigh/).waitFor();
-  await first.getByRole("button", { name: /^Count it again:/ }).first().waitFor();
-  await page.getByRole("button", { name: "Undo" }).last().click();
-  await first.getByRole("button", { name: /^Count it again:/ }).waitFor({ state: "detached" });
+  await first.getByLabel("Takeaways").waitFor();
+  const cites = first.getByRole("button", { name: /^Quote \d+:/ });
+  assert.ok((await cites.count()) >= 2, "inline citations");
+  // KI-76: no eyebrow, no quote blocks, no workings or Why this? in the way.
+  for (const gone of ["Kin's guess, not a fact", "How Kin found this", "Why this?", "Observed", "Hunch"])
+    assert.equal(await first.getByText(gone, { exact: true }).count(), 0, gone);
+  assert.equal(await first.locator("blockquote").count(), 0, "quotes stay behind their citations");
+  await cites.first().hover();
+  const popup = page.locator("blockquote").first();
+  await popup.waitFor();
+  await shot("02-engaged-citation");
+  await page.mouse.move(0, 0);
+  await popup.waitFor({ state: "detached" });
 });
 
 test("Refine replaces the idea, keeps the earlier version and undoes", { timeout: 60_000 }, async () => {
@@ -250,9 +250,11 @@ test("an idea can be added to a draft already started; Ideas for this draft filt
 });
 
 test("unused ideas thin from day three and fade after a week; adopted ones don't", { timeout: 240_000 }, async () => {
-  // An unused idea to watch fade: ask for more.
+  // An unused idea to watch fade: ask for more, as the phone does.
   await openIdeas();
-  await section().getByRole("button", { name: "Ask for more" }).click();
+  await page.evaluate(() =>
+    (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke("ideas_generate", {}),
+  );
   await page.waitForFunction(() => document.querySelectorAll("li[data-idea]").length >= 3, null, { timeout: 60_000 }).catch(() => {});
   stop();
   await page.goto(await start({ KINTSUGI_HEADLESS_IDEAS_DAYS_AHEAD: "4" }));
@@ -277,5 +279,5 @@ test("unused ideas thin from day three and fade after a week; adopted ones don't
   const signals = readdirSync(resolve(config, "kin/ideas"));
   assert.equal(signals.length, 1);
   const log = readFileSync(resolve(config, "kin/ideas", signals[0], "signals.jsonl"), "utf8");
-  for (const kind of ["reasonRemoved", "refined", "refineUndone", "dismissed", "undismissed", "discussed", "adopted"]) assert.ok(log.includes(`"kind":"${kind}"`), kind);
+  for (const kind of ["refined", "refineUndone", "dismissed", "undismissed", "discussed", "adopted"]) assert.ok(log.includes(`"kind":"${kind}"`), kind);
 });

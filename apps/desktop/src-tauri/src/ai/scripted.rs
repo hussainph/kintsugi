@@ -395,15 +395,6 @@ mod ideas {
         })
     }
 
-    fn profile_line(system: &str) -> Option<String> {
-        let section = system.split("## About Hussain").nth(1)?;
-        section
-            .lines()
-            .skip(1)
-            .take_while(|l| !l.starts_with("## "))
-            .find_map(|l| l.strip_prefix("- ").map(str::to_string))
-    }
-
     fn refine(brief: &str) -> String {
         let asked = brief
             .split("He asked: \"")
@@ -439,30 +430,15 @@ mod ideas {
                 .collect::<String>()
         );
         idea["snippet"] = json!(format!("Reworked after you asked for “{short}”."));
-        idea["steps"] = json!([{ "did": format!("Reread the quotes with “{short}” in mind") }]);
         format!(
             "<ideas>\n{}\n</ideas>",
             serde_json::to_string_pretty(&idea).unwrap_or_default()
         )
     }
 
-    fn batch(system: &str, brief: &str, query: &str, reads: &[Read]) -> String {
+    fn batch(brief: &str, query: &str, reads: &[Read]) -> String {
         let about = after(brief, "every idea is about one document: ")
             .map(|a| a.trim_end_matches('.').to_string());
-        let profile = profile_line(system);
-        let reason = |text: &str| match &profile {
-            Some(line) => {
-                json!([{ "text": text }, { "text": "It fits what you told Kin about yourself", "profileLine": line }])
-            }
-            None => json!([{ "text": text }]),
-        };
-        let steps = |a: &Read, b: &Read| {
-            json!([
-                { "did": format!("Searched your vault for “{query}”"), "found": format!("{} documents worth reading", reads.len()) },
-                { "did": format!("Read {} and {}", a.path, b.path) },
-                { "did": "Copied the lines that answer each other" }
-            ])
-        };
         let mut ideas = Vec::new();
         let pairs: Vec<(usize, usize)> = match reads.len() {
             0 | 1 => vec![],
@@ -476,7 +452,7 @@ mod ideas {
                     "connection",
                     format!("{} and {} ask the same question", a.title, b.title),
                     format!(
-                        "There may be one piece here that {} sets up and {} answers.",
+                        "There may be one piece here that {} sets up [1] and {} answers [2].",
                         a.title, b.title
                     ),
                 )
@@ -488,7 +464,7 @@ mod ideas {
                         b.title.to_lowercase()
                     ),
                     format!(
-                        "A short post could say plainly what {} only hints at.",
+                        "A short post could say plainly what {} only hints at [2].",
                         b.title
                     ),
                 )
@@ -498,11 +474,9 @@ mod ideas {
                 "title": title,
                 "draftTitle": if n == 0 { format!("What {} answers", b.title) } else { b.title.clone() },
                 "snippet": format!("{} and {} came up together when I searched for “{query}”.", a.title, b.title),
-                "observed": [format!("{} and {} both turned up for “{query}”.", a.path, b.path), format!("Neither links to the other.")],
+                "observed": [format!("{} and {} both turned up for “{query}” [1][2].", a.path, b.path), format!("Neither links to the other.")],
                 "hunch": hunch,
                 "quotes": [{ "source": a.path, "text": a.sentences[0] }, { "source": b.path, "text": b.sentences.get(1).unwrap_or(&b.sentences[0]) }],
-                "steps": steps(a, b),
-                "reasons": reason("Your own writing is the strongest evidence"),
                 "about": about.iter().cloned().chain([a.path.clone(), b.path.clone()]).collect::<Vec<_>>(),
             }));
         }
@@ -514,7 +488,6 @@ mod ideas {
                 "observed": ["A fact."],
                 "hunch": "A guess.",
                 "quotes": [{ "source": reads[0].path, "text": reads[0].sentences[0] }, { "source": reads[1].path, "text": "This sentence was invented by the headless mock and is in no file." }],
-                "reasons": [{ "text": "None" }],
             }));
         }
         format!(
@@ -524,7 +497,7 @@ mod ideas {
     }
 
     /// One step of the scripted helper: tool calls, or the final JSON.
-    pub fn step(system: &str, brief: &str, items: &[Item]) -> (String, Vec<ToolCall>) {
+    pub fn step(_system: &str, brief: &str, items: &[Item]) -> (String, Vec<ToolCall>) {
         if brief.contains(CURRENT) {
             return (refine(brief), vec![]);
         }
@@ -556,7 +529,7 @@ mod ideas {
             .filter_map(|c| parse_read(c))
             .collect();
         if !reads.is_empty() {
-            return (batch(system, brief, &query, &reads), vec![]);
+            return (batch(brief, &query, &reads), vec![]);
         }
         let steps = items
             .iter()
@@ -734,10 +707,7 @@ mod tests {
         assert_eq!(listed.len(), 2);
         for idea in &listed {
             assert!(idea.idea.content.quotes.len() >= 2);
-            assert_eq!(
-                idea.idea.content.reasons[1].profile_line.as_deref(),
-                Some("Writes about craft.")
-            );
+            assert!(idea.idea.content.hunch.contains("[2]"), "cites inline");
         }
     }
 }

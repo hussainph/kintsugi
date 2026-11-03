@@ -218,9 +218,8 @@ what you published in March."
 
 - **Progressive disclosure.** Most ideas will be ignored, so the list shows
   a title and at most a one-line snippet. Detail appears only when he
-  engages: what Kin *observed* kept separate from its *hunch*, 2–4 quoted
-  clips as evidence, a collapsed "how I got here", and "Why this?", which
-  doubles as a way to correct Kin.
+  engages: Kin's hunch and a few observed takeaways, each citing its quoted
+  clip inline (`[1]`) rather than justifying itself at length.
 - **Actions:** Adopt (creates a new draft titled after the idea with an
   empty body, the idea and its clips beside it and in the draft's metadata,
   never in the prose; or attaches it to an existing draft), Discuss with Kin,

@@ -10,7 +10,7 @@
 import { cn } from "@kintsugi/ui/lib/utils";
 import type { Listed } from "./api";
 import { count, opacity } from "./model";
-import { AskForMore, Detail, DismissedRow, FadedList, JobLine, Heading, KinMark, serif, Status } from "./parts";
+import { Detail, DismissedRow, FadedList, FindForDraft, JobLine, Heading, KinMark, serif, Status } from "./parts";
 import type { IdeasModel } from "./useIdeas";
 
 function Row({ idea, model, n, onOpenDoc }: { idea: Listed; model: IdeasModel; n: number; onOpenDoc: (path: string) => void }) {
@@ -61,14 +61,11 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
             </button>
           </p>
         ) : (
-          <>
-            <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
-              <KinMark>
-                {live ? `${count(live)} from Kin today` : "Nothing new from Kin today"} · {model.view?.today ?? ""}
-              </KinMark>
-            </p>
-            <p className="text-sm text-muted-foreground">Unused ideas fade after a week.</p>
-          </>
+          <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+            <KinMark>
+              {live ? `${count(live)} from Kin today` : "Nothing new from Kin today"} · {model.view?.today ?? ""}
+            </KinMark>
+          </p>
         )}
         <JobLine model={model} />
         {model.error && (
@@ -104,7 +101,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
       )}
       <div className="mt-6 space-y-6">
         <FadedList model={model} />
-        <AskForMore model={model} />
+        <FindForDraft model={model} />
       </div>
     </div>
   );

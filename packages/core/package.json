@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./citations": "./src/citations.ts",
     "./clips": "./src/clips.ts",
     "./frontmatter": "./src/frontmatter.ts",
     "./merge": "./src/merge.ts",
