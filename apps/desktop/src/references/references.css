@@ -7,7 +7,6 @@
 }
 .reference-writing > :first-child { min-width: 0; }
 .reference-writing .cm-scroller, .reference-margin { scrollbar-color: var(--neutral-4) transparent; scrollbar-width: thin; }
-@media (min-width: 1001px) { .reference-writing:has(.reference-margin) + footer { right: calc(224px + var(--space-l)); } }
 .reference-toggle {
   position: absolute;
   z-index: 11;
@@ -56,7 +55,7 @@
 .reference-error { position: absolute; bottom: var(--space-xl); right: var(--space-m); font-family: var(--font-ui); font-weight: var(--weight-ui-regular); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); color: var(--error); border-radius: var(--radius-xs); }
 .reference-error:hover { text-decoration: underline; text-underline-offset: var(--space-xxs); }
 @media (max-width: 1000px) {
-  .reference-margin { position: absolute; right: 0; top: 75px; bottom: 50px; padding-top: var(--space-m); border: 0; background: var(--neutral-1); box-shadow: inset var(--border-s) 0 0 var(--neutral-4), var(--shadow-m); z-index: 9; }
+  .reference-margin { position: absolute; right: 0; top: 75px; bottom: 0; padding-top: var(--space-m); border: 0; background: var(--neutral-1); box-shadow: inset var(--border-s) 0 0 var(--neutral-4), var(--shadow-m); z-index: 9; }
 }
 @media (hover: none) { .reference-card-actions { opacity: 1; } }
 /* Kin's comment threads (KI-38): the placeholder avatar inside the editor's DOM. */

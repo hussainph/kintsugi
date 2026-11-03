@@ -35,10 +35,10 @@ export function DocTags({
   return (
     <span role="group" className="flex items-center gap-1.5" aria-label="Tags">
       {tags.map((tag) => (
-        <span key={tag} className="group/tag inline-flex items-center rounded-full bg-muted/60 py-0.5 pr-1 pl-2 text-xs text-muted-foreground">
+        <span key={tag} className="group/tag ki-chip ki-tag-chip">
           #{tag}
           <button
-            className="ml-0.5 rounded-full p-0.5 opacity-40 group-hover/tag:opacity-100 hover:text-foreground focus-visible:opacity-100"
+            className="ml-0.5 rounded-full p-0.5 opacity-50 group-hover/tag:opacity-100 focus-visible:opacity-100"
             onClick={() => onChange((now) => now.filter((t) => t !== tag))}
             aria-label={`Remove tag ${tag}`}
             title={`Remove #${tag}`}
@@ -55,7 +55,7 @@ export function DocTags({
         }}
       >
         <PopoverTrigger asChild>
-          <button className="inline-flex items-center gap-0.5 hover:text-foreground" title="Add a tag" aria-label="Add a tag">
+          <button className="ki-chip ki-tag-add" title="Add a tag" aria-label="Add a tag">
             {tags.length ? <Plus className="size-3" /> : <><Tag className="size-3" /> Tag</>}
           </button>
         </PopoverTrigger>

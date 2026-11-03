@@ -1,20 +1,21 @@
-import { useState } from "react";
+import { useState, type ReactElement } from "react";
 import { toast } from "sonner";
 import { DESTINATIONS } from "@kintsugi/core/export";
 import { Popover, PopoverContent, PopoverTrigger } from "@kintsugi/ui/components/popover";
 import { exporting, openExport, type ExportSettings } from "@/lib/exporting";
 import "./export.css";
 
-/** The footer's Export… menu: the destinations chosen in Settings → Export.
- *  A mirror of a blog post can be exported, but not published again. */
-export function ExportMenu({ mirror }: { mirror: boolean }) {
+/** The document bar's Export… menu: the destinations chosen in Settings →
+ *  Export, opened from `children`, the trigger. A mirror of a blog post can be
+ *  exported, but not published again. */
+export function ExportMenu({ mirror, children }: { mirror: boolean; children: ReactElement }) {
   const [settings, setSettings] = useState<ExportSettings | null>(null);
   const [open, setOpen] = useState(false);
   const shown = DESTINATIONS.filter((d) => settings?.destinations.includes(d.id) && !(mirror && d.delivery.kind === "publish"));
   return (
     <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) exporting.settings().then(setSettings, (e) => toast.error(String(e))); }}>
       <PopoverTrigger asChild>
-        <button className="ki-footer-action" title="Export (⌥⌘E)">Export…</button>
+        {children}
       </PopoverTrigger>
       <PopoverContent side="top" align="end" className="w-64 p-1.5" aria-label="Export to">
         <div className="export-menu" role="menu">
