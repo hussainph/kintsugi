@@ -2,7 +2,7 @@
 //! Network work holds no SQLite lock. Only metadata enters the candidate pool.
 use super::{Feed, NewItem, Result, changed, now, with};
 use crate::AppHandle;
-use kintsugi_ingest::{Url, catalogue::Catalogue};
+use kintsugi_ingest::Url;
 use std::sync::atomic::Ordering;
 use tauri::Manager;
 
@@ -41,7 +41,8 @@ pub(super) fn start(app: &AppHandle) {
 }
 
 async fn discover(app: &AppHandle) -> Result<()> {
-    let catalogue = Catalogue::new().map_err(|e| e.to_string())?;
+    let feed = app.state::<Feed>();
+    let catalogue = &feed.ingest(app)?.catalogue;
     for source in with(app, |s| s.due_catalogues())? {
         if !with(app, |s| s.start_catalogue(source.id))? {
             continue;
