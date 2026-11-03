@@ -292,6 +292,7 @@ rather use it. Outside agents never add to Inspiration.
     agent/          Kin's memory: USER.md, NOTES.md, skills/
     comments/       Kin's comment threads on documents (KI-38; see docs/kin.md)
     kin/            Kin's conversation in this vault: the log and thread summaries
+    folders.json    each folder's colour and icon (KI-75), by folder path
   …                 drafts, notes and posts, in folders, anywhere else
 ```
 

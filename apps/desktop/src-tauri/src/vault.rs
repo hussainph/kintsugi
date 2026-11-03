@@ -175,10 +175,64 @@ pub fn entry_rename(
     )?;
     crate::blog::repo::refuse_mirror(&vault.root()?, &path)?;
     let renamed = vault::rename(&vault.root()?, &path, &name)?;
-    // Kin's comment threads (KI-38) follow their document; best effort.
+    // Kin's comment threads (KI-38) and folder colours (KI-75) follow it; best effort.
     let _ = crate::ai::comments::renamed(&vault.root()?, &path, &renamed);
+    let _ = vault::folder_styles_moved(&vault.root()?, &path, &renamed);
     references_changed(&app);
     Ok(renamed)
+}
+
+/// Moves a document or folder into `dir` (the root when empty), keeping its
+/// name; returns the new path. Links are offered afterwards, as for a rename.
+#[tauri::command]
+pub fn entry_move(
+    app: AppHandle,
+    vault: State<Vault>,
+    path: String,
+    dir: String,
+) -> Result<String> {
+    writing_path(&path)?;
+    writing_path(&dir)?;
+    let name = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    writing_path(&std::path::Path::new(&dir).join(&name).to_string_lossy())?;
+    let root = vault.root()?;
+    crate::blog::repo::refuse_mirror(&root, &path)?;
+    let moved = vault::move_entry(&root, &path, &dir)?;
+    let _ = crate::ai::comments::renamed(&root, &path, &moved);
+    let _ = vault::folder_styles_moved(&root, &path, &moved);
+    references_changed(&app);
+    Ok(moved)
+}
+
+/// Each folder's colour and icon, by path (`.kintsugi/folders.json`).
+#[tauri::command]
+pub fn folder_styles(
+    vault: State<Vault>,
+) -> Result<std::collections::BTreeMap<String, vault::FolderStyle>> {
+    Ok(vault::folder_styles(&vault.root()?))
+}
+
+/// Sets one folder's colour and icon; both absent clears them.
+#[tauri::command]
+pub fn folder_style_set(
+    vault: State<Vault>,
+    path: String,
+    color: Option<String>,
+    icon: Option<String>,
+) -> Result<()> {
+    writing_path(&path)?;
+    vault::set_folder_style(
+        &vault.root()?,
+        &path,
+        vault::FolderStyle {
+            color,
+            icon,
+            ..Default::default()
+        },
+    )
 }
 
 /// A document open in the editor: its text there stands in for the disk's.
@@ -244,6 +298,7 @@ pub fn entry_trash(app: AppHandle, vault: State<Vault>, path: String) -> Result<
     }
     let target = vault::resolve(&vault.root()?, &path)?;
     move_to_trash(&[target])?;
+    let _ = vault::folder_styles_removed(&vault.root()?, &path);
     references_changed(&app);
     Ok(())
 }

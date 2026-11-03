@@ -14,7 +14,8 @@
     "./vault": "./src/vault.ts",
     "./books": "./src/books.ts",
     "./export": "./src/export.ts",
-    "./tags": "./src/tags.ts"
+    "./tags": "./src/tags.ts",
+    "./folders": "./src/folders.ts"
   },
   "scripts": {
     "test": "node --test src/*.test.ts",

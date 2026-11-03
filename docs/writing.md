@@ -72,6 +72,29 @@ but it never applies one; only the writer edits `tags`.
   `#tags` are ANDed) and the other words match titles and paths as before.
   Typing `#` suggests tags in use; each document lists its tags.
 
+- Folders (KI-75): the folder button beside the vault name (or ⇧⌘N) makes
+  one in the selected folder. Right-click a document or folder to rename it,
+  move it to the Trash, or **Move to** another folder; or drag it onto a
+  folder (or the vault name, for the root). Holding a drag over a closed
+  folder opens it. Moves offer to update links, as renames do.
+- An open folder and its contents sit in one rounded group, and folders nest
+  as deep as they go. Which folders are closed is kept per vault. In the
+  collapsed sidebar, the folder button expands it again.
+- Right-click a folder for **Colour** and **Icon**. They're kept in
+  `.kintsugi/folders.json`, so any device on the vault can show them:
+
+  ```json
+  { "version": 1, "folders": { "drafts": { "color": "amber", "icon": "pen" } } }
+  ```
+
+  Keys are folder paths. Colours: `red`, `amber`, `green`, `sage`, `sand`,
+  `lavender`. Icons: `folder`, `inbox`, `pen`, `note`, `book`, `bulb`,
+  `star`, `heart`, `quote`, `image`, `code`, `globe`, `music`, `camera`,
+  `briefcase`, `archive` (`packages/core/src/folders.ts`, mirrored by
+  `crates/vault/src/folders.rs`). A style follows its folder through a rename
+  or move and goes with it to the Trash. Fields the app doesn't know are kept,
+  and a file that doesn't parse leaves every folder plain.
+
 **On the phone**
 
 - The list opens on the vault's root: its folders (with how many documents
