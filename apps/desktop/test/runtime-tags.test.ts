@@ -136,3 +136,47 @@ test("⌘P filters by #tag and suggests tags", { timeout: TIMEOUT }, async () =>
   await palette().waitFor({ state: "hidden" });
   await tags().getByText("#glaze").waitFor();
 });
+
+// KI-73 / KI-74: trailing meta (a path, a count) sits at the row's right
+// edge, and a palette with no results shows just the field, with equal room
+// above and below it.
+const trailing = (popup: string) =>
+  page.evaluate((sel) => {
+    const box = document.querySelector(sel)!;
+    return [...box.querySelectorAll("[cmdk-item]")].map((row) => {
+      const meta = row.querySelector("[data-slot=command-meta]")!.getBoundingClientRect();
+      const check = row.querySelector("svg:last-child")!.getBoundingClientRect();
+      const end = check.width ? check.left : row.getBoundingClientRect().right - parseFloat(getComputedStyle(row).paddingRight);
+      return Math.abs(end - meta.right) - (check.width ? parseFloat(getComputedStyle(row).columnGap) : 0);
+    });
+  }, popup);
+const fieldRoom = (popup: string) =>
+  page.evaluate((sel) => {
+    const box = document.querySelector(sel)!.getBoundingClientRect();
+    const field = document.querySelector(`${sel} [data-slot=input-group]`)!.getBoundingClientRect();
+    return { above: field.top - box.top, below: box.bottom - field.bottom };
+  }, popup);
+
+test("trailing meta is right-aligned; an empty palette is just the field", { timeout: TIMEOUT }, async () => {
+  await page.keyboard.press("Meta+p");
+  await palette().getByRole("option", { name: /Kiln notes/ }).waitFor();
+  for (const gap of await trailing("[role=dialog]")) assert.ok(gap < 1, `path ${gap}px off the right edge`);
+  await palette().getByRole("combobox").fill("nothing matches this");
+  await palette().getByRole("option").first().waitFor({ state: "detached" });
+  const room = await fieldRoom("[role=dialog]");
+  assert.ok(Math.abs(room.above - room.below) < 1, JSON.stringify(room));
+  await shot("06-jump-no-results");
+  await page.keyboard.press("Escape");
+  await palette().waitFor({ state: "hidden" });
+
+  await sidebar().getByRole("button", { name: "Filter by tag" }).click();
+  const filter = "[data-slot=popover-content]";
+  await page.getByRole("option", { name: /#craft/ }).waitFor();
+  for (const gap of await trailing(filter)) assert.ok(gap < 1, `count ${gap}px off the right edge`);
+  await page.getByPlaceholder("Filter by tag…").fill("zzz");
+  await page.getByRole("option").first().waitFor({ state: "detached" });
+  const filterRoom = await fieldRoom(filter);
+  assert.ok(Math.abs(filterRoom.above - filterRoom.below) < 1, JSON.stringify(filterRoom));
+  await shot("07-tag-filter-no-results");
+  await page.keyboard.press("Escape");
+});

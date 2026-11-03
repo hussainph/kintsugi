@@ -79,7 +79,9 @@ function CommandInput({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
   return (
-    <div data-slot="command-input-wrapper" className="p-(--space-xxs) pb-0">
+    // The rows below bring their own top padding; with no rows (the list
+    // hides itself) the field keeps equal room above and below.
+    <div data-slot="command-input-wrapper" className="p-(--space-xxs) has-[+[cmdk-list]_[cmdk-item]]:pb-0">
       <InputGroup >
         <SearchInput
           data-slot="command-input"
@@ -105,22 +107,11 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "no-scrollbar max-h-72 scroll-py-(--space-xxs) overflow-x-hidden overflow-y-auto outline-none",
+        // No rows, no list: an empty list adds room under the field, so the
+        // popup's padding around the field stops matching.
+        "no-scrollbar max-h-72 scroll-py-(--space-xxs) overflow-x-hidden overflow-y-auto outline-none [&:not(:has([cmdk-item]))]:hidden",
         className
       )}
-      {...props}
-    />
-  )
-}
-
-function CommandEmpty({
-  className,
-  ...props
-}: React.ComponentProps<typeof CommandPrimitive.Empty>) {
-  return (
-    <CommandPrimitive.Empty
-      data-slot="command-empty"
-      className={cn("py-(--space-l) text-center", className)}
       {...props}
     />
   )
@@ -170,8 +161,30 @@ function CommandItem({
       {...props}
     >
       {children}
-      <CheckIcon className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+      {/* Only checkable rows (any `data-checked`) reserve the check's room.
+          It is the single `ml-auto` in a row unless a meta takes that role:
+          two auto margins would split the free space and float the meta. */}
+      <CheckIcon className="ml-auto hidden opacity-0 group-data-[checked]/command-item:block group-has-data-[slot=command-meta]/command-item:ml-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
     </Item>
+  )
+}
+
+/** Trailing meta in a row (a path, a count, a hint): pushed to the right
+ *  edge, and kept whole while the title truncates first. Very long meta
+ *  truncates too, past half the row. */
+function CommandMeta({
+  className,
+  ...props
+}: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="command-meta"
+      className={cn(
+        "ml-auto min-w-0 max-w-1/2 shrink-0 truncate text-(--neutral-7) tabular-nums",
+        className
+      )}
+      {...props}
+    />
   )
 }
 
@@ -196,10 +209,10 @@ export {
   CommandDialog,
   CommandInput,
   CommandList,
-  CommandEmpty,
   CommandGroup,
   CommandItem,
   CommandShortcut,
+  CommandMeta,
   CommandSeparator,
   commandFilter,
 }

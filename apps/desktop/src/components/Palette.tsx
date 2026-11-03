@@ -3,11 +3,11 @@ import { useMemo, useState } from "react";
 import {
   Command,
   CommandDialog,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
   CommandList,
+  CommandMeta,
   commandFilter,
 } from "@kintsugi/ui/components/command";
 import { hasTags, tagQuery, vocabulary } from "@kintsugi/core/tags";
@@ -85,7 +85,6 @@ export function Palette({ mode, docs, onOpen, onCreate, onClose }: Props) {
             )
           ) : (
             <>
-              <CommandEmpty>No documents match.</CommandEmpty>
               {suggest.length > 0 && (
                 <CommandGroup heading="Tags">
                   {suggest.map((tag) => (
@@ -104,13 +103,11 @@ export function Palette({ mode, docs, onOpen, onCreate, onClose }: Props) {
                     onSelect={() => onOpen(doc.path)}
                   >
                     <StatusDot status={doc.status} />
-                    <span className="max-w-[60%] shrink-0 truncate">{displayName(doc)}</span>
+                    <span className="truncate">{displayName(doc)}</span>
                     {doc.tags?.length ? (
-                      <span className="ki-text-xs ki-muted min-w-0 shrink-4 truncate">{doc.tags.map((t) => `#${t}`).join(" ")}</span>
+                      <span className="ki-text-xs ki-muted min-w-0 flex-1 truncate">{doc.tags.map((t) => `#${t}`).join(" ")}</span>
                     ) : null}
-                    <span className="ki-data ki-muted ml-auto min-w-0 shrink-2 truncate">
-                      {doc.path}
-                    </span>
+                    <CommandMeta className="ki-data">{doc.path}</CommandMeta>
                   </CommandItem>
                 ))}
               </CommandGroup>

@@ -1,6 +1,6 @@
 import { Plus, Tag, X } from "@kintsugi/ui/icons";
 import { useState } from "react";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@kintsugi/ui/components/command";
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandMeta } from "@kintsugi/ui/components/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@kintsugi/ui/components/popover";
 import { SidebarGroupAction } from "@kintsugi/ui/components/sidebar";
 import { cn } from "@kintsugi/ui/lib/utils";
@@ -74,7 +74,6 @@ export function DocTags({
               }}
             />
             <CommandList>
-              <CommandEmpty>Type a new tag.</CommandEmpty>
               {typed.length > 0 && !vocabulary.includes(typed[0]) && (
                 <CommandGroup>
                   <CommandItem value={`new:${query}`} onSelect={() => add(typed)}>
@@ -130,12 +129,11 @@ export function TagFilter({
         <Command>
           <CommandInput placeholder="Filter by tag…" />
           <CommandList>
-            <CommandEmpty>No tags match.</CommandEmpty>
             <CommandGroup>
               {vocabulary.map((tag) => (
                 <CommandItem key={tag} value={tag} onSelect={() => toggle(tag)} data-checked={selected.includes(tag)}>
                   <span className="truncate">#{tag}</span>
-                  <span className="ml-auto text-xs text-muted-foreground tabular-nums">{counts.get(tag) ?? 0}</span>
+                  <CommandMeta className="text-xs">{counts.get(tag) ?? 0}</CommandMeta>
                 </CommandItem>
               ))}
             </CommandGroup>
