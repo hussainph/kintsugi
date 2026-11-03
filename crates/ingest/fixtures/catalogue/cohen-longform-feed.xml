@@ -1,0 +1,36 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<rss xmlns:ns0="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title>A Smart Bear</title>
+    <link>https://longform.asmartbear.com/</link>
+    <ns0:link href="https://longform.asmartbear.com/index.xml" rel="self" type="application/rss+xml" />
+    <description>Articles from A Smart Bear</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <copyright>(c) 2007-2026 Jason Cohen</copyright>
+    <lastBuildDate>Tue, 20 Oct 2026 19:27:11 +0000</lastBuildDate>
+    <image>
+      <url>https://longform.asmartbear.com/images/bear-green-512-sq.png</url>
+      <title>A Smart Bear</title>
+      <link>https://longform.asmartbear.com/</link>
+    </image>
+    <item>
+      <title>"You didn't do it right"</title>
+      <link>https://longform.asmartbear.com/you-didnt-do-it-right/</link>
+      <pubDate>Sun, 11 Oct 2026 00:00:00 +0000</pubDate>
+      <guid>https://longform.asmartbear.com/you-didnt-do-it-right/</guid>
+    </item>
+    <item>
+      <title>What is the value of one hour of a startup founder's time?</title>
+      <link>https://longform.asmartbear.com/value-time/</link>
+      <pubDate>Sun, 19 Jul 2026 00:00:00 +0000</pubDate>
+      <guid>https://longform.asmartbear.com/value-time/</guid>
+    </item>
+    <item>
+      <title>Lost confidence</title>
+      <link>https://longform.asmartbear.com/confidence/</link>
+      <pubDate>Sun, 21 Jun 2026 00:00:00 +0000</pubDate>
+      <guid>https://longform.asmartbear.com/confidence/</guid>
+    </item>
+  </channel>
+</rss>

@@ -7,7 +7,7 @@ import {
   Cancel01Icon, CheckmarkCircle02Icon, CompassIcon, Copy01Icon, Delete02Icon,
   Download01Icon, FavouriteIcon, File01Icon, FileAddIcon, FileDiffIcon, Folder01Icon,
   FolderAddIcon, HeadphonesIcon, Image01Icon, ImageAdd01Icon, ImageOffIcon,
-  InformationCircleIcon, Loading03Icon, MagicWand01Icon, MessageMultiple01Icon,
+  InformationCircleIcon, HelpCircleIcon, Loading03Icon, MagicWand01Icon, MessageMultiple01Icon,
   NewsIcon, Notebook01Icon, ParagraphIcon, QuoteDownIcon, RotateClockwiseIcon,
   RotateLeft01Icon, RssIcon, Search01Icon, Settings01Icon, Settings02Icon,
   SidebarLeft01Icon, SidebarRight01Icon, SlidersHorizontalIcon, SmartPhone01Icon,
@@ -89,6 +89,7 @@ export const ImageIcon = glyph(Image01Icon);
 export const ImageOff = glyph(ImageOffIcon);
 export const ImagePlus = glyph(ImageAdd01Icon);
 export const Info = glyph(InformationCircleIcon);
+export const CircleHelp = glyph(HelpCircleIcon);
 export const Key = glyph(Key01Icon);
 export const Link = glyph(Link01Icon);
 export const Lightbulb = glyph(BulbIcon);

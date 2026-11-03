@@ -20,6 +20,10 @@ export type Source = {
   nextFetchAt: number;
   /** Items from this source currently in the feed. */
   items: number;
+  catalogueEnabled: boolean;
+  catalogueState: string;
+  catalogueCount: number;
+  catalogueError: string | null;
 };
 
 export type FeedItem = {
@@ -43,6 +47,9 @@ export type FeedItem = {
   savedPath: string | null;
   dismissed: boolean;
   hasContent: boolean;
+  /** Discovered older writing; its original date is never replaced by discovery time. */
+  backCatalogue?: boolean;
+  suggestion?: { reason: string; sourceUrl: string } | null;
 };
 
 export type Page = { items: FeedItem[]; total: number };
@@ -92,6 +99,8 @@ export const feed = {
   unsubscribe: (id: number) => invoke<void>("feed_unsubscribe", { id }),
   mute: (id: number, muted: boolean) => invoke<Source>("feed_mute", { id, muted }),
   refresh: (id?: number) => invoke<Polled[]>("feed_refresh", { id }),
+  catalogue: (id: number, enabled?: boolean, retry = false) => invoke<Source>("feed_catalogue", { id, enabled, retry }),
+  followSuggestion: (id: number) => invoke<Source>("feed_follow_suggestion", { id }),
   podcasts: (term: string) => invoke<Podcast[]>("feed_podcast_search", { term }),
   importOpml: (opml: string) => invoke<Imported>("feed_opml_import", { opml }),
   exportOpml: (path: string) => invoke<number>("feed_opml_export", { path }),

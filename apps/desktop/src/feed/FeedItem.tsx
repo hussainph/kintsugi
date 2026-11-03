@@ -8,7 +8,8 @@ import { cn } from "@kintsugi/ui/lib/utils";
 import { discuss as discussWithKin, useScreenContext } from "@/lib/chat";
 import { feed, refreshPicked, type FeedItem as Item, type Place } from "./api";
 import { describeEffect } from "./ranking";
-import { ago, itemTitle, paragraphs, webUrl } from "./model";
+import { itemDate, itemTitle, paragraphs, webUrl } from "./model";
+import { SuggestionActions } from "./SuggestionActions";
 
 type Props = {
   ref?: Ref<HTMLElement>;
@@ -140,7 +141,10 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
   const read = async () => {
     if (reading) return setReading(null);
     const result = await run(() => feed.read(item.id, place));
-    if (result) setReading({ text: result.text });
+    if (result) {
+      setReading({ text: result.text });
+      onChange(result.item);
+    }
   };
 
   const openOriginal = () => {
@@ -172,11 +176,13 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
             {item.media === "video" && <Video className="size-3" aria-label="Video" />}
             {item.media === "audio" && <Headphones className="size-3" aria-label="Audio" />}
             {item.media === "book" && <BookOpen className="size-3" aria-label="New book" />}
-            {item.sourceKind === "page" && <FileDiff className="size-3" aria-label="Page changed" />}
+            {item.sourceKind === "page" && !item.backCatalogue && <FileDiff className="size-3" aria-label="Page changed" />}
             <span className="truncate">{item.sourceTitle ?? "Feed"}</span>
             {item.author && item.author !== item.sourceTitle && <span className="truncate">· {item.author}</span>}
             <span aria-hidden>·</span>
-            <time dateTime={new Date(when * 1000).toISOString()} title={new Date(when * 1000).toLocaleString()}>{ago(when)}</time>
+            {item.backCatalogue && <><span>Older writing</span><span aria-hidden>·</span></>}
+            <time dateTime={item.backCatalogue && item.publishedAt == null ? undefined : new Date(when * 1000).toISOString()} title={item.backCatalogue && item.publishedAt == null ? undefined : new Date(when * 1000).toLocaleString()}>{itemDate(item)}</time>
+            {item.suggestion && <><span aria-hidden>·</span><span>Suggested</span></>}
           </p>
           {item.summary && item.summary !== title && !reading && (
             <p className="mt-1.5 line-clamp-3 text-sm leading-relaxed text-muted-foreground">{item.summary}</p>
@@ -263,6 +269,7 @@ export function FeedItem({ ref, item, place, onChange, onDismiss, footer }: Prop
           <MessagesSquare />
           Discuss
         </Button>
+        <SuggestionActions item={item} />
         <Button variant="ghost" size="sm" onClick={dismiss} className="ml-auto opacity-70 group-hover/item:opacity-100 focus-visible:opacity-100">
           <EyeOff />
           Not interested

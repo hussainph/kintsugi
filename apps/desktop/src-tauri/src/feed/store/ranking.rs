@@ -22,6 +22,10 @@ pub struct RankRow {
     /// In the feed now: a pick candidate.
     pub visible: bool,
     pub saved_path: Option<String>,
+    pub back_catalogue: bool,
+    /// Pending metadata eligible for a durable daily release decision.
+    pub catalogue_candidate: bool,
+    pub suggested: bool,
 }
 
 impl Store {
@@ -31,9 +35,10 @@ impl Store {
             .prepare(&format!(
                 "SELECT i.id, i.source_id, i.author, COALESCE(i.title, ''), i.url, COALESCE(i.summary, ''),
                    substr(COALESCE(i.content, ''), 1, 4000), length(COALESCE(i.content, '')), i.media, i.sort_at,
-                   {visible}, i.saved_path
+                   {visible}, i.saved_path, i.back_catalogue, ({pending}), s.suggested
                  FROM items i JOIN sources s ON s.id = i.source_id ORDER BY i.id",
-                visible = super::VISIBLE
+                visible = super::VISIBLE,
+                pending = super::catalogue::PENDING
             ))
             .map_err(err)?;
         let rows = statement
@@ -51,6 +56,9 @@ impl Store {
                     sort_at: r.get(9)?,
                     visible: r.get(10)?,
                     saved_path: r.get(11)?,
+                    back_catalogue: r.get(12)?,
+                    catalogue_candidate: r.get(13)?,
+                    suggested: r.get(14)?,
                 })
             })
             .map_err(err)?;

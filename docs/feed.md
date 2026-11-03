@@ -1,7 +1,8 @@
 # Feed
 
 The contract for the Feed as built (KI-25, with X accounts from KI-33 and
-watched pages and authors from KI-43). Direction lives in
+watched pages and authors from KI-43, and older writing from KI-95). A
+personal compilation, new and old. Direction lives in
 `docs/vision.md` › Feed; where they disagree, this describes what exists.
 
 ## Storage
@@ -10,7 +11,7 @@ One SQLite file, `feed.sqlite`, in the app's data directory
 (`~/Library/Application Support/dev.phalasiya.kintsugi/`), never the vault.
 Headless runs keep it in `$KINTSUGI_CONFIG_DIR`; a debug run with
 `KINTSUGI_CONFIG_DIR` uses that folder, and a scratch-vault run without one
-uses a temporary folder. Schema version is `PRAGMA user_version` (1).
+uses a temporary folder. Schema version is `PRAGMA user_version` (2).
 
 - `sources`: URL (unique), kind (`feed`, `hn`, `youtube`, `podcast`, `x`,
   `page`, `author`), title,
@@ -25,7 +26,10 @@ uses a temporary folder. Schema version is `PRAGMA user_version` (1).
   `audio`, `book`), published/fetched/sort times, and his actions: `liked_at`,
   `note`, `saved_path` (+ the stable `save_id` capture key), `dismissed_at`
   (Not interested), `expired_at`, and `full_text_at` (when the full article
-  was fetched).
+  was fetched). Older metadata has `back_catalogue` and a nullable
+  `catalogue_released_at`. Sources keep discovery state and their switch;
+  `catalogue_releases` records admissions by UTC day, and
+  `catalogue_neighbours` records links already considered.
 - `events`: **append-only** (triggers reject UPDATE and DELETE). Every
   impression and every action, with time in ms, item, source, `surface`
   (`newest`, `picked` for Picked for you, `kin` for Kin's picks) and
@@ -105,16 +109,70 @@ transiently; a non-200 means retry, not gone) and X. A rate limit reads
 "rate limited; Kintsugi will try again later". The adapter's limits apply
 (8 MB, 25-second timeout, 5 redirects, credential-free HTTP(S) only).
 
-A poll stores at most 100 entries. Entries published more than 30 days
-before they were first seen are recorded already expired (so they never come
-back), except the newest three on a source's first fetch.
+A poll stores at most 100 entries. For blogs and pages, older articles enter
+the back catalogue instead of expiring on arrival. Other adapters keep the
+previous rule: entries over 30 days old start expired, except the newest
+three on the first fetch.
+
+## Older writing
+
+Blogs and watched pages have **Older writing** enabled by default. Follow
+Paul Graham's `https://paulgraham.com/articles.html` as a Page; Jason Cohen's
+`https://longform.asmartbear.com/index.xml` or
+`https://blog.asmartbear.com/feed/` as a Link.
+
+A separate background task scans each source once. Ordinary Refresh never
+repeats the scan. Following shows its state and count; **Find again** asks
+for another scan. Turning Older writing off hides its older pieces without
+muting new posts. Interrupted scans resume from the queued state on restart.
+
+Discovery reads metadata from the full feed, advertised feed-history pages,
+archive indexes and sitemaps. It checks robots.txt at each origin, honours
+crawl delays and spaces requests by at least one second per origin. A scan
+stops at 40 index pages, 5,000 entries, 8 MB per page, 32 MB overall, five
+redirects per request or three minutes. A reached limit appears in its source
+row; Find again repeats a bounded scan rather than promising a complete crawl.
+It never downloads articles, images or scripts. Sitemap modification dates
+are not publication dates. Unknown dates say **Date unknown** until a lazy
+article read finds a declared publication date.
+
+Metadata waits in a persistent pool. KI-32's local ranker chooses at most
+**two older pieces per UTC day**, across all sources and surfaces. A durable
+release ledger prevents refreshes, different list sizes, dismissals or a
+restart from spending the quota again. The pool does not expire while it
+waits. Unseen ordinary articles can age into this pool; articles he already
+saw and ignored still expire. Released items retain their original dates; only ranking's scoring
+copy neutralizes their age penalty. Likes, notes, saves and Inspiration
+still supply taste, through local embeddings or the hashed fallback.
+
+Picked for you and Newest each show at most two older candidates even after
+several days of releases. Newest places them by when they were offered;
+the date beside each piece is its original date, with **Older writing**.
+Full text is fetched only when opened. Discovery and ranking make no model
+calls; no summaries are generated here.
+
+### Close neighbours
+
+An unfollowed origin needs meaningful article links from two distinct Feed
+items he liked, noted or saved. Only links already in their stored text
+count; images, navigation, platform profiles and a further link crawl do
+not. At most three destinations per origin are considered in a pass, and a
+durable URL journal prevents repeats. A candidate also needs nearest-positive
+local similarity of at least 0.55 before release. This same threshold applies
+to model and hashed vectors, so uncertain matches are left out.
+
+At most one neighbour is admitted per day, within the two-piece older-work
+quota. It is marked **Suggested**, with a (?) reason naming the kept item
+that linked to it, and **Follow**. It stays out of Following, polling and
+OPML until Follow. Follow discovers its feed when available, else follows
+its homepage as a Page. Unfollowed sources are never revived by discovery.
 
 ## Order and expiry
 
 Newest first by publish time (capped at "now"; undated entries use the
 fetch time and keep the feed's order). Muted and unfollowed sources,
 dismissed and expired items are hidden. Items he never acted on (no like,
-note, save or Not interested) expire 30 days after they were first seen: the
+note, save or Not interested) expire 30 days after they were first seen (older writing: after release): the
 row stays, so a later poll can't revive them, but their text is dropped.
 Dismissed items keep their row as a negative signal and lose their text
 after 30 days.
@@ -167,6 +225,7 @@ state, and lets the poller fetch new sources in the background.
 
 `feed_sources`, `feed_subscribe({ input })`, `feed_unsubscribe({ id })`,
 `feed_mute({ id, muted })`, `feed_refresh({ id? })`,
+`feed_catalogue({ id, enabled?, retry? })`, `feed_follow_suggestion({ id })`,
 `feed_podcast_search({ term })`, `feed_opml_import`, `feed_opml_export`,
 `feed_items({ offset?, limit?, source? })`, `feed_read({ id, place? })`,
 `feed_act({ id, action, place? })`, `feed_note({ id, note, place? })`,

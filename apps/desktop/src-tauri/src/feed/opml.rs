@@ -146,6 +146,10 @@ mod tests {
             failures: 0,
             next_fetch_at: 0,
             items: 0,
+            catalogue_enabled: false,
+            catalogue_state: "disabled".into(),
+            catalogue_count: 0,
+            catalogue_error: None,
         }
     }
 

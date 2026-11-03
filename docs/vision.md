@@ -30,7 +30,7 @@ Kintsugi has four places, and Kin is in all of them:
 
 | Place | What it is | Who fills it |
 | --- | --- | --- |
-| **Feed** | A digest of new work from sources Hussain follows | Automatic |
+| **Feed** | A personal compilation, new and old, from followed sources and close neighbours | Automatic |
 | **Inspiration** | A small, curated library of what's worth keeping | **Hussain only** |
 | **Ideas** | A few specific, grounded ideas a day about his writing and collection | Kin |
 | **Writing** | Notes, drafts and posts, on the Mac and the phone | **Hussain only** |
@@ -49,8 +49,9 @@ publishing a piece easier or more pleasant wins.
 
 ## Feed
 
-The Feed fills itself from sources Hussain chooses. Nothing in it is saved
-unless he saves it.
+The Feed is a personal compilation, new and old. It fills itself from sources
+Hussain follows, their older writing, and a few closely related pieces.
+Nothing in it is saved unless he saves it.
 
 - **Sources:** RSS/Atom first. One adapter covers blogs, YouTube channels,
   podcasts and Hacker News (via hnrss.org). Then X accounts (via the
@@ -58,8 +59,10 @@ unless he saves it.
   detection for sites without feeds, and new books from favourite authors.
   Reddit can't be followed (its RSS and public API are closing), so Reddit
   posts are single captures only.
-- **Order:** newest first, plus a small **Picked for you** section ranked
-  for him.
+- **Order:** new posts alongside older writing chosen by his taste, with a
+  small **Picked for you** section. Older writing keeps its original date.
+  At most two older pieces enter a day, including at most one from an
+  unfollowed source. Each source's older writing can be switched off.
 - **Actions:** ♥ like (a signal; it shows what it changed, with undo),
   📝 note (a strong signal; travels with the item if saved), ⤓ save (copies
   it into Inspiration, the only way anything gets there), and **Not

@@ -24,6 +24,7 @@ use std::pin::Pin;
 pub mod api;
 pub mod authors;
 pub mod books;
+pub mod catalogue;
 pub mod epub;
 pub mod feed;
 mod fetch;
