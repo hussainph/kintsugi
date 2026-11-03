@@ -631,12 +631,12 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   the web (scripted) when asked about the web, or searches,
   then answers slowly, word by word, quoting the start of what the tool returned. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
   the idle wait. `test/runtime-kin.test.ts` drives it in headless Chromium.
-  For the chat's design states (KI-79) it also answers by what it's asked:
-  "think" waits 3 s before it does anything, "compare" runs a search and a
-  list in one step and then reads two documents together, "points" answers
-  in Markdown, "tighten" (or "rewrite", "edit") on a selected paragraph
-  proposes an edit, "fail" fails like a provider error and "timeout" like a
-  provider that stopped responding. `pnpm --filter @kintsugi/desktop
+  For the chat's design states (KI-79) it also answers by how a message
+  starts: "Think" waits 3 s before it does anything, "Compare" runs a search
+  and a list in one step and then reads two documents together, "Tighten"
+  (or "Rewrite", "Edit") on a selected paragraph proposes an edit, "Fail"
+  fails like a provider error and "Timeout" like a provider that stopped
+  responding; "points" anywhere in it gets an answer in Markdown. `pnpm --filter @kintsugi/desktop
   kin:scenarios` (`test/kin-scenarios.ts`) walks through every state on a
   fresh scratch vault, with a long conversation seeded into General, and
   screenshots each one in light and dark.
