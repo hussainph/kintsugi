@@ -14,7 +14,7 @@ import {
   SparklesIcon, SquareIcon, Sword01Icon, Tag01Icon, Tick02Icon, Undo02Icon,
   Upload01Icon, UserCircleIcon, Video01Icon, ViewOffIcon, Brain02Icon, Key01Icon,
   Globe02Icon, LockIcon, FileExportIcon, YoutubeIcon, NewTwitterIcon, PodcastIcon,
-  BrowserIcon, BookUserIcon, Link01Icon,
+  BrowserIcon, BookUserIcon, Link01Icon, PencilEdit02Icon, Redo02Icon,
   TriangleAlertIcon as WarningGlyph, OctagonXIcon as ErrorGlyph,
 } from "@hugeicons/core-free-icons";
 
@@ -81,12 +81,14 @@ export const NotebookPen = glyph(Notebook01Icon);
 export const PanelLeft = glyph(SidebarLeft01Icon);
 export const PanelRight = glyph(SidebarRight01Icon);
 export const Paperclip = glyph(AttachmentIcon);
+export const Pencil = glyph(PencilEdit02Icon);
 export const Pilcrow = glyph(ParagraphIcon);
 export const Plus = glyph(Add01Icon);
 export const Podcast = glyph(PodcastIcon);
 export const Quote = glyph(QuoteDownIcon);
 export const RotateCcw = glyph(RotateLeft01Icon);
 export const RotateCw = glyph(RotateClockwiseIcon);
+export const Redo2 = glyph(Redo02Icon);
 export const Rss = glyph(RssIcon);
 export const Search = glyph(Search01Icon);
 export const Settings = glyph(Settings01Icon);

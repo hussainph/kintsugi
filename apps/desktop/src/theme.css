@@ -133,6 +133,10 @@
 .ki-settings-prose { max-width: 36rem; color: var(--neutral-10); text-wrap: pretty; }
 .ki-settings [data-reached] [data-slot="meter-indicator"], .ki-settings [data-reached] .ui-range-fill { background: var(--error); }
 
+/* About you (KI-70): each memory tab's room, full width; red near the cap. */
+.ki-about .ui-range { width: 100%; gap: var(--space-xs); }
+.ki-about [data-high] .ui-range-fill { background: var(--error); }
+
 /* The model picker (KI-61): a compact trigger in the chat's composer, a
    select-like one in Settings, and a filterable menu grouped by provider. */
 .ki-model-trigger { display: inline-flex; min-width: 0; max-width: 100%; align-items: center; gap: var(--space-xxs); border: 0; border-radius: var(--radius-s); font-family: var(--font-ui); color: var(--neutral-10); background: transparent; transition: background-color var(--motion-duration) var(--motion-easing), color var(--motion-duration) var(--motion-easing); }
