@@ -30,6 +30,7 @@ export default function Layout() {
               <Stack.Screen name="clip-notes" />
               <Stack.Screen name="feed" />
               <Stack.Screen name="feed-item" />
+              <Stack.Screen name="feed-story" />
               <Stack.Screen name="ideas" />
               <Stack.Screen name="kin" options={{ presentation: 'modal', title: 'Kin' }} />
               <Stack.Screen name="pair" options={{ presentation: 'modal', title: 'Pair with your Mac' }} />

@@ -1,6 +1,6 @@
 import { merge3 } from '@kintsugi/core/merge';
-import { type Remote, version } from '@kintsugi/core/remote';
-import type { Effect, FeedAction, FeedItem, Impression, Pick as FeedPick, Place } from '@kintsugi/core/sections';
+import { type Remote, SECTIONS_API, STORIES_API, Unpaired, version } from '@kintsugi/core/remote';
+import type { FeedAction, FeedEntry, FeedItem, Impression, Pick as FeedPick, Place, Reason, Story, SummaryState } from '@kintsugi/core/sections';
 
 import type { Connection, KV } from './library';
 import { Waiting } from './waiting.ts';
@@ -10,19 +10,23 @@ import { Waiting } from './waiting.ts';
 export type FeedOp =
   | { kind: 'act'; id: number; action: FeedAction; place?: Place }
   | { kind: 'save'; id: number; place?: Place }
+  | { kind: 'dismiss'; ids: number[]; undo: boolean; place?: Place }
   /** `base` is the Mac's note when he started (`baseText`), at its version. */
   | { kind: 'note'; id: number; note: string; base: string; baseText: string; place?: Place }
   | { kind: 'impressions'; impressions: Impression[] };
 
 export type FeedClient = Pick<
   Remote,
-  'feed' | 'picked' | 'feedRead' | 'feedAct' | 'feedNote' | 'feedSave' | 'feedImpressions' | 'feedEffect'
+  'feed' | 'picked' | 'feedRead' | 'feedAct' | 'feedNote' | 'feedSave' | 'feedImpressions' | 'feedEntries' | 'feedStory' | 'feedWhy' | 'feedDismiss'
 >;
 
 type State = {
   items: FeedItem[];
   total: number;
   picks: FeedPick[];
+  entries?: FeedEntry[];
+  stories?: Record<string, Story>;
+  reasons?: Record<string, Reason[]>;
   /** Articles he opened, as the Mac sent them, to read again offline. */
   texts: Record<string, string>;
   /** A note changed both here and on the Mac: his words, and the Mac's. */
@@ -35,16 +39,18 @@ export type LocalItem = FeedItem & {
   waiting: boolean;
 };
 
+export type LocalStory = Omit<Story, 'lead' | 'items'> & { lead: LocalItem; items: LocalItem[] };
+export type LocalEntry = { kind: 'item'; item: LocalItem } | { kind: 'story'; story: LocalStory };
+
 export type FeedSnapshot = {
   items: LocalItem[];
-  picks: (FeedPick & { item: LocalItem })[];
+  entries: LocalEntry[];
+  picks: (Omit<FeedPick, 'item' | 'story'> & { item: LocalItem; story?: LocalStory })[];
   total: number;
   waiting: number;
   conflicts: State['conflicts'];
   connection: Connection;
   problem: string | null;
-  /** What the last like changed in Picked for you, for the toast. */
-  effect: { id: number; effect: Effect } | null;
 };
 
 /** How many articles are kept to read offline. */
@@ -57,7 +63,6 @@ const MAX_IMPRESSIONS = 500;
  *  saves and Not interested wait here until the Mac takes them. */
 export class Feed extends Waiting<State, FeedOp> {
   private current!: FeedSnapshot;
-  private effect: FeedSnapshot['effect'] = null;
   private seen = new Set<string>();
 
   constructor(kv: KV) {
@@ -67,19 +72,36 @@ export class Feed extends Waiting<State, FeedOp> {
 
   getSnapshot = () => this.current;
 
+  /** The version probe can fail before sync reaches this store on a cold launch. */
+  markOffline() {
+    this.publish('offline');
+  }
+
   protected snapshot() {
     const local = (item: FeedItem) => this.local(item);
     const shown = (item: LocalItem) => !item.dismissed;
     const items = this.state.items.map(local).filter(shown);
     this.current = {
       items,
-      picks: this.state.picks.map((p) => ({ ...p, item: local(p.item) })).filter((p) => shown(p.item)),
+      entries: (this.state.entries ?? this.state.items.map((item): FeedEntry => ({ kind: 'item', item }))).flatMap((entry): LocalEntry[] => {
+        if (entry.kind === 'item') {
+          const item = local(entry.item);
+          return shown(item) ? [{ kind: 'item', item }] : [];
+        }
+        const story = this.localStory(entry.story);
+        if (!story.items.length) return [];
+        // A story needs two sources, including while a dismiss waits offline.
+        return story.sources.length > 1 ? [{ kind: 'story', story }] : story.items.map((item) => ({ kind: 'item', item }));
+      }),
+      picks: this.state.picks.map((p) => {
+        const story = p.story ? this.localStory(p.story) : undefined;
+        return { ...p, item: local(p.item), story: story && story.sources.length > 1 ? story : undefined };
+      }).filter((p) => shown(p.item)),
       total: this.state.total,
       waiting: this.waiting.filter((op) => op.kind !== 'impressions').length,
       conflicts: this.state.conflicts,
       connection: this.connection,
       problem: this.problem,
-      effect: this.effect,
     };
   }
 
@@ -87,7 +109,12 @@ export class Feed extends Waiting<State, FeedOp> {
   local(item: FeedItem): LocalItem {
     let out: LocalItem = { ...item, waiting: false };
     for (const op of this.waiting) {
-      if (op.kind === 'impressions' || op.id !== item.id) continue;
+      if (op.kind === 'impressions') continue;
+      if (op.kind === 'dismiss') {
+        if (op.ids.includes(item.id)) out = { ...out, dismissed: !op.undo, waiting: true };
+        continue;
+      }
+      if (op.id !== item.id) continue;
       out.waiting = true;
       if (op.kind === 'act') {
         if (op.action === 'like' || op.action === 'unlike') out.liked = op.action === 'like';
@@ -101,9 +128,45 @@ export class Feed extends Waiting<State, FeedOp> {
     return out;
   }
 
+  private rawItem(id: number): FeedItem | undefined {
+    return this.state.items.find((i) => i.id === id) ?? this.state.picks.find((p) => p.id === id)?.item
+      ?? Object.values(this.state.stories ?? {}).flatMap((s) => s.items).find((i) => i.id === id)
+      ?? this.state.entries?.flatMap((e) => e.kind === 'story' ? e.story.items : [e.item]).find((i) => i.id === id);
+  }
+
   item(id: number): LocalItem | null {
-    const found = this.state.items.find((i) => i.id === id) ?? this.state.picks.find((p) => p.id === id)?.item;
+    const found = this.rawItem(id);
     return found ? this.local(found) : null;
+  }
+
+  private localStory(story: Story): LocalStory {
+    const items = story.items.map((i) => this.local(i)).filter((i) => !i.dismissed);
+    const sources = story.sources.filter((s) => items.some((i) => i.sourceId === s.id));
+    return { ...story, items, sources, lead: items.find((i) => i.id === story.lead.id) ?? items[0] ?? this.local(story.lead) };
+  }
+
+  story(id: number): LocalStory | null {
+    const entry = this.state.entries?.find((e) => e.kind === 'story' && e.story.id === id);
+    const found = this.state.stories?.[id] ?? this.state.picks.find((p) => p.story?.id === id)?.story ?? (entry?.kind === 'story' ? entry.story : undefined);
+    return found ? this.localStory(found) : null;
+  }
+
+  dismiss(ids: number[], undo = false, place?: Place) {
+    if (!ids.length) return;
+    if (undo && this.state.entries) {
+      // A sync may have removed a confirmed dismissal from the newest page.
+      // Put its cached story back before applying Undo, even if the Mac left.
+      let entries = [...this.state.entries];
+      for (const story of Object.values(this.state.stories ?? {})) {
+        if (!story.items.some((i) => ids.includes(i.id)) || entries.some((e) => e.kind === 'story' && e.story.id === story.id)) continue;
+        const members = new Set(story.items.map((i) => i.id));
+        entries = entries.filter((e) => e.kind !== 'item' || !members.has(e.item.id));
+        entries.push({ kind: 'story', story });
+      }
+      entries.sort((a, b) => (b.kind === 'story' ? b.story.sortAt : b.item.sortAt) - (a.kind === 'story' ? a.story.sortAt : a.item.sortAt));
+      this.setState({ ...this.state, entries });
+    }
+    this.queue({ kind: 'dismiss', ids, undo, place });
   }
 
   /** The article's text as last read here, for reading offline. */
@@ -134,7 +197,7 @@ export class Feed extends Waiting<State, FeedOp> {
       this.publish();
       return;
     }
-    const mac = this.state.items.find((i) => i.id === id) ?? this.state.picks.find((p) => p.id === id)?.item;
+    const mac = this.rawItem(id);
     const baseText = mac?.note ?? '';
     if (baseText === note) return;
     this.queue({ kind: 'note', id, note, base: version(baseText), baseText, place });
@@ -167,11 +230,6 @@ export class Feed extends Waiting<State, FeedOp> {
     }
   }
 
-  dismissEffect() {
-    this.effect = null;
-    this.publish();
-  }
-
   private queue(op: FeedOp) {
     this.setWaiting([...this.waiting, op]);
     this.publish();
@@ -181,20 +239,52 @@ export class Feed extends Waiting<State, FeedOp> {
 
   /** Sends what's waiting, then reads the newest page and Picked for you.
    *  Throws Unpaired; Offline keeps everything for later. */
-  sync(client: FeedClient): Promise<void> {
+  sync(client: FeedClient, api = SECTIONS_API): Promise<void> {
     return this.serial(async () => {
       this.problem = null;
       if (!(await this.flush((op) => this.send(client, op)))) return;
       try {
-        const [page, picked] = await Promise.all([client.feed(0, PAGE), client.picked()]);
-        const ids = new Set([...page.items.map((i) => i.id), ...picked.picks.map((p) => p.id)]);
+        const [page, picked, entries] = await Promise.all([
+          client.feed(0, PAGE), client.picked(), api >= STORIES_API ? client.feedEntries(0, PAGE) : null,
+        ]);
+        const stories = { ...this.state.stories };
+        for (const entry of entries?.entries ?? []) if (entry.kind === 'story') stories[entry.story.id] = entry.story;
+        for (const pick of picked.picks) if (pick.story) stories[pick.story.id] = pick.story;
+        const kept = Object.fromEntries(Object.values(stories).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, KEPT_TEXTS).map((s) => [s.id, s]));
+        const ids = new Set([...page.items.map((i) => i.id), ...picked.picks.map((p) => p.id), ...Object.values(kept).flatMap((s) => s.items.map((i) => i.id))]);
         const texts = Object.fromEntries(Object.entries(this.state.texts).filter(([id]) => ids.has(Number(id))));
-        this.setState({ ...this.state, items: page.items, total: page.total, picks: picked.picks, texts });
+        this.setState({ ...this.state, items: page.items, entries: entries?.entries, stories: kept, total: entries?.total ?? page.total, picks: picked.picks, texts });
         this.publish('online');
       } catch (e) {
         throw this.failed(e);
       }
     });
+  }
+
+  /** Keeps a fetched story (including its citations) to read offline. */
+  readStory(client: FeedClient, id: number): Promise<LocalStory | null> {
+    return this.serial(async () => {
+      try {
+        const story = await client.feedStory(id);
+        this.setState({ ...this.state, stories: { ...this.state.stories, [id]: story } });
+        this.publish('online');
+      } catch (e) {
+        this.failed(e);
+        if (e instanceof Unpaired) throw e;
+      }
+      return this.story(id);
+    });
+  }
+
+  reasons(id: number): Reason[] | undefined {
+    return this.state.reasons?.[id];
+  }
+
+  async why(client: FeedClient, id: number): Promise<Reason[]> {
+    const reasons = (await client.feedWhy(id)).filter((r) => r.key !== 'cold');
+    this.setState({ ...this.state, reasons: { ...this.state.reasons, [id]: reasons } });
+    this.publish();
+    return reasons;
   }
 
   /** Reads an item on the Mac (logged as an open; an excerpt becomes the
@@ -217,6 +307,7 @@ export class Feed extends Waiting<State, FeedOp> {
         return reading.text;
       } catch (e) {
         this.failed(e);
+        if (e instanceof Unpaired) throw e;
         return this.text(id);
       }
     });
@@ -229,13 +320,11 @@ export class Feed extends Waiting<State, FeedOp> {
         return;
       case 'act': {
         this.update(await client.feedAct(op.id, op.action, op.place));
-        if (op.action === 'like' && !this.waiting.some((o) => o !== op && o.kind === 'act' && o.id === op.id)) {
-          // What it changed in Picked for you; a nicety, so a failure is quiet.
-          const effect = await client.feedEffect(op.id).catch(() => null);
-          if (effect) this.effect = { id: op.id, effect };
-        }
         return;
       }
+      case 'dismiss':
+        for (const item of await client.feedDismiss(op.ids, op.undo, op.place)) this.update(item);
+        return;
       case 'save':
         this.update(await client.feedSave(op.id, op.place));
         return;
@@ -267,7 +356,9 @@ export class Feed extends Waiting<State, FeedOp> {
     this.setState({
       ...this.state,
       items: this.state.items.map((i) => (i.id === item.id ? item : i)),
-      picks: this.state.picks.map((p) => (p.id === item.id ? { ...p, item } : p)),
+      entries: this.state.entries?.map((e) => e.kind === 'item' ? { ...e, item: e.item.id === item.id ? item : e.item } : { ...e, story: updateStory(e.story, item) }),
+      stories: Object.fromEntries(Object.entries(this.state.stories ?? {}).map(([id, story]) => [id, updateStory(story, item)])),
+      picks: this.state.picks.map((p) => ({ ...p, item: p.id === item.id ? item : p.item, story: p.story ? updateStory(p.story, item) : undefined })),
     });
   }
 }
@@ -282,11 +373,14 @@ export function ago(seconds: number | null, now = Date.now()): string {
   return `${Math.round(hours / 24)} d`;
 }
 
-/** The toast after a like: what moved in Picked for you, in a line. */
-export function effectLine(effect: Effect): string {
-  const moved = effect.changes.filter((c) => c.after > c.before).map((c) => c.label);
-  const parts: string[] = [];
-  if (moved.length) parts.push(`More like ${moved.slice(0, 2).join(' and ')}`);
-  if (effect.added.length) parts.push(`${effect.added.length} new in Picked for you`);
-  return parts.length ? parts.join(' · ') : 'Liked.';
+function updateStory(story: Story, item: FeedItem): Story {
+  return { ...story, lead: story.lead.id === item.id ? item : story.lead, items: story.items.map((i) => i.id === item.id ? item : i) };
 }
+
+export const summaryStateLine = (state: SummaryState): string | null => ({
+  ready: null,
+  pending: 'Kin is writing a summary.',
+  failed: "Couldn't write a summary, so this is the first article's text.",
+  capped: "This month's AI limit is reached, so there's no summary yet.",
+  unavailable: 'Set up an AI provider in Settings for summaries.',
+})[state];

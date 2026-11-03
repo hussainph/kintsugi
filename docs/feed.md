@@ -389,18 +389,26 @@ action is 422. A server without the app behind it (the bare
 `phone_dev_server`) answers 503.
 
 **The phone app** (`apps/mobile/src/lib/feed.ts`, `app/feed.tsx`,
-`app/feed-item.tsx`, `components/FeedRow.tsx`): Picked for you (four, then
-"Show more", with Why this?) above the newest list, from a copy kept in the
-app's key-value store so it reads offline; an opened article's text is kept
-too (the latest 40). Like, save, note and Not interested apply at once and
-wait in order until the Mac takes them (`lib/waiting.ts`); a refusal the
-request can't recover from (400, 404, 413, 422) is dropped with the reason
-shown. Notes are version-checked: an edit elsewhere in the note merges
-(`merge3`), the same words changed on both sides ask which to keep. Shown
-items are logged as impressions (surface `picked` or `newest`, once per
-launch). A like shows what it changed (`feed_effect`) with Undo; Not
-interested has Undo. Discuss logs `discuss` and opens Kin with the item as a
-`feed` chip. Older Macs (before API 6) are told to update.
+`app/feed-story.tsx`, `app/feed-item.tsx`, `components/FeedRow.tsx`,
+`FeedParts.tsx`, `FeedWhy.tsx`): the top pick as a large card (picture when
+there is one, serif title, stacked sources), then rows, from a copy kept in
+the app's key-value store so it reads offline. With a Mac on API 7 the rows
+are `feed_entries`, so a story is one row; an older Mac's list is plain
+items. A story opens its own page: the title, Kin's cited summary (or the
+lead's text and the line saying why there's none), then a horizontal strip
+of compact source tiles. Long-pressing a tile (or a row) opens the menu:
+Open, Like, Save, Add note, Discuss, Not interested. The header has Like,
+Save, Discuss and (?). Every (?) opens a small card with the reasons. An
+opened article's text is kept too (the latest 40), and so are opened
+stories. Like, save, note, Not interested (a whole story's too) apply at
+once and wait in order until the Mac takes them (`lib/waiting.ts`); a
+refusal the request can't recover from (400, 404, 413, 422) is dropped with
+the reason shown. Notes are version-checked: an edit elsewhere in the note
+merges (`merge3`), the same words changed on both sides ask which to keep.
+Shown items are logged as impressions (surface `picked` or `newest`, once
+per launch). A like changes the heart and nothing else; Not interested has
+Undo. Discuss logs `discuss` and opens Kin with the item (or the story's
+items) as `feed` chips. Older Macs (before API 6) are told to update.
 
 ## Testing
 

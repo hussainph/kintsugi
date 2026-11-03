@@ -5,6 +5,7 @@ import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { FeedWhy } from '@/components/FeedWhy';
 import { useSendWhenWaiting } from '@/components/Toast';
 import { ago } from '@/lib/feed';
 import { usePairing } from '@/lib/pairing';
@@ -16,13 +17,13 @@ import { fonts, useTheme } from '@/theme';
  *  fetches the whole article when the feed only had an excerpt, and the
  *  phone keeps it to read again offline. */
 export default function FeedItemScreen() {
-  const params = useLocalSearchParams<{ id: string; surface?: Surface; position?: string }>();
+  const params = useLocalSearchParams<{ id: string; surface?: Surface; position?: string; note?: string }>();
   const id = Number(params.id);
   const place = { surface: params.surface === 'picked' ? ('picked' as const) : ('newest' as const), position: Number(params.position ?? 0) };
   const theme = useTheme();
   const { client, unpair } = usePairing();
   const snapshot = useFeed();
-  const item = snapshot.items.find((i) => i.id === id) ?? snapshot.picks.find((p) => p.id === id)?.item ?? null;
+  const item = feed.item(id);
   const [text, setText] = useState<string | null>(() => feed.text(id));
   const [note, setNote] = useState(item?.note ?? '');
   useScreenContext(item ? [{ kind: 'feed', path: String(id), label: item.title ?? 'Feed item' }] : null);
@@ -114,9 +115,9 @@ export default function FeedItemScreen() {
               }}
             />
           )}
+          <FeedWhy id={id} reasons={snapshot.picks.find((p) => p.id === id)?.reasons} />
         </View>
         {item.waiting && offline && <Text style={[styles.small, { color: theme.muted }]}>Waiting for your Mac.</Text>}
-        {saved && item.savedPath && <Text style={[styles.small, { color: theme.muted }]}>Its note is in Inspiration now.</Text>}
 
         {conflict ? (
           <View style={[styles.conflict, { backgroundColor: theme.surface }]}>
@@ -137,6 +138,7 @@ export default function FeedItemScreen() {
         ) : (
           <TextInput
             value={note}
+            autoFocus={params.note === '1'}
             editable={!saved}
             onChangeText={(next) => {
               setNote(next);
