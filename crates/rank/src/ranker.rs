@@ -906,10 +906,13 @@ impl Ranker {
             });
         }
         if scored.fresh_hours < 6.0 {
+            let hours = scored.fresh_hours.floor();
             let label = if scored.fresh_hours < 1.0 {
                 "New in the last hour".to_string()
+            } else if hours <= 1.0 {
+                "New: an hour ago".to_string()
             } else {
-                format!("New: {:.0} hours ago", scored.fresh_hours.floor().max(1.0))
+                format!("New: {hours:.0} hours ago")
             };
             reasons.push(Reason {
                 key: "fresh".into(),

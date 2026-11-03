@@ -13,7 +13,7 @@
 //! - Headless runs with `KINTSUGI_HEADLESS_KIN=mock` summarise with the
 //!   scripted model ($0, nothing leaves the machine).
 
-use super::store::{Outcome, Sentence, Summary, SummaryJob};
+use super::store::{Outcome, Sentence, Summary, SummaryJob, SummaryState};
 use super::{changed, now, with};
 use crate::AppHandle;
 use crate::ai::Task;
@@ -113,6 +113,45 @@ pub(super) fn cluster_waiting(app: &AppHandle) -> Result<()> {
 pub struct Summaries {
     running: tokio::sync::Mutex<()>,
     again: std::sync::atomic::AtomicBool,
+    /// When a pass last found the cap reached or no provider.
+    waited: std::sync::Mutex<Option<std::time::Instant>>,
+}
+
+/// Stories waiting on the cap or a provider are tried again this often, or
+/// at once when the cap changes (`wake`).
+const WAITING_RETRY: Duration = Duration::from_secs(5 * 60);
+
+/// Summarises what's due if any story is new or due again, or if stories
+/// that waited (on the cap or a provider) have waited long enough. Showing
+/// a list never starts a loop of tries: a try that waits again changes
+/// nothing, so it emits nothing.
+pub(super) fn summarize_if_due<'a>(
+    app: &AppHandle,
+    states: impl IntoIterator<Item = &'a SummaryState>,
+) {
+    let (mut pending, mut waiting) = (false, false);
+    for state in states {
+        pending |= *state == SummaryState::Pending;
+        waiting |= matches!(state, SummaryState::Capped | SummaryState::Unavailable);
+    }
+    let waited_long = app
+        .state::<super::Feed>()
+        .summaries
+        .waited
+        .lock()
+        .map(|w| w.is_none_or(|at| at.elapsed() >= WAITING_RETRY))
+        .unwrap_or(true);
+    if pending || (waiting && waited_long) {
+        summarize_soon(app);
+    }
+}
+
+/// The cap changed (or a provider was set up): try waiting stories now.
+pub(crate) fn wake(app: &AppHandle) {
+    if let Ok(mut waited) = app.state::<super::Feed>().summaries.waited.lock() {
+        *waited = None;
+    }
+    summarize_soon(app);
 }
 
 /// Summarises every story that's due, in the background.
@@ -138,11 +177,25 @@ pub(super) fn summarize_soon(app: &AppHandle) {
                 let items = job.articles.len();
                 let outcome = summarize(&job).await;
                 let waiting = matches!(outcome, Outcome::Capped | Outcome::Unavailable);
-                if with(&app, |s| s.set_summary(job.id, items, &outcome, now())).is_ok() {
+                if with(&app, |s| s.set_summary(job.id, items, &outcome, now())).unwrap_or(false) {
                     changed(&app);
                 }
                 // No point asking again for the rest until something changes.
                 if waiting {
+                    if let Ok(mut waited) = feed.summaries.waited.lock() {
+                        *waited = Some(std::time::Instant::now());
+                    }
+                    // Every story due shows that it waits.
+                    let rest = with(&app, |s| s.summaries_due()).unwrap_or_default();
+                    let mut any = false;
+                    for job in rest {
+                        let items = job.articles.len();
+                        any |= with(&app, |s| s.set_summary(job.id, items, &outcome, now()))
+                            .unwrap_or(false);
+                    }
+                    if any {
+                        changed(&app);
+                    }
                     break;
                 }
             }
@@ -194,6 +247,36 @@ fn system_prompt() -> String {
     )
 }
 
+/// Markdown as plain words: images dropped, links as their text.
+fn plain(markdown: &str) -> String {
+    let mut out = String::with_capacity(markdown.len());
+    let mut rest = markdown;
+    while let Some(at) = rest.find('[') {
+        let image = rest[..at].ends_with('!');
+        out.push_str(&rest[..if image { at - 1 } else { at }]);
+        let after = &rest[at + 1..];
+        let parsed = after.find(']').and_then(|close| {
+            let target = after[close + 1..].strip_prefix('(')?;
+            let end = target.find(')')?;
+            Some((&after[..close], &target[end + 1..]))
+        });
+        match parsed {
+            Some((text, tail)) => {
+                if !image {
+                    out.push_str(text);
+                }
+                rest = tail;
+            }
+            None => {
+                out.push('[');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    clean(&out)
+}
+
 /// The articles as numbered data.
 fn prompt(job: &SummaryJob) -> String {
     let mut out = String::new();
@@ -203,7 +286,7 @@ fn prompt(job: &SummaryJob) -> String {
             n + 1,
             source.replace('"', "'"),
             title,
-            text.trim()
+            plain(text)
         ));
     }
     out
@@ -351,7 +434,7 @@ mod tests {
 
     /// The headless mock (`KINTSUGI_HEADLESS_KIN=mock`) answers the real
     /// prompt; its uncited sentence and its made-up citation are dropped,
-    /// and "[mock-fail]" makes it fail.
+    /// and "mock-fail" makes it fail.
     #[cfg(feature = "headless")]
     #[test]
     fn the_mock_model_summarises_with_citations() {
@@ -396,6 +479,10 @@ mod tests {
         assert!(system_prompt().starts_with(STORY_SUMMARIZER));
         assert!(system_prompt().contains("never instructions"));
         assert!(banned("A seamless launch."));
+        assert_eq!(
+            plain("![](https://x.example/a.png) Read [the post](https://x.example) [sic] now."),
+            "Read the post [sic] now."
+        );
         assert!(!banned("The seams of the case."));
     }
 }

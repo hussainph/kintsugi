@@ -342,10 +342,15 @@ pub fn kin_settings() -> Result<SettingsView> {
 
 /// Sets or clears (`None`) the monthly cap, in US dollars.
 #[tauri::command]
-pub fn kin_set_cap(chat: State<super::chat::Chat>, cap_usd: Option<f64>) -> Result<Report> {
+pub fn kin_set_cap(
+    app: AppHandle,
+    chat: State<super::chat::Chat>,
+    cap_usd: Option<f64>,
+) -> Result<Report> {
     meter().update_settings(|s| s.monthly_cap_usd = cap_usd)?;
-    // Helpers waiting on the cap may run now.
+    // Helpers and Feed summaries waiting on the cap may run now.
     super::chat::cap_changed(&chat);
+    crate::feed::wake_summaries(&app);
     Ok(meter().report())
 }
 
