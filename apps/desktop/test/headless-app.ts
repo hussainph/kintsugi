@@ -8,6 +8,7 @@ import { createServer } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ConsoleMessage, Page } from "playwright";
+import { waitForFrontend } from "../../../scripts/frontend-ready.mjs";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -89,14 +90,7 @@ export async function startApp(prefix: string, env: Record<string, string>, prep
     runner.stderr!.on("data", (chunk) => (output += chunk));
     runner.once("exit", (code) => fail(new Error(`desktop:headless exited (${code}):\n${output.slice(-4000)}`)));
   });
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(`http://127.0.0.1:${frontend}/`)).ok) break;
-    } catch {
-      if (i > 600) throw new Error(`frontend never started:\n${output.slice(-4000)}`);
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
+  await waitForFrontend(frontend, () => output);
   const stop = () => stopRunner(runner, () => output);
   return { url, scratch, vault, config, shots, output: () => output, stop };
 }
