@@ -42,6 +42,7 @@ type Props = {
   /** Bump to put the caret at the end and raise the keyboard (a new note). */
   focus: number;
   dark: boolean;
+  textSize: number;
   sources: PhoneSource[];
   onText: (key: string, text: string, seen: string) => Promise<void>;
   onFlushed: (token: number) => Promise<void>;
@@ -175,7 +176,7 @@ function difference(a: string, b: string) {
   return { from: start, to: a.length - end, insert: b.slice(start, b.length - end) };
 }
 
-export default function PhoneEditor({ ref, docKey, text, external, focus, dark, sources, ...actions }: Props) {
+export default function PhoneEditor({ ref, docKey, text, external, focus, dark, textSize, sources, ...actions }: Props) {
   const viewRef = useRef<EditorView | null>(null);
   const [sync] = useState(() => new Sync());
   const callbacks = useRef(actions);
@@ -225,7 +226,11 @@ export default function PhoneEditor({ ref, docKey, text, external, focus, dark, 
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark);
-  }, [dark]);
+    document.documentElement.style.setProperty('--editor-text-scale', String(textSize));
+    // The DOM changed size without a document transaction. Re-measure wraps,
+    // selection and scroll geometry, keeping state and history intact.
+    viewRef.current?.requestMeasure();
+  }, [dark, textSize]);
 
   // The WebView shrinks when the keyboard comes up; keep the caret in sight.
   useEffect(() => {

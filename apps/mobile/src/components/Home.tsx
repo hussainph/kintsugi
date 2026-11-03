@@ -13,6 +13,7 @@ import { library, useLibrary } from '@/lib/documents';
 import { unsent } from '@/lib/library';
 import { capture, heldForMacUpdate, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
 import { usePairing } from '@/lib/pairing';
+import { openAppearance } from '@/lib/open-appearance';
 import { syncSections, useFeed, useIdeas } from '@/lib/sections-store';
 import { setNewEditor, useNewEditor } from '@/lib/settings';
 import { fonts, useTheme } from '@/theme';
@@ -168,6 +169,7 @@ export function Home({ client, linked }: { client: Remote; linked?: Filter | nul
       <Stack.Toolbar placement="right">
         <Stack.Toolbar.Button icon="square.and.pencil" accessibilityLabel="New note" onPress={newNote} />
         <Stack.Toolbar.Menu icon="ellipsis.circle">
+          <Stack.Toolbar.MenuAction icon="circle.lefthalf.filled" onPress={openAppearance}>Appearance</Stack.Toolbar.MenuAction>
           <Stack.Toolbar.MenuAction
             icon="character.cursor.ibeam"
             isOn={newEditor}

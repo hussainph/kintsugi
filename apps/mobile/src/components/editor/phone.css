@@ -11,6 +11,23 @@
   --font-sans: -apple-system, system-ui, sans-serif;
   --font-prose: ui-serif, "New York", Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  /* packages/editor's current type and palette roles, on the native palette. */
+  --font-editorial: var(--font-prose);
+  --font-data: var(--font-mono);
+  --font-ui: var(--font-sans);
+  --weight-editorial-regular: 400;
+  --weight-editorial-heavy: 700;
+  --weight-data-regular: 400;
+  --neutral-1: var(--background);
+  --neutral-2: var(--popover);
+  --neutral-4: var(--border);
+  --neutral-7: var(--muted-foreground);
+  --neutral-8: var(--foreground);
+  --neutral-10: var(--foreground);
+  --neutral-5-transparent: var(--editor-selection);
+  --border-l: 1px;
+  --editor-size: calc(19px * var(--editor-text-scale, 1));
+  --editor-line: calc(29px * var(--editor-text-scale, 1));
   --editor-faint: color-mix(in oklch, var(--muted-foreground) 65%, transparent);
   --editor-selection: color-mix(in oklch, var(--primary) 14%, transparent);
   color-scheme: light;
@@ -50,8 +67,8 @@ body,
 
 /* Three classes to outrank the theme's scoped two, which CodeMirror injects
    later. Matches the plain editor's 19/29 serif and 20 pt margins. */
-.phone-editor .cm-editor.cm-editor { font-size: 19px; }
-.phone-editor .cm-editor .cm-content { padding: 12px 20px 40vh; line-height: 29px; }
+.phone-editor .cm-editor.cm-editor { --editor-size: calc(19px * var(--editor-text-scale, 1)); --editor-line: calc(29px * var(--editor-text-scale, 1)); font-size: var(--editor-size); }
+.phone-editor .cm-editor .cm-content { padding: 12px 20px 40vh; line-height: var(--editor-line); }
 .phone-editor .cm-editor .cm-line { padding: 0; }
 
 /* The [[ picker, for a thumb: the width of the screen, rows you can hit, and

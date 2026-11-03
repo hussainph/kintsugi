@@ -12,6 +12,8 @@ import { docTitle, unsent } from '@/lib/library';
 import { usePairing } from '@/lib/pairing';
 import { useScreenContext } from '@/lib/screen-context';
 import { useNewEditor } from '@/lib/settings';
+import { useAppearance } from '@/lib/appearance-store';
+import { openAppearance } from '@/lib/open-appearance';
 import { fonts, useTheme } from '@/theme';
 
 const SAVE_DELAY = 800;
@@ -32,6 +34,7 @@ export default function DocScreen() {
   const { connection } = useLibrary();
   const { client, unpair } = usePairing();
   const theme = useTheme();
+  const { textSize } = useAppearance();
   // The header floats over the screen; the editor starts below it.
   const headerHeight = useHeaderHeight();
   const moved = doc ? null : library.movedTo(path);
@@ -147,6 +150,9 @@ export default function DocScreen() {
           accessibilityLabel={status === 'complete' ? 'Complete. Mark as draft' : 'Draft. Mark as complete'}
           onPress={toggleStatus}
         />
+        <Stack.Toolbar.Menu icon="ellipsis.circle">
+          <Stack.Toolbar.MenuAction icon="circle.lefthalf.filled" onPress={openAppearance}>Appearance</Stack.Toolbar.MenuAction>
+        </Stack.Toolbar.Menu>
       </Stack.Toolbar>
       {newEditor ? (
         <View style={[styles.editorScreen, { backgroundColor: theme.background, paddingTop: headerHeight }]}>
@@ -204,7 +210,7 @@ export default function DocScreen() {
             autoFocus={!!doc.fresh && !parts.body}
             placeholder="Start writing…"
             placeholderTextColor={theme.faint}
-            style={[styles.body, { color: theme.text }]}
+            style={[styles.body, { color: theme.text, fontSize: 19 * textSize, lineHeight: 29 * textSize }]}
           />
         </ScrollView>
       )}

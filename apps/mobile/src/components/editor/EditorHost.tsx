@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { Pressable, StyleSheet, Text, useColorScheme, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { KeyboardEvents, KeyboardStickyView } from 'react-native-keyboard-controller';
 
 import PhoneEditor, { type PhoneEditorRef, type PhoneSource } from '@/components/editor/PhoneEditor';
@@ -9,6 +9,7 @@ import { editorSessions } from '@/lib/editor-session';
 import { docTitle } from '@/lib/library';
 import { field } from '@kintsugi/core/frontmatter';
 import { useTheme } from '@/theme';
+import { useAppearance, useResolvedScheme } from '@/lib/appearance-store';
 
 import { KintsugiKeyboard } from '../../../modules/keyboard';
 
@@ -38,7 +39,8 @@ export function EditorHost() {
   const state = useSyncExternalStore(editorSessions.subscribe, editorSessions.getSnapshot);
   const ref = useRef<PhoneEditorRef>(null);
   const theme = useTheme();
-  const dark = useColorScheme() === 'dark';
+  const dark = useResolvedScheme() === 'dark';
+  const { textSize } = useAppearance();
   const window = useWindowDimensions();
   const [keyboard, setKeyboard] = useState(0);
   const sources = useSources();
@@ -124,6 +126,7 @@ export function EditorHost() {
           // Once the screen has landed, as Notes does.
           focus={showing && state.session?.focus ? state.session.openedAt : 0}
           dark={dark}
+          textSize={textSize * window.fontScale}
           sources={sources}
           onText={async (key, text, seen) => editorSessions.wrote(key, text, seen)}
           onFlushed={async (token) => editorSessions.flushed(token)}
