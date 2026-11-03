@@ -100,6 +100,12 @@ test("no two shortcuts share a key where both work, CodeMirror's and the Mac's i
   assert.deepEqual(Object.keys(OVERRIDES).filter((id) => !overridden.has(id)), [], "OVERRIDES entries that no longer clash");
 });
 
+test("⌘/ is Dim's alone: CodeMirror's comment toggles are out of the keymap", () => {
+  const dim = uses().filter((use) => canonical(use.spec) === canonical("Mod-/"));
+  assert.deepEqual(dim.map((use) => use.from), ["format: Mod-/"]);
+  assert.ok(!OVERRIDES[canonical("Mod-/")]);
+});
+
 test("CodeMirror's keys in the list are still its keys", () => {
   const theirs = new Set(builtinKeymap.flatMap(macSpecs).map(canonical));
   for (const s of entries().filter((s) => s.builtin)) assert.ok(theirs.has(canonical(s.key)), `${s.label} ${s.key}`);

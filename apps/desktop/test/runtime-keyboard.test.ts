@@ -55,7 +55,9 @@ async function select(word: string) {
   await line(word).getByText(word, { exact: false }).first().waitFor();
   const box = await page.evaluate((word) => {
     for (const el of document.querySelectorAll(".cm-line")) {
-      const node = [...el.childNodes].flatMap((n) => (n.nodeType === 3 ? [n] : [...n.childNodes].filter((c) => c.nodeType === 3))).find((n) => n.textContent!.includes(word));
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let node: Node | null = null;
+      while (walker.nextNode()) if (walker.currentNode.textContent!.includes(word)) { node = walker.currentNode; break; }
       if (!node) continue;
       const range = document.createRange();
       const at = node.textContent!.indexOf(word);
@@ -109,7 +111,7 @@ test("right-click on a selection shows what applies to it, each with its key", {
   const rows = await menu().getByRole("menuitem").evaluateAll((items) => items.map((item) => item.textContent?.trim()));
   assert.deepEqual(rows, [
     "Tighten⌥⌘T", "Rephrase⌥⌘R", "Simplify⌥⌘P", "Fix grammar and spelling⌥⌘F", "Synonyms⌥⌘S",
-    "Edit with Kin…⌘K", "Ask Kin⌘J", "Cut⌘X", "Copy⌘C",
+    "Dim⌘/", "Edit with Kin…⌘K", "Ask Kin⌘J", "Cut⌘X", "Copy⌘C",
   ]);
   await shot("03-selection-menu");
   await page.keyboard.press("Escape");
@@ -119,11 +121,29 @@ test("right-click on a selection shows what applies to it, each with its key", {
   assert.ok(await page.evaluate(() => document.activeElement?.classList.contains("cm-content")));
 });
 
+test("Dim in the menu dims the selection, and the menu then offers Undim", { timeout: 60_000 }, async () => {
+  const at = await select("seam");
+  await page.mouse.click(at.x, at.y, { button: "right" });
+  await menu().getByRole("menuitem", { name: /^Dim/ }).click();
+  await onDisk((t) => t.includes("Keep the <!-- seam --> where"), "the selection is dimmed");
+  const again = await select("seam");
+  await page.mouse.click(again.x, again.y, { button: "right" });
+  await menu().getByRole("menuitem", { name: /^Undim/ }).waitFor();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Meta+z");
+  await onDisk((t) => t.includes("Keep the seam where"), "undo takes the dim back out");
+});
+
 test("⇧F10 opens it from the keyboard; a row runs its edit", { timeout: 60_000 }, async () => {
   await select("repair");
   await page.keyboard.press("Shift+F10");
   await menu().waitFor();
+  // The first row has focus; ↓ and ↑ move, ↩ runs it.
+  await menu().getByRole("menuitem", { name: /Tighten/ }).and(page.locator(":focus")).waitFor();
   await page.keyboard.press("ArrowDown");
+  await menu().getByRole("menuitem", { name: /Rephrase/ }).and(page.locator(":focus")).waitFor();
+  await page.keyboard.press("ArrowUp");
+  await menu().getByRole("menuitem", { name: /Tighten/ }).and(page.locator(":focus")).waitFor();
   await page.keyboard.press("Enter");
   await menu().waitFor({ state: "detached" });
   await refine().getByText("Tighten").first().waitFor();

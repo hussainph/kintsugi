@@ -1,6 +1,7 @@
 import type { EditorView } from "@codemirror/view";
 import { Fragment, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
+import { formatShortcuts, isDimmed, toggleDimRange } from "@kintsugi/editor/Editor";
 import { Menu } from "@kintsugi/ui/graphical";
 import { discuss } from "@/lib/chat";
 import { ariaKeys, keysOf, matches } from "@/lib/keys";
@@ -17,13 +18,16 @@ type Props = {
   onRefine: (from: number, to: number, action?: Action) => void;
 };
 
-type Place = { x: number; y: number; from: number; to: number };
+/** ⌘/, from the editor's keymap. */
+const DIM = formatShortcuts.find((s) => s.label === "Dim")!.key;
+
+type Place = { x: number; y: number; from: number; to: number; keyboard?: boolean };
 type Row = { id: string; label: string; keys?: string; spec?: string; run: () => void };
 
 /** Right-click on a selection, or ⇧F10 (the context-menu key too): what can
  *  be done with it, each row with its key, which is how the keys are learnt.
  *  Anywhere else the Mac's own menu shows, with its spelling suggestions.
- *  Alternatives, dim and stash (KI-86, KI-88, KI-89) add their rows here. */
+ *  Alternatives and stash (KI-86, KI-89) add their rows here. */
 export function SelectionMenu({ viewRef, path, onRefine }: Props) {
   const [at, setAt] = useState<Place | null>(null);
   // An item that moves focus itself (⌘K, Kin's chat) keeps it.
@@ -51,7 +55,7 @@ export function SelectionMenu({ viewRef, path, onRefine }: Props) {
       e.preventDefault();
       e.stopPropagation();
       const coords = view.coordsAtPos(head, head === from ? 1 : -1) ?? view.coordsAtPos(to);
-      if (coords) open({ x: coords.left, y: coords.bottom, from, to });
+      if (coords) open({ x: coords.left, y: coords.bottom, from, to, keyboard: true });
     };
     view.contentDOM.addEventListener("contextmenu", onContextMenu);
     view.contentDOM.addEventListener("keydown", onKeyDown, true);
@@ -60,6 +64,21 @@ export function SelectionMenu({ viewRef, path, onRefine }: Props) {
       view.contentDOM.removeEventListener("keydown", onKeyDown, true);
     };
   }, [viewRef]);
+
+  // Opened from the keyboard: the first row has focus, so ↩ runs it and
+  // ↓ goes on from there, as in a Mac menu opened with keys.
+  useEffect(() => {
+    if (!at?.keyboard) return;
+    let frame = 0;
+    let tries = 0;
+    const focusFirst = () => {
+      const first = document.querySelector<HTMLElement>(".ki-selection-menu [role=menuitem]");
+      if (first) first.focus();
+      else if (tries++ < 30) frame = requestAnimationFrame(focusFirst);
+    };
+    frame = requestAnimationFrame(focusFirst);
+    return () => cancelAnimationFrame(frame);
+  }, [at]);
 
   const anchor = useMemo(
     () => at && { getBoundingClientRect: () => DOMRect.fromRect({ x: at.x, y: at.y, width: 0, height: 0 }) },
@@ -92,6 +111,8 @@ export function SelectionMenu({ viewRef, path, onRefine }: Props) {
           spec: SHORTCUTS[a.id as ShortcutId]?.key,
           run: leave(() => onRefine(from, to, a)),
         })),
+    // Writes the passage's comment markers; no model involved (KI-88).
+    locked ? [] : [{ id: "dim", label: isDimmed(view.state, from, to) ? "Undim" : "Dim", keys: keysOf(DIM), spec: DIM, run: () => { toggleDimRange(view, from, to); view.focus(); } }],
     [
       { id: "refine", label: "Edit with Kin…", ...key("refine"), run: leave(() => onRefine(from, to)) },
       { id: "ask", label: "Ask Kin", ...key("kin"), run: leave(() => discuss(passageChips(view, path, from, to))) },

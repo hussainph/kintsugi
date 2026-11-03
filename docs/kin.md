@@ -841,11 +841,11 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   can still start with any letter. Synonyms need four words or fewer; a
   read-only mirror refuses them.
 - **Right-click on a selection** (or ⇧F10, or the context-menu key) opens
-  `src/refine/SelectionMenu.tsx`: those edits, *Edit with Kin…* (⌘K), *Ask
+  `src/refine/SelectionMenu.tsx`: those edits, *Dim* (⌘/, KI-88), *Edit with Kin…* (⌘K), *Ask
   Kin* (⌘J; the chat with the passage attached), then Cut and Copy, each row
   with its key. A right-click anywhere else keeps the Mac's menu and its
-  spelling suggestions. Alternatives, dim and stash (KI-86, KI-88, KI-89) add
-  their rows; their keys are already held in `src/lib/shortcuts.ts`.
+  spelling suggestions. Alternatives and stash (KI-86, KI-89) add their rows;
+  their keys are already held in `src/lib/shortcuts.ts`.
 - **Phone width.** Both menus fit `100vw − 16px`, rows are at least 44 px
   on a coarse pointer, and touch hints replace the key hints there.
 - **Headless.** With `KINTSUGI_HEADLESS_KIN=mock`, `ai_providers` offers the
