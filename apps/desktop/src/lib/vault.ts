@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Versioned } from "@kintsugi/core/remote";
 import type { Entry } from "@kintsugi/core/vault";
+import type { FolderStyles } from "@kintsugi/core/folders";
 import type { RelinkOutcome, RelinkPlan, RelinkWrite } from "./links";
 
 export * from "@kintsugi/core/vault";
@@ -22,7 +23,13 @@ export const vault = {
   createDoc: (dir: string, title: string) => invoke<string>("doc_create", { dir, title }),
   createFolder: (dir: string, name: string) => invoke<string>("folder_create", { dir, name }),
   rename: (path: string, name: string) => invoke<string>("entry_rename", { path, name }),
+  /** Into `dir` (the root when empty), keeping its name; returns the new path. */
+  move: (path: string, dir: string) => invoke<string>("entry_move", { path, dir }),
   trash: (path: string) => invoke<void>("entry_trash", { path }),
+  folderStyles: () => invoke<FolderStyles>("folder_styles"),
+  /** Both null clears the folder's style. */
+  setFolderStyle: (path: string, color: string | null, icon: string | null) =>
+    invoke<void>("folder_style_set", { path, color, icon }),
   /** The [[links]] that pointed at `from`, now renamed `to`; writes nothing.
    *  `open`: the editor's text, which stands in for that document's disk copy. */
   linksPlan: (from: string, to: string, open: { path: string; text: string } | null) =>

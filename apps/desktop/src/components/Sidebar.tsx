@@ -1,21 +1,12 @@
-import { Bookmark, ChevronRight, FileText, Folder, Lightbulb, Rss, Settings, Smartphone, UserRound } from "@kintsugi/ui/icons";
+import { Bookmark, Folder, FolderPlus, Lightbulb, Rss, Settings, Smartphone, UserRound } from "@kintsugi/ui/icons";
 import { useCallback, useMemo, useState } from "react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuTrigger,
-} from "@kintsugi/ui/components/context-menu";
-import { Input } from "@kintsugi/ui/components/input";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import {
   Sidebar as SidebarRoot,
   SidebarContent,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarFooter,
   SidebarGroupLabel,
@@ -23,15 +14,18 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
   SidebarTrigger,
   useSidebar,
 } from "@kintsugi/ui/components/sidebar";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { openAboutYou, openSettings } from "@/lib/kin";
-import { displayName, Entry, filterTree, flatten, parentDir } from "@/lib/vault";
+import { Entry, filterTree, flatten } from "@/lib/vault";
+import type { FolderStyle, FolderStyles } from "@kintsugi/core/folders";
 import { hasTags, vocabulary } from "@kintsugi/core/tags";
 import { TagChips, TagFilter } from "./Tags";
+import { folderList, useClosedFolders, useTreeDrag, VaultTree } from "./VaultTree";
+
+export { StatusDot } from "./VaultTree";
 
 type Props = {
   tree: Entry[];
@@ -49,7 +43,11 @@ type Props = {
   onNewDoc: (dir: string) => void;
   onNewFolder: (dir: string) => void;
   onRename: (path: string, name: string) => void;
+  /** Into `dir` (the root when empty), by drag and drop or Move to. */
+  onMove?: (path: string, dir: string) => void;
   onTrash: (path: string) => void;
+  folderStyles?: FolderStyles;
+  onFolderStyle?: (path: string, style: FolderStyle) => void;
   phoneOn: boolean;
   onPhone: () => void;
   settingsOpen?: boolean;
@@ -76,8 +74,8 @@ export function useSidebarOpen(): [boolean, (open: boolean) => void] {
 }
 
 export function Sidebar(props: Props) {
-  const collapsed = useSidebar().state === "collapsed";
-  const [renaming, setRenaming] = useState<string | null>(null);
+  const { state, setOpen } = useSidebar();
+  const collapsed = state === "collapsed";
   const [ownFilter, setOwnFilter] = useState<string[]>([]);
   const { tree } = props;
   const tagFilter = props.tagFilter ?? ownFilter;
@@ -93,103 +91,10 @@ export function Sidebar(props: Props) {
     () => (tagFilter.length ? filterTree(tree, (doc) => hasTags(doc.tags, tagFilter)) : tree),
     [tree, tagFilter],
   );
-
-  const rename = (entry: Entry) => (
-    <Input
-      autoFocus
-      aria-label={`Rename ${entry.name}`}
-      defaultValue={entry.name}
-      onFocus={(e) => e.target.setSelectionRange(0, entry.name.replace(/\.mdx?$/, "").length)}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Escape") setRenaming(null);
-        if (e.key === "Enter") e.currentTarget.blur();
-      }}
-      onBlur={(e) => {
-        const name = e.target.value.trim();
-        setRenaming(null);
-        if (name && name !== entry.name) props.onRename(entry.path, name);
-      }}
-    />
-  );
-
-  const menu = (entry: Entry, row: React.ReactNode) => {
-    const dir = entry.kind === "folder" ? entry.path : parentDir(entry.path);
-    return (
-      <ContextMenu>
-        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-        <ContextMenuContent className="w-52">
-          <ContextMenuItem onSelect={() => props.onNewDoc(dir)}>
-            New document<ContextMenuShortcut>⌘N</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuItem onSelect={() => props.onNewFolder(dir)}>
-            New folder<ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onSelect={() => setRenaming(entry.path)}>Rename</ContextMenuItem>
-          <ContextMenuItem variant="destructive" onSelect={() => props.onTrash(entry.path)}>
-            Move to Trash<ContextMenuShortcut>⌘⌫</ContextMenuShortcut>
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-    );
-  };
-
-  const keys = (path: string) => (e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && e.metaKey) props.onTrash(path);
-    if (e.key === "F2") setRenaming(path);
-  };
-
-  const render = (entry: Entry): React.ReactNode => {
-    if (entry.kind === "doc") {
-      return (
-        <SidebarMenuItem key={entry.path}>
-          {renaming === entry.path
-            ? rename(entry)
-            : menu(
-                entry,
-                <SidebarMenuButton
-                  isActive={props.active === entry.path}
-                  onClick={() => props.onOpen(entry.path)}
-                  onDoubleClick={() => setRenaming(entry.path)}
-                  onKeyDown={keys(entry.path)}
-                  title={entry.path}
-                >
-                  <FileText />
-                  <span className="truncate">{displayName(entry)}</span>
-                  <StatusDot status={entry.status} className="ml-auto" />
-                </SidebarMenuButton>,
-              )}
-        </SidebarMenuItem>
-      );
-    }
-    return (
-      <SidebarMenuItem key={entry.path}>
-        <Collapsible defaultOpen className="group/collapsible [&[data-state=open]>button>svg:first-child]:rotate-90">
-          {renaming === entry.path
-            ? rename(entry)
-            : menu(
-                entry,
-                <CollapsibleTrigger asChild>
-                  <SidebarMenuButton
-                    className={cn(props.selectedDir === entry.path && "ki-medium")}
-                    onClick={() => props.onSelectDir(entry.path)}
-                    onDoubleClick={() => setRenaming(entry.path)}
-                    onKeyDown={keys(entry.path)}
-                  >
-                    <ChevronRight className="ki-chevron" />
-                    <Folder />
-                    <span className="truncate">{entry.name}</span>
-                  </SidebarMenuButton>
-                </CollapsibleTrigger>,
-              )}
-          <CollapsibleContent>
-            <SidebarMenuSub className="mr-0 pr-0">{entry.children.map(render)}</SidebarMenuSub>
-          </CollapsibleContent>
-        </Collapsible>
-      </SidebarMenuItem>
-    );
-  };
+  const folders = useMemo(() => folderList(tree), [tree]);
+  const noop = useCallback(() => {}, []);
+  const drag = useTreeDrag(props.onMove ?? noop);
+  const [closed, setFolderOpen] = useClosedFolders(props.vaultName, props.active, props.selectedDir);
 
   const toggleLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
   const phoneLabel = props.phoneOn ? "Phone access on" : "Connect your phone";
@@ -237,8 +142,24 @@ export function Sidebar(props: Props) {
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
-        {/* The tree needs its names; the rail leaves it out. */}
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
+        {/* The tree needs its names, so the rail leaves it out and offers a
+            way back to it instead. */}
+        <SidebarGroup className="hidden group-data-[collapsible=icon]:flex">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={() => setOpen(true)} tooltip="Documents">
+                <Folder />
+                <span>Documents</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+        <SidebarGroup
+          className="group-data-[collapsible=icon]:hidden ki-tree-root"
+          data-drop={drag.target === "" || undefined}
+          {...drag.zone("")}
+          {...drag.area}
+        >
           <Tooltip>
             <TooltipTrigger asChild>
               <SidebarGroupLabel
@@ -250,6 +171,20 @@ export function Sidebar(props: Props) {
             </TooltipTrigger>
             <TooltipContent>New documents go to the vault root</TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <SidebarGroupAction
+                className="right-[calc(var(--space-s)+1.75rem)] text-sidebar-foreground/50 [&>svg]:size-3.5"
+                aria-label="New folder"
+                onClick={() => props.onNewFolder(props.selectedDir)}
+              >
+                <FolderPlus />
+              </SidebarGroupAction>
+            </TooltipTrigger>
+            <TooltipContent>
+              New folder <Kbd>⇧⌘N</Kbd>
+            </TooltipContent>
+          </Tooltip>
           <TagFilter vocabulary={tags} counts={counts} selected={tagFilter} onChange={setTagFilter} />
           <TagChips
             className="px-2 pb-1"
@@ -257,7 +192,27 @@ export function Sidebar(props: Props) {
             onRemove={(tag) => setTagFilter(tagFilter.filter((t) => t !== tag))}
           />
           <SidebarGroupContent>
-            <SidebarMenu>{shown.map(render)}</SidebarMenu>
+            <SidebarMenu className="ki-tree">
+              <VaultTree
+                entries={shown}
+                folders={folders}
+                vaultName={props.vaultName}
+                active={props.active}
+                selectedDir={props.selectedDir}
+                styles={props.folderStyles ?? {}}
+                closed={closed}
+                onToggle={setFolderOpen}
+                drag={drag}
+                onOpen={props.onOpen}
+                onSelectDir={props.onSelectDir}
+                onNewDoc={props.onNewDoc}
+                onNewFolder={props.onNewFolder}
+                onRename={props.onRename}
+                onMove={props.onMove ?? noop}
+                onTrash={props.onTrash}
+                onFolderStyle={props.onFolderStyle ?? noop}
+              />
+            </SidebarMenu>
             {tagFilter.length > 0 && !shown.length && (
               <p className="ki-text-xs ki-muted px-2 py-1">
                 No documents are tagged {tagFilter.map((t) => `#${t}`).join(" and ")}.
@@ -300,17 +255,5 @@ export function Sidebar(props: Props) {
         </SidebarMenu>
       </SidebarFooter>
     </SidebarRoot>
-  );
-}
-
-/** A draft is an open ring; complete is filled. */
-export function StatusDot({ status, className }: { status: string | null; className?: string }) {
-  if (!status) return null;
-  return (
-    <span
-      aria-label={status}
-      data-complete={status === "complete"}
-      className={cn("ki-status-dot", className)}
-    />
   );
 }

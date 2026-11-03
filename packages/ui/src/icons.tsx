@@ -15,6 +15,8 @@ import {
   Upload01Icon, UserCircleIcon, Video01Icon, ViewOffIcon, Brain02Icon, Key01Icon,
   Globe02Icon, LockIcon, FileExportIcon, YoutubeIcon, NewTwitterIcon, PodcastIcon,
   BrowserIcon, BookUserIcon, Link01Icon, PencilEdit02Icon, Redo02Icon,
+  InboxIcon, Note01Icon, Book02Icon, StarIcon, CodeIcon, MusicNote01Icon,
+  Camera01Icon, Briefcase01Icon, Archive02Icon,
   TriangleAlertIcon as WarningGlyph, OctagonXIcon as ErrorGlyph,
 } from "@hugeicons/core-free-icons";
 
@@ -38,6 +40,15 @@ function glyph(icon: IconSvgElement): IconComponent {
   };
 }
 export const AlertCircle = glyph(AlertCircleIcon);
+export const Archive = glyph(Archive02Icon);
+export const Book = glyph(Book02Icon);
+export const Briefcase = glyph(Briefcase01Icon);
+export const Camera = glyph(Camera01Icon);
+export const Code = glyph(CodeIcon);
+export const Inbox = glyph(InboxIcon);
+export const Music = glyph(MusicNote01Icon);
+export const Note = glyph(Note01Icon);
+export const Star = glyph(StarIcon);
 export const AlertTriangle = glyph(Alert01Icon);
 export const ArrowLeft = glyph(ArrowLeft02Icon);
 export const ArrowUpRight = glyph(ArrowUpRight01Icon);

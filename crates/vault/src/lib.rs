@@ -8,11 +8,16 @@ use std::path::{Component, Path, PathBuf};
 
 mod clip_frontmatter;
 mod clips;
+mod folders;
 mod quotes;
 mod references;
 mod relink;
 mod tags;
 pub use clips::*;
+pub use folders::{
+    FOLDER_COLORS, FOLDER_ICONS, FOLDERS_FILE, FolderStyle, folder_styles, folder_styles_moved,
+    folder_styles_removed, set_folder_style,
+};
 pub use quotes::{QuoteAttribution, QuoteSource, leading_passage, quote_attribution};
 pub use references::{
     ReferenceDocument, ReferenceIndex, ReferenceLink, Wikilink, reference_index, wikilinks,
@@ -399,6 +404,44 @@ pub fn rename(root: &Path, path: &str, name: &str) -> Result<String> {
     Ok(relative(root, &to))
 }
 
+/// Moves a document or folder into `dir` (the vault root when empty),
+/// keeping its name; returns the new path. Refuses a folder moved into
+/// itself, and a name already taken there.
+pub fn move_entry(root: &Path, path: &str, dir: &str) -> Result<String> {
+    if path.is_empty() {
+        return Err("refusing to move the vault itself".into());
+    }
+    let hidden = |p: &str| p.split('/').any(|part| part.starts_with('.'));
+    if hidden(path) || hidden(dir) {
+        return Err(format!("can't move {path} to {dir}"));
+    }
+    let from = resolve(root, path)?;
+    let into = resolve(root, dir)?;
+    if !from.exists() {
+        return Err(format!("{path} is no longer there"));
+    }
+    if !into.is_dir() {
+        return Err(format!("not a folder: {dir}"));
+    }
+    if dir == path || dir.starts_with(&format!("{path}/")) {
+        return Err("can't move a folder into itself".into());
+    }
+    let name = from.file_name().ok_or("not a valid path")?;
+    let to = into.join(name);
+    if to == from {
+        return Ok(path.to_string());
+    }
+    if to.exists() {
+        return Err(format!(
+            "{} already exists in {}",
+            name.to_string_lossy(),
+            if dir.is_empty() { "the vault" } else { dir }
+        ));
+    }
+    fs::rename(&from, &to).map_err(err)?;
+    Ok(relative(root, &to))
+}
+
 /// A quick note from wherever the writer is: a new draft in the inbox, titled
 /// by its first line. `captured_at` is the capturing device's local time.
 pub fn capture(root: &Path, text: &str, captured_at: &str) -> Result<String> {
@@ -441,6 +484,42 @@ fn capture_title(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn moves_documents_and_folders_between_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        fs::create_dir_all(root.join("notes/deep")).unwrap();
+        fs::create_dir_all(root.join("posts")).unwrap();
+        fs::write(root.join("notes/a.mdx"), "a").unwrap();
+        fs::write(root.join("posts/a.mdx"), "taken").unwrap();
+
+        assert_eq!(move_entry(root, "notes/a.mdx", "").unwrap(), "a.mdx");
+        assert!(root.join("a.mdx").is_file() && !root.join("notes/a.mdx").exists());
+        assert!(
+            move_entry(root, "a.mdx", "posts")
+                .unwrap_err()
+                .contains("already exists")
+        );
+        assert_eq!(
+            move_entry(root, "a.mdx", "notes/deep").unwrap(),
+            "notes/deep/a.mdx"
+        );
+        assert_eq!(move_entry(root, "notes", "posts").unwrap(), "posts/notes");
+        assert!(root.join("posts/notes/deep/a.mdx").is_file());
+        assert_eq!(
+            move_entry(root, "posts/notes", "posts").unwrap(),
+            "posts/notes"
+        );
+
+        assert!(move_entry(root, "posts", "posts/notes").is_err());
+        assert!(move_entry(root, "posts", "posts").is_err());
+        assert!(move_entry(root, "", "posts").is_err());
+        assert!(move_entry(root, "posts/notes", "../elsewhere").is_err());
+        assert!(move_entry(root, "posts/notes", ".kintsugi").is_err());
+        assert!(move_entry(root, "missing.mdx", "posts").is_err());
+        assert!(move_entry(root, "posts/a.mdx", "posts/a.mdx").is_err());
+    }
 
     #[test]
     fn resolve_stays_inside_the_vault() {

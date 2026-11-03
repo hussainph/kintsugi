@@ -35,6 +35,7 @@ import { Picked } from "@/feed/Picked";
 import { Export } from "@/export/Export";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
+import { canMove, type FolderStyle, type FolderStyles } from "@kintsugi/core/folders";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { appReady } from "@/lib/smoke";
 import { Failure, Saves } from "@/lib/saves";
@@ -76,6 +77,7 @@ const lastOpened = {
 export default function App() {
   const [root, setRoot] = useState<string | null>(null);
   const [tree, setTree] = useState<Entry[]>([]);
+  const [folderStyles, setFolderStyles] = useState<FolderStyles>({});
   const [doc, setDoc] = useState<{ path: string; text: string } | null>(null);
   const [text, setText] = useState("");
   const [selectedDir, setSelectedDir] = useState("");
@@ -132,6 +134,8 @@ export default function App() {
     try {
       const next = await vault.tree();
       setTree(next);
+      // Colours are a nicety: a missing or broken file leaves folders plain.
+      vault.folderStyles().then(setFolderStyles, () => setFolderStyles({}));
       return next;
     } catch (e) {
       fail(e);
@@ -663,10 +667,39 @@ export default function App() {
     // Keep a document a document: "draft" becomes "draft.mdx".
     const ext = /\.mdx?$/.exec(path)?.[0];
     if (ext && !/\.mdx?$/.test(name)) name += ext;
-    const settled = await settleDocs("renamed it");
+    await relocate(path, "renamed it", () => vault.rename(path, name));
+  };
+
+  /** Drag and drop, or Move to: into `dir`, keeping the name. */
+  const move = async (path: string, dir: string) => {
+    if (!canMove(path, dir)) return;
+    await relocate(path, "moved it", () => vault.move(path, dir));
+  };
+
+  const setFolderStyle = async (path: string, style: FolderStyle) => {
+    const color = style.color ?? null;
+    const icon = style.icon ?? null;
+    setFolderStyles((all) => {
+      const next = { ...all };
+      if (color || icon) next[path] = { ...(color ? { color } : {}), ...(icon ? { icon } : {}) };
+      else delete next[path];
+      return next;
+    });
+    try {
+      await vault.setFolderStyle(path, color, icon);
+    } catch (e) {
+      fail(e);
+      vault.folderStyles().then(setFolderStyles, () => {});
+    }
+  };
+
+  /** A rename or move: the open document, the selected folder and the links
+   *  that pointed at it all follow. */
+  const relocate = async (path: string, verb: string, run: () => Promise<string>) => {
+    const settled = await settleDocs(verb);
     if (!settled) return;
     try {
-      const to = await vault.rename(path, name);
+      const to = await run();
       const moved = doc && renamedPath(doc.path, path, to);
       if (moved) {
         // Discarded changes leave the editor; the disk's copy comes back.
@@ -863,6 +896,9 @@ export default function App() {
         onNewDoc={(dir) => setPalette({ kind: "new-doc", dir })}
         onNewFolder={(dir) => setPalette({ kind: "new-folder", dir })}
         onRename={rename}
+        onMove={move}
+        folderStyles={folderStyles}
+        onFolderStyle={setFolderStyle}
         onTrash={trash}
         phoneOn={phoneStatus?.enabled ?? false}
         onPhone={() => showSettings("phone")}
