@@ -14,6 +14,8 @@ import { exporting, statementFor, type ExportSettings } from "@/lib/exporting";
 import { usePieceSources } from "./sources";
 import "../publish/publish.css";
 import "./export.css";
+import { matches } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
 
 type Props = {
   root: string | null;
@@ -102,7 +104,7 @@ export function Export({ root, path, viewRef, flush }: Props) {
       else void open(id);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey && e.altKey && !e.shiftKey && !e.ctrlKey && e.code === "KeyE" && path) {
+      if (matches(e, SHORTCUTS.export.key) && path) {
         e.preventDefault();
         e.stopPropagation();
         void open();

@@ -22,14 +22,13 @@ import {
   TooltipTrigger,
 } from "@kintsugi/ui/components/tooltip"
 import { PanelLeftIcon } from "@kintsugi/ui/icons"
+import { SIDEBAR_KEYBOARD_SHORTCUT } from "@kintsugi/ui/lib/sidebar"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
-// ⌘\ rather than ⌘B, which the editor will want for bold.
-const SIDEBAR_KEYBOARD_SHORTCUT = "\\"
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"

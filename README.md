@@ -6,6 +6,8 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 
 ## Shortcuts
 
+Hold ⌘ for a moment to see the shortcuts that work where you are, beside their buttons and in a list. They're defined once, in `apps/desktop/src/lib/shortcuts.ts` (the editor's formatting keys in `packages/editor/src/format.ts`).
+
 | Keys | Action |
 | --- | --- |
 | ⌘N / ⇧⌘N | New document / folder |
@@ -22,7 +24,9 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 | ⇧⌘D | Toggle draft / complete |
 | ⌘F | Find in document |
 | ⇧⌘O | Open a different vault |
-| ⇧⌘I | Open the Inspiration library |
+| ⇧⌘I / ⇧⌘F / ⇧⌘E | Inspiration / Feed / Ideas |
+| ⌘J | Show or hide Kin's chat |
+| ⇧⌘P / ⌥⌘E | Publish / export the document |
 | F2, ⌘⌫ (in the sidebar) | Rename, move to Trash |
 
 ## Your phone

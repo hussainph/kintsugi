@@ -4,6 +4,9 @@ import { Checkbox, SelectField } from "@kintsugi/ui/graphical";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import { ask, dollars, KinEvent, KinTask, Summary } from "@/lib/kin";
+import { matches } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
+import { ShortcutHint } from "@/components/Shortcuts";
 
 type Log = { id: string; name: string; arguments: unknown; preview?: string; isError?: boolean };
 
@@ -26,7 +29,7 @@ export function KinDev() {
   useEffect(() => {
     const show = () => setOpen(true);
     const key = (e: KeyboardEvent) => {
-      if (e.metaKey && e.shiftKey && !e.altKey && !e.ctrlKey && e.key.toLowerCase() === "k") {
+      if (matches(e, SHORTCUTS.kinDev.key)) {
         e.preventDefault();
         e.stopPropagation();
         show();
@@ -113,7 +116,7 @@ export function KinDev() {
           {running ? (
             <Button size="sm" variant="outline" onClick={() => cancel.current?.()}>Cancel</Button>
           ) : (
-            <Button size="sm" onClick={run} disabled={!question.trim()}>Ask ⌘↩</Button>
+            <Button size="sm" className="relative" onClick={run} disabled={!question.trim()}>Ask<ShortcutHint keys="⌘↩" side="above" /></Button>
           )}
         </div>
 

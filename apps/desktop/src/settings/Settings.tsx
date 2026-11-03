@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { ArrowLeft, Brain, FileExport, Globe, Key, Lock, Search, Settings as SettingsIcon, Smartphone } from "@kintsugi/ui/icons";
-import { Kbd } from "@kintsugi/ui/components/kbd";
 import {
   Sidebar,
   SidebarContent,
@@ -20,6 +19,9 @@ import { PhoneSettings } from "./Phone";
 import { PrivacySettings } from "./Privacy";
 import { ProviderSettings } from "./Providers";
 import { WebSettings } from "./Web";
+import { matches } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
+import { ShortcutHint } from "@/components/Shortcuts";
 
 export const SECTIONS: { id: SettingsSection; label: string; icon: typeof SettingsIcon }[] = [
   { id: "general", label: "General", icon: SettingsIcon },
@@ -59,7 +61,7 @@ export function Settings(props: Props) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.defaultPrevented || inPopup(e.target)) return;
-      const back = e.key === "Escape" || (e.metaKey && !e.shiftKey && !e.altKey && !e.ctrlKey && e.key === "[");
+      const back = matches(e, SHORTCUTS.back.key) || matches(e, SHORTCUTS.backAlt.key);
       if (!back) return;
       e.preventDefault();
       onClose();
@@ -82,7 +84,7 @@ export function Settings(props: Props) {
               <SidebarMenuButton onClick={onClose} title="Back (Esc)">
                 <ArrowLeft />
                 <span>Back</span>
-                <Kbd className="ml-auto">Esc</Kbd>
+                <ShortcutHint id="back" />
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

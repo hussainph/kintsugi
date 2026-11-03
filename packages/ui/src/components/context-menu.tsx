@@ -240,12 +240,13 @@ function ContextMenuSeparator({
   )
 }
 
+/** A key chip, the same as `Kbd` (see `.ui-menu-shortcut`). */
 function ContextMenuShortcut({
   className,
   ...props
-}: React.ComponentProps<"span">) {
+}: React.ComponentProps<"kbd">) {
   return (
-    <span
+    <kbd
       data-slot="context-menu-shortcut"
       className={cn(
         "ui-menu-shortcut ml-auto",

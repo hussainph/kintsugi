@@ -2,7 +2,9 @@ import { AlertCircle, CircleCheckIcon, FileExport, Globe, Lightbulb, NotebookPen
 import { Toolbar } from "@kintsugi/ui/graphical";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import type { ComponentProps, ReactNode } from "react";
+import { Shortcut, ShortcutHint } from "@/components/Shortcuts";
 import { DocTags } from "@/components/Tags";
+import type { ShortcutId } from "@/lib/shortcuts";
 import { ExportMenu } from "@/export/ExportMenu";
 
 type Save = "saved" | "editing" | "error";
@@ -52,21 +54,22 @@ export function DocumentBar({
                   aria-label={`Status: ${status ?? "no status"}. Toggle status`}
                 >
                   {status ?? "no status"}
+                  <ShortcutHint id="status" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Toggle status (⇧⌘D)</TooltipContent>
+              <TooltipContent>Toggle status <Shortcut id="status" /></TooltipContent>
             </Tooltip>
           </>
         )}
       </div>
       <Toolbar.Root className="ki-document-bar-actions" aria-label="Document actions">
         {!mirror && status === "complete" && (
-          <BarButton label="Publish…" tip="Publish to the blog (⇧⌘P)" onClick={onPublish}>
+          <BarButton label="Publish…" tip="Publish to the blog" shortcut="publish" onClick={onPublish}>
             <Globe />
           </BarButton>
         )}
         <ExportMenu mirror={!!mirror}>
-          <BarButton label="Export…" tip="Export (⌥⌘E)">
+          <BarButton label="Export…" tip="Export" shortcut="export">
             <FileExport />
           </BarButton>
         </ExportMenu>
@@ -90,17 +93,19 @@ export function DocumentBar({
 function BarButton({
   label,
   tip,
+  shortcut,
   children,
   ...props
-}: { label: string; tip: string; children: ReactNode } & ComponentProps<typeof Toolbar.Button>) {
+}: { label: string; tip: string; shortcut?: ShortcutId; children: ReactNode } & ComponentProps<typeof Toolbar.Button>) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Toolbar.Button className="ui-toolbar-icon" aria-label={label} {...props}>
+        <Toolbar.Button className="ui-toolbar-icon relative" aria-label={label} {...props}>
           {children}
+          {shortcut && <ShortcutHint id={shortcut} side="above" />}
         </Toolbar.Button>
       </TooltipTrigger>
-      <TooltipContent>{tip}</TooltipContent>
+      <TooltipContent>{tip}{shortcut && <> <Shortcut id={shortcut} /></>}</TooltipContent>
     </Tooltip>
   );
 }

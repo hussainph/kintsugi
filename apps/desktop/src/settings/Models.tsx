@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
-import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Switch } from "@kintsugi/ui/components/switch";
 import { Meter } from "@kintsugi/ui/graphical";
 import { Effort } from "@/kin/Effort";
@@ -21,6 +20,7 @@ import {
 } from "@/lib/ai";
 import { dollars, kin, type DefaultTask, type KinSettings, type UsageReport, openAboutYou, openKinDev } from "@/lib/kin";
 import { Group, Page, Row } from "./parts";
+import { ShortcutHint } from "@/components/Shortcuts";
 
 /** The tasks with a default model, in the order they're listed. */
 const TASKS: { task: DefaultTask; label: string }[] = [
@@ -207,7 +207,7 @@ export function ModelSettings() {
           <Button size="sm" variant="outline" onClick={openAboutYou}>About you</Button>
         </Row>
         <Row label="Developer panel">
-          <Button size="sm" variant="ghost" onClick={openKinDev}>Open <Kbd>⇧⌘K</Kbd></Button>
+          <Button size="sm" variant="ghost" className="relative" onClick={openKinDev}>Open<ShortcutHint id="kinDev" side="end" /></Button>
         </Row>
       </Group>
     </Page>

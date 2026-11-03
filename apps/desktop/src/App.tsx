@@ -9,7 +9,9 @@ import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
 import { OutsideChoice, OutsideDialog } from "@/components/OutsideDialog";
 import { Sidebar, useSidebarOpen } from "@/components/Sidebar";
 import { DocumentBar } from "@/components/DocumentBar";
-import { Kbd } from "@kintsugi/ui/components/kbd";
+import { Shortcut, ShortcutsOverlay } from "@/components/Shortcuts";
+import { matches } from "@/lib/keys";
+import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
 import { External, paragraphRange, replaceText } from "@kintsugi/editor/Editor";
@@ -863,22 +865,24 @@ export default function App() {
       e.stopPropagation();
       action();
     };
-    const key = e.key.toLowerCase();
-    if (key === "," && !e.shiftKey) return run(() => showSettings());
+    const is = (id: ShortcutId) => matches(e, SHORTCUTS[id].key);
+    if (is("settings")) return run(() => showSettings());
     // Settings covers the app; its shortcuts wait until he's back.
     if (settingsAt) return;
-    // Text size while writing. Taken here so the webview never zooms instead.
+    // Text size while writing (SHORTCUTS.textLarger and co.; ⌘+ too). Taken
+    // here so the webview never zooms instead.
     const size = doc && !away ? textSizeForKey(e.key) : null;
     if (size !== null && (!e.shiftKey || e.key === "+" || e.key === "_")) return run(() => setTextSize(size));
-    if (key === "p" && !e.shiftKey) run(() => setPalette({ kind: "open" }));
-    else if (key === "n") run(() => setPalette({ kind: e.shiftKey ? "new-folder" : "new-doc", dir: selectedDir }));
-    else if (key === "i" && e.shiftKey) run(showLibrary);
-    else if (key === "f" && e.shiftKey) run(showFeed);
-    else if (key === "e" && e.shiftKey) run(() => void showIdeas());
-    else if (key === "d" && e.shiftKey && !away) run(toggleStatus);
-    else if (key === "s" && !e.shiftKey) run(() => { if (libraryOpen) void libraryRef.current?.flush(); else if (!feedOpen) void flush(); });
-    else if (key === "o" && e.shiftKey) run(openVault);
-    else if (key === "k" && !e.shiftKey && doc && !away) run(openRefine);
+    if (is("find")) run(() => setPalette({ kind: "open" }));
+    else if (is("newDoc")) run(() => setPalette({ kind: "new-doc", dir: selectedDir }));
+    else if (is("newFolder")) run(() => setPalette({ kind: "new-folder", dir: selectedDir }));
+    else if (is("inspiration")) run(showLibrary);
+    else if (is("feed")) run(showFeed);
+    else if (is("ideas")) run(() => void showIdeas());
+    else if (is("status") && !away) run(toggleStatus);
+    else if (is("save")) run(() => { if (libraryOpen) void libraryRef.current?.flush(); else if (!feedOpen) void flush(); });
+    else if (is("openVault")) run(openVault);
+    else if (is("refine") && doc && !away) run(openRefine);
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => shortcuts.current(e);
@@ -957,10 +961,10 @@ export default function App() {
         ) : (
           <div className="ki-empty ki-stack-xs ki-text-s">
             <p>
-              <Kbd>⌘N</Kbd> to start writing
+              <Shortcut id="newDoc" /> to start writing
             </p>
             <p>
-              <Kbd>⌘P</Kbd> to find something
+              <Shortcut id="find" /> to find something
             </p>
           </div>
         )}
@@ -994,6 +998,7 @@ export default function App() {
           }}
         />
       )}
+      <ShortcutsOverlay screen={settingsAt ? "settings" : doc && !away ? "writing" : "app"} />
       <Palette mode={palette} docs={docs} onOpen={openDoc} onCreate={create} onClose={() => setPalette(null)} />
       <UnsavedDialog failures={blocked?.failures ?? null} action={blocked?.action ?? ""} onChoose={answer} />
       <OutsideDialog collision={collision} onChoose={chooseOutside} />

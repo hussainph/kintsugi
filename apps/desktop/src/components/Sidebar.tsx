@@ -1,6 +1,5 @@
 import { Bookmark, Folder, FolderPlus, Lightbulb, Rss, Settings, Smartphone, UserRound } from "@kintsugi/ui/icons";
 import { useCallback, useMemo, useState } from "react";
-import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import {
   Sidebar as SidebarRoot,
@@ -22,6 +21,7 @@ import { openAboutYou, openSettings } from "@/lib/kin";
 import { Entry, filterTree, flatten } from "@/lib/vault";
 import type { FolderStyle, FolderStyles } from "@kintsugi/core/folders";
 import { hasTags, vocabulary } from "@kintsugi/core/tags";
+import { Shortcut, ShortcutHint } from "./Shortcuts";
 import { TagChips, TagFilter } from "./Tags";
 import { folderList, useClosedFolders, useTreeDrag, VaultTree } from "./VaultTree";
 
@@ -107,12 +107,13 @@ export function Sidebar(props: Props) {
         className="h-10 flex-row items-center justify-end group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pt-10"
         data-tauri-drag-region
       >
+        <ShortcutHint id="sidebar" className="mr-(--space-xxs)" />
         <Tooltip>
           <TooltipTrigger asChild>
             <SidebarTrigger aria-label={toggleLabel} />
           </TooltipTrigger>
           <TooltipContent side="right">
-            {toggleLabel} <Kbd>⌘\</Kbd>
+            {toggleLabel} <Shortcut id="sidebar" />
           </TooltipContent>
         </Tooltip>
       </SidebarHeader>
@@ -120,24 +121,24 @@ export function Sidebar(props: Props) {
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} tooltip={{ children: <>Feed <Kbd>⇧⌘F</Kbd></> }}>
+              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} tooltip={{ children: <>Feed <Shortcut id="feed" /></> }}>
                 <Rss />
                 <span>Feed</span>
-                <span className="ki-data ki-muted ml-auto group-data-[collapsible=icon]:hidden">⇧⌘F</span>
+                <ShortcutHint id="feed" />
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} tooltip={{ children: <>Inspiration <Kbd>⇧⌘I</Kbd></> }}>
+              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} tooltip={{ children: <>Inspiration <Shortcut id="inspiration" /></> }}>
                 <Bookmark />
                 <span>Inspiration</span>
-                <span className="ki-data ml-auto ki-muted group-data-[collapsible=icon]:hidden">⇧⌘I</span>
+                <ShortcutHint id="inspiration" />
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} tooltip={{ children: <>Ideas <Kbd>⇧⌘E</Kbd></> }}>
+              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} tooltip={{ children: <>Ideas <Shortcut id="ideas" /></> }}>
                 <Lightbulb />
                 <span>Ideas</span>
-                <span className="ki-data ki-muted ml-auto group-data-[collapsible=icon]:hidden">⇧⌘E</span>
+                <ShortcutHint id="ideas" />
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -182,7 +183,7 @@ export function Sidebar(props: Props) {
               </SidebarGroupAction>
             </TooltipTrigger>
             <TooltipContent>
-              New folder <Kbd>⇧⌘N</Kbd>
+              New folder <Shortcut id="newFolder" />
             </TooltipContent>
           </Tooltip>
           <TagFilter vocabulary={tags} counts={counts} selected={tagFilter} onChange={setTagFilter} />
@@ -226,9 +227,10 @@ export function Sidebar(props: Props) {
       <SidebarFooter>
         <SidebarMenu className="flex-row items-center gap-(--space-xxs) group-data-[collapsible=icon]:flex-col">
           <SidebarMenuItem className="min-w-0 flex-1 group-data-[collapsible=icon]:flex-none">
-            <SidebarMenuButton size="sm" isActive={props.settingsOpen} onClick={() => openSettings()} tooltip={{ children: <>Settings <Kbd>⌘,</Kbd></> }}>
+            <SidebarMenuButton size="sm" isActive={props.settingsOpen} onClick={() => openSettings()} tooltip={{ children: <>Settings <Shortcut id="settings" /></> }}>
               <Settings />
               <span>Settings</span>
+              <ShortcutHint id="settings" />
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>

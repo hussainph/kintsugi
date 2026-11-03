@@ -25,6 +25,8 @@ import {
   type FolderIcon, type FolderStyle, type FolderStyles,
 } from "@kintsugi/core/folders";
 import { displayName, type Entry, type Folder as FolderEntry, parentDir } from "@/lib/vault";
+import { keysOf, matches } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
 
 export const FOLDER_GLYPHS: Record<FolderIcon, IconComponent> = {
   folder: Folder, inbox: Inbox, pen: Pencil, note: Note, book: Book, bulb: Lightbulb, star: Star,
@@ -218,7 +220,7 @@ function RenameField({ entry }: { entry: Entry }) {
 
 function keys(tree: Tree, path: string) {
   return (e: React.KeyboardEvent) => {
-    if (e.key === "Backspace" && e.metaKey) tree.onTrash(path);
+    if (matches(e, SHORTCUTS.trash.key)) tree.onTrash(path);
     if (e.key === "F2") tree.setRenaming(path);
   };
 }
@@ -235,10 +237,10 @@ function EntryMenu({ entry, children }: { entry: Entry; children: React.ReactNod
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-52">
         <ContextMenuItem onSelect={() => tree.onNewDoc(dir)}>
-          New document<ContextMenuShortcut>⌘N</ContextMenuShortcut>
+          New document<ContextMenuShortcut>{keysOf(SHORTCUTS.newDoc.key)}</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuItem onSelect={() => tree.onNewFolder(dir)}>
-          New folder<ContextMenuShortcut>⇧⌘N</ContextMenuShortcut>
+          New folder<ContextMenuShortcut>{keysOf(SHORTCUTS.newFolder.key)}</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuSeparator />
         {entry.kind === "folder" && (
@@ -300,7 +302,7 @@ function EntryMenu({ entry, children }: { entry: Entry; children: React.ReactNod
         )}
         <ContextMenuItem onSelect={() => tree.setRenaming(entry.path)}>Rename</ContextMenuItem>
         <ContextMenuItem variant="destructive" onSelect={() => tree.onTrash(entry.path)}>
-          Move to Trash<ContextMenuShortcut>⌘⌫</ContextMenuShortcut>
+          Move to Trash<ContextMenuShortcut>{keysOf(SHORTCUTS.trash.key)}</ContextMenuShortcut>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
