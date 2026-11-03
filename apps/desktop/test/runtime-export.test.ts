@@ -14,6 +14,7 @@ import { deflateSync } from "node:zlib";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
+import { stopRunner } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DOC = "posts/on-craft.mdx";
@@ -129,13 +130,7 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  if (runner?.pid) {
-    try {
-      process.kill(-runner.pid, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
-  }
+  await stopRunner(runner, () => output);
 });
 
 test("Settings › Export picks the menu's destinations and words the statement", { timeout: 120_000 }, async () => {

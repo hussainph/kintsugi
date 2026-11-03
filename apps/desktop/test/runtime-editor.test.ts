@@ -43,7 +43,7 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  app?.stop();
+  await app?.stop();
 });
 
 const shot = (name: string, on: Page = page) => on.screenshot({ path: resolve(app.shots, `${name}.png`) });

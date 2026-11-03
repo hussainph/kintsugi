@@ -26,9 +26,12 @@ const seconds = (ms = 0) => `${(ms / 1000).toFixed(1)}s`;
 /** The useful part of an error: its message (call log trimmed) and the test file frame. */
 function describe(error: unknown, file?: string): string[] {
   let cause = error as { cause?: unknown; message?: string; stack?: string; code?: string; failureType?: string };
+  // A test file whose process failed without a failing test: how it ended.
+  const ended = cause as { exitCode?: number | null; signal?: string | null };
+  const how = ended?.exitCode != null || ended?.signal ? ` (${ended.signal ? `killed by ${ended.signal}` : `exit code ${ended.exitCode}`})` : "";
   // node:test wraps the thrown error in ERR_TEST_FAILURE.
   while (cause?.code === "ERR_TEST_FAILURE" && cause.cause) cause = cause.cause as typeof cause;
-  const message = String(cause?.message ?? cause ?? "unknown error");
+  const message = String(cause?.message ?? cause ?? "unknown error") + how;
   const lines = message.split("\n");
   const log = lines.findIndex((l) => /^\s*Call log:/.test(l));
   const kept = (log >= 0 ? [...lines.slice(0, log), ...lines.slice(log + 1, log + 3)] : lines).filter((l) => l.trim());
@@ -59,6 +62,12 @@ export default async function* reporter(source: AsyncIterable<Event>) {
       yield data.message ?? "";
     } else if (type === "test:diagnostic" && data.nesting === 0 && /^(tests|pass|fail|cancelled|duration_ms) /.test(data.message ?? "")) {
       yield `ℹ ${data.message}\n`;
+    } else if (type === "test:diagnostic" && !/^(tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) /.test(data.message ?? "")) {
+      // Anything else node:test reports outside a test, such as an error
+      // after a test ended (which fails the file with no failing test).
+      const line = `⚠ ${where(data) || "diagnostic"}: ${data.message}`;
+      failures.push(line);
+      yield `${line}\n`;
     }
   }
   yield `\n${failures.length ? `FAILED ${failures.length} (${passed} passed) in ${seconds(Date.now() - started)}:\n${failures.join("\n")}` : `All ${passed} passed in ${seconds(Date.now() - started)}.`}\n`;

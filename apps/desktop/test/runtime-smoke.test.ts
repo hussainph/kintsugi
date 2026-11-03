@@ -22,7 +22,7 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  app?.stop();
+  await app?.stop();
 });
 
 test("the app reports ready once its vault has rendered", { timeout: 60_000 }, async () => {

@@ -17,6 +17,7 @@ import { dirname, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
+import { stopRunner } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const STARTED = "drafts/kintsugi-and-gold.md";
@@ -80,16 +81,12 @@ async function start(env: Record<string, string> = {}) {
   return url;
 }
 
-function stop() {
-  if (!runner?.pid) return;
-  const pid = runner.pid;
-  runner.removeAllListeners("exit");
-  try {
-    process.kill(-pid, "SIGTERM");
-  } catch {
-    // Already gone.
-  }
+/** Stops the app and waits until it's down, so a restart never shares the vault with it. */
+async function stop() {
+  const stopping = runner;
   runner = undefined;
+  stopping?.removeAllListeners("exit");
+  await stopRunner(stopping);
 }
 
 before(async () => {
@@ -114,7 +111,7 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  stop();
+  await stop();
 });
 
 const shot = (name: string) => page.screenshot({ path: resolve(shots, `${name}.png`) });
@@ -256,7 +253,7 @@ test("unused ideas thin from day three and fade after a week; adopted ones don't
     (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: object) => Promise<unknown> } }).__TAURI_INTERNALS__.invoke("ideas_generate", {}),
   );
   await page.waitForFunction(() => document.querySelectorAll("li[data-idea]").length >= 3, null, { timeout: 60_000 }).catch(() => {});
-  stop();
+  await stop();
   await page.goto(await start({ KINTSUGI_HEADLESS_IDEAS_DAYS_AHEAD: "4" }));
   await openIdeas();
   await section().locator('li[data-stage="thin"]').first().waitFor({ timeout: 30_000 }).catch(async () => {
@@ -264,7 +261,7 @@ test("unused ideas thin from day three and fade after a week; adopted ones don't
   });
   await page.waitForTimeout(1500);
   await shot("09-day-4");
-  stop();
+  await stop();
   await page.goto(await start({ KINTSUGI_HEADLESS_IDEAS_DAYS_AHEAD: "8" }));
   await openIdeas();
   await page.waitForTimeout(1500);

@@ -320,10 +320,9 @@ try {
     }
     const target = attached ? { url: attached, shots: resolve(process.env.KIN_SCENARIOS_SHOTS ?? ".headless/kin-scenarios-attached") } : app!;
     await run(target, mode);
-    app?.stop();
+    await app?.stop();
     app = null;
-    if (!attached) await new Promise((r) => setTimeout(r, 1500));
   }
 } finally {
-  app?.stop();
+  await app?.stop();
 }

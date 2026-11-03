@@ -634,20 +634,26 @@ fn summaries_are_made_while_idle_and_used_to_resume() {
 
 #[test]
 fn summaries_wait_while_he_is_active() {
+    // The idle timer is fired by hand (FAST's idle never elapses here), so
+    // the outcome can't depend on how quickly this thread gets to type.
     let timing = Timing {
-        idle: Duration::from_millis(300),
         summary_after: 2,
         ..FAST
     };
     let f = fixture_in(None, vec![answer("One.")], Duration::ZERO, timing);
     f.engine.send("First", vec![]).unwrap();
     f.wait_replies(1);
-    // Keep typing: no summary while he's around.
-    for _ in 0..6 {
-        std::thread::sleep(Duration::from_millis(100));
-        f.engine.typing();
-    }
+    let idle_from = f.engine.0.live.lock().unwrap().activity;
+    // He types after the turn: the timer set when it ended does nothing.
+    f.engine.typing();
+    async_runtime::block_on(f.engine.idle_since(idle_from));
     assert_eq!(f.script.seen().len(), 1);
+    // Left alone from here, the same thread is summarized.
+    f.script.push(answer("Asked once; Kin said One."));
+    let quiet = f.engine.0.live.lock().unwrap().activity;
+    async_runtime::block_on(f.engine.idle_since(quiet));
+    assert_eq!(f.script.seen().len(), 2);
+    assert!(f.script.seen()[1].system.starts_with(SUMMARIZER));
 }
 
 #[test]

@@ -41,7 +41,7 @@ before(async () => {
 
 after(async () => {
   await browser?.close();
-  app?.stop();
+  await app?.stop();
 });
 
 const shot = (name: string) => page.getByRole("dialog").screenshot({ path: resolve(app.shots, `${SCHEME}-${name}.png`) });

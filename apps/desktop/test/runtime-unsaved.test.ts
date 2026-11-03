@@ -14,6 +14,7 @@ import { dirname, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
+import { stopRunner } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DOC = "posts/the-quiet-web.mdx";
@@ -89,13 +90,7 @@ before(async () => {
 after(async () => {
   if (vault) readOnly(false);
   await browser?.close();
-  if (runner?.pid) {
-    try {
-      process.kill(-runner.pid, "SIGTERM");
-    } catch {
-      // Already gone.
-    }
-  }
+  await stopRunner(runner, () => output);
 });
 
 /** Opens the app with the scratch document showing and a failed save of `marker` in it. */
