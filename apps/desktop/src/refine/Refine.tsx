@@ -16,6 +16,7 @@ import { keysOf } from "@/lib/keys";
 import { modelFor } from "@/lib/models";
 import { passageChips } from "@/kin/screen";
 import { Action, ACTIONS, ask, choices, clean } from "./prompts";
+import { editKey } from "./direct";
 import { type Found, KIN_ACTIONS, type KinAction, skillAction, supportingClips, WHO_DISAGREES } from "./kin";
 
 type Props = {
@@ -264,6 +265,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                 {actions.map((a) => (
                   <CommandItem key={a.id} value={a.label} onSelect={() => run(a)}>
                     {a.label}
+                    {editKey(a.id) && <CommandShortcut>{editKey(a.id)}</CommandShortcut>}
                   </CommandItem>
                 ))}
               </CommandGroup>}

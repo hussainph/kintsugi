@@ -17,6 +17,7 @@ import { memory } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
 import { type Action } from "@/refine/prompts";
 import { skillAction } from "@/refine/kin";
+import { SelectionMenu } from "@/refine/SelectionMenu";
 import { UsedIn } from "./UsedIn";
 import { useReferenceIndex } from "./useReferenceIndex";
 import { useReferenceSearch } from "./useReferenceSearch";
@@ -26,8 +27,8 @@ type Props = Omit<ComponentProps<typeof Editor>, "references" | "commands"> & {
   root: string | null;
   onOpenDoc: (path: string) => void;
   onOpenClip?: (path: string) => void;
-  /** Opens ⌘K's review on a range, running `action` straight away. */
-  onRefine?: (from: number, to: number, action: Action) => void;
+  /** Opens ⌘K on a range, running `action` straight away when given. */
+  onRefine?: (from: number, to: number, action?: Action) => void;
 };
 const name = (path: string) => path.replace(/^.*\//, "").replace(/\.mdx?$/, "");
 const documentFirst = (a: ReferenceSource, b: ReferenceSource) => Number(a.kind === "clip") - Number(b.kind === "clip");
@@ -188,6 +189,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   return (
     <div className="reference-writing">
       <Editor {...editor} references={options} commands={commands} comments={comments} />
+      {onRefine && <SelectionMenu viewRef={editor.viewRef} path={editor.path} onRefine={onRefine} />}
       <Tooltip><TooltipTrigger asChild><button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} onClick={() => {
         const next = !margin; setMargin(next); saveMargin(next);
       }}><PanelRight className="size-[var(--size-m)]" /></button></TooltipTrigger><TooltipContent>Reference margin</TooltipContent></Tooltip>

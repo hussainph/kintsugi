@@ -4,7 +4,10 @@
   "type": "module",
   "exports": {
     "./Editor": "./src/Editor.tsx",
-    "./theme": "./src/theme.ts"
+    "./theme": "./src/theme.ts",
+    "./format": "./src/format.ts",
+    "./keys": "./src/keys.ts",
+    "./keymaps": "./src/keymaps.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

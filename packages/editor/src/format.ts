@@ -261,27 +261,29 @@ export const toggleLink: StateCommand = ({ state, dispatch }) => {
 /** Mac shortcuts (Mod is ⌘ there, Ctrl elsewhere). ⌘K and ⌘P belong to the
  *  app, so the link is ⌘L. Goes before CodeMirror's own keymaps, which use
  *  ⌘I (select parent syntax) and ⌘U (undo selection). The app lists these
- *  (hold ⌘) from `formatShortcuts`, so the labels live here with the keys. */
-const FORMATS: { key: string; label: string; run: StateCommand }[] = [
+ *  (hold ⌘, the shortcuts list) from `formatShortcuts`, so the labels live
+ *  here with the keys. `block` is the `/` menu block that does the same,
+ *  whose row shows the key. */
+const FORMATS: { key: string; label: string; run: StateCommand; block?: string }[] = [
   { key: "Mod-b", label: "Bold", run: toggleMark("bold") },
   { key: "Mod-i", label: "Italic", run: toggleMark("italic") },
   { key: "Mod-u", label: "Underline", run: toggleMark("underline") },
   { key: "Mod-e", label: "Code", run: toggleMark("code") },
   { key: "Mod-Shift-x", label: "Strikethrough", run: toggleMark("strike") },
   { key: "Mod-l", label: "Link", run: toggleLink },
-  ...[1, 2, 3, 4, 5, 6].map((level) => ({ key: `Mod-Alt-${level}`, label: "Heading", run: setHeading(level) })),
-  { key: "Mod-Alt-0", label: "Plain text", run: setHeading(0) },
-  { key: "Mod-Shift-7", label: "Numbered list", run: toggleList("numbers") },
-  { key: "Mod-Shift-8", label: "Bulleted list", run: toggleList("bullets") },
-  { key: "Mod-Shift-9", label: "To-do list", run: toggleList("todo") },
-  { key: "Mod-Shift-.", label: "Quote", run: toggleList("quote") },
+  ...[1, 2, 3, 4, 5, 6].map((level) => ({ key: `Mod-Alt-${level}`, label: "Heading", run: setHeading(level), block: `h${level}` })),
+  { key: "Mod-Alt-0", label: "Plain text", run: setHeading(0), block: "text" },
+  { key: "Mod-Shift-7", label: "Numbered list", run: toggleList("numbers"), block: "numbers" },
+  { key: "Mod-Shift-8", label: "Bulleted list", run: toggleList("bullets"), block: "bullets" },
+  { key: "Mod-Shift-9", label: "To-do list", run: toggleList("todo"), block: "todo" },
+  { key: "Mod-Shift-.", label: "Quote", run: toggleList("quote"), block: "quote" },
   { key: "Mod-/", label: "Dim", run: toggleDim },
 ];
 
 export const formatKeymap: KeyBinding[] = FORMATS.map(({ key, run }) => ({ key, run, preventDefault: true }));
 
 /** The formatting keys and their names, in CodeMirror's key notation. */
-export const formatShortcuts: { key: string; label: string }[] = FORMATS.map(({ key, label }) => ({ key, label }));
+export const formatShortcuts: { key: string; label: string; block?: string }[] = FORMATS.map(({ key, label, block }) => ({ key, label, block }));
 
 const underlined = Decoration.mark({ class: "cm-underline" });
 

@@ -290,6 +290,11 @@
 .ki-shortcuts-group dl { display: grid; gap: var(--space-xxs); margin: 0; }
 .ki-shortcuts-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-m); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); color: var(--neutral-8); }
 .ki-shortcuts-row dd { display: flex; gap: var(--space-xxs); margin: 0; }
+/* ⇧⌘/: every shortcut, in columns, filtered by the field on top. */
+.ki-cheatsheet { width: min(920px, calc(100vw - var(--space-xl) * 2)); max-width: none; max-height: calc(100vh - var(--space-xl) * 3); grid-template-rows: auto minmax(0, 1fr); gap: var(--space-m); padding: var(--space-m); }
+.ki-cheatsheet-groups { overflow-y: auto; columns: 3 220px; column-gap: var(--space-l); min-height: 0; }
+.ki-cheatsheet-group { break-inside: avoid; padding-block-end: var(--space-m); }
+.ki-selection-menu { min-width: 240px; }
 
 /* The headless transport uses a real native <dialog>, inside the theme scope,
    rather than an unobservable browser prompt. Keep its keyboard contract. */

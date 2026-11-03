@@ -4,7 +4,8 @@ import { EditorView, keymap, showTooltip } from "@codemirror/view";
 import { isReferenceContext } from "@kintsugi/core/references";
 import { element, hint, menuTheme, reveal } from "./menu.ts";
 import { paragraphNear } from "./references.ts";
-import { MARKER } from "./format.ts";
+import { formatShortcuts, MARKER } from "./format.ts";
+import { ariaKeys, keysOf } from "./keys.ts";
 
 /** A skill flagged `command: true` (Kin's skills, KI-30). */
 export type CommandSkill = { name: string; description: string };
@@ -168,6 +169,11 @@ export function applyBlock(view: EditorView, block: Block, from: number, to: num
   view.focus();
 }
 
+/** The formatting key that does what a block does, shown in its row. */
+export function blockKey(id: string): string | undefined {
+  return formatShortcuts.find((shortcut) => shortcut.block === id)?.key;
+}
+
 /** The `/` menu: Markdown/MDX blocks, then Kin's skills flagged for it. */
 export function commandExtensions(getCommands: () => Commands | undefined): Extension {
   const dismissedField = StateField.define<number | null>({
@@ -241,6 +247,11 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
         if (item.kind === "block") {
           row.append(element("span", "cm-kintsugi-menu-icon", item.block.icon));
           labels.append(element("div", "cm-kintsugi-menu-title", item.block.label));
+          const key = blockKey(item.block.id);
+          if (key) {
+            row.append(labels, element("kbd", "cm-kintsugi-menu-key ki-kbd", keysOf(key)));
+            row.setAttribute("aria-keyshortcuts", ariaKeys(key));
+          }
         } else if (item.kind === "action") {
           row.append(element("span", "cm-kintsugi-menu-icon", "→"));
           labels.append(element("div", "cm-kintsugi-menu-title", item.action.label), element("div", "cm-kintsugi-menu-meta", item.action.description));
@@ -248,7 +259,7 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
           row.append(element("span", "cm-kintsugi-menu-icon", "✦"));
           labels.append(element("div", "cm-kintsugi-menu-title", item.skill.name), element("div", "cm-kintsugi-menu-meta", item.skill.description));
         }
-        row.append(labels);
+        if (!labels.parentNode) row.append(labels);
         row.addEventListener("click", () => choose(view, item));
         list.append(row);
       });
