@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Impression, Source } from "./api.ts";
-import { ago, health, Impressions, itemTitle, paragraphs, sourceName, webUrl } from "./model.ts";
+import { ago, health, Impressions, itemTitle, paragraphs, sourceLogos, sourceName, webUrl } from "./model.ts";
 
 const NOW = 1_800_000_000;
 const source = (patch: Partial<Source> = {}): Source => ({
@@ -58,4 +58,17 @@ test("reader paragraphs drop Markdown syntax but keep the words", () => {
     "Every tool is an argument.",
     "• one\n• two",
   ]);
+});
+
+test("sources show a podcast's artwork, a site's favicon, or their type icon", () => {
+  assert.deepEqual(sourceLogos(source({ kind: "podcast", image: "https://cdn.example/art.jpg" })), ["https://cdn.example/art.jpg"]);
+  assert.deepEqual(sourceLogos(source({ kind: "podcast" })), []);
+  assert.deepEqual(sourceLogos(source()), ["https://www.quiet.example/favicon.ico"]);
+  assert.deepEqual(
+    sourceLogos(source({ siteUrl: "https://blog.example/posts/", image: "https://blog.example/logo.png" })),
+    ["https://blog.example/favicon.ico", "https://blog.example/logo.png"],
+  );
+  assert.deepEqual(sourceLogos(source({ kind: "page", url: "https://site.example/changelog", image: "https://site.example/og.png" })), ["https://site.example/favicon.ico"]);
+  assert.deepEqual(sourceLogos(source({ url: "file:///etc/passwd", image: "javascript:alert(1)" })), []);
+  for (const kind of ["hn", "youtube", "x", "author"] as const) assert.deepEqual(sourceLogos(source({ kind, image: "https://img.example/a.png" })), []);
 });

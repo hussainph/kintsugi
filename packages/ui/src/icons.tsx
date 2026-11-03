@@ -13,7 +13,8 @@ import {
   SidebarLeft01Icon, SidebarRight01Icon, SlidersHorizontalIcon, SmartPhone01Icon,
   SparklesIcon, SquareIcon, Sword01Icon, Tag01Icon, Tick02Icon, Undo02Icon,
   Upload01Icon, UserCircleIcon, Video01Icon, ViewOffIcon, Brain02Icon, Key01Icon,
-  Globe02Icon, LockIcon, FileExportIcon,
+  Globe02Icon, LockIcon, FileExportIcon, YoutubeIcon, NewTwitterIcon, PodcastIcon,
+  BrowserIcon, BookUserIcon,
   TriangleAlertIcon as WarningGlyph, OctagonXIcon as ErrorGlyph,
 } from "@hugeicons/core-free-icons";
 
@@ -45,6 +46,8 @@ export const Bookmark = glyph(Bookmark01Icon);
 export const BookmarkCheck = glyph(BookmarkCheck01Icon);
 export const BookmarkPlus = glyph(BookmarkAdd01Icon);
 export const BookOpen = glyph(BookOpen01Icon);
+export const BookUser = glyph(BookUserIcon);
+export const Browser = glyph(BrowserIcon);
 export const Brain = glyph(Brain02Icon);
 export const Check = glyph(Tick02Icon);
 export const ChevronDown = glyph(ArrowDown01Icon);
@@ -79,6 +82,7 @@ export const PanelRight = glyph(SidebarRight01Icon);
 export const Paperclip = glyph(AttachmentIcon);
 export const Pilcrow = glyph(ParagraphIcon);
 export const Plus = glyph(Add01Icon);
+export const Podcast = glyph(PodcastIcon);
 export const Quote = glyph(QuoteDownIcon);
 export const RotateCcw = glyph(RotateLeft01Icon);
 export const RotateCw = glyph(RotateClockwiseIcon);
@@ -99,6 +103,9 @@ export const UserRound = glyph(UserCircleIcon);
 export const Video = glyph(Video01Icon);
 export const Wand2 = glyph(MagicWand01Icon);
 export const X = glyph(Cancel01Icon);
+/** The X (formerly Twitter) logo. */
+export const XLogo = glyph(NewTwitterIcon);
+export const YouTube = glyph(YoutubeIcon);
 export const CheckIcon = Check;
 export const ChevronRightIcon = ChevronRight;
 export const PanelLeftIcon = PanelLeft;

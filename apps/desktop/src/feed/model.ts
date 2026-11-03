@@ -50,6 +50,22 @@ export function hostname(url: string | null): string | null {
 export const itemTitle = (item: Pick<FeedItem, "title" | "url" | "summary">) =>
   item.title || item.summary?.split("\n")[0] || hostname(item.url) || "Untitled";
 
+/**
+ * Pictures that can stand for a source in the Following list, best first:
+ * a podcast's artwork, then the site's favicon, then a feed's own image
+ * (a watched page's image is a social card, too wide for a logo).
+ * Sources with a brand (HN, YouTube, X) and authors use their type icon,
+ * so they get none. The caller falls back to that icon when all fail.
+ */
+export function sourceLogos(source: Pick<Source, "kind" | "url" | "siteUrl" | "image">): string[] {
+  const image = webUrl(source.image);
+  if (source.kind === "podcast") return image ? [image] : [];
+  if (source.kind !== "feed" && source.kind !== "page") return [];
+  const site = webUrl(source.siteUrl) ?? webUrl(source.url);
+  const favicon = site ? `${new URL(site).origin}/favicon.ico` : null;
+  return [favicon, source.kind === "feed" ? image : null].filter((url): url is string => !!url);
+}
+
 /** Only web links ever reach the opener. */
 export function webUrl(value: string | null): string | null {
   try {
