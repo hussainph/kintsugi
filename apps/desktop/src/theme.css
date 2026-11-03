@@ -174,6 +174,9 @@
 .ki-settings-size { min-width: 3.5em; text-align: center; }
 .ki-settings-pairing { align-items: center; }
 .ki-settings-prose { max-width: 36rem; color: var(--neutral-10); text-wrap: pretty; }
+.ki-sign-in-actions { display: flex; align-items: center; gap: var(--space-xs); margin-inline-start: auto; }
+.ki-sign-in-input { flex: 1 1 100%; }
+.ki-device-code { font-size: var(--size-m); line-height: var(--line-m); color: var(--neutral-10); user-select: all; }
 .ki-settings [data-reached] [data-slot="meter-indicator"], .ki-settings [data-reached] .ui-range-fill { background: var(--error); }
 
 /* About you (KI-70): each memory tab's room, full width; red near the cap. */

@@ -18,6 +18,13 @@
 // APIs it implements (APIS), sorted, one model per line. Hand-maintained
 // entries in catalog.extra.json are added where Pi has no model of that
 // provider and id.
+//
+// Also writes apps/desktop/src-tauri/src/ai/auth.pi.json (KI-92): the facts
+// of Pi's sign-ins and API keys, read from its built source: each OAuth
+// module's top-level constants (client ids, endpoints, scopes, ports,
+// timeouts) and short string literals, and each provider's key and login.
+// `sign_in::tests::drift` compares Kintsugi's port against it, so a Pi
+// update that changes a login fails the Rust tests until it's ported.
 
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -30,6 +37,7 @@ const VERSION = "1.5.0";
 const AI = join(dirname(fileURLToPath(import.meta.url)), "..", "apps/desktop/src-tauri/src/ai");
 const OUT = join(AI, "catalog.json");
 const EXTRA = join(AI, "catalog.extra.json");
+const AUTH_OUT = join(AI, "auth.pi.json");
 
 /** Pi's API ids that Kin's `wire.rs` implements. Mistral's own API is served
  *  over its OpenAI-compatible chat completions (see `wire::Wire::from_api`). */
@@ -157,6 +165,49 @@ export function format(source, models) {
   return `{\n  "source": ${JSON.stringify(source)},\n  "models": [\n${models.map((m) => `    ${JSON.stringify(m)}`).join(",\n")}\n  ]\n}\n`;
 }
 
+/** One top-level `const` value from Pi's built JS, or its source text. */
+function constant(expr, known) {
+  expr = expr.trim();
+  if (/^"(?:[^"\\]|\\.)*"$/.test(expr)) return JSON.parse(expr);
+  const template = /^`([^`]*)`$/.exec(expr);
+  if (template) return template[1].replace(/\$\{(\w+)\}/g, (all, name) => (name in known ? String(known[name]) : all));
+  const decoded = /^decode\("([^"]*)"\)$/.exec(expr);
+  if (decoded) return Buffer.from(decoded[1], "base64").toString("utf8");
+  if (/^[\d_\s*+\-().]+$/.test(expr)) return Function(`return (${expr.replace(/_/g, "")});`)();
+  return { source: expr };
+}
+
+/** Pi's sign-ins and API keys, from `package/dist` (see the header). */
+export function readPiAuth(dist) {
+  const oauth = {};
+  const dir = join(dist, "auth/oauth");
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".js")).sort()) {
+    const source = readFileSync(join(dir, file), "utf8");
+    const constants = {};
+    for (const [, name, expr] of source.matchAll(/^const (\w+) = ([^;\n]+);$/gm)) constants[name] = constant(expr, constants);
+    // Short literals without spaces, quoted or template (kept with its `${…}`).
+    const literals = [...source.matchAll(/"([^"\\\s]{1,120})"|`([^`\\\s]{1,120})`/g)].map((m) => m[1] ?? m[2]);
+    const strings = [...new Set(literals)].sort();
+    // The field names of every form or JSON body and query it builds, in order.
+    const bodies = [...source.matchAll(/(?:new URLSearchParams|JSON\.stringify|formUrlEncode|postForm\([^,()]+,)\s*\(?\{([^{}]*)\}/g)]
+      .map((m) => [...m[1].matchAll(/(?:^|,)\s*(?:"([^"]+)"|(\w+))\s*(?=[:,]|$)/g)].map((k) => k[1] ?? k[2]))
+      .filter((keys) => keys.length);
+    oauth[file.replace(/\.js$/, "")] = { constants, strings, bodies };
+  }
+  const providers = {};
+  const pdir = join(dist, "providers");
+  for (const file of readdirSync(pdir).filter((f) => f.endsWith(".js")).sort()) {
+    const source = readFileSync(join(pdir, file), "utf8");
+    const id = /createProvider\(\{\s*id:\s*"([^"]+)"/.exec(source)?.[1] ?? /const id = options\.id \?\? "([^"]+)"/.exec(source)?.[1];
+    if (!id || !/\bauth:/.test(source)) continue;
+    const env = /apiKey:\s*envApiKeyAuth\("[^"]*",\s*\[([^\]]*)\]\)/.exec(source);
+    const apiKey = env ? [...env[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : /\bapiKey:\s*\w/.test(source) ? "custom" : null;
+    const login = /\bload(\w+)OAuth\b/.exec(source)?.[1] ?? null;
+    providers[id] = { apiKey, oauth: login };
+  }
+  return { oauth, providers };
+}
+
 function fromNpm(version) {
   const dir = mkdtempSync(join(tmpdir(), "kintsugi-pi-ai-"));
   try {
@@ -165,9 +216,10 @@ function fromNpm(version) {
       stdio: ["ignore", "pipe", "inherit"],
     });
     const [packed] = JSON.parse(out);
-    execFileSync("tar", ["xzf", join(dir, packed.filename), "-C", dir, "package/dist/providers/data"]);
+    execFileSync("tar", ["xzf", join(dir, packed.filename), "-C", dir, "package/dist/providers", "package/dist/auth/oauth"]);
     const models = readPiData(join(dir, "package/dist/providers/data"));
-    return { models, source: { package: PACKAGE, version: packed.version, integrity: packed.integrity } };
+    const auth = readPiAuth(join(dir, "package/dist"));
+    return { models, auth, source: { package: PACKAGE, version: packed.version, integrity: packed.integrity } };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -176,11 +228,15 @@ function fromNpm(version) {
 function main() {
   const arg = process.argv[2] ?? VERSION;
   const local = existsSync(arg) && statSync(arg).isDirectory();
-  const { models, source } = local
+  const { models, auth, source } = local
     ? { models: readPiData(resolve(arg)), source: { package: PACKAGE, version: "local" } }
     : fromNpm(arg);
   const extras = existsSync(EXTRA) ? JSON.parse(readFileSync(EXTRA, "utf8")) : [];
   writeFileSync(OUT, build(models, extras, source));
+  if (auth) {
+    writeFileSync(AUTH_OUT, `${JSON.stringify({ source, ...auth }, null, 2)}\n`);
+    console.log(`auth.pi.json: ${Object.keys(auth.oauth).length} OAuth modules, ${Object.keys(auth.providers).length} providers`);
+  }
   const providers = new Set(models.map((m) => m.provider));
   console.log(`catalog.json: ${models.length} models from ${providers.size} providers (${PACKAGE} ${source.version})`);
 }

@@ -1,0 +1,999 @@
+{
+  "source": {
+    "package": "@earendil-works/pi-ai",
+    "version": "1.5.0",
+    "integrity": "sha512-VeWxNqTHSqRCf8AcY/6kvNwh+neRL6MPxZPePVztIQy6qqK9MR/YoCSN/ZgDnIyCD3pqEXgRyQbzk4KV4uvjbg=="
+  },
+  "oauth": {
+    "anthropic": {
+      "constants": {
+        "decode": {
+          "source": "(s) => atob(s)"
+        },
+        "CLIENT_ID": "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+        "AUTHORIZE_URL": "https://claude.ai/oauth/authorize",
+        "TOKEN_URL": "https://platform.claude.com/v1/oauth/token",
+        "CALLBACK_HOST": {
+          "source": "getProviderEnvValue(\"PI_OAUTH_CALLBACK_HOST\") || \"127.0.0.1\""
+        },
+        "CALLBACK_PORT": 53692,
+        "CALLBACK_PATH": "/callback",
+        "REDIRECT_URI": "http://localhost:53692/callback",
+        "COPY_CODE_REDIRECT_URI": "https://platform.claude.com/oauth/code/callback",
+        "ANTHROPIC_BROWSER_LOGIN_METHOD": "browser",
+        "ANTHROPIC_COPY_CODE_LOGIN_METHOD": "copy_code",
+        "SCOPES": "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload"
+      },
+      "strings": [
+        "#",
+        "${AUTHORIZE_URL}?${authParams.toString()}",
+        "../../utils/provider-env.js",
+        "./callback-server.js",
+        "./pkce.js",
+        "/callback",
+        "127.0.0.1",
+        "Anthropic",
+        "Content-Type",
+        "OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl",
+        "PI_OAUTH_CALLBACK_HOST",
+        "POST",
+        "S256",
+        "application/json",
+        "auth_url",
+        "authorization_code",
+        "browser",
+        "callback",
+        "cause=${formatErrorDetails(error.cause)}",
+        "code",
+        "code#state",
+        "code=",
+        "code=${errorWithCode.code}",
+        "copy_code",
+        "errno=${String(errorWithCode.errno)}",
+        "http://localhost:${CALLBACK_PORT}${CALLBACK_PATH}",
+        "https://claude.ai/oauth/authorize",
+        "https://platform.claude.com/oauth/code/callback",
+        "https://platform.claude.com/v1/oauth/token",
+        "localhost",
+        "manual_code",
+        "oauth",
+        "progress",
+        "refresh_token",
+        "select",
+        "stack=${error.stack}",
+        "state",
+        "true",
+        "undefined"
+      ],
+      "bodies": [
+        [
+          "code",
+          "client_id",
+          "response_type",
+          "redirect_uri",
+          "scope",
+          "code_challenge",
+          "code_challenge_method",
+          "state"
+        ],
+        [
+          "code",
+          "client_id",
+          "response_type",
+          "redirect_uri",
+          "scope",
+          "code_challenge",
+          "code_challenge_method",
+          "state"
+        ]
+      ]
+    },
+    "callback-server": {
+      "constants": {},
+      "strings": [
+        "../../utils/oauth-page.js",
+        "/",
+        ":",
+        "GET",
+        "[${redirectHost}]",
+        "abort",
+        "cache-control",
+        "callback",
+        "code",
+        "content-type",
+        "error",
+        "error_description",
+        "http://localhost",
+        "manual",
+        "manual_code",
+        "no-store",
+        "node:http",
+        "state",
+        "string"
+      ],
+      "bodies": []
+    },
+    "device-code": {
+      "constants": {
+        "CANCEL_MESSAGE": "Login cancelled",
+        "TIMEOUT_MESSAGE": "Device flow timed out",
+        "SLOW_DOWN_TIMEOUT_MESSAGE": "Device flow timed out after one or more slow_down responses. This is often caused by clock drift in WSL or VM environments. Please sync or restart the VM clock and try again.",
+        "MINIMUM_INTERVAL_MS": 1000,
+        "DEFAULT_POLL_INTERVAL_SECONDS": 5,
+        "SLOW_DOWN_INTERVAL_INCREMENT_MS": 5000
+      },
+      "strings": [
+        "abort",
+        "complete",
+        "failed",
+        "interval",
+        "number",
+        "slow_down"
+      ],
+      "bodies": []
+    },
+    "github-copilot": {
+      "constants": {
+        "decode": {
+          "source": "(s) => atob(s)"
+        },
+        "CLIENT_ID": "Iv1.b507a08c87ecfe98",
+        "COPILOT_API_VERSION": "2026-06-01"
+      },
+      "strings": [
+        "${baseUrl}/models",
+        "${baseUrl}/models/${modelId}/policy",
+        "../../providers/github-copilot.models.js",
+        "../../utils/sleep.js",
+        "./device-code.js",
+        "./trusted-url.js",
+        "2026-06-01",
+        "://",
+        "Content-Type",
+        "Copilot-Integration-Id",
+        "Editor-Plugin-Version",
+        "Editor-Version",
+        "GitHubCopilotChat/0.35.0",
+        "POST",
+        "SXYxLmI1MDdhMDhjODdlY2ZlOTg=",
+        "User-Agent",
+        "X-GitHub-Api-Version",
+        "api.",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "authorization_pending",
+        "chat-policy",
+        "company.ghe.com",
+        "complete",
+        "copilot-chat/0.35.0",
+        "device_code",
+        "disabled",
+        "enabled",
+        "failed",
+        "github.com",
+        "https://${apiHost}",
+        "https://${domain}/login/device/code",
+        "https://${domain}/login/oauth/access_token",
+        "https://${trimmed}",
+        "https://api.${domain}/copilot_internal/v2/token",
+        "https://api.individual.githubcopilot.com",
+        "https://copilot-api.${enterpriseDomain}",
+        "number",
+        "oauth",
+        "object",
+        "openai-intent",
+        "pending",
+        "progress",
+        "read:user",
+        "retry-after",
+        "slow_down",
+        "string",
+        "text",
+        "unconfigured",
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "vscode-chat",
+        "vscode/1.107.0",
+        "x-interaction-type"
+      ],
+      "bodies": [
+        [
+          "client_id",
+          "scope"
+        ],
+        [
+          "client_id",
+          "device_code",
+          "grant_type"
+        ],
+        [
+          "state"
+        ]
+      ]
+    },
+    "kimi-coding": {
+      "constants": {
+        "CLIENT_ID": "17e5f671-d194-4dfb-9706-5516cb48c098",
+        "DEFAULT_OAUTH_HOST": "https://auth.kimi.com",
+        "DEVICE_CODE_TIMEOUT_SECONDS": 900,
+        "DEFAULT_POLL_INTERVAL_SECONDS": 5,
+        "REQUEST_TIMEOUT_MS": 30000,
+        "REFRESH_MAX_RETRIES": 3
+      },
+      "strings": [
+        "${oauthHost}/api/oauth/device_authorization",
+        "${oauthHost}/api/oauth/token",
+        "../../utils/provider-env.js",
+        "../../utils/sleep.js",
+        "./device-code.js",
+        "./trusted-url.js",
+        "17e5f671-d194-4dfb-9706-5516cb48c098",
+        "Content-Type",
+        "KIMI_CODE_OAUTH_HOST",
+        "KIMI_OAUTH_HOST",
+        "POST",
+        "access_denied",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "authorization_pending",
+        "complete",
+        "device_code",
+        "expired_token",
+        "failed",
+        "https://auth.kimi.com",
+        "invalid_grant",
+        "number",
+        "oauth",
+        "object",
+        "pending",
+        "poll",
+        "refresh",
+        "refresh_token",
+        "slow_down",
+        "string",
+        "urn:ietf:params:oauth:grant-type:device_code"
+      ],
+      "bodies": [
+        [
+          "client_id"
+        ],
+        [
+          "client_id",
+          "device_code",
+          "grant_type"
+        ],
+        [
+          "client_id",
+          "grant_type",
+          "refresh_token"
+        ]
+      ]
+    },
+    "load": {
+      "constants": {},
+      "strings": [
+        ".",
+        "./anthropic.ts",
+        "./github-copilot.ts",
+        "./kimi-coding.ts",
+        "./meta.ts",
+        "./openai-chatgpt.ts",
+        "./openai-codex.ts",
+        "./openrouter.ts",
+        "./radius.ts",
+        "./xai.ts",
+        ".js",
+        ".jsx",
+        ".ts",
+        "js",
+        "node:crypto",
+        "node:http",
+        "string"
+      ],
+      "bodies": []
+    },
+    "meta": {
+      "constants": {
+        "CLIENT_ID": "1031625952748946",
+        "AUTH_HOST": "https://auth.meta.com",
+        "DEVICE_AUTHORIZATION_URL": "https://auth.meta.com/oidc/device/authorization/",
+        "DEVICE_TOKEN_URL": "https://auth.meta.com/oidc/device/token/",
+        "API_KEY_MINT_URL": "https://api.meta.ai/muse-code/key",
+        "API_KEY_LIFETIME_MS": 86400000,
+        "REQUEST_TIMEOUT_MS": 30000
+      },
+      "strings": [
+        "${AUTH_HOST}/oidc/device/authorization/",
+        "${AUTH_HOST}/oidc/device/token/",
+        "./device-code.js",
+        "./trusted-url.js",
+        "1.0.0",
+        "1031625952748946",
+        "Content-Type",
+        "POST",
+        "access",
+        "access_denied",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "authorization_pending",
+        "complete",
+        "detail",
+        "device_code",
+        "error",
+        "error_description",
+        "expired_token",
+        "failed",
+        "https://api.meta.ai/muse-code/key",
+        "https://auth.meta.com",
+        "message",
+        "number",
+        "oauth",
+        "object",
+        "pending",
+        "progress",
+        "refresh",
+        "slow_down",
+        "string",
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "x-api-version",
+        "{}"
+      ],
+      "bodies": [
+        [
+          "client_id"
+        ],
+        [
+          "grant_type",
+          "device_code",
+          "client_id"
+        ]
+      ]
+    },
+    "openai-chatgpt": {
+      "constants": {
+        "DYNAMIC_CLIENT_ID": "dynamic_agent_client",
+        "AGENT_NAME_HINT": "Pi",
+        "UUID_PATTERN": {
+          "source": "/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i"
+        },
+        "AUTHORIZE_URL": "https://auth.openai.com/api/accounts/authorize",
+        "TOKEN_URL": "https://auth.openai.com/api/accounts/oauth/token",
+        "RESOURCE": "https://api.openai.com/v1",
+        "CALLBACK_HOST": {
+          "source": "getProviderEnvValue(\"PI_OAUTH_CALLBACK_HOST\") || \"127.0.0.1\""
+        },
+        "CALLBACK_PORT": 1455,
+        "CALLBACK_PATH": "/auth/callback",
+        "REDIRECT_URI": "http://127.0.0.1:1455/auth/callback",
+        "DIRECT_TOKEN_SCOPE": "chatgpt.tokens.use.direct",
+        "SCOPE": "openid profile email offline_access resource.invoke chatgpt.tokens.use.direct",
+        "EXPIRY_MARGIN_MS": 180000
+      },
+      "strings": [
+        "../../utils/oauth-page.js",
+        "../../utils/provider-env.js",
+        "./pkce.js",
+        "/auth/callback",
+        "127.0.0.1",
+        "Content-Type",
+        "EADDRINUSE",
+        "PI_OAUTH_CALLBACK_HOST",
+        "POST",
+        "Pi",
+        "S256",
+        "access_token",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "auth_url",
+        "authorization_code",
+        "base64url",
+        "chatgpt.tokens.use.direct",
+        "client_id",
+        "code",
+        "content-type",
+        "dynamic_agent_client",
+        "error",
+        "http://127.0.0.1:${CALLBACK_PORT}${CALLBACK_PATH}",
+        "https://api.openai.com/v1",
+        "https://auth.openai.com/api/accounts/authorize",
+        "https://auth.openai.com/api/accounts/oauth/token",
+        "manual_code",
+        "node:crypto",
+        "node:http",
+        "number",
+        "oauth",
+        "object",
+        "progress",
+        "refresh_token",
+        "scope",
+        "state",
+        "string",
+        "urn:uuid:${deviceId.toLowerCase()}",
+        "urn:uuid:<uuid>"
+      ],
+      "bodies": [
+        [
+          "grant_type",
+          "client_id",
+          "code",
+          "code_verifier",
+          "redirect_uri",
+          "resource"
+        ],
+        [
+          "grant_type",
+          "client_id",
+          "refresh_token",
+          "resource"
+        ],
+        [
+          "client_id",
+          "agent_name_hint",
+          "ext_agent_host_id",
+          "response_type",
+          "redirect_uri",
+          "resource",
+          "scope",
+          "state",
+          "code_challenge",
+          "code_challenge_method",
+          "nonce"
+        ]
+      ]
+    },
+    "openai-codex": {
+      "constants": {
+        "CLIENT_ID": "app_EMoamEEZ73f0CkXaXp7hrann",
+        "AUTH_BASE_URL": "https://auth.openai.com",
+        "AUTHORIZE_URL": "https://auth.openai.com/oauth/authorize",
+        "TOKEN_URL": "https://auth.openai.com/oauth/token",
+        "REDIRECT_URI": "http://localhost:1455/auth/callback",
+        "DEVICE_USER_CODE_URL": "https://auth.openai.com/api/accounts/deviceauth/usercode",
+        "DEVICE_TOKEN_URL": "https://auth.openai.com/api/accounts/deviceauth/token",
+        "DEVICE_VERIFICATION_URI": "https://auth.openai.com/codex/device",
+        "DEVICE_REDIRECT_URI": "https://auth.openai.com/deviceauth/callback",
+        "DEVICE_CODE_TIMEOUT_SECONDS": 900,
+        "OPENAI_CODEX_BROWSER_LOGIN_METHOD": "browser",
+        "OPENAI_CODEX_DEVICE_CODE_LOGIN_METHOD": "device_code",
+        "SCOPE": "openid profile email offline_access",
+        "JWT_CLAIM_PATH": "https://api.openai.com/auth"
+      },
+      "strings": [
+        "#",
+        "${AUTH_BASE_URL}/api/accounts/deviceauth/token",
+        "${AUTH_BASE_URL}/api/accounts/deviceauth/usercode",
+        "${AUTH_BASE_URL}/codex/device",
+        "${AUTH_BASE_URL}/deviceauth/callback",
+        "${AUTH_BASE_URL}/oauth/authorize",
+        "${AUTH_BASE_URL}/oauth/token",
+        ".",
+        "../../utils/provider-env.js",
+        "./callback-server.js",
+        "./device-code.js",
+        "./pkce.js",
+        "/auth/callback",
+        "127.0.0.1",
+        "Content-Type",
+        "OpenAI",
+        "PI_OAUTH_CALLBACK_HOST",
+        "POST",
+        "S256",
+        "app_EMoamEEZ73f0CkXaXp7hrann",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "auth_url",
+        "authorization_code",
+        "browser",
+        "callback",
+        "client_id",
+        "code",
+        "code=",
+        "code_challenge",
+        "code_challenge_method",
+        "codex_cli_simplified_flow",
+        "complete",
+        "device_code",
+        "deviceauth_authorization_pending",
+        "exchange",
+        "failed",
+        "hex",
+        "http://localhost:1455/auth/callback",
+        "https://api.openai.com/auth",
+        "https://auth.openai.com",
+        "id_token_add_organizations",
+        "node:crypto",
+        "number",
+        "oauth",
+        "object",
+        "originator",
+        "pending",
+        "pi",
+        "redirect_uri",
+        "refresh",
+        "refresh_token",
+        "response_type",
+        "scope",
+        "select",
+        "slow_down",
+        "state",
+        "string",
+        "true",
+        "undefined"
+      ],
+      "bodies": [
+        [
+          "grant_type",
+          "client_id",
+          "code",
+          "code_verifier",
+          "redirect_uri"
+        ],
+        [
+          "grant_type",
+          "refresh_token",
+          "client_id"
+        ],
+        [
+          "client_id"
+        ],
+        [
+          "device_auth_id",
+          "user_code"
+        ]
+      ]
+    },
+    "openrouter": {
+      "constants": {
+        "AUTHORIZE_URL": "https://openrouter.ai/auth",
+        "TOKEN_URL": "https://openrouter.ai/api/v1/auth/keys",
+        "LOGIN_TIMEOUT_MS": 300000,
+        "TOKEN_EXCHANGE_TIMEOUT_MS": 30000
+      },
+      "strings": [
+        "../../utils/provider-env.js",
+        "./callback-server.js",
+        "./pkce.js",
+        "/oauth/callback/${crypto.randomUUID()}",
+        "127.0.0.1",
+        "OpenRouter",
+        "PI_OAUTH_CALLBACK_HOST",
+        "POST",
+        "S256",
+        "abort",
+        "application/json",
+        "auth_url",
+        "callback",
+        "code",
+        "code=",
+        "content-type",
+        "https://openrouter.ai/api/v1/auth/keys",
+        "https://openrouter.ai/auth",
+        "key",
+        "oauth",
+        "object",
+        "progress",
+        "state",
+        "string"
+      ],
+      "bodies": [
+        [
+          "code",
+          "code_verifier",
+          "code_challenge_method"
+        ],
+        [
+          "callback_url",
+          "code_challenge",
+          "code_challenge_method"
+        ]
+      ]
+    },
+    "pkce": {
+      "constants": {},
+      "strings": [
+        "-",
+        "SHA-256",
+        "_"
+      ],
+      "bodies": []
+    },
+    "radius": {
+      "constants": {
+        "CALLBACK_HOST": "127.0.0.1",
+        "CALLBACK_PORT": 1456,
+        "CALLBACK_PATH": "/oauth/callback",
+        "REDIRECT_URI": "http://127.0.0.1:1456/oauth/callback",
+        "TOKEN_EXPIRY_SKEW_MS": 60000,
+        "LOGIN_METHOD_BROWSER": "browser",
+        "LOGIN_METHOD_DEVICE_CODE": "device-code",
+        "OAUTH_CLIENT_ID": "pi-gateway",
+        "OAUTH_SCOPE": "gateway offline_access",
+        "OAUTH_DEVICE_CODE_GRANT_TYPE": "urn:ietf:params:oauth:grant-type:device_code"
+      },
+      "strings": [
+        "../../providers/radius-config.js",
+        "./callback-server.js",
+        "./device-code.js",
+        "./pkce.js",
+        "./trusted-url.js",
+        "/oauth/callback",
+        "/v1/oauth",
+        "/v1/oauth/device",
+        "/v1/oauth/token",
+        "127.0.0.1",
+        "POST",
+        "Radius",
+        "S256",
+        "access_denied",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "auth_url",
+        "authorization_code",
+        "authorization_pending",
+        "browser",
+        "code",
+        "complete",
+        "content-type",
+        "device-code",
+        "device_code",
+        "expired_token",
+        "failed",
+        "http://${CALLBACK_HOST}:${CALLBACK_PORT}${CALLBACK_PATH}",
+        "oauth",
+        "pending",
+        "pi-gateway",
+        "progress",
+        "refresh_token",
+        "select",
+        "slow_down",
+        "string",
+        "url",
+        "urn:ietf:params:oauth:grant-type:device_code"
+      ],
+      "bodies": [
+        [
+          "response_type",
+          "client_id",
+          "redirect_uri",
+          "scope",
+          "code_challenge",
+          "code_challenge_method",
+          "handoff",
+          "state"
+        ],
+        [
+          "grant_type",
+          "client_id",
+          "redirect_uri",
+          "code",
+          "code_verifier"
+        ],
+        [
+          "client_id",
+          "scope"
+        ],
+        [
+          "grant_type",
+          "client_id",
+          "device_code"
+        ],
+        [
+          "grant_type",
+          "client_id",
+          "refresh_token"
+        ]
+      ]
+    },
+    "trusted-url": {
+      "constants": {},
+      "strings": [
+        "file:",
+        "http:",
+        "https:",
+        "string",
+        "value"
+      ],
+      "bodies": []
+    },
+    "xai": {
+      "constants": {
+        "XAI_CLIENT_ID": "b1a00492-073a-47ea-816f-4c329264a828",
+        "XAI_SCOPE": "openid profile email offline_access grok-cli:access api:access",
+        "XAI_DEVICE_CODE_URL": "https://auth.x.ai/oauth2/device/code",
+        "XAI_TOKEN_URL": "https://auth.x.ai/oauth2/token",
+        "REFRESH_SKEW_MS": 300000,
+        "DEFAULT_TOKEN_LIFETIME_SECONDS": 3600
+      },
+      "strings": [
+        "./device-code.js",
+        "Content-Type",
+        "POST",
+        "access_denied",
+        "access_token",
+        "application/json",
+        "application/x-www-form-urlencoded",
+        "authorization_denied",
+        "authorization_pending",
+        "b1a00492-073a-47ea-816f-4c329264a828",
+        "complete",
+        "device_code",
+        "expired_token",
+        "expires_in",
+        "failed",
+        "https:",
+        "https://auth.x.ai/oauth2/device/code",
+        "https://auth.x.ai/oauth2/token",
+        "number",
+        "oauth",
+        "object",
+        "open",
+        "pending",
+        "pi",
+        "refresh_token",
+        "slow_down",
+        "string",
+        "urn:ietf:params:oauth:grant-type:device_code",
+        "user_code",
+        "verification_uri"
+      ],
+      "bodies": [
+        [
+          "client_id",
+          "scope",
+          "referrer"
+        ],
+        [
+          "grant_type",
+          "client_id",
+          "device_code"
+        ],
+        [
+          "grant_type",
+          "client_id",
+          "refresh_token"
+        ]
+      ]
+    }
+  },
+  "providers": {
+    "amazon-bedrock": {
+      "apiKey": "custom",
+      "oauth": null
+    },
+    "ant-ling": {
+      "apiKey": [
+        "ANT_LING_API_KEY"
+      ],
+      "oauth": null
+    },
+    "anthropic": {
+      "apiKey": "custom",
+      "oauth": "Anthropic"
+    },
+    "azure": {
+      "apiKey": [
+        "AZURE_OPENAI_API_KEY"
+      ],
+      "oauth": null
+    },
+    "baseten": {
+      "apiKey": [
+        "BASETEN_API_KEY"
+      ],
+      "oauth": null
+    },
+    "cerebras": {
+      "apiKey": [
+        "CEREBRAS_API_KEY"
+      ],
+      "oauth": null
+    },
+    "cloudflare-ai-gateway": {
+      "apiKey": "custom",
+      "oauth": null
+    },
+    "cloudflare-workers-ai": {
+      "apiKey": "custom",
+      "oauth": null
+    },
+    "deepseek": {
+      "apiKey": [
+        "DEEPSEEK_API_KEY"
+      ],
+      "oauth": null
+    },
+    "fireworks": {
+      "apiKey": [
+        "FIREWORKS_API_KEY"
+      ],
+      "oauth": null
+    },
+    "github-copilot": {
+      "apiKey": [
+        "COPILOT_GITHUB_TOKEN"
+      ],
+      "oauth": "GitHubCopilot"
+    },
+    "google-vertex": {
+      "apiKey": "custom",
+      "oauth": null
+    },
+    "google": {
+      "apiKey": [
+        "GEMINI_API_KEY"
+      ],
+      "oauth": null
+    },
+    "groq": {
+      "apiKey": [
+        "GROQ_API_KEY"
+      ],
+      "oauth": null
+    },
+    "huggingface": {
+      "apiKey": [
+        "HF_TOKEN"
+      ],
+      "oauth": null
+    },
+    "kimi-coding": {
+      "apiKey": [
+        "KIMI_API_KEY"
+      ],
+      "oauth": "KimiCoding"
+    },
+    "meta": {
+      "apiKey": [
+        "META_API_KEY"
+      ],
+      "oauth": "Meta"
+    },
+    "minimax-cn": {
+      "apiKey": [
+        "MINIMAX_CN_API_KEY"
+      ],
+      "oauth": null
+    },
+    "minimax": {
+      "apiKey": [
+        "MINIMAX_API_KEY"
+      ],
+      "oauth": null
+    },
+    "mistral": {
+      "apiKey": [
+        "MISTRAL_API_KEY"
+      ],
+      "oauth": null
+    },
+    "moonshotai-cn": {
+      "apiKey": [
+        "MOONSHOT_API_KEY"
+      ],
+      "oauth": null
+    },
+    "moonshotai": {
+      "apiKey": [
+        "MOONSHOT_API_KEY"
+      ],
+      "oauth": null
+    },
+    "nvidia": {
+      "apiKey": [
+        "NVIDIA_API_KEY"
+      ],
+      "oauth": null
+    },
+    "openai-codex": {
+      "apiKey": null,
+      "oauth": "OpenAICodex"
+    },
+    "openai": {
+      "apiKey": [
+        "OPENAI_API_KEY"
+      ],
+      "oauth": "OpenAIChatGPT"
+    },
+    "opencode-go": {
+      "apiKey": [
+        "OPENCODE_API_KEY"
+      ],
+      "oauth": null
+    },
+    "opencode": {
+      "apiKey": [
+        "OPENCODE_API_KEY"
+      ],
+      "oauth": null
+    },
+    "openrouter": {
+      "apiKey": [
+        "OPENROUTER_API_KEY"
+      ],
+      "oauth": "OpenRouter"
+    },
+    "qwen-token-plan-cn": {
+      "apiKey": [
+        "QWEN_TOKEN_PLAN_CN_API_KEY"
+      ],
+      "oauth": null
+    },
+    "qwen-token-plan-individual": {
+      "apiKey": [
+        "QWEN_TOKEN_PLAN_API_KEY"
+      ],
+      "oauth": null
+    },
+    "qwen-token-plan": {
+      "apiKey": [
+        "QWEN_TOKEN_PLAN_API_KEY"
+      ],
+      "oauth": null
+    },
+    "radius": {
+      "apiKey": [
+        "RADIUS_API_KEY"
+      ],
+      "oauth": "Radius"
+    },
+    "together": {
+      "apiKey": [
+        "TOGETHER_API_KEY"
+      ],
+      "oauth": null
+    },
+    "typesafe": {
+      "apiKey": [
+        "TYPESAFE_API_KEY"
+      ],
+      "oauth": null
+    },
+    "vercel-ai-gateway": {
+      "apiKey": [
+        "AI_GATEWAY_API_KEY"
+      ],
+      "oauth": null
+    },
+    "xai": {
+      "apiKey": [
+        "XAI_API_KEY"
+      ],
+      "oauth": "Xai"
+    },
+    "xiaomi-token-plan-ams": {
+      "apiKey": [
+        "XIAOMI_TOKEN_PLAN_AMS_API_KEY"
+      ],
+      "oauth": null
+    },
+    "xiaomi-token-plan-cn": {
+      "apiKey": [
+        "XIAOMI_TOKEN_PLAN_CN_API_KEY"
+      ],
+      "oauth": null
+    },
+    "xiaomi-token-plan-sgp": {
+      "apiKey": [
+        "XIAOMI_TOKEN_PLAN_SGP_API_KEY"
+      ],
+      "oauth": null
+    },
+    "xiaomi": {
+      "apiKey": [
+        "XIAOMI_API_KEY"
+      ],
+      "oauth": null
+    },
+    "zai-coding-cn": {
+      "apiKey": [
+        "ZAI_CODING_CN_API_KEY"
+      ],
+      "oauth": null
+    },
+    "zai": {
+      "apiKey": [
+        "ZAI_API_KEY"
+      ],
+      "oauth": null
+    }
+  }
+}

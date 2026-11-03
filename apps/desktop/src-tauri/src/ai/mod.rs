@@ -2,7 +2,9 @@
 //! Kintsugi's own transport. The webview sends prompts and receives text;
 //! keys never leave Rust.
 //!
-//! - `credentials`: where a credential comes from (OpenCode, Pi, env).
+//! - `credentials`: where a credential comes from (OpenCode, Pi, Kintsugi's
+//!   own store, env).
+//! - `sign_in`: signing in to a provider from Settings, as Pi does.
 //! - `providers`: every provider Kin speaks, with its defaults.
 //! - `catalog`: every model (Pi's generated catalog): wire, limits, prices.
 //! - `models`: `ai_models`, the models Kin can use now, for pickers.
@@ -38,6 +40,7 @@ mod pi_auth;
 pub mod picks;
 pub mod prompt;
 mod providers;
+pub mod sign_in;
 #[cfg(feature = "headless")]
 mod scripted;
 pub(crate) mod tools;
@@ -46,12 +49,13 @@ mod wire;
 
 pub use chat::Chat;
 pub use kin::Kin;
+pub use sign_in::SignIns;
 /// OpenCode's data folder (its credentials live there), for path guards.
 #[cfg(feature = "headless")]
 pub(crate) use opencode_auth::data_dir as opencode_data_dir;
 
 use crate::AppHandle;
-use credentials::{Chain, Source};
+use credentials::{Chain, Kind, Source};
 use pi_auth::Auth;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -79,8 +83,105 @@ pub struct ProviderStatus {
     /// why there isn't a usable one (`unsupported_login`, `expired_login`,
     /// `none`); `mock` in a scripted headless run.
     auth: &'static str,
-    /// Where it comes from: `opencode`, `pi`, `env` or `local`.
+    /// Where it comes from: `opencode`, `pi`, `kintsugi`, `env` or `local`.
     source: Option<Source>,
+}
+
+/// One provider in Settings › Providers. Holds no secret: only whether
+/// Kintsugi has saved a key or a login, and where the one in use is from.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CredentialView {
+    id: &'static str,
+    name: &'static str,
+    /// As `ProviderStatus`.
+    auth: &'static str,
+    source: Option<Source>,
+    /// What Kintsugi's own store holds for it.
+    saved: Option<Kind>,
+    /// A key can be added (every provider but ChatGPT for Codex).
+    api_key: bool,
+    /// Kintsugi can sign in to it, as Pi does.
+    sign_in: bool,
+    /// Listed before he picks it: a default model's provider, or one with
+    /// a credential.
+    listed: bool,
+}
+
+/// Settings › Providers: every provider, with what Kintsugi has saved for
+/// it. Headless runs without real AI show only what's saved in memory.
+#[tauri::command]
+pub fn ai_credentials() -> Result<Vec<CredentialView>> {
+    let defaults: Vec<&str> = Task::ALL
+        .iter()
+        .flat_map(|t| preferences(*t))
+        .map(|m| m.provider.as_str())
+        .collect();
+    let store = credentials::kintsugi();
+    #[allow(unused_mut)]
+    let mut statuses = shown_statuses()?;
+    #[cfg(feature = "headless")]
+    if !crate::headless::ai_enabled() {
+        for s in statuses.iter_mut().filter(|s| s.auth == "none") {
+            let status = credentials::Status::of(Source::Kintsugi, store.lookup(wire::provider(s.id).unwrap())?);
+            s.auth = status.auth;
+            s.source = status.source;
+        }
+    }
+    statuses
+        .into_iter()
+        .map(|s| {
+            let provider = wire::provider(s.id).ok_or("unknown provider")?;
+            let saved = store.held(s.id)?;
+            Ok(CredentialView {
+                id: s.id,
+                name: s.name,
+                auth: s.auth,
+                source: s.source,
+                saved,
+                api_key: !provider.keyless && provider.id != "openai-codex",
+                sign_in: sign_in::can_sign_in(s.id),
+                listed: s.auth != "none" || saved.is_some() || defaults.contains(&s.id),
+            })
+        })
+        .collect()
+}
+
+/// The longest API key accepted.
+const MAX_KEY_CHARS: usize = 4096;
+
+/// Saves an API key for `provider` in Kintsugi's own store, replacing what
+/// Kintsugi had for it. The key is never sent back.
+#[tauri::command]
+pub async fn ai_set_key(provider: String, key: String) -> Result<Vec<CredentialView>> {
+    let provider = wire::provider(&provider).ok_or("Unknown provider")?;
+    if provider.keyless || provider.id == "openai-codex" {
+        return Err(format!("{} takes no API key.", provider.name));
+    }
+    let key = key.trim();
+    if key.is_empty()
+        || key.chars().count() > MAX_KEY_CHARS
+        || key.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return Err("That doesn't look like an API key.".into());
+    }
+    let credential = serde_json::json!({ "type": "api_key", "key": pi_auth::literal_key(key) });
+    let id = provider.id;
+    async_runtime::spawn_blocking(move || credentials::kintsugi().save(id, credential))
+        .await
+        .map_err(|e| e.to_string())??;
+    ai_credentials()
+}
+
+/// Removes the key or login Kintsugi saved for `provider` (a sign-out).
+/// OpenCode's and Pi's are never touched.
+#[tauri::command]
+pub async fn ai_remove_credential(provider: String) -> Result<Vec<CredentialView>> {
+    let id = wire::provider(&provider).ok_or("Unknown provider")?.id;
+    async_runtime::spawn_blocking(move || credentials::kintsugi().remove(id))
+        .await
+        .map_err(|e| e.to_string())??;
+    ai_credentials()
 }
 
 /// The providers Settings lists, and whether each can be used right now:
@@ -416,6 +517,8 @@ pub fn meter() -> &'static cost::Meter {
 /// Opens the usage ledger and Kin's settings. Call once at startup, before
 /// any AI work, in native and headless runs alike.
 pub fn init(app: &AppHandle) {
+    let config = kin::data_dir(app).and_then(|d| d.parent().map(std::path::Path::to_path_buf));
+    credentials::init(config.as_deref());
     let _ = METER.set(cost::Meter::open(kin::data_dir(app)));
     web::init(kin::data_dir(app));
     chat::init(app);
@@ -460,7 +563,7 @@ impl AiError {
     pub fn message(self) -> &'static str {
         match self {
             AiError::NotConfigured => {
-                "No AI provider is set up. Log in with OpenCode (or Pi), or add an API key."
+                "No AI provider is set up. Add a key or sign in in Settings › Providers."
             }
             AiError::Request => "The AI provider request failed.",
             AiError::TimedOut => "The AI provider took too long to answer.",
@@ -1159,5 +1262,37 @@ mod live {
             })
             .unwrap();
         println!("---\n{text}\n---");
+    }
+
+    /// Headless only: there, statuses never read the owner's OpenCode or
+    /// Pi files, and Kintsugi's store is in memory.
+    #[cfg(feature = "headless")]
+    #[test]
+    fn credential_commands_never_return_a_secret() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let secret = "sk-ki92-command-secret";
+        let views = rt.block_on(ai_set_key("deepseek".into(), format!("  {secret} "))).unwrap();
+        let text = serde_json::to_string(&views).unwrap();
+        assert!(!text.contains(secret), "{text}");
+        let deepseek = serde_json::to_value(&views).unwrap().as_array().unwrap().iter().find(|v| v["id"] == "deepseek").cloned().unwrap();
+        assert_eq!(deepseek["saved"], "api_key");
+        assert_eq!(deepseek["source"], "kintsugi");
+        assert_eq!(deepseek["auth"], "api_key");
+        assert_eq!(deepseek["listed"], true);
+        // Saved as Pi stores it, and read back as typed.
+        assert_eq!(
+            rt.block_on(credentials::kintsugi().auth("deepseek")).unwrap(),
+            Some(Auth::ApiKey(secret.into()))
+        );
+        assert!(rt.block_on(ai_set_key("deepseek".into(), "has space".into())).unwrap_err().contains("API key"));
+        assert!(rt.block_on(ai_set_key("openai-codex".into(), "k".into())).is_err());
+        assert!(rt.block_on(ai_set_key("ollama".into(), "k".into())).is_err());
+        let views = rt.block_on(ai_remove_credential("deepseek".into())).unwrap();
+        let deepseek = views.iter().find(|v| v.id == "deepseek").unwrap();
+        assert_eq!((deepseek.saved, deepseek.auth), (None, "none"));
+        // Ollama, a keyless local server, takes neither.
+        let ollama = views.iter().find(|v| v.id == "ollama").unwrap();
+        assert!(!ollama.api_key && !ollama.sign_in);
+        assert!(views.iter().find(|v| v.id == "openai-codex").is_some_and(|v| v.sign_in && !v.api_key));
     }
 }

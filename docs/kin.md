@@ -175,10 +175,11 @@ Kintsugi doesn't offer one.
 
 ## Credentials (KI-48)
 
-Code: `ai/credentials.rs` (the order), `ai/opencode_auth.rs`, `ai/pi_auth.rs`.
-Kintsugi stores no credentials and never signs in itself; the owner logs in
-with OpenCode (`opencode auth login`, or `/connect` in its TUI) or Pi. For
-each provider the first usable credential wins, in this order:
+Code: `ai/credentials.rs` (the order), `ai/opencode_auth.rs`, `ai/pi_auth.rs`,
+`ai/sign_in/` (KI-92). The owner can log in with OpenCode (`opencode auth
+login`, or `/connect` in its TUI) or Pi, or add a key or sign in from
+Settings › Providers, which Kintsugi saves itself. For each provider the
+first usable credential wins, in this order:
 
 1. **OpenCode login.** OpenCode 2 keeps logins in its SQLite database,
    `$XDG_DATA_HOME/opencode/opencode.db` (default `~/.local/share/opencode/`,
@@ -191,20 +192,24 @@ each provider the first usable credential wins, in this order:
    Verified against OpenCode v2.0.32's source (`packages/core/src/credential.ts`,
    `integration.ts`, the `import_legacy_credentials` migration).
 2. **Pi login**, `~/.pi/agent/auth.json` (or `$PI_CODING_AGENT_DIR`).
-3. **Environment**: the provider's key, by Pi's names (below). GUI apps
+3. **Saved in Kintsugi**: keys and sign-ins from Settings › Providers
+   (below). It comes after OpenCode and Pi, so anyone who already uses them
+   sees no change.
+4. **Environment**: the provider's key, by Pi's names (below). GUI apps
    rarely inherit these.
+5. **Nothing**, for a local server (Ollama).
 
 | Provider | Environment | Logins |
 | --- | --- | --- |
 | Anthropic | `ANTHROPIC_API_KEY` | refused (a Claude subscription) |
-| ChatGPT (Codex) | | OpenCode, Pi |
-| OpenAI | `OPENAI_API_KEY` | Pi ("Sign in with ChatGPT") |
-| OpenRouter | `OPENROUTER_API_KEY` | Pi |
+| ChatGPT (Codex) | | OpenCode, Pi, Kintsugi |
+| OpenAI | `OPENAI_API_KEY` | Pi, Kintsugi ("Sign in with ChatGPT") |
+| OpenRouter | `OPENROUTER_API_KEY` | Pi, Kintsugi |
 | Z.AI, Z.AI Coding (China) | `ZAI_API_KEY`, `ZAI_CODING_CN_API_KEY` | |
 | OpenCode Zen and Go | `OPENCODE_API_KEY` | |
 | Google Gemini | `GEMINI_API_KEY` | |
 | Google Vertex AI | `GOOGLE_CLOUD_API_KEY` | |
-| xAI | `XAI_API_KEY` | Pi |
+| xAI | `XAI_API_KEY` | Pi, Kintsugi |
 | Groq | `GROQ_API_KEY` | |
 | Cerebras | `CEREBRAS_API_KEY` | |
 | Mistral | `MISTRAL_API_KEY` | |
@@ -212,11 +217,11 @@ each provider the first usable credential wins, in this order:
 | Together | `TOGETHER_API_KEY` | |
 | Fireworks | `FIREWORKS_API_KEY` | |
 | Vercel AI Gateway | `AI_GATEWAY_API_KEY` | |
-| GitHub Copilot | `COPILOT_GITHUB_TOKEN` | OpenCode, Pi |
+| GitHub Copilot | `COPILOT_GITHUB_TOKEN` | OpenCode, Pi, Kintsugi |
 | Moonshot AI, Moonshot AI (China) | `MOONSHOT_API_KEY` | |
-| Kimi For Coding | `KIMI_API_KEY` | Pi |
+| Kimi For Coding | `KIMI_API_KEY` | Pi, Kintsugi |
 | MiniMax, MiniMax (China) | `MINIMAX_API_KEY`, `MINIMAX_CN_API_KEY` | |
-| Meta | `META_API_KEY` | Pi |
+| Meta | `META_API_KEY` | Pi, Kintsugi |
 | Hugging Face | `HF_TOKEN` | |
 | NVIDIA | `NVIDIA_API_KEY` | |
 | Baseten | `BASETEN_API_KEY` | |
@@ -225,10 +230,10 @@ each provider the first usable credential wins, in this order:
 | Qwen token plans | `QWEN_TOKEN_PLAN_API_KEY`, `QWEN_TOKEN_PLAN_CN_API_KEY` | |
 | Ollama (local) | none | |
 
-Pi's `auth.json` can hold an API key for any of them, by the same ids. A
-key stored as `$VAR` is read from the environment; one stored as
-`!command` would need a shell command run, which Kintsugi never does, so it
-counts as absent. Pi's logins are refreshed the way Pi does it, under Pi's
+Pi's `auth.json`, and Kintsugi's own, can hold an API key for any of them,
+by the same ids. A key stored as `$VAR` is read from the environment; one
+stored as `!command` would need a shell command run, which Kintsugi never
+does, so it counts as absent. Pi's logins are refreshed the way Pi does it, under Pi's
 lock, natively only: ChatGPT for Codex and for the OpenAI API, Copilot (its
 GitHub token is exchanged for a Copilot token), Kimi, xAI and Meta (a
 day-long key); an OpenRouter login is a key that doesn't expire.
@@ -262,7 +267,82 @@ the providers OpenCode logs in to by OAuth other than OpenAI and Copilot.
   catalog says. Go counts as a subscription ($0 in the ledger); Zen is
   priced from the catalog.
 - **Settings** lists every provider and where its credential comes from:
-  "OpenCode login", "Pi login" or "environment", or why it can't be used.
+  "OpenCode login", "Pi login", "Saved in Kintsugi" or "environment", or
+  why it can't be used.
+
+### Kintsugi's own credentials (KI-92)
+
+Keys and sign-ins added in Settings › Providers are saved in `auth.json` in
+Kintsugi's app config folder (`~/Library/Application Support/<bundle id>/`,
+beside `config.json`; never `~/.pi` and never the vault), in Pi's exact
+format and with Pi's provider ids:
+
+```json
+{
+  "groq": { "type": "api_key", "key": "gsk_…" },
+  "openai-codex": { "type": "oauth", "access": "…", "refresh": "…", "expires": 1767225600000, "accountId": "…" }
+}
+```
+
+The same `pi_auth::Store` serves Pi's file and this one: owner-only (0600,
+its folder 0700 when created), replaced atomically, and every write, a
+refresh included, is a read-modify-write under Pi's `proper-lockfile`
+lock (`auth.json.lock`, stale after 30s), so a rotated refresh token can't
+be spent twice. A key is stored so it reads back unchanged under Pi's
+rules (`$` as `$$`, a leading `!` as `$!`). Logins are refreshed exactly as
+Pi's are. The webview only ever learns that a key or login exists and
+where the one in use comes from; keys never reach it, the logs, errors or
+the vault. "Remove key" and "Sign out" delete Kintsugi's entry only;
+OpenCode's and Pi's files are never written by Settings.
+
+Sign-in is ported from pi-ai 1.5.0 (`src/auth/oauth/`), one flow per
+provider, with Pi's client ids, scopes, endpoints, callback ports and
+stored fields:
+
+| Provider | Flow | Stored beyond `access`, `refresh`, `expires` |
+| --- | --- | --- |
+| ChatGPT (Codex) | Browser (PKCE, callback on 127.0.0.1:1455, or the pasted redirect URL when the port is taken) or device code | `accountId` |
+| OpenAI | Sign in with ChatGPT: browser (PKCE, 127.0.0.1:1455, the client OpenAI issues), or the pasted redirect URL | `clientId`, `scopes` |
+| GitHub Copilot | Device code on github.com or a GitHub Enterprise domain; the GitHub token is exchanged for a Copilot token and the account's models are listed (and unset ones turned on) | `enterpriseUrl`, `availableModelIds` |
+| Kimi For Coding | Device code | |
+| xAI | Device code | |
+| Meta | Device code; the identity token mints a day-long API key | |
+| OpenRouter | Browser (PKCE, a free port and a random path), or the pasted redirect URL; the result is a key that never expires | |
+
+The browser opens through the validated `open_url`. A loopback listener
+binds 127.0.0.1 only, lives for the one sign-in, checks `state` (OpenRouter
+sends none, so its path is random) and gives up after five minutes. A
+device-code sign-in shows the code and the page to enter it on, and polls
+as Pi does: the server's interval, `slow_down` taking its new interval or
+adding 5s, until the code expires. One sign-in runs at a time.
+
+Not matched, on purpose:
+
+- Claude subscription logins: Anthropic stays API keys only, wherever the
+  login comes from.
+- Pi's Radius gateway, Amazon Bedrock, Azure, Cloudflare and Typesafe:
+  Kintsugi doesn't speak them. Vertex takes a key only (no Application
+  Default Credentials or service account file).
+- `PI_OAUTH_CALLBACK_HOST`: the callback is always on 127.0.0.1.
+- Pi's `!command` keys are never run, and OpenCode's
+  `chatgpt-token-sharing` sign-in stays refused.
+- Small differences: every request is capped at 15s (Pi allows 30s for
+  some), a Kimi refresh isn't retried (it holds the lock), errors never
+  quote a server's answer, and Sign in with ChatGPT names Kintsugi rather
+  than Pi on OpenAI's consent page.
+
+`sign_in::tests::drift` checks the port against Pi's source:
+`pnpm gen:models` writes `ai/auth.pi.json` (every login module's
+constants and literals, every provider's key and login) from the pinned
+pi-ai, and the test fails when a constant, a module or a provider's auth
+changes until the port catches up.
+
+Headless runs never sign in, refresh or write a credential: Kintsugi's
+store is held in memory there, and Pi's is read-only (with
+`KINTSUGI_HEADLESS_AI_READONLY=1`). "Sign in" plays a scripted sign-in of
+the same shape instead, with no network: a device code that finishes after
+`KINTSUGI_HEADLESS_SIGN_IN_MS` (5s), or a browser login that waits for a
+pasted redirect URL.
 
 
 ## Tools
@@ -976,10 +1056,12 @@ he was. Its sections:
   cap; About you and the developer panel.
 - **Providers**: where each credential comes from (above, Credentials),
   for the providers the default models use and any other with a
-  credential.
+  credential, plus any he picks with "Add a provider"; per provider, add,
+  replace or remove a key saved in Kintsugi, or sign in and out.
 - **Web**: web tools on or off, the search provider and each one's key
   (above, The web).
-- **Phone**, **Blog**, **Export** and **Privacy** (the privacy statement).
+- **Phone**, **Blog**, **Export** and **Privacy** (the privacy statement,
+  which says keys and sign-ins are saved on this Mac).
 
 ⇧⌘K opens a minimal developer panel to run one turn (with a "don't
 remember this" box).

@@ -1,16 +1,19 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 
+/** Where a credential comes from: OpenCode's login, Pi's, Kintsugi's own
+ *  (Settings › Providers), an environment variable, or a local server. */
+export type Source = "opencode" | "pi" | "kintsugi" | "env" | "local";
+
 /** Mirrors `ai::ProviderStatus` in src-tauri/src/ai/mod.rs. */
 export type ProviderStatus = {
   id: string;
   name: string;
   /** What kind of credential, or why there's no usable one. */
   auth: "api_key" | "login" | "local" | "unsupported_login" | "expired_login" | "none" | "mock";
-  /** Where it comes from: OpenCode's login, Pi's, an environment variable. */
-  source: "opencode" | "pi" | "env" | "local" | null;
+  source: Source | null;
 };
 
-const SOURCE: Record<string, string> = { opencode: "OpenCode login", pi: "Pi login", env: "environment" };
+const SOURCE: Record<string, string> = { opencode: "OpenCode login", pi: "Pi login", kintsugi: "Saved in Kintsugi", env: "environment" };
 
 /** Where a provider's credential comes from, in a few words for Settings. */
 export function credentialLabel(p: ProviderStatus): string {
@@ -28,11 +31,49 @@ export function credentialLabel(p: ProviderStatus): string {
       if (p.id === "openai-codex") return `${from}: ChatGPT's newer sign-in, which Kintsugi can't use yet. Use the ChatGPT browser login`;
       return `${from}: a Claude subscription, which Kintsugi can't use. Kintsugi uses only Anthropic API keys`;
     case "expired_login":
-      return p.source === "opencode" ? "OpenCode login expired: open OpenCode once to refresh it" : `${from} expired`;
+      if (p.source === "opencode") return "OpenCode login expired: open OpenCode once to refresh it";
+      if (p.source === "kintsugi") return "Sign-in expired";
+      return `${from} expired`;
     default:
       return "Not set up";
   }
 }
+
+/** Mirrors `ai::CredentialView`: a provider in Settings › Providers. No secrets. */
+export type CredentialView = ProviderStatus & {
+  /** What Kintsugi itself has saved for it. */
+  saved: "api_key" | "oauth" | null;
+  /** A key can be added. */
+  apiKey: boolean;
+  /** Kintsugi can sign in to it. */
+  signIn: boolean;
+  /** Listed without picking it first. */
+  listed: boolean;
+};
+
+/** Mirrors `ai::sign_in::Event`. */
+export type SignInEvent =
+  | { type: "prompt"; id: number; kind: "select" | "text" | "paste"; message: string; placeholder?: string; options?: { id: string; label: string }[] }
+  | { type: "auth_url"; url: string; open: boolean }
+  | { type: "device_code"; userCode: string; verificationUri: string }
+  | { type: "progress"; message: string }
+  | { type: "done" }
+  | { type: "failed"; message: string };
+
+/** Kintsugi's own keys and sign-ins (Settings › Providers). Keys go to Rust and never come back. */
+export const credentials = {
+  list: () => invoke<CredentialView[]>("ai_credentials"),
+  setKey: (provider: string, key: string) => invoke<CredentialView[]>("ai_set_key", { provider, key }),
+  remove: (provider: string) => invoke<CredentialView[]>("ai_remove_credential", { provider }),
+  /** Starts a sign-in; `onEvent` gets its prompts and progress. Resolves with its id. */
+  signIn: (provider: string, onEvent: (event: SignInEvent) => void) => {
+    const events = new Channel<SignInEvent>();
+    events.onmessage = onEvent;
+    return invoke<string>("ai_sign_in", { provider, events });
+  },
+  answer: (id: string, prompt: number, value: string) => invoke<void>("ai_sign_in_answer", { id, prompt, value }),
+  cancel: (id: string) => invoke<void>("ai_sign_in_cancel", { id }),
+};
 
 export type ModelRef = { provider: string; model: string; reasoning?: string };
 export type Message = { role: "user" | "assistant"; content: string };
