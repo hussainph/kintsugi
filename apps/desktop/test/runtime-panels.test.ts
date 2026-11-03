@@ -140,8 +140,12 @@ test("the sidebar collapses to an icon rail and stays collapsed", { timeout: 120
 
   // About you still opens from the rail.
   await aboutButton.click();
-  await page.getByRole("dialog").waitFor();
-  await page.keyboard.press("Escape");
+  await page.getByRole("dialog").getByRole("heading", { name: "About you", exact: true }).waitFor();
+  // The button's tooltip may still be up; Escape closes the top layer first.
+  for (let i = 0; i < 3 && (await page.getByRole("dialog").count()); i++) {
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+  }
   await page.getByRole("dialog").waitFor({ state: "detached" });
 
   await page.reload();
