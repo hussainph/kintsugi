@@ -20,6 +20,7 @@ mod stories;
 pub use picked::kin_hook;
 #[cfg(feature = "headless")]
 pub(crate) use stories::STORY_SUMMARIZER;
+pub(crate) use stories::wake as wake_summaries;
 
 use crate::AppHandle;
 use kintsugi_ingest::{
@@ -833,9 +834,13 @@ pub fn feed_entries(
     let (entries, total) = with(&app, |s| {
         s.entries(offset.unwrap_or(0), limit.unwrap_or(40).clamp(1, 100))
     })?;
-    if entries.iter().any(|e| matches!(e, Entry::Story { story } if story.summary_state != store::SummaryState::Ready)) {
-        stories::summarize_soon(&app);
-    }
+    stories::summarize_if_due(
+        &app,
+        entries.iter().filter_map(|e| match e {
+            Entry::Story { story } => Some(&story.summary_state),
+            Entry::Item { .. } => None,
+        }),
+    );
     Ok(Entries { entries, total })
 }
 
@@ -843,9 +848,7 @@ pub fn feed_entries(
 #[tauri::command]
 pub fn feed_story(app: AppHandle, id: i64) -> Result<Story> {
     let story = with(&app, |s| s.story(id))?;
-    if story.summary_state != store::SummaryState::Ready {
-        stories::summarize_soon(&app);
-    }
+    stories::summarize_if_due(&app, [&story.summary_state]);
     Ok(story)
 }
 
@@ -1160,19 +1163,17 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
 /// `base` (the dev server itself), never the web. Headless builds only.
 #[cfg(all(test, feature = "headless"))]
 pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
-    const BODY: &str = "It is easy to mistake speed for progress. The pieces that last are the ones somebody returned to, mended and kept. ";
+    const REPAIR: &str = "Mending Workshop's 2026 study follows 240 repaired bowls across three workshops, comparing the visible repair methods used, the cost of labour and materials, how often a repair failed over the following year and whether owners kept using the bowls after the first repair; the kintsugi study also separates material costs from workshop time, so the repair prices can be compared without treating a photograph as evidence that the method worked.";
+    const RSS: &str = "RSS Reader 2 adds an offline reading queue and full-text search for personal websites. The new RSS Reader stores articles on the device, keeps reading position between sessions and lets readers export their subscriptions. The release keeps the existing feed format and has no recommendation algorithm.";
     let sources = [
         (
             "The Slow Workshop",
             "Mara Ito",
             &[
+                ("Mending as a design method", REPAIR),
                 (
-                    "Mending as a design method",
-                    "Why the repaired bowl teaches more than the new one: kintsugi, visible repair and the honesty of seams.",
-                ),
-                (
-                    "Gold in the cracks",
-                    "A potter on the economics of repair, and why the gold costs more than the bowl.",
+                    "Mending Workshop 2026 measures the cost of visible repair",
+                    REPAIR,
                 ),
                 (
                     "The workbench diary",
@@ -1185,16 +1186,16 @@ pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
             "Ana Ruiz",
             &[
                 (
-                    "Small sites, long memories",
-                    "Personal websites outlive platforms when their owners tend them like gardens.",
+                    "Mending Workshop 2026: 240 bowls repaired and tracked for a year",
+                    REPAIR,
                 ),
                 (
                     "Attention is the scarce material",
                     "On reading slowly, and what the infinite feed costs a writer.",
                 ),
                 (
-                    "RSS is still here",
-                    "A short history of feeds and the readers who never left them.",
+                    "RSS Reader 2 brings offline reading to personal websites",
+                    RSS,
                 ),
             ][..],
         ),
@@ -1203,12 +1204,12 @@ pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
             "Dr. Lee",
             &[
                 (
-                    "Sleep and the tired mind",
-                    "What the research says about rest, memory and night-shift workers.",
+                    "Mending Workshop 2026 reports a year of repair results",
+                    REPAIR,
                 ),
                 (
-                    "Rain sounds and focus",
-                    "A field recording, and why weather makes good background for writing.",
+                    "RSS Reader 2 adds full-text search and an offline queue",
+                    RSS,
                 ),
             ][..],
         ),
@@ -1232,7 +1233,7 @@ pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
                     title: Some((*title).into()),
                     author: Some((*author).into()),
                     summary: Some((*summary).into()),
-                    content: Some(format!("{summary}\n\n{}", BODY.repeat(6))),
+                    content: Some(format!("{summary}\n\n{}", format!("{summary} ").repeat(5))),
                     image: None,
                     media: "article",
                     published_at: Some(now - (n as i64 * 3 + i as i64) * 3_600),

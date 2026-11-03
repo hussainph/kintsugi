@@ -226,8 +226,8 @@ fn points(items: &[Item]) -> String {
 /// The Feed's story summary (KI-94), from the articles in the prompt: a
 /// paragraph per article (up to four, so long summaries get tested), each
 /// sentence citing it; plus a sentence with no citation and one citing an
-/// article that isn't there, which the Feed must drop. An article titled
-/// with "[mock-fail]" makes it answer with no JSON at all.
+/// article that isn't there, which the Feed must drop. "mock-fail" in an
+/// article makes it answer with no JSON at all.
 pub(crate) fn story_summary(prompt: &str) -> String {
     let articles: Vec<(String, String, String, String)> = prompt
         .split("<article id=\"")
@@ -252,7 +252,7 @@ pub(crate) fn story_summary(prompt: &str) -> String {
             Some((id.into(), source.into(), title.into(), first.into()))
         })
         .collect();
-    if articles.is_empty() || articles.iter().any(|a| a.2.contains("[mock-fail]")) {
+    if articles.is_empty() || prompt.contains("mock-fail") {
         return "Sorry, I couldn't summarise that.".into();
     }
     let mut paragraphs: Vec<serde_json::Value> = articles

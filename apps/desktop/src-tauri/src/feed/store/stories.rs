@@ -401,8 +401,10 @@ impl Store {
     }
 
     /// Records a summary (or why there isn't one) for the items it read.
-    pub fn set_summary(&self, id: i64, items: usize, outcome: &Outcome, now: i64) -> Result<()> {
-        match outcome {
+    /// Returns whether what the story shows changed: waiting on the cap (or
+    /// a provider) again changes nothing.
+    pub fn set_summary(&self, id: i64, items: usize, outcome: &Outcome, now: i64) -> Result<bool> {
+        let changed = match outcome {
             Outcome::Ready {
                 title,
                 summary,
@@ -437,13 +439,14 @@ impl Store {
                     SummaryState::Unavailable
                 };
                 self.db.execute(
-                    "UPDATE stories SET summary_state = CASE WHEN summary IS NULL THEN ?2 ELSE 'ready' END WHERE id = ?1",
+                    "UPDATE stories SET summary_state = CASE WHEN summary IS NULL THEN ?2 ELSE 'ready' END
+                     WHERE id = ?1 AND summary_state <> CASE WHEN summary IS NULL THEN ?2 ELSE 'ready' END",
                     params![id, state.as_str()],
                 )
             }
         }
         .map_err(err)?;
-        Ok(())
+        Ok(changed > 0)
     }
 }
 
@@ -670,8 +673,9 @@ mod tests {
         assert_eq!(due.len(), 1);
         assert_eq!(due[0].articles.len(), 2);
         assert_eq!(due[0].articles[0].3, "The text of a.");
-        // Waiting on the cap doesn't count as a try.
-        store.set_summary(story, 2, &Outcome::Capped, NOW).unwrap();
+        // Waiting on the cap doesn't count as a try, and waiting again changes nothing.
+        assert!(store.set_summary(story, 2, &Outcome::Capped, NOW).unwrap());
+        assert!(!store.set_summary(story, 2, &Outcome::Capped, NOW).unwrap());
         assert_eq!(
             store.story(story).unwrap().summary_state,
             SummaryState::Capped
