@@ -103,9 +103,8 @@ impl Resolve for PublicResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let host = name.as_str().to_string();
         Box::pin(async move {
-            let found: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
-                .await?
-                .collect();
+            let found: Vec<SocketAddr> =
+                tokio::net::lookup_host((host.as_str(), 0)).await?.collect();
             let public = public_addrs(found);
             if public.is_empty() {
                 return Err("refused: the name resolves only to non-public addresses".into());

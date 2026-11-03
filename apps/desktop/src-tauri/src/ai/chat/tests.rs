@@ -309,14 +309,26 @@ fn a_burst_of_messages_is_one_turn() {
 fn a_reply_keeps_its_web_sources() {
     let f = fixture(
         vec![
-            calls(&[("w1", "web_search", json!({ "query": "golden joinery" }))], ""),
-            calls(&[("w2", "web_fetch", json!({ "url": "https://example.org/essays/x" }))], ""),
+            calls(
+                &[("w1", "web_search", json!({ "query": "golden joinery" }))],
+                "",
+            ),
+            calls(
+                &[(
+                    "w2",
+                    "web_fetch",
+                    json!({ "url": "https://example.org/essays/x" }),
+                )],
+                "",
+            ),
             answer("Two sources say so."),
         ],
         Duration::ZERO,
     );
     *f.web.lock().unwrap() = true;
-    f.engine.send("What do others say about golden joinery?", vec![]).unwrap();
+    f.engine
+        .send("What do others say about golden joinery?", vec![])
+        .unwrap();
     let reply = f.wait_replies(1).remove(0);
     assert_eq!(reply.text, "Two sources say so.");
     assert_eq!(reply.web.len(), 2);

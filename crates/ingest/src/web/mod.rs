@@ -214,7 +214,8 @@ impl WebAdapter {
                 draft.final_url = body.url.clone();
                 draft.useful = true;
                 draft.extractor = "text";
-                draft.body = markdown::body(&String::from_utf8_lossy(&body.bytes), crate::FULL_CHARS);
+                draft.body =
+                    markdown::body(&String::from_utf8_lossy(&body.bytes), crate::FULL_CHARS);
             }
             // A directly shared image URL need not pretend to be an HTML page.
             Ok(body) => {

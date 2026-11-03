@@ -94,7 +94,8 @@ impl Searcher {
             Provider::Brave => {
                 let mut url = reqwest::Url::parse(endpoint)
                     .map_err(|_| "Couldn't start web search.".to_string())?;
-                url.query_pairs_mut().extend_pairs(brave_query(query, count));
+                url.query_pairs_mut()
+                    .extend_pairs(brave_query(query, count));
                 client
                     .get(url)
                     .header("X-Subscription-Token", key)
@@ -189,10 +190,18 @@ fn link(value: &Value) -> Option<String> {
     matches!(url.scheme(), "http" | "https").then(|| url.to_string())
 }
 
-fn source(url: String, title: Option<&str>, snippet: Option<String>, date: Option<String>, favicon: Option<String>) -> Source {
+fn source(
+    url: String,
+    title: Option<&str>,
+    snippet: Option<String>,
+    date: Option<String>,
+    favicon: Option<String>,
+) -> Source {
     Source {
         title: title.map_or_else(String::new, |t| clean(t, TITLE_CHARS)),
-        snippet: snippet.map(|s| clean(&s, SNIPPET_CHARS)).filter(|s| !s.is_empty()),
+        snippet: snippet
+            .map(|s| clean(&s, SNIPPET_CHARS))
+            .filter(|s| !s.is_empty()),
         date,
         favicon: favicon.filter(|f| f.starts_with("https://")),
         url,
@@ -276,7 +285,10 @@ pub fn day(raw: &str) -> String {
     if bytes.len() == 10
         && bytes[4] == b'-'
         && bytes[7] == b'-'
-        && head.chars().enumerate().all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
+        && head
+            .chars()
+            .enumerate()
+            .all(|(i, c)| i == 4 || i == 7 || c.is_ascii_digit())
     {
         return head;
     }
@@ -310,7 +322,12 @@ pub fn clean(raw: &str, max: usize) -> String {
     if line.chars().count() <= max {
         return line;
     }
-    line.chars().take(max).collect::<String>().trim_end().to_string() + "…"
+    line.chars()
+        .take(max)
+        .collect::<String>()
+        .trim_end()
+        .to_string()
+        + "…"
 }
 
 // --- Scripted (headless mock) -----------------------------------------------
@@ -325,7 +342,12 @@ fn scripted(query: &str, count: usize) -> Vec<Source> {
         .join("-");
     let rows = [
         ("en.wikipedia.org", "wiki", "Wikipedia", "2025-06-14"),
-        ("www.newyorker.com", "magazine", "The New Yorker", "2024-11-02"),
+        (
+            "www.newyorker.com",
+            "magazine",
+            "The New Yorker",
+            "2024-11-02",
+        ),
         ("example.org", "essays", "Example Essays", "2023-03-08"),
     ];
     rows.iter()

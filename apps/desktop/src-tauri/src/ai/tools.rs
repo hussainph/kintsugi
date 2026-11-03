@@ -1354,7 +1354,16 @@ pub(crate) mod tests {
         let names: Vec<_> = specs_with_web().iter().map(|s| s.name).collect();
         assert_eq!(
             names,
-            ["search", "read", "list", "memory", "skill", "tool", "web_search", "web_fetch"]
+            [
+                "search",
+                "read",
+                "list",
+                "memory",
+                "skill",
+                "tool",
+                "web_search",
+                "web_fetch"
+            ]
         );
     }
 
@@ -1367,13 +1376,21 @@ pub(crate) mod tests {
         assert_eq!(off.specs().len(), specs().len());
         let call_ = call("web_search", json!({ "query": "kiln" }));
         let refused = crate::ai::agent::tests::block_on(off.call(&call_));
-        assert!(refused.is_error && refused.content.contains("off in Settings"), "{}", refused.content);
+        assert!(
+            refused.is_error && refused.content.contains("off in Settings"),
+            "{}",
+            refused.content
+        );
         let (on, _out2) = tools(vault.path());
         let on = on.with_web(std::sync::Arc::new(Web::scripted()));
         assert_eq!(on.specs().len(), specs_with_web().len());
         let found = crate::ai::agent::tests::block_on(on.call(&call_));
         assert!(!found.is_error);
-        assert!(found.content.starts_with("<data tool=\"web_search\">\n["), "{}", found.content);
+        assert!(
+            found.content.starts_with("<data tool=\"web_search\">\n["),
+            "{}",
+            found.content
+        );
         assert_eq!(found.web.unwrap().results.len(), 3);
         // Other tools run as before.
         let listed = crate::ai::agent::tests::block_on(on.call(&call("list", json!({}))));
