@@ -8,12 +8,10 @@ import { Palette, PaletteMode } from "@/components/Palette";
 import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
 import { OutsideChoice, OutsideDialog } from "@/components/OutsideDialog";
 import { Sidebar, useSidebarOpen } from "@/components/Sidebar";
-import { DocTags } from "@/components/Tags";
-import { Badge } from "@kintsugi/ui/components/badge";
+import { DocumentBar } from "@/components/DocumentBar";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { External, paragraphRange, replaceText } from "@kintsugi/editor/Editor";
 import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
@@ -35,7 +33,6 @@ import { Publish } from "@/publish/Publish";
 import { openPublish } from "@/lib/blog";
 import { Picked } from "@/feed/Picked";
 import { Export } from "@/export/Export";
-import { ExportMenu } from "@/export/ExportMenu";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
@@ -916,41 +913,18 @@ export default function App() {
         )}
         </div>
         {doc && !away && (
-          <footer className="ki-document-status ki-text-xs">
-            {mirror ? (
-              <span title="Generated from the blog repository; edit the post there">Read-only mirror of {mirror}</span>
-            ) : (
-              <>
-                <DocTags tags={docTags} vocabulary={tagsInUse} onChange={changeTags} />
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Badge asChild variant={status === "complete" ? "default" : "outline"}>
-                      <button onClick={toggleStatus} aria-label={`Status: ${status ?? "no status"}. Toggle status`}>
-                        {status ?? "no status"}
-                      </button>
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>Toggle status (⇧⌘D)</TooltipContent>
-                </Tooltip>
-                {status === "complete" && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button className="ki-footer-action" onClick={openPublish}>Publish…</button>
-                    </TooltipTrigger>
-                    <TooltipContent>Publish to the blog (⇧⌘P)</TooltipContent>
-                  </Tooltip>
-                )}
-              </>
-            )}
-            <ExportMenu mirror={!!mirror} />
-            <span className="ki-data">{wordCount(text).toLocaleString()} words</span>
-            <button onClick={() => ideasForDraft(doc.path)} className="ki-footer-action">
-              Ideas
-            </button>
-            <span role="status" className={save === "error" ? "ki-error" : ""}>
-              {{ saved: "Saved", editing: "Editing", error: "Not saved" }[save]}
-            </span>
-          </footer>
+          <DocumentBar
+            mirror={mirror}
+            tags={docTags}
+            vocabulary={tagsInUse}
+            onTags={changeTags}
+            status={status}
+            onToggleStatus={toggleStatus}
+            onPublish={openPublish}
+            onIdeas={() => ideasForDraft(doc.path)}
+            words={wordCount(text)}
+            save={save}
+          />
         )}
       </SidebarInset>
       {refine && viewRef.current && doc && (

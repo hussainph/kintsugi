@@ -28,10 +28,32 @@
 .ki-divider-bottom { border-width: 0; box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4); }
 
 .ki-empty { margin: auto; color: var(--neutral-7); text-align: center; }
-/* Clears the Kin chat button in the bottom-right corner. */
-.ki-document-status { position: absolute; right: 4.5rem; bottom: var(--space-s); display: flex; align-items: center; gap: var(--space-s); color: var(--neutral-7); }
-.ki-footer-action { border-radius: var(--radius-xs); color: var(--neutral-7); transition: color var(--motion-duration) var(--motion-easing); }
-.ki-footer-action:hover { color: var(--neutral-10); }
+/* The bar under the open document. It sits below the editor rather than over
+   it, on a solid surface, and its right end clears the Kin chat button. */
+.ki-document-bar { position: relative; z-index: 10; flex-shrink: 0; display: flex; align-items: center; gap: var(--space-m); min-width: 0; padding: var(--space-xs) calc(4.5rem - var(--space-xs)) var(--space-xs) var(--space-l); background: var(--neutral-1); box-shadow: inset 0 var(--border-s) 0 var(--neutral-4); color: var(--neutral-7); }
+.ki-document-bar-meta { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: var(--space-xs); overflow-x: auto; scrollbar-width: none; padding-block: var(--space-xxs); }
+.ki-document-bar-meta > [role="group"] { flex-shrink: 0; }
+.ki-document-bar-actions { flex-shrink: 0; }
+.ki-document-bar-info { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-s); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ki-document-bar-info::before { content: ""; align-self: stretch; width: var(--border-s); margin-inline-end: var(--space-xxs); background: var(--neutral-4); }
+.ki-document-bar-save { display: inline-flex; align-items: center; gap: var(--space-xxs); }
+.ki-document-bar-save > svg { width: 1em; height: 1em; flex-shrink: 0; }
+.ki-document-bar-save[data-save="saved"] > svg { color: var(--success); }
+.ki-document-bar-save[data-save="error"] { color: var(--error); }
+/* Tag and status chips: soft tints from the theme's accent colors. Light
+   mode's accents are already pale; dark mode's need more transparency. */
+:root { --ki-chip-tint: 70%; }
+.dark { --ki-chip-tint: 40%; }
+.ki-chip { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-xxs); border: 0; border-radius: var(--radius-full); padding: 1px var(--space-xs); color: var(--neutral-9); white-space: nowrap; transition: background-color var(--motion-duration) var(--motion-easing), color var(--motion-duration) var(--motion-easing); }
+.ki-chip svg { width: 1em; height: 1em; flex-shrink: 0; }
+.ki-tag-chip { padding-inline-end: var(--space-xxs); background: color-mix(in srgb, var(--color-4) var(--ki-chip-tint), transparent); }
+.ki-tag-chip button { color: inherit; }
+.ki-tag-add { color: var(--neutral-7); background: var(--neutral-3); }
+.ki-tag-add:hover { color: var(--neutral-10); background: var(--neutral-4); }
+.ki-status-chip { background: var(--neutral-3); }
+.ki-status-chip[data-status="draft"] { background: color-mix(in srgb, var(--color-3) var(--ki-chip-tint), transparent); }
+.ki-status-chip[data-status="complete"], .ki-status-chip[data-status="published"] { background: color-mix(in srgb, var(--color-2) var(--ki-chip-tint), transparent); }
+.ki-status-chip:hover { color: var(--neutral-10); box-shadow: inset 0 0 0 var(--border-s) var(--neutral-5); }
 .ki-status-dot { width: var(--space-xs); height: var(--space-xs); flex-shrink: 0; border-radius: var(--radius-full); box-shadow: inset 0 0 0 var(--border-s) var(--neutral-7); }
 .ki-status-dot[data-complete="true"] { background: var(--neutral-10); box-shadow: none; }
 /* Phone access in the sidebar footer: green when on, red when off. */
@@ -78,7 +100,7 @@
 .ki-diff-added { border-radius: var(--radius-xs); background: var(--success-transparent); color: var(--neutral-10); text-decoration: none; }
 .ki-diff-removed { color: var(--neutral-7); text-decoration-color: var(--error); }
 
-.ki-clip-card:focus-visible, .ki-source-link:focus-visible, .ki-footer-action:focus-visible, .ki-refine-choice:focus-visible, .ki-used-in-link:focus-visible {
+.ki-clip-card:focus-visible, .ki-source-link:focus-visible, .ki-chip:focus-visible, .ki-refine-choice:focus-visible, .ki-used-in-link:focus-visible {
   outline: 2px solid var(--neutral-10);
   outline-offset: var(--space-xxs);
 }
@@ -152,6 +174,6 @@
 [data-headless-dialog] :is(input, button):focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
 
 @media (prefers-reduced-motion: reduce) {
-  .ki-chevron, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-footer-action, .ki-model-trigger, [data-headless-dialog] button { transition: none; }
+  .ki-chevron, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-chip, .ki-model-trigger, [data-headless-dialog] button { transition: none; }
   .ki-clip-card:active, .ki-refine-choice:active { transform: none; }
 }
