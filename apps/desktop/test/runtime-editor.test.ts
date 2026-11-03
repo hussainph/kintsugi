@@ -263,8 +263,11 @@ test("at phone width with touch, the pickers fit the screen and rows are tap tar
   await fits(".cm-reference-picker");
   assert.ok(await phone.locator(".cm-reference-picker .cm-kintsugi-menu-touch").isVisible(), "touch hint, not key hints");
   assert.equal(await phone.locator(".cm-reference-picker .cm-kintsugi-menu-keys").isVisible(), false);
-  // Measured in one step in the page, so a re-render can't detach it in between.
-  const height = await phone.locator(".cm-reference-option").first().evaluate((row) => row.getBoundingClientRect().height);
+  // The picker rebuilds its rows on every refresh, and one can land any time
+  // (a vault change from an earlier test refreshes the sources and re-runs the
+  // search). A locator's evaluate finds the row and measures it in two round
+  // trips, so it can measure a detached row as 0px; one in-page read can't.
+  const height = await phone.evaluate(() => document.querySelector(".cm-reference-picker .cm-reference-option")?.getBoundingClientRect().height ?? 0);
   assert.ok(height >= 44, `tap target ${height}px`);
   await shot("11-phone-link-picker", phone);
   await phone.locator(".cm-reference-option").first().tap();
