@@ -22,6 +22,7 @@ use crate::AppHandle;
 use kintsugi_ingest::{
     self as ingest, CaptureOptions, Engine, Subscription, Target,
     authors::AuthorAdapter,
+    catalogue::Catalogue,
     feed::{FeedAdapter, Podcast},
     web::WebAdapter,
     x::XAdapter,
@@ -78,6 +79,8 @@ pub struct Feed {
 struct Ingest {
     engine: Engine,
     feeds: Arc<FeedAdapter>,
+    /// Keep per-origin pacing across scans and explicit retries.
+    catalogue: Catalogue,
 }
 
 impl Ingest {
@@ -100,6 +103,7 @@ impl Ingest {
                 .with(books)
                 .with(web),
             feeds,
+            catalogue: Catalogue::new().map_err(|e| e.to_string())?,
         })
     }
 }
