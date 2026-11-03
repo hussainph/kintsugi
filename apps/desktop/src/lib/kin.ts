@@ -149,7 +149,7 @@ export const dollars = (usd: number) =>
   usd === 0 ? "$0" : usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
 
 /** Settings' sections, in the order its sidebar lists them. */
-export type SettingsSection = "general" | "kin" | "providers" | "web" | "phone" | "blog" | "export" | "privacy";
+export type SettingsSection = "general" | "appearance" | "kin" | "providers" | "web" | "phone" | "blog" | "export" | "privacy";
 
 /** Opens Settings (at a section) or the Kin developer panel from anywhere. */
 export const openSettings = (section?: SettingsSection) =>

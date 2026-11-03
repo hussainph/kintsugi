@@ -6,9 +6,9 @@ import { tags as t } from "@lezer/highlight";
 /** The editor's type (KI-65): the editorial face, sized for long reading
  *  rather than at the Graphical `l` role, which reads large and dense in a
  *  long draft. Everything scales with `--editor-text-scale` (Settings ›
- *  General, ⌘− ⌘= ⌘0 on the Mac). The phone sets its own size and leading
- *  in phone.css and has no Graphical tokens, so the `calc()`s that use them
- *  fall back there and its type stays as it was. */
+ *  Appearance, ⌘− ⌘= ⌘0 on the Mac). The phone sets its own size, scale
+ *  and leading in phone.css and has no Graphical tokens, so the `calc()`s
+ *  that use them fall back there. */
 const tokens = {
   "--editor-size": "calc(var(--size-m) * 1.2 * var(--editor-text-scale, 1))",
   "--editor-leading": "1.7",

@@ -1060,6 +1060,8 @@ over the app, at the section last shown; Esc, ⌘[ or Back returns to where
 he was. Its sections:
 
 - **General**: the vault, and optional tools.
+- **Appearance**: Light, Dark or System, editor text size and the current font
+  ([appearance](appearance.md)).
 - **Kin and models**: the default model for chat, Ideas, edits,
   completions and Feed triage; this month's spend by task and the monthly
   cap; About you and the developer panel.

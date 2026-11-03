@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 /** The editor's text size (KI-65), as a scale on its type: Settings ›
- *  General, or ⌘− ⌘= ⌘0 while writing. Kept in this Mac's localStorage and
+ *  Appearance, or ⌘− ⌘= ⌘0 while writing. Kept in this Mac's localStorage and
  *  applied as `--editor-text-scale`, which only the editor reads, so the rest
  *  of the app and the webview's own zoom stay as they are. */
 

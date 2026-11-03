@@ -4,11 +4,15 @@ Kintsugi brings everything you read, watch and hear into one place: a feed of ne
 
 Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by default `~/Documents/Kintsugi`). Each document's frontmatter holds a `status` of `draft` or `complete`, and any `tags` you like (`tags: [essay, craft]`; Obsidian's block lists work too). Organize in folders and tags when you want to; nothing asks you to. Add or remove a document's tags from the footer beside its status, filter the sidebar with the tag button beside the vault name, and type `#tag` in ⌘P to jump among tagged documents. See [docs/writing.md](docs/writing.md).
 
+## Appearance
+
+Choose Light, Dark or System in Settings › Appearance on the Mac, or Appearance in the phone's overflow menu. System is the default. Each device keeps its own mode and editor text size (80–150%). The text sample updates immediately; the current editor font is read-only. See [docs/appearance.md](docs/appearance.md).
+
 ## Shortcuts
 
 Hold ⌘ for a moment to see the shortcuts that work where you are, beside their buttons and in a list. ⇧⌘/ or the keyboard button under a document lists them all; type to filter. Right-click a selection (or press ⇧F10) for what you can do with it, each with its key.
 
-⌥⌘T, ⌥⌘R, ⌥⌘P, ⌥⌘F and ⌥⌘S run ⌘K's edits on the selection (or the paragraph) straight away, and show the result to accept or discard like ⌘K. ⌘/ dims the selection (or the line) in place, and dimmed text is left out of publish and export. In ⌘P, `#tag` filters by tag. ⌘= and ⌘− are also in Settings › General.
+⌥⌘T, ⌥⌘R, ⌥⌘P, ⌥⌘F and ⌥⌘S run ⌘K's edits on the selection (or the paragraph) straight away, and show the result to accept or discard like ⌘K. ⌘/ dims the selection (or the line) in place, and dimmed text is left out of publish and export. In ⌘P, `#tag` filters by tag. Text size is also in Settings › Appearance.
 
 Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the editor's formatting keys in `packages/editor/src/format.ts`). The tests fail on a key that's taken twice, CodeMirror's and the Mac's own keys included, and on tables below that don't match; `pnpm shortcuts:readme` rewrites them.
 

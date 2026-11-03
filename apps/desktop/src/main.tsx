@@ -7,16 +7,15 @@ import App from "@/App";
 import { KintsugiProvider } from "@kintsugi/ui/provider";
 import "./index.css";
 
-// shadcn's dark theme hangs off a `.dark` class; follow the system setting.
-const dark = window.matchMedia("(prefers-color-scheme: dark)");
-const applyTheme = () => document.documentElement.classList.toggle("dark", dark.matches);
-applyTheme();
-dark.addEventListener("change", applyTheme);
+import { useAppearanceMode } from "@/lib/appearance";
+
+function ThemedApp() {
+  const colorMode = useAppearanceMode();
+  return <KintsugiProvider colorMode={colorMode}><App /></KintsugiProvider>;
+}
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <KintsugiProvider>
-      <App />
-    </KintsugiProvider>
+    <ThemedApp />
   </React.StrictMode>,
 );
