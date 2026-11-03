@@ -11,9 +11,10 @@
 // KINTSUGI_BACKEND_PORT pick the ports; KIN_SCENARIOS_URL drives an app
 // that's already running instead (nothing is seeded then).
 //
-// The mock answers by what it's asked: "think" waits before answering,
-// "compare" runs several tools, "points" answers in Markdown, "tighten" on
-// a paragraph proposes an edit, "fail" and "timeout" fail like a provider.
+// The mock answers by how a message starts: "Think" waits before
+// answering, "Compare" runs several tools, "Tighten" on a paragraph
+// proposes an edit, "Fail" and "Timeout" fail like a provider; "points"
+// anywhere answers in Markdown.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, type Page } from "playwright";
@@ -227,13 +228,13 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
   });
 
   await scenario("error", async () => {
-    await ask("This one should fail");
+    await ask("Fail on purpose");
     await page.waitForTimeout(300);
     await shot("error");
   });
 
   await scenario("timeout", async () => {
-    await say("Simulate a timeout");
+    await say("Timeout on purpose");
     await page.waitForTimeout(700);
     await shot("timeout-waiting");
     await panel().locator("[data-live]").waitFor({ state: "detached", timeout: 30_000 });

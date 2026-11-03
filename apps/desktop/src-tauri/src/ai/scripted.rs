@@ -73,6 +73,15 @@ fn asks(asked: &str, words: &[&str]) -> bool {
         .any(|w| words.iter().any(|word| w.starts_with(word)))
 }
 
+/// Whether his message starts with one of these words: "Tighten this", not
+/// "Who disagrees? Don't rewrite it."
+fn leads_with(asked: &str, words: &[&str]) -> bool {
+    asked
+        .split(|c: char| !c.is_alphanumeric())
+        .find(|w| !w.is_empty())
+        .is_some_and(|w| words.iter().any(|word| w.starts_with(word)))
+}
+
 /// The first paragraph chip: its document and line range.
 fn paragraph_chip(message: &str) -> Option<(String, u64, u64)> {
     let context = message
@@ -115,7 +124,7 @@ fn last_results(items: &[Item]) -> Vec<&str> {
 /// "Compare …" (KI-79): after a search and a list in one step, read the
 /// first two documents the search found, together.
 fn compare_reads(question: &str, items: &[Item]) -> Option<Vec<ToolCall>> {
-    if !asks(&said(question).to_lowercase(), &["compare"]) {
+    if !leads_with(&said(question).to_lowercase(), &["compare"]) {
         return None;
     }
     let steps = this_turn(items)
@@ -150,7 +159,7 @@ fn compare_reads(question: &str, items: &[Item]) -> Option<Vec<ToolCall>> {
 /// "Tighten this" on a paragraph (KI-79): the passage it read, with filler
 /// words dropped (else its last sentence), as an edit block he can apply.
 fn proposed_edit(question: &str, items: &[Item]) -> Option<String> {
-    if !asks(&said(question).to_lowercase(), EDIT) {
+    if !leads_with(&said(question).to_lowercase(), EDIT) {
         return None;
     }
     let (path, ..) = paragraph_chip(question)?;
@@ -273,18 +282,20 @@ impl Model for Scripted {
             // First step of a turn: look something up.
             let asked = said(message).to_lowercase();
             // The chat's design scenarios (KI-79), by what he asked.
-            if asks(&asked, &["timeout", "timed"]) {
+            if leads_with(&asked, &["timeout"]) {
                 tokio::time::sleep(Duration::from_millis(1_500)).await;
                 return Err("Mock stopped responding (nothing for 120 s)".into());
             }
-            if asks(&asked, &["fail"]) {
+            if leads_with(&asked, &["fail"]) {
                 return Err("Mock: 500 Internal Server Error".into());
             }
-            if asks(&asked, &["think"]) {
+            if leads_with(&asked, &["think"]) {
                 // A reasoning model, thinking before it says or calls anything.
                 tokio::time::sleep(THINKING).await;
             }
-            if let Some((path, from, to)) = paragraph_chip(message).filter(|_| asks(&asked, EDIT)) {
+            if let Some((path, from, to)) =
+                paragraph_chip(message).filter(|_| leads_with(&asked, EDIT))
+            {
                 let call = ToolCall {
                     id: "mock-1".into(),
                     name: "read".into(),
@@ -292,7 +303,7 @@ impl Model for Scripted {
                 };
                 return Ok(reply(String::new(), vec![call]));
             }
-            if asks(&asked, &["compare"]) {
+            if leads_with(&asked, &["compare"]) {
                 // What to compare: the longest word after "compare".
                 let word = longest_word(
                     said(message)
@@ -1276,9 +1287,9 @@ mod scenario_tests {
     #[test]
     fn fail_and_timeout_are_errors() {
         let vault = vault();
-        let (_, failed) = run(vault.path(), "This should fail", vec![]);
+        let (_, failed) = run(vault.path(), "Fail on purpose", vec![]);
         assert!(failed.unwrap_err().contains("500"));
-        let (_, stalled) = run(vault.path(), "Simulate a timeout", vec![]);
+        let (_, stalled) = run(vault.path(), "Timeout on purpose", vec![]);
         assert!(stalled.unwrap_err().contains("stopped responding"));
     }
 }

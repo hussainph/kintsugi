@@ -59,7 +59,7 @@ function ChipView({ chip, onRemove }: { chip: Chip; onRemove?: () => void }) {
 /** A path Kin named, as a link that opens it. */
 function PathLink({ path, children }: { path: string; children?: ReactNode }) {
   return (
-    <button type="button" className="ki-kin-path" title={path} onClick={() => openLink(path)}>
+    <button type="button" className="ki-kin-path" data-path={path} onClick={() => openLink(path)}>
       {children ?? path}
     </button>
   );
@@ -77,7 +77,7 @@ function replyComponents(id: string): ResponseComponents {
     },
     inlineCode: (code) => (/^(?:[\w.-]+\/)+[\w .-]+\.mdx?$/.test(code.trim()) ? <PathLink path={code.trim()}><code className="ki-response-inline-code">{code}</code></PathLink> : undefined),
     wikilink: ({ target, label }) => (
-      <button type="button" className="ki-kin-path ki-kin-wikilink" title={target} onClick={() => openLink(target)}>
+      <button type="button" className="ki-kin-path ki-kin-wikilink" data-target={target} onClick={() => openLink(target)}>
         {label}
       </button>
     ),

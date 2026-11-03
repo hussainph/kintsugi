@@ -75,7 +75,7 @@ export function EditProposal({ edit, id }: { edit: ProposedEdit; id: string }) {
     <div className="ki-edit" data-edit={edit.path} data-applied={isApplied || undefined}>
       <div className="ki-edit-header">
         <FileDiff aria-hidden className="ki-edit-icon" />
-        <button type="button" className="ki-edit-path" title={edit.path} onClick={() => openLink(edit.path)}>
+        <button type="button" className="ki-edit-path" data-path={edit.path} onClick={() => openLink(edit.path)}>
           {name}
         </button>
       </div>
