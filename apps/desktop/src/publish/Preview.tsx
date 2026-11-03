@@ -126,7 +126,7 @@ function blocks(text: string, images: Map<string, string>, counter: { figure: nu
   return out;
 }
 
-const INLINE = /(`+)([\s\S]*?)\1|!\[([^\]]*)\]\([^)]*\)|\[([^\]]+)\]\(([^)\s]+)[^)]*\)|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_|~~([\s\S]+?)~~/g;
+const INLINE = /(`+)([\s\S]*?)\1|!\[([^\]]*)\]\([^)]*\)|\[([^\]]+)\]\(([^)\s]+)[^)]*\)|\*\*([\s\S]+?)\*\*|__([\s\S]+?)__|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_|~~([\s\S]+?)~~|<u>([\s\S]+?)<\/u>/gi;
 
 function inline(text: string): ReactNode[] {
   const out: ReactNode[] = [];
@@ -140,6 +140,7 @@ function inline(text: string): ReactNode[] {
     else if (m[6] || m[7]) out.push(<strong key={k}>{inline(m[6] ?? m[7])}</strong>);
     else if (m[8] || m[9]) out.push(<em key={k}>{inline(m[8] ?? m[9])}</em>);
     else if (m[10]) out.push(<del key={k}>{inline(m[10])}</del>);
+    else if (m[11]) out.push(<u key={k}>{inline(m[11])}</u>);
     last = m.index + m[0].length;
   }
   if (last < text.length) out.push(text.slice(last).replace(/\\([[\]{}*_`])/g, "$1"));

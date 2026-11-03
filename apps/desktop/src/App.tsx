@@ -13,6 +13,7 @@ import { Kbd } from "@kintsugi/ui/components/kbd";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
 import { External, paragraphRange, replaceText } from "@kintsugi/editor/Editor";
+import { setTextSize, textSizeForKey } from "@/lib/textSize";
 import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
 import { Refine } from "@/refine/Refine";
@@ -866,6 +867,9 @@ export default function App() {
     if (key === "," && !e.shiftKey) return run(() => showSettings());
     // Settings covers the app; its shortcuts wait until he's back.
     if (settingsAt) return;
+    // Text size while writing. Taken here so the webview never zooms instead.
+    const size = doc && !away ? textSizeForKey(e.key) : null;
+    if (size !== null && (!e.shiftKey || e.key === "+" || e.key === "_")) return run(() => setTextSize(size));
     if (key === "p" && !e.shiftKey) run(() => setPalette({ kind: "open" }));
     else if (key === "n") run(() => setPalette({ kind: e.shiftKey ? "new-folder" : "new-doc", dir: selectedDir }));
     else if (key === "i" && e.shiftKey) run(showLibrary);

@@ -171,6 +171,7 @@
 .ki-settings-row-wide .ki-settings-inline { width: 100%; }
 .ki-settings-end { align-self: flex-end; }
 .ki-settings-cap { width: 7rem; }
+.ki-settings-size { min-width: 3.5em; text-align: center; }
 .ki-settings-pairing { align-items: center; }
 .ki-settings-prose { max-width: 36rem; color: var(--neutral-10); text-wrap: pretty; }
 .ki-settings [data-reached] [data-slot="meter-indicator"], .ki-settings [data-reached] .ui-range-fill { background: var(--error); }
