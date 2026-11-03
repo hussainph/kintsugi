@@ -36,7 +36,8 @@ after(async () => {
   await app?.stop();
 });
 
-const shot = (name: string) => page.screenshot({ path: resolve(app.shots, `${SCHEME}-${name}.png`) });
+// After the open animation.
+const shot = async (name: string) => (await page.waitForTimeout(400), page.screenshot({ path: resolve(app.shots, `${SCHEME}-${name}.png`) }));
 const disk = () => readFileSync(resolve(app.vault, DOC), "utf8");
 async function onDisk(check: (text: string) => boolean, what: string) {
   for (let i = 0; i < 100; i++) {
@@ -119,7 +120,7 @@ test("right-click on a selection shows what applies to it, each with its key", {
 });
 
 test("⇧F10 opens it from the keyboard; a row runs its edit", { timeout: 60_000 }, async () => {
-  await select("really very");
+  await select("repair");
   await page.keyboard.press("Shift+F10");
   await menu().waitFor();
   await page.keyboard.press("ArrowDown");
