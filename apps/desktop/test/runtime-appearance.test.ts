@@ -29,6 +29,9 @@ async function mode(page: Page, dark: boolean) {
   }, dark);
 }
 async function shot(page: Page, name: string) {
+  // Base UI keeps the outgoing indicator mounted for its exit transition.
+  // Capture the settled selection, not the overlap between two radio dots.
+  await page.waitForFunction(() => document.querySelectorAll(".ki-appearance-gallery .ui-radio-dot").length === 1);
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await page.mouse.move(1400, 10);
   await page.screenshot({ path: resolve(app.shots, `${name}.png`) });
