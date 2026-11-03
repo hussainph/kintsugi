@@ -16,7 +16,8 @@
     "release:desktop": "node scripts/release-desktop.mjs",
     "lint:copy": "node scripts/lint-copy.mjs",
     "copy:inventory": "node scripts/copy-inventory.mjs",
-    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true"
+    "prepare": "git rev-parse --git-dir >/dev/null 2>&1 && git config core.hooksPath .githooks || true",
+    "prototype:ki62": "open apps/desktop/src/refine/prototype-ki62-inline-cue.html"
   },
   "packageManager": "pnpm@9.12.0",
   "pnpm": {

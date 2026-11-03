@@ -1,0 +1,394 @@
+<!doctype html>
+<!--
+  PROTOTYPE (KI-62), throwaway. Not wired into the app; never merge to main.
+  Question: how does Kin show it's working on a span, asynchronously, so
+  Hussain keeps writing? Four variants, switchable with ?variant=A|B|C|D,
+  the arrows in the bottom bar, or ← → (outside the text).
+  Run: open this file in a browser (or `pnpm prototype:ki62`).
+  Select text in the draft and press ⌘K (or Ctrl+K), or click "Tighten".
+  Keep typing anywhere; type inside the span to see "His typing wins".
+  The bar's scenario picks how the fake model behaves: fast, slow, silent
+  (stops at 20 s with no first word) or failing.
+  Colours and motion come from the app's tokens (packages/ui, gui/themes).
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>KI-62 prototype: Kin working inline</title>
+<style>
+  :root {
+    --neutral-1: #ffffff; --neutral-2: #f9f9f9; --neutral-3: #f0f0f0; --neutral-4: #e0e0e0;
+    --neutral-5: #cfcfcf; --neutral-6: #a1a1a1; --neutral-7: #737373; --neutral-8: #525252;
+    --neutral-10: #1f1f1f;
+    --kin: oklch(0.66 0.125 76); --kin-ink: oklch(0.5 0.1 68);
+    --motion-duration: 180ms; --motion-easing: cubic-bezier(0.16, 1, 0.16, 1); --motion-large-duration: 320ms;
+    --shadow-m: 0px 2px 6px 0px #1f1f1f16, 0px 8px 24px 0px #1f1f1f20;
+    --prose: "LT Superior Serif", "Source Serif 4", Georgia, serif;
+    --ui: "Timeless Sans", system-ui, sans-serif;
+    --data: "Geist Mono", ui-monospace, monospace;
+  }
+  .dark {
+    --neutral-1: #191919; --neutral-2: #202020; --neutral-3: #282828; --neutral-4: #363636;
+    --neutral-5: #494949; --neutral-6: #757575; --neutral-7: #a7a7a7; --neutral-8: #c8c8c8;
+    --neutral-10: #f9f9f9;
+    --kin: oklch(0.79 0.12 84); --kin-ink: oklch(0.83 0.11 85);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--ui); font-size: 13px; color: var(--neutral-10); background: var(--neutral-1); }
+  .app { display: grid; grid-template-columns: 240px 1fr 252px; min-height: 100vh; }
+  .side { background: var(--neutral-2); padding: 56px 18px; color: var(--neutral-8); line-height: 34px; }
+  .main { position: relative; padding: 56px 72px 96px; }
+  .margin { padding: 96px 24px; color: var(--neutral-7); }
+  .editor { width: 620px; outline: none; }
+  .editor h1 { font: 700 44px/52px var(--prose); margin: 0 0 22px; letter-spacing: -0.01em; }
+  .editor p { font: 21px/31px var(--prose); margin: 0 0 22px; position: relative; }
+  .editor p.quote { font-style: italic; color: var(--neutral-8); }
+  .hint { color: var(--neutral-6); }
+
+  /* The span Kin works on */
+  .kin-span { position: relative; border-bottom: 2px dotted var(--kin); background-color: color-mix(in oklab, var(--kin) 7%, transparent); }
+  .v-A .kin-span.working {
+    background-image: linear-gradient(90deg, transparent 0%, color-mix(in oklab, var(--kin) 30%, transparent) 50%, transparent 100%);
+    background-size: 40% 100%; background-repeat: no-repeat; animation: band 1.6s linear infinite;
+  }
+  @keyframes band { from { background-position: -60% 0; } to { background-position: 160% 0; } }
+  .kin-span.stale { border-bottom: 1.5px dashed var(--neutral-6); background: none; }
+  .kin-span.fading { transition: background-color var(--motion-large-duration) var(--motion-easing); background-color: transparent; }
+  .v-B .kin-span, .v-B .kin-span.working { border-bottom-color: transparent; background: none; }
+  .v-D .kin-span.working { animation: none; }
+
+  .caret { display: inline-block; position: relative; width: 2px; height: 1.15em; vertical-align: -0.2em; background: var(--kin); margin: 0 1px; }
+  .caret.dim { opacity: .4; }
+  .flag { position: absolute; left: 2px; top: -14px; background: var(--kin); color: #1f1f1f; font: 500 10px/12px var(--ui); padding: 1px 5px; border-radius: 3px 3px 3px 0; white-space: nowrap; user-select: none; }
+  .v-A .flag { top: 0; border-radius: 0 3px 3px 3px; }
+
+  del.s { color: color-mix(in oklab, var(--kin-ink) 80%, var(--neutral-6)); text-decoration: line-through 1.5px var(--kin); }
+  ins.s { color: var(--kin-ink); text-decoration: underline 2px var(--kin); text-underline-offset: 4px; }
+  .s-in { animation: fadein var(--motion-large-duration) var(--motion-easing); }
+  @keyframes fadein { from { opacity: 0; } }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; vertical-align: 2px; margin-left: 8px; padding: 2px 3px 2px 10px; border-radius: 99px; background: var(--neutral-3); font: 12px/16px var(--ui); color: var(--neutral-8); user-select: none; white-space: nowrap; }
+  .pill.ready { background: color-mix(in oklab, var(--kin) 14%, transparent); color: var(--kin-ink); }
+  .pill button { font: 500 12px/16px var(--ui); border: 0; border-radius: 99px; padding: 1px 8px; background: var(--neutral-1); color: var(--neutral-10); box-shadow: 0 0 0 1px var(--neutral-4); cursor: pointer; }
+  .pill button.primary { background: var(--neutral-10); color: var(--neutral-1); box-shadow: none; }
+
+  /* B: gutter */
+  .gutter { position: absolute; left: -44px; top: 0; height: 100%; width: 32px; user-select: none; }
+  .gutter .rule { position: absolute; right: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: var(--kin); }
+  .gutter.working .rule { background: linear-gradient(180deg, color-mix(in oklab, var(--kin) 15%, transparent) 0%, var(--kin) 50%, color-mix(in oklab, var(--kin) 15%, transparent) 100%); background-size: 100% 200%; animation: fill 1.6s linear infinite; }
+  @keyframes fill { from { background-position: 0 100%; } to { background-position: 0 -100%; } }
+  .gutter.stale .rule { background: var(--neutral-5); }
+  .gutter .mark { position: absolute; left: 0; top: 6px; width: 18px; height: 18px; border-radius: 18px; background: #1f1f1f; cursor: pointer; display: grid; place-items: center; color: oklch(0.79 0.12 84); font: 600 10px var(--ui); }
+  .gutter.stale .mark { background: var(--neutral-3); color: var(--neutral-7); box-shadow: 0 0 0 1px var(--neutral-5); }
+  .gutter .secs { position: absolute; left: -2px; top: 28px; font: 11px var(--data); color: var(--neutral-7); }
+  .gutter .dot { position: absolute; left: 13px; top: 3px; width: 7px; height: 7px; border-radius: 7px; background: var(--kin); box-shadow: 0 0 0 2px var(--neutral-1); }
+  .card { position: absolute; left: 640px; width: 236px; background: var(--neutral-1); border-radius: 12px; padding: 12px; box-shadow: 0 0 0 1px #1f1f1f14, var(--shadow-m); font: 14px/21px var(--prose); animation: fadein var(--motion-large-duration) var(--motion-easing); }
+  .card .t { font: 12px/16px var(--ui); color: var(--neutral-7); margin-bottom: 6px; }
+  .card .row { display: flex; gap: 6px; margin-top: 8px; }
+  .card button, .tray button { font: 500 12px/16px var(--ui); border: 0; border-radius: 6px; padding: 3px 8px; background: var(--neutral-1); color: var(--neutral-10); box-shadow: 0 0 0 1px var(--neutral-4); cursor: pointer; }
+  .card button.primary, .tray button.primary { background: var(--neutral-10); color: var(--neutral-1); box-shadow: none; }
+
+  /* D: footer chip and tray */
+  .footer { position: fixed; left: 312px; right: 276px; bottom: 16px; display: flex; gap: 14px; justify-content: flex-end; align-items: center; color: var(--neutral-7); font-size: 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 2px 8px 2px 6px; background: var(--neutral-3); color: var(--neutral-10); cursor: pointer; }
+  .chip.ready { background: color-mix(in oklab, var(--kin) 14%, transparent); color: var(--kin-ink); }
+  .spin { width: 12px; height: 12px; border-radius: 12px; border: 2px solid color-mix(in oklab, var(--kin) 25%, transparent); border-top-color: var(--kin); animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tray { position: fixed; right: 290px; bottom: 48px; width: 400px; background: var(--neutral-1); border-radius: 12px; padding: 6px; box-shadow: 0 0 0 1px #1f1f1f14, var(--shadow-m); }
+  .tray .job { display: flex; gap: 10px; padding: 8px; align-items: flex-start; }
+  .tray .job .q { font: 13px/18px var(--prose); color: var(--neutral-8); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+  .tray .job .m { font-size: 12px; color: var(--neutral-7); }
+
+  /* Suggestions bar (KI-64), used by A and C when the span is off screen */
+  .bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 52px; display: flex; align-items: center; gap: 4px; background: var(--neutral-1); border-radius: 10px; padding: 4px 4px 4px 12px; box-shadow: 0 0 0 1px #1f1f1f14, 0 4px 12px #1f1f1f10; font-size: 13px; }
+  .bar .d { width: 8px; height: 8px; border-radius: 8px; background: var(--kin); }
+  .bar button { font: 13px var(--ui); border: 0; background: none; padding: 4px 8px; border-radius: 6px; cursor: pointer; color: var(--neutral-10); }
+
+  /* Prototype switcher: deliberately not part of the design */
+  .switcher { position: fixed; left: 50%; bottom: 96px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 99px; background: #111; color: #fff; font: 12px/16px system-ui; box-shadow: 0 6px 24px #0006; z-index: 50; }
+  .switcher button, .switcher select { background: #2a2a2a; color: #fff; border: 0; border-radius: 99px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  .state { position: fixed; right: 12px; top: 12px; font: 11px/15px ui-monospace, monospace; background: #111; color: #9f9; padding: 8px 10px; border-radius: 8px; white-space: pre; z-index: 50; opacity: .85; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .v-A .kin-span.working, .gutter.working .rule, .spin, .s-in, .card { animation: none; }
+    .v-A .kin-span.working { background-image: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side">Feed<br />Inspiration<br />Ideas<br /><br />Kintsugi and gold<br />Field notes on rain<br />Morning pages</aside>
+  <main class="main">
+    <div class="editor" id="editor" contenteditable="true" spellcheck="false">
+      <h1><span class="hint">#</span> Kintsugi and gold</h1>
+      <p id="p1">The first time I saw a kintsugi bowl I thought the gold was decoration. It is not. The gold is a decision: this break is part of the object now, and we are not going to pretend otherwise.</p>
+      <p class="quote"><span class="hint">&gt; </span>The bowl is more valuable because it can show you what happened to it.</p>
+      <p>That sentence belongs in Repair is a kind of attention, or maybe in On craft and repair. I am not sure yet which essay it is for. The clip Golden joinery has the history; the note has the feeling.</p>
+      <p>A workshop rule I want to keep:</p>
+      <p>The rest of this draft is still in the notebook. Why we sleep is not relevant, but it is the tab I keep leaving open. </p>
+    </div>
+  </main>
+  <aside class="margin">Referenced here<br /><br />Repair is a kind of attention<br />On craft and repair<br />Golden joinery</aside>
+</div>
+<div class="footer" id="footer"><span>Export…</span><span style="font-family: var(--data)">130 words</span><span>Ideas</span><span id="chipSlot"></span><span>Saved</span></div>
+<div class="switcher" id="switcher">
+  <button id="prev" title="Previous variant">←</button>
+  <span id="label"></span>
+  <button id="next" title="Next variant">→</button>
+  <select id="scenario">
+    <option value="fast">Fast (1.2 s)</option>
+    <option value="slow">Slow (14 s)</option>
+    <option value="silent">No first word (stops at 20 s)</option>
+    <option value="fail">Provider error (3 s)</option>
+  </select>
+  <button id="go">Tighten</button>
+  <button id="theme">Dark</button>
+</div>
+<div class="state" id="state"></div>
+<script>
+const VARIANTS = { A: "Shimmer on the span", B: "A mark in the gutter", C: "Kin types it in, live", D: "Jobs in the footer" };
+const KEYS = Object.keys(VARIANTS);
+const SLOW_AFTER = 8000, NO_WORD = 20000, HARD_STOP = 60000;
+// The tightened passage as word-level ops: [kind, text]
+const OPS = [["=", "The gold is a decision: "], ["-", "this"], ["+", "the"], ["=", " break is part of the "], ["-", "object"], ["+", "bowl"], ["=", " now, and we "], ["-", "are not going to"], ["+", "won't"], ["=", " pretend otherwise."]];
+const params = new URLSearchParams(location.search);
+let variant = KEYS.includes(params.get("variant")) ? params.get("variant") : "A";
+let job = null; // { span, state, started, timers, streamed, gutter, card }
+const $ = (id) => document.getElementById(id);
+
+function render() {
+  document.body.className = "v-" + variant;
+  $("label").textContent = `${variant}: ${VARIANTS[variant]}`;
+  const s = job ? { variant, state: job.state, elapsed: Math.round((Date.now() - job.started) / 1000) + " s", streamed: job.streamed + "/" + OPS.length, scenario: $("scenario").value } : { variant, state: "idle", scenario: $("scenario").value };
+  $("state").textContent = Object.entries(s).map(([k, v]) => `${k}: ${v}`).join("\n");
+}
+function setVariant(v) {
+  reset();
+  variant = v;
+  const u = new URL(location.href); u.searchParams.set("variant", v); history.replaceState(null, "", u);
+  render();
+}
+$("prev").onclick = () => setVariant(KEYS[(KEYS.indexOf(variant) + KEYS.length - 1) % KEYS.length]);
+$("next").onclick = () => setVariant(KEYS[(KEYS.indexOf(variant) + 1) % KEYS.length]);
+$("theme").onclick = () => { document.documentElement.classList.toggle("dark"); $("theme").textContent = document.documentElement.classList.contains("dark") ? "Light" : "Dark"; };
+document.addEventListener("keydown", (e) => {
+  const inText = e.target.closest?.("[contenteditable], input, textarea, select");
+  if (!inText && e.key === "ArrowLeft") $("prev").click();
+  if (!inText && e.key === "ArrowRight") $("next").click();
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); start(); }
+  if (e.key === "Escape" && job && job.state.startsWith("working") && insideSpan()) stop("Stopped", "Run again");
+});
+$("go").onclick = () => start();
+$("scenario").onchange = render;
+
+function insideSpan() {
+  const sel = getSelection();
+  return job && sel.rangeCount && job.span.contains(sel.anchorNode);
+}
+
+// Wrap the selection (or, with none, the default sentence) in the working span.
+function wrapSpan() {
+  const sel = getSelection();
+  const p1 = $("p1");
+  let range;
+  if (sel.rangeCount && !sel.isCollapsed && $("editor").contains(sel.anchorNode)) range = sel.getRangeAt(0);
+  else {
+    const t = p1.firstChild, i = t.textContent.indexOf("The gold is");
+    range = document.createRange(); range.setStart(t, i); range.setEnd(t, t.textContent.length);
+  }
+  const span = document.createElement("span");
+  span.className = "kin-span working";
+  span.appendChild(range.extractContents());
+  range.insertNode(span);
+  sel.removeAllRanges();
+  // His cursor goes back to the end of the last paragraph: he keeps writing.
+  const last = $("editor").lastElementChild, r = document.createRange();
+  r.selectNodeContents(last); r.collapse(false); sel.addRange(r);
+  return span;
+}
+
+function start() {
+  reset();
+  const span = wrapSpan();
+  job = { span, state: "working", started: Date.now(), timers: [], streamed: 0, original: span.textContent };
+  if (variant === "A" || variant === "C") addCaret("Kin");
+  if (variant === "B") addGutter();
+  if (variant === "D") renderChip();
+  const sc = $("scenario").value;
+  const at = (ms, fn) => job.timers.push(setTimeout(fn, ms));
+  job.timers.push(setInterval(tick, 250));
+  at(NO_WORD, () => { if (job && job.streamed === 0 && job.state.startsWith("working")) stop("No reply after 20 s", "Retry"); });
+  at(HARD_STOP, () => { if (job && job.state.startsWith("working")) stop("Timed out after 60 s", "Retry"); });
+  if (sc === "fail") at(3000, () => stop("Kin couldn't reach OpenCode", "Retry"));
+  if (sc === "fast") at(1200, () => arrive());
+  if (sc === "slow") at(14000, () => arrive());
+  render();
+}
+
+function tick() {
+  if (!job || !job.state.startsWith("working")) return;
+  const ms = Date.now() - job.started, secs = Math.floor(ms / 1000);
+  if (ms >= SLOW_AFTER) {
+    job.state = "working (slow)";
+    const f = job.span.parentNode.querySelector(".flag");
+    if (f) f.textContent = `Kin · ${secs} s`;
+    const c = job.span.parentNode.querySelector(".caret");
+    if (c && variant === "C") c.classList.add("dim");
+    if (job.gutter) job.gutter.querySelector(".secs").textContent = `${secs} s`;
+    if (variant === "D") renderChip(`Tighten`, `${secs} s`);
+  }
+  render();
+}
+
+function addCaret(label) {
+  const c = document.createElement("span");
+  c.className = "caret"; c.contentEditable = "false";
+  c.innerHTML = `<span class="flag">${label}</span>`;
+  if (variant === "C") job.span.prepend(c); else job.span.after(c);
+}
+function addGutter() {
+  const p = job.span.closest("p");
+  const g = document.createElement("div");
+  g.className = "gutter working"; g.contentEditable = "false";
+  g.innerHTML = `<div class="rule"></div><div class="mark" title="Stop">ʃ</div><div class="secs"></div>`;
+  p.prepend(g); job.gutter = g;
+  g.querySelector(".mark").onclick = () => job.state === "ready" ? showCard() : stop("Stopped", "Run again");
+}
+function renderChip(name = "Kin", count = "1", kind = "") {
+  const slot = $("chipSlot");
+  if (!job) { slot.innerHTML = ""; return; }
+  const icon = kind === "ready" ? `<span class="bar d" style="position:static;transform:none;padding:0;box-shadow:none;width:7px;height:7px;border-radius:7px;background:var(--kin)"></span>` : kind === "stale" ? `!` : `<span class="spin"></span>`;
+  slot.innerHTML = `<span class="chip ${kind}">${icon}<span>${name}</span><span style="font-family:var(--data);font-size:11px;color:var(--neutral-7)">${count}</span></span>`;
+  slot.firstChild.onclick = () => toggleTray();
+}
+function toggleTray() {
+  const t = document.querySelector(".tray");
+  if (t) return t.remove();
+  const tray = document.createElement("div");
+  tray.className = "tray";
+  const secs = Math.round((Date.now() - job.started) / 1000);
+  const action = job.state === "ready" ? `<button class="primary">Show</button>` : job.state.startsWith("working") ? `<button>Stop</button>` : `<button>Retry</button>`;
+  tray.innerHTML = `<div class="job"><div style="padding-top:2px">${job.state === "ready" ? "●" : job.state.startsWith("working") ? '<span class="spin"></span>' : "!"}</div><div style="flex:1;min-width:0"><div style="font-weight:500">Tighten</div><div class="q">${job.original}</div><div class="m">GLM-5.3-Flash · ${secs} s</div></div>${action}</div>`;
+  tray.querySelector("button").onclick = () => { tray.remove(); job.state === "ready" ? job.span.scrollIntoView({ block: "center" }) : job.state.startsWith("working") ? stop("Stopped", "Run again") : start(); };
+  document.body.appendChild(tray);
+}
+
+function arrive() {
+  if (!job || !job.state.startsWith("working")) return;
+  if (variant === "C") return stream();
+  job.state = "ready";
+  if (variant === "B") { job.gutter.className = "gutter"; job.gutter.querySelector(".secs").textContent = ""; job.gutter.insertAdjacentHTML("beforeend", `<div class="dot"></div>`); render(); return; }
+  if (variant === "D") { renderChip("Tighten is ready", "", "ready"); }
+  land();
+}
+function land() {
+  job.span.parentNode.querySelector(".caret")?.remove();
+  job.span.classList.remove("working"); job.span.classList.add("fading");
+  setTimeout(() => {
+    if (!job) return;
+    job.span.className = "";
+    job.span.innerHTML = OPS.map(([k, t]) => k === "=" ? t : k === "-" ? `<del class="s s-in">${t}</del>` : `<ins class="s s-in">${t}</ins>`).join("");
+    readyPill();
+    render();
+  }, 320);
+}
+function readyPill() {
+  const pill = document.createElement("span");
+  pill.className = "pill ready"; pill.contentEditable = "false";
+  pill.innerHTML = `Tighten <button class="primary">Accept</button><button>Dismiss</button>`;
+  job.span.after(pill);
+  const [acc, dis] = pill.querySelectorAll("button");
+  acc.onclick = () => finish(true); dis.onclick = () => finish(false);
+  offscreenBar();
+}
+function offscreenBar() {
+  const r = job.span.getBoundingClientRect();
+  if (r.bottom > 0 && r.top < innerHeight) return;
+  const bar = document.createElement("div");
+  bar.className = "bar";
+  bar.innerHTML = `<span class="d"></span><span style="padding:0 8px 0 4px">Tighten is ready</span><button>Accept</button><button>Dismiss</button>`;
+  const [a, d] = bar.querySelectorAll("button");
+  a.onclick = () => finish(true); d.onclick = () => finish(false);
+  document.body.appendChild(bar);
+}
+function showCard() {
+  if (job.card) return;
+  const p = job.span.closest("p");
+  const card = document.createElement("div");
+  card.className = "card"; card.contentEditable = "false"; card.style.top = "0px";
+  card.innerHTML = `<div class="t">Tighten</div>${OPS.map(([k, t]) => k === "=" ? t : k === "-" ? `<del class="s">${t}</del>` : `<ins class="s">${t}</ins>`).join("")}<div class="row"><button class="primary">Accept</button><button>Dismiss</button></div>`;
+  p.appendChild(card); job.card = card;
+  const [a, d] = card.querySelectorAll("button");
+  a.onclick = () => finish(true); d.onclick = () => finish(false);
+}
+function stream() {
+  job.state = "streaming";
+  const span = job.span, caret = span.querySelector(".caret");
+  caret.classList.remove("dim");
+  caret.querySelector(".flag").textContent = "Kin";
+  const done = document.createElement("span");
+  span.insertBefore(done, caret);
+  const rest = OPS.map(([k, t]) => (k === "+" ? "" : t)).join("");
+  const restNode = document.createTextNode(rest);
+  span.querySelectorAll(":scope > :not(.caret)").forEach((n) => n !== done && n.remove());
+  [...span.childNodes].forEach((n) => n.nodeType === 3 && n.remove());
+  span.appendChild(restNode);
+  let i = 0, consumed = 0;
+  const step = () => {
+    if (!job || job.state !== "streaming") return;
+    if (i >= OPS.length) { caret.remove(); span.className = ""; job.state = "ready"; restNode.remove(); readyPill(); render(); return; }
+    const [k, t] = OPS[i++];
+    done.insertAdjacentHTML("beforeend", k === "=" ? t : k === "-" ? `<del class="s s-in">${t}</del>` : `<ins class="s s-in">${t}</ins>`);
+    if (k !== "+") { consumed += t.length; restNode.textContent = rest.slice(consumed); }
+    job.streamed = i; render();
+    job.timers.push(setTimeout(step, 180 + Math.random() * 220));
+  };
+  step();
+}
+function stop(message, action) {
+  if (!job) return;
+  job.timers.forEach(clearTimeout); job.timers.forEach(clearInterval);
+  job.state = "stopped: " + message;
+  job.span.parentNode.querySelector(".caret")?.remove();
+  job.span.querySelector(".caret")?.remove();
+  job.span.className = "kin-span stale";
+  if (job.gutter) { job.gutter.className = "gutter stale"; job.gutter.querySelector(".mark").textContent = "!"; job.gutter.querySelector(".secs").textContent = ""; job.gutter.title = message; }
+  if (variant === "D") renderChip(message.startsWith("Stopped") ? "Tighten stopped" : "Tighten failed", "", "stale");
+  const pill = document.createElement("span");
+  pill.className = "pill"; pill.contentEditable = "false";
+  pill.innerHTML = `${message} <button>${action}</button>`;
+  pill.querySelector("button").onclick = () => { unwrap(); start(); };
+  if (variant !== "B" && variant !== "D") job.span.after(pill);
+  else if (variant === "B") job.gutter.querySelector(".mark").onclick = () => { unwrap(); start(); };
+  render();
+}
+function finish(accept) {
+  if (accept) job.span.querySelectorAll("del").forEach((d) => d.remove());
+  else job.span.querySelectorAll("ins").forEach((d) => d.remove());
+  job.span.querySelectorAll("del, ins").forEach((n) => n.replaceWith(document.createTextNode(n.textContent)));
+  if (job.card) { // B: the prose hasn't changed yet
+    job.span.textContent = accept ? OPS.filter(([k]) => k !== "-").map(([, t]) => t).join("") : job.original;
+  }
+  unwrap(); reset(); render();
+}
+function unwrap() {
+  if (!job) return;
+  document.querySelectorAll(".pill, .gutter, .card, .bar, .tray").forEach((n) => n.remove());
+  job.span.querySelectorAll(".caret").forEach((n) => n.remove());
+  const span = job.span;
+  if (span.isConnected) span.replaceWith(document.createTextNode(span.textContent));
+  $("p1").normalize();
+}
+function reset() {
+  if (job) { job.timers.forEach(clearTimeout); job.timers.forEach(clearInterval); unwrap(); }
+  job = null; renderChip(); render();
+}
+// His typing wins: an edit inside the working span stops Kin there.
+$("editor").addEventListener("beforeinput", () => {
+  if (job && job.state.startsWith("working") && insideSpan()) setTimeout(() => stop("Stopped", "Run again"));
+  if (job && job.state === "streaming" && insideSpan()) setTimeout(() => stop("Stopped", "Run again"));
+});
+render();
+</script>
+</body>
+</html>
