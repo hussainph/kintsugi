@@ -9,8 +9,8 @@ use super::memory::{Access, Source};
 use super::prompt::Chip;
 use super::tools::Tools;
 use super::{
-    ModelRef, Task, chosen_model, conversation_model, meter, picks, resolve, shown_statuses,
-    statuses, wire,
+    ModelRef, Task, catalog, chosen_model, conversation_model, enabled_models, meter, picks,
+    resolve, shown_statuses, statuses, toggle_enabled, wire,
 };
 use crate::AppHandle;
 use serde::{Deserialize, Serialize};
@@ -76,9 +76,9 @@ pub(crate) async fn connect(task: Task) -> Result<Connected> {
     connect_to(task, None).await
 }
 
-/// The same, with the model picked for a conversation (KI-61) in place of
-/// the task's default while its provider is usable.
-pub(crate) async fn connect_to(task: Task, pick: Option<ModelRef>) -> Result<Connected> {
+/// The same, with the model and effort picked for a conversation (KI-61,
+/// KI-77) in place of the task's defaults while its provider is usable.
+pub(crate) async fn connect_to(task: Task, pick: Option<picks::Pick>) -> Result<Connected> {
     #[cfg(feature = "headless")]
     if crate::headless::kin_mock() {
         return Ok(Connected::Mock(super::scripted::Scripted::default()));
@@ -242,8 +242,10 @@ pub struct TaskModels {
     pub task: &'static str,
     /// The owner's default for it, if any.
     pub chosen: Option<ModelRef>,
+    /// His default thinking level for it, if any.
+    pub effort: Option<String>,
     /// What it would use now: the default while its provider is usable,
-    /// else the first usable preference.
+    /// else the first usable preference, at the level it runs at.
     pub resolved: Option<ModelRef>,
 }
 
@@ -252,6 +254,8 @@ pub struct TaskModels {
 pub struct SettingsView {
     pub cap_usd: Option<f64>,
     pub tasks: Vec<TaskModels>,
+    /// The models the pickers offer (KI-77), every task's default included.
+    pub enabled: Vec<ModelRef>,
 }
 
 fn view(settings: &Settings) -> Result<SettingsView> {
@@ -261,12 +265,14 @@ fn view(settings: &Settings) -> Result<SettingsView> {
         .map(|task| TaskModels {
             task: task.id(),
             chosen: settings.models.get(task.id()).cloned(),
+            effort: settings.efforts.get(task.id()).cloned(),
             resolved: chosen_model(task, &statuses, settings),
         })
         .collect();
     Ok(SettingsView {
         cap_usd: settings.monthly_cap_usd,
         tasks,
+        enabled: enabled_models(&statuses, settings),
     })
 }
 
@@ -305,13 +311,56 @@ pub fn kin_set_model(task: String, model: Option<ModelRef>) -> Result<SettingsVi
     view(&settings)
 }
 
-/// The model for one conversation in the chat: his pick for it, and what
+/// A thinking level from the webview: one of Pi's levels (`none` is `off`).
+fn level(effort: Option<String>) -> Result<Option<String>> {
+    effort
+        .map(|e| {
+            catalog::Level::parse(&e)
+                .map(|l| l.id().to_string())
+                .ok_or_else(|| format!("unknown thinking level {e}"))
+        })
+        .transpose()
+}
+
+/// Sets the default thinking level for a task, or (`None`) goes back to
+/// the model choice's own.
+#[tauri::command]
+pub fn kin_set_effort(task: String, effort: Option<String>) -> Result<SettingsView> {
+    let task = Task::from_id(&task).ok_or_else(|| format!("unknown task {task}"))?;
+    let effort = level(effort)?;
+    let settings = meter().update_settings(|s| match effort {
+        Some(e) => {
+            s.efforts.insert(task.id().into(), e);
+        }
+        None => {
+            s.efforts.remove(task.id());
+        }
+    })?;
+    view(&settings)
+}
+
+/// Turns a catalog model on or off in the pickers (KI-77). A task's
+/// default stays on either way.
+#[tauri::command]
+pub fn kin_set_enabled(model: ModelRef, on: bool) -> Result<SettingsView> {
+    if catalog::find(&model.provider, &model.model).is_none() {
+        return Err(format!("unknown model {}/{}", model.provider, model.model));
+    }
+    let settings = meter().update_settings(|s| toggle_enabled(s, &model, on))?;
+    view(&settings)
+}
+
+/// The model for one conversation in the chat: his picks for it, and what
 /// a turn would use now.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatModel {
     pub topic: String,
+    /// The model picked for it, if any.
     pub chosen: Option<ModelRef>,
+    /// The thinking level picked for it, if any.
+    pub effort: Option<String>,
+    /// The model a turn runs on now, at the level it runs at.
     pub resolved: Option<ModelRef>,
 }
 
@@ -321,11 +370,12 @@ fn conversation_dir(app: &AppHandle) -> Result<PathBuf> {
 }
 
 fn chat_model(dir: &std::path::Path, topic: String) -> Result<ChatModel> {
-    let chosen = picks::get(dir, &topic);
-    let resolved = conversation_model(chosen.as_ref(), &shown_statuses()?, &meter().settings());
+    let pick = picks::get(dir, &topic);
+    let resolved = conversation_model(pick.as_ref(), &shown_statuses()?, &meter().settings());
     Ok(ChatModel {
         topic,
-        chosen,
+        chosen: pick.as_ref().and_then(picks::Pick::model_ref),
+        effort: pick.and_then(|p| p.reasoning),
         resolved,
     })
 }
@@ -351,6 +401,20 @@ pub fn kin_chat_set_model(
     }
     let dir = conversation_dir(&app)?;
     picks::set(&dir, &topic, model)?;
+    chat_model(&dir, topic)
+}
+
+/// Picks the thinking level for the conversation `topic`, or (`None`) goes
+/// back to the chat's default effort.
+#[tauri::command]
+pub fn kin_chat_set_effort(
+    app: AppHandle,
+    topic: String,
+    effort: Option<String>,
+) -> Result<ChatModel> {
+    let effort = level(effort)?;
+    let dir = conversation_dir(&app)?;
+    picks::set_effort(&dir, &topic, effort)?;
     chat_model(&dir, topic)
 }
 

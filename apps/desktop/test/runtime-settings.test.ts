@@ -6,9 +6,10 @@
 // (OpenCode Go) usable, so its models are listed.
 //
 // Settings as a page: ⌘, and the sidebar open it, Esc and Back return to
-// where he was; a default model changed in Settings is kept and used; the
-// model picker in Kin's chat applies to one conversation and is kept per
-// conversation. Screenshots go to .headless/<run>/shots/ (light, or dark with
+// where he was; a default model and effort changed in Settings are kept and
+// used; the pickers offer only the models turned on in Settings (KI-77); the
+// model picker and effort in Kin's chat apply to one conversation and are
+// kept per conversation. Screenshots go to .headless/<run>/shots/ (light, or dark with
 // KINTSUGI_COLOR_SCHEME=dark).
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
@@ -56,11 +57,10 @@ async function openDoc(path: string) {
   await page.locator(`[title="${path}"][data-active="true"]`).waitFor();
 }
 
-/** Opens a model menu, filters it and picks the model named `name`. */
-async function pick(trigger: ReturnType<Page["getByRole"]>, filter: string, name: string) {
+/** Opens a model menu and picks the model named `name`. */
+async function pick(trigger: ReturnType<Page["getByRole"]>, name: string) {
   await trigger.click();
-  await page.getByRole("searchbox", { name: /^Filter/ }).fill(filter);
-  await menu().getByRole("menuitemradio", { name: new RegExp(`^${name}`) }).click();
+  await menu().getByRole("menuitemradio", { name: new RegExp(`^${name.replace(/[.]/g, "\\.")}`) }).click();
   await menu().waitFor({ state: "detached" });
 }
 
@@ -114,7 +114,7 @@ test("⌘, and the sidebar open Settings as a page; Esc and Back return to where
   await settings().waitFor({ state: "detached" });
 });
 
-test("a default model changed in Settings is kept, and Automatic goes back", { timeout: 120_000 }, async () => {
+test("the pickers offer a short list; a model turned on in Settings and a default model and effort are kept", { timeout: 120_000 }, async () => {
   await openDoc(NOTE);
   await page.keyboard.press("Meta+,");
   await section("Kin and models").click();
@@ -125,10 +125,15 @@ test("a default model changed in Settings is kept, and Automatic goes back", { t
   await defaults.getByRole("button", { name: "Feed triage model: GLM-5.3-Flash" }).waitFor();
 
   await chat.click();
-  // Grouped by provider, each with its price per million tokens; Ollama is never offered.
-  await menu().locator('[data-provider="opencode-go"]').getByText("OpenCode Go").waitFor();
-  assert.equal(await menu().locator('[data-provider="ollama"]').count(), 0);
+  await menu().getByRole("menuitemradio", { name: /^Qwen3\.7 Plus/ }).waitFor();
+  // Only the models turned on: OpenCode Go's defaults and two alternatives,
+  // each with its price per million tokens. One provider: no heading, no filter.
+  const offered = await menu().getByRole("menuitemradio").allTextContents();
+  assert.equal(offered.length, 5, offered.join(" | "));
   await menu().getByRole("menuitemradio", { name: /^Qwen3\.7 Plus/ }).getByText("$0.40 · $1.60").waitFor();
+  assert.equal(await menu().getByRole("menuitemradio", { name: /^MiniMax-M3/ }).count(), 0);
+  assert.equal(await page.getByRole("searchbox", { name: /^Filter/ }).count(), 0);
+  assert.equal(await menu().locator('[data-provider="ollama"]').count(), 0);
   await page.waitForTimeout(300);
   await shot("03-default-menu");
   await page.keyboard.press("Escape");
@@ -136,7 +141,24 @@ test("a default model changed in Settings is kept, and Automatic goes back", { t
   // That Esc closed only the menu.
   await settings().waitFor();
 
-  await pick(chat, "minimax m3", "MiniMax-M3");
+  // The list of models: the ones on, and a search over the rest.
+  const models = settings().getByTestId("enabled-models");
+  await models.locator('[data-model="opencode-go/kimi-k3.1-pro"]').waitFor();
+  // A task's default can't be turned off.
+  assert.equal(await models.locator('[data-model="opencode-go/qwen3.7-plus"]').getByRole("switch").isDisabled(), true);
+  await models.getByRole("searchbox", { name: "Search all models" }).fill("minimax m3");
+  const minimax = models.locator('[data-model="opencode-go/minimax-m3"]').getByRole("switch");
+  assert.equal(await minimax.getAttribute("aria-checked"), "false");
+  await minimax.click();
+  await until(() => json(resolve(app.config, "kin/settings.json")), (s) => s?.enabled?.some((m: { model: string }) => m.model === "minimax-m3"), "the model is turned on");
+  await shot("02-models-search");
+  await models.getByRole("searchbox", { name: "Search all models" }).fill("");
+  // One of the defaults turned off leaves the pickers.
+  await models.locator('[data-model="opencode-go/deepseek-v4-pro"]').getByRole("switch").click();
+  await until(() => json(resolve(app.config, "kin/settings.json")), (s) => s?.disabled?.some((m: { model: string }) => m.model === "deepseek-v4-pro"), "the model is turned off");
+  await models.locator('[data-model="opencode-go/deepseek-v4-pro"]').waitFor({ state: "detached" });
+
+  await pick(chat, "MiniMax-M3");
   await defaults.getByRole("button", { name: "Chat model: MiniMax-M3" }).waitFor();
   const stored = await until(
     () => json(resolve(app.config, "kin/settings.json")),
@@ -145,11 +167,21 @@ test("a default model changed in Settings is kept, and Automatic goes back", { t
   );
   assert.deepEqual(stored.models.chat, { provider: "opencode-go", model: "minimax-m3" });
 
+  // Its effort, beside it: medium unless he says otherwise.
+  const effort = defaults.getByRole("slider", { name: "Chat effort" });
+  assert.equal(await effort.getAttribute("aria-valuetext"), "Medium");
+  await effort.focus();
+  await page.keyboard.press("ArrowRight");
+  await until(() => json(resolve(app.config, "kin/settings.json")), (s) => s?.efforts?.chat === "high", "the chat effort reaches kin/settings.json");
+  assert.equal(await effort.getAttribute("aria-valuetext"), "High");
+  await page.waitForTimeout(300);
+  await shot("02-kin-and-models-effort");
+
   // Edits take a default too, and Automatic clears one.
   const edits = defaults.getByRole("button", { name: /^Edits model:/ });
-  await pick(edits, "glm-5.3-flash", "GLM-5.3-Flash");
+  await pick(edits, "GLM-5.3-Flash");
   await defaults.getByRole("button", { name: "Edits model: GLM-5.3-Flash" }).waitFor();
-  await pick(edits, "automatic", "Automatic");
+  await pick(edits, "Automatic");
   await defaults.getByRole("button", { name: "Edits model: Qwen3.7 Plus" }).waitFor();
   await until(() => json(resolve(app.config, "kin/settings.json")), (s) => !s?.models?.edit, "Automatic clears the edit default");
 
@@ -158,20 +190,27 @@ test("a default model changed in Settings is kept, and Automatic goes back", { t
   await settings().waitFor({ state: "detached" });
   await page.keyboard.press("Meta+,");
   await settings().getByTestId("default-models").getByRole("button", { name: "Chat model: MiniMax-M3" }).waitFor();
+  assert.equal(await settings().getByTestId("default-models").getByRole("slider", { name: "Chat effort" }).getAttribute("aria-valuetext"), "High");
   await page.keyboard.press("Escape");
   await settings().waitFor({ state: "detached" });
 });
 
-test("the chat's model picker applies to one conversation and is kept per conversation", { timeout: 120_000 }, async () => {
+test("the chat's model and effort apply to one conversation and are kept per conversation", { timeout: 120_000 }, async () => {
   const model = () => panel().getByTestId("chat-model").getByRole("button");
+  const effort = () => panel().getByTestId("chat-model").getByRole("slider", { name: "Effort" });
   await openDoc(DRAFT);
   await page.keyboard.press("Meta+j");
   await panel().waitFor();
-  // The chat default from Settings (previous test).
+  // The chat default and its effort from Settings (previous test).
   await panel().getByRole("button", { name: "Model: MiniMax-M3" }).waitFor();
+  assert.equal(await effort().getAttribute("aria-valuetext"), "High");
 
   await model().click();
   await menu().getByRole("menuitemradio", { name: /^GLM-5\.3-Flash/ }).waitFor();
+  // The one turned on in Settings is offered; the one turned off isn't.
+  await menu().getByRole("menuitemradio", { name: /^MiniMax-M3/ }).waitFor();
+  assert.equal(await menu().getByRole("menuitemradio", { name: /^DeepSeek/ }).count(), 0);
+  await menu().getByRole("menuitem", { name: "Choose models" }).waitFor();
   await page.waitForTimeout(250);
   await shot("04-chat-picker");
   // Esc closes the menu, not the chat.
@@ -179,35 +218,50 @@ test("the chat's model picker applies to one conversation and is kept per conver
   await menu().waitFor({ state: "detached" });
   await panel().waitFor();
 
-  await pick(model(), "flash", "GLM-5.3-Flash");
+  await pick(model(), "GLM-5.3-Flash");
   await panel().getByRole("button", { name: "Model: GLM-5.3-Flash" }).waitFor();
+  // GLM-5.3-Flash thinks at low, high or max; the chat's high carries over.
+  assert.equal(await effort().getAttribute("aria-valuetext"), "High");
+  await effort().focus();
+  await page.keyboard.press("ArrowLeft");
+  await panel().getByTestId("chat-model").locator('[data-level="low"]').waitFor();
   await shot("05-chat-picked");
   const picks = resolve(app.vault, ".kintsugi/kin/models.json");
-  const stored = await until(() => json(picks), (p) => !!p?.[DRAFT], "the pick reaches the vault");
-  assert.deepEqual(stored[DRAFT], { provider: "opencode-go", model: "glm-5.3-flash" });
+  const stored = await until(() => json(picks), (p) => p?.[DRAFT]?.reasoning === "low", "the pick and effort reach the vault");
+  assert.deepEqual(stored[DRAFT], { provider: "opencode-go", model: "glm-5.3-flash", reasoning: "low" });
 
   // A message in this conversation runs on it (the mock answers either way).
   await panel().getByRole("textbox", { name: "Message Kin" }).fill("Tighten the opening?");
   await panel().getByRole("textbox", { name: "Message Kin" }).press("Enter");
   await panel().locator('[data-role="kin"]').first().waitFor({ timeout: 30_000 });
 
-  // Another conversation keeps the default.
+  // Another conversation keeps the defaults.
   await page.keyboard.press("Meta+j");
   await panel().waitFor({ state: "detached" });
   await openDoc(NOTE);
   await page.keyboard.press("Meta+j");
   await panel().getByRole("button", { name: "Model: MiniMax-M3" }).waitFor();
+  assert.equal(await effort().getAttribute("aria-valuetext"), "High");
   await page.keyboard.press("Meta+j");
   await panel().waitFor({ state: "detached" });
 
-  // Back on the draft, after a reload: its own pick.
+  // Back on the draft, after a reload: its own pick and effort.
   await page.reload();
   await openDoc(DRAFT);
   await page.keyboard.press("Meta+j");
   await panel().getByRole("button", { name: "Model: GLM-5.3-Flash" }).waitFor();
+  assert.equal(await effort().getAttribute("aria-valuetext"), "Low");
 
-  // Default goes back to the chat default.
-  await pick(model(), "default", "Default");
+  // Default goes back to the chat default model; the effort stays his.
+  await pick(model(), "Default");
   await panel().getByRole("button", { name: "Model: MiniMax-M3" }).waitFor();
-  await until(() => json(picks), (p) => !p?.[DRAFT], "Default clears the pick");
+  await until(() => json(picks), (p) => !p?.[DRAFT]?.model && p?.[DRAFT]?.reasoning === "low", "Default clears the model pick");
+
+  // Choose models opens Settings' list.
+  await model().click();
+  await menu().getByRole("menuitem", { name: "Choose models" }).click();
+  await settings().getByRole("heading", { name: "Kin and models", level: 1 }).waitFor();
+  await settings().getByTestId("enabled-models").waitFor();
+  await page.keyboard.press("Escape");
+  await settings().waitFor({ state: "detached" });
 });

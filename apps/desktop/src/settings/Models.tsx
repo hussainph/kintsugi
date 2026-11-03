@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
 import { Kbd } from "@kintsugi/ui/components/kbd";
+import { Switch } from "@kintsugi/ui/components/switch";
 import { Meter } from "@kintsugi/ui/graphical";
+import { Effort } from "@/kin/Effort";
 import { ModelMenu } from "@/kin/ModelMenu";
-import { models as listModels, type ProviderModels } from "@/lib/ai";
+import {
+  effortLevels,
+  modelInfo,
+  models as listModels,
+  priceLabel,
+  sameEntry,
+  shown,
+  type ModelInfo,
+  type ModelRef,
+  type ProviderModels,
+  type ThinkingLevel,
+} from "@/lib/ai";
 import { dollars, kin, type DefaultTask, type KinSettings, type UsageReport, openAboutYou, openKinDev } from "@/lib/kin";
 import { Group, Page, Row } from "./parts";
 
@@ -18,8 +31,60 @@ const TASKS: { task: DefaultTask; label: string }[] = [
   { task: "triage", label: "Feed triage" },
 ];
 
-/** Settings › Kin and models: the default model per task, this month's
- *  spend and the monthly cap, and Kin's memory. */
+/** The most search results listed at once. */
+const MAX_RESULTS = 40;
+
+type Entry = { provider: ProviderModels; model: ModelInfo; ref: ModelRef };
+
+/** Every term in the model's name, id or provider's name. */
+const matches = (e: Entry, terms: string[]) => {
+  const text = `${e.model.name} ${e.model.id} ${e.provider.name}`.toLowerCase();
+  return terms.every((t) => text.includes(t));
+};
+
+/**
+ * The models the pickers offer: the ones on, or with a search, any of the
+ * usable providers' models, each with a switch. A task's default is always
+ * on, so its switch can't be turned off.
+ */
+function EnabledModels({ providers, settings, onToggle }: { providers: ProviderModels[] | null; settings: KinSettings | null; onToggle: (model: ModelRef, on: boolean) => void }) {
+  const [query, setQuery] = useState("");
+  const all = useMemo<Entry[]>(
+    () => (providers ?? []).filter(shown).flatMap((p) => p.models.map((m) => ({ provider: p, model: m, ref: { provider: p.id, model: m.id } }))),
+    [providers],
+  );
+  const on = (ref: ModelRef) => !!settings?.enabled.some((e) => sameEntry(e, ref));
+  const defaultFor = (ref: ModelRef) => TASKS.filter(({ task }) => sameEntry(settings?.tasks.find((t) => t.task === task)?.resolved, ref)).map((t) => t.label.toLowerCase());
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const rows = terms.length ? all.filter((e) => matches(e, terms)).slice(0, MAX_RESULTS) : all.filter((e) => on(e.ref));
+
+  return (
+    <Group title="Models" data-testid="enabled-models">
+      <div className="ki-settings-row ki-settings-row-block">
+        <Input type="search" placeholder="Search all models" aria-label="Search all models" value={query} onChange={(e) => setQuery(e.target.value)} />
+      </div>
+      {rows.map(({ provider, model, ref }) => {
+        const tasks = defaultFor(ref);
+        const note = [provider.name, priceLabel(model.price), tasks.length ? `Default for ${tasks.join(", ")}` : null].filter(Boolean).join(" · ");
+        return (
+          <Row key={`${provider.id}/${model.id}`} label={model.name} note={note} data-model={`${provider.id}/${model.id}`}>
+            <Switch
+              checked={on(ref)}
+              disabled={!settings || tasks.length > 0}
+              onCheckedChange={(next) => onToggle(ref, next)}
+              aria-label={`${model.name}, ${provider.name}`}
+            />
+          </Row>
+        );
+      })}
+      {terms.length > 0 && rows.length === 0 && <Row label="No models match." className="ki-settings-row-sub" />}
+    </Group>
+  );
+}
+
+/** Settings › Kin and models: the default model and effort per task, the
+ *  models the pickers offer, this month's spend and the monthly cap, and
+ *  Kin's memory. */
 export function ModelSettings() {
   const [usage, setUsage] = useState<UsageReport | null>(null);
   const [settings, setSettings] = useState<KinSettings | null>(null);
@@ -54,9 +119,9 @@ export function ModelSettings() {
     }
   };
 
-  const pick = async (task: DefaultTask, model: Parameters<typeof kin.setModel>[1]) => {
+  const save = async (change: Promise<KinSettings>) => {
     try {
-      setSettings(await kin.setModel(task, model));
+      setSettings(await change);
     } catch (e) {
       toast.error(String(e));
     }
@@ -69,19 +134,31 @@ export function ModelSettings() {
           const t = settings?.tasks.find((x) => x.task === task);
           return (
             <Row key={task} label={label} data-task={task}>
-              <ModelMenu
-                providers={providers}
-                chosen={t?.chosen ?? null}
-                current={t?.resolved ?? null}
-                onChange={(model) => void pick(task, model)}
-                label={`${label} model`}
-                automatic="Automatic"
-                disabled={!settings}
-              />
+              <div className="ki-settings-inline">
+                <Effort
+                  levels={effortLevels(modelInfo(providers, t?.resolved))}
+                  value={t?.resolved?.reasoning as ThinkingLevel | undefined}
+                  onChange={(level) => void save(kin.setEffort(task, level))}
+                  label={`${label} effort`}
+                  disabled={!settings}
+                />
+                <ModelMenu
+                  providers={providers}
+                  enabled={settings?.enabled ?? null}
+                  chosen={t?.chosen ?? null}
+                  current={t?.resolved ?? null}
+                  onChange={(model) => void save(kin.setModel(task, model))}
+                  label={`${label} model`}
+                  automatic="Automatic"
+                  disabled={!settings}
+                />
+              </div>
             </Row>
           );
         })}
       </Group>
+
+      <EnabledModels providers={providers} settings={settings} onToggle={(model, on) => void save(kin.setEnabled(model, on))} />
 
       <Group title="Spending">
         <Row label="This month">

@@ -97,7 +97,8 @@ and URL):
 - **Thinking levels.** A model choice's `reasoning` is one of Pi's levels
   (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; `none` means
   `off`), moved to the nearest one the model supports, as Pi does. Without
-  one, nothing about thinking is sent and the provider's default applies.
+  one, nothing about thinking is sent and the provider's default applies;
+  every model choice Kin resolves names one (see Models per task › Effort).
 - **Copilot.** The catalog's editor headers, `X-Initiator` and
   `Openai-Intent` on every request; a login's token names its own API host.
 - **OpenCode.** Every request carries `x-opencode-session`, a hash of the
@@ -162,12 +163,15 @@ as `kin_set_model` takes it. Nothing in the answer is secret. `ai_providers`
 (Settings' list) keeps to the providers the default models use and any
 other with a credential.
 
-The model picker (`src/kin/ModelMenu.tsx`, KI-61) is built on it: the chat's
-composer and Settings' default models both list the usable providers'
-models, grouped by provider, each with its price per million tokens (input
-· output) and two capability icons (thinks, reads images). The webview
-hides Ollama (`shown()` in `src/lib/ai.ts`): Kin can still speak to a local
-server, but Kintsugi doesn't offer one.
+The model picker (`src/kin/ModelMenu.tsx`, KI-61, KI-77) is built on it:
+the chat's composer and Settings' default models list only the models
+turned on in Settings (`KinSettings.enabled`) whose provider is usable,
+each with its price per million tokens (input · output). A provider name
+heads its models only when more than one provider is listed, and a filter
+field appears past 12 models. The composer's menu ends with "Choose
+models", which opens Settings › Kin and models. The webview hides Ollama
+(`shown()` in `src/lib/ai.ts`): Kin can still speak to a local server, but
+Kintsugi doesn't offer one.
 
 ## Credentials (KI-48)
 
@@ -402,14 +406,40 @@ Go's smallest allowance ($15 a month at $3 / $15 per million tokens):
 Qwen3.7 Plus for chat, Ideas and edits ($60 a month at $0.40 / $1.60) and
 GLM-5.3-Flash for completions and triage ($60 a month at $0.15 / $0.50).
 
+**Enabled models (KI-77).** The pickers offer a short list rather than the
+whole catalog. By default it holds every task's preferences and
+`models.json`'s `enabled` alternatives (one or two strong models per
+provider); Settings › Kin and models lists the ones on, searches the usable
+providers' whole catalog, and turns any of them on or off
+(`kin_set_enabled({ provider, model }, on)`). Changes are kept as
+differences from the default set (`enabled` and `disabled` in
+`settings.json`), so a provider set up later brings its own defaults. Each
+task's default, as it resolves now, is always on (`ai::enabled_models`).
+
+**Effort (KI-77).** Every resolved model choice names a thinking level for
+a model that thinks (`ai::with_effort`): the one he picked (per
+conversation, or per task in Settings with `kin_set_effort(task, level |
+null)`, kept as `efforts` in `settings.json`), else the preference's own,
+else the task's: `medium` for chat and Ideas (Pi's default), `low` for
+edits, and as little as the model allows for completions and triage. It's
+moved to the nearest level the model supports. A model that doesn't think
+gets none. The effort control (`src/kin/Effort.tsx`) is a stepped slider
+over the model's `thinkingLevels`, hidden for a model with one level or
+none; it sits beside the model in the composer and in each Settings row.
+
 **Per conversation.** The chat's model picker sets the model for one
-conversation (a thread's key, `""` for general): `kin_chat_model(topic)`
-and `kin_chat_set_model(topic, model | null)`, kept in
+conversation (a thread's key, `""` for general): `kin_chat_model(topic)`,
+`kin_chat_set_model(topic, model | null)` and, beside it, the effort with
+`kin_chat_set_effort(topic, level | null)` (KI-77), kept in
 `<vault>/.kintsugi/kin/models.json` (`ai/picks.rs`), beside that vault's
 `log.jsonl` and `threads.json`, so it moves with the vault and another
 vault's thread of the same name keeps its own. A turn runs on the pick of
 its conversation in the vault it started in, while that provider is usable,
-else on the chat default. The chat reloads the pick on `switched`.
+else on the chat default, at the conversation's effort, else the chat's
+default effort. An entry is `{ provider?, model?, reasoning? }`: an effort
+alone runs the chat default model at that level. The picker
+(`src/kin/ModelPicker.tsx`) loads and saves its own state and reloads the
+pick on `switched`.
 
 ## Cost and the cap
 

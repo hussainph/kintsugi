@@ -38,5 +38,31 @@
     { "provider": "anthropic", "model": "claude-haiku-5-5" },
     { "provider": "openrouter", "model": "~google/gemini-flash-latest" },
     { "provider": "openai-codex", "model": "gpt-6-luna", "reasoning": "none" }
+  ],
+  "enabled": [
+    { "provider": "openai-codex", "model": "gpt-6.1-sol" },
+    { "provider": "openai-codex", "model": "gpt-6.1-terra" },
+    { "provider": "opencode-go", "model": "kimi-k3.1-pro" },
+    { "provider": "opencode-go", "model": "deepseek-v4-pro" },
+    { "provider": "opencode", "model": "claude-sonnet-5-5" },
+    { "provider": "opencode", "model": "gpt-6.1-sol" },
+    { "provider": "anthropic", "model": "claude-opus-5-5" },
+    { "provider": "zai", "model": "glm-5.3-highspeed" },
+    { "provider": "openrouter", "model": "~openai/gpt-sol-latest" },
+    { "provider": "openrouter", "model": "~google/gemini-pro-latest" },
+    { "provider": "openai", "model": "gpt-6.1-sol" },
+    { "provider": "openai", "model": "gpt-6-luna" },
+    { "provider": "google", "model": "gemini-pro-latest" },
+    { "provider": "google", "model": "gemini-flash-latest" },
+    { "provider": "xai", "model": "grok-4.7" },
+    { "provider": "deepseek", "model": "deepseek-v4-pro" },
+    { "provider": "deepseek", "model": "deepseek-flash" },
+    { "provider": "mistral", "model": "mistral-large-latest" },
+    { "provider": "mistral", "model": "mistral-medium-latest" },
+    { "provider": "moonshotai", "model": "kimi-k3.1-pro" },
+    { "provider": "github-copilot", "model": "claude-sonnet-5.5" },
+    { "provider": "github-copilot", "model": "gpt-6.1-sol" },
+    { "provider": "kimi-coding", "model": "k3.1-pro" },
+    { "provider": "minimax", "model": "MiniMax-M3" }
   ]
 }

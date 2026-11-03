@@ -1,5 +1,5 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { ModelRef } from "./ai";
+import type { ModelRef, ThinkingLevel } from "./ai";
 import type { Chip } from "./chips";
 
 /** Mirrors `ai::Task::KIN` in src-tauri/src/ai/mod.rs. */
@@ -46,14 +46,17 @@ export type UsageReport = {
 /** Every task with a default model in Settings. Mirrors `ai::Task::SETTINGS`. */
 export type DefaultTask = "chat" | "ideas" | "edit" | "complete" | "triage";
 
-/** Mirrors `kin::SettingsView`. `resolved`: what the task would use now. */
+/** Mirrors `kin::SettingsView`. `resolved`: what the task would use now, at
+ *  the thinking level it runs at. `enabled`: the models the pickers offer,
+ *  every task's default included. */
 export type KinSettings = {
   capUsd: number | null;
-  tasks: { task: DefaultTask; chosen: ModelRef | null; resolved: ModelRef | null }[];
+  tasks: { task: DefaultTask; chosen: ModelRef | null; effort: ThinkingLevel | null; resolved: ModelRef | null }[];
+  enabled: ModelRef[];
 };
 
-/** Mirrors `kin::ChatModel`: the model for one conversation in the chat. */
-export type ChatModel = { topic: string; chosen: ModelRef | null; resolved: ModelRef | null };
+/** Mirrors `kin::ChatModel`: the model and effort for one conversation in the chat. */
+export type ChatModel = { topic: string; chosen: ModelRef | null; effort: ThinkingLevel | null; resolved: ModelRef | null };
 
 /** `remember: false` marks the conversation "don't remember this". */
 export type Ask = { question: string; task?: KinTask; background?: boolean; context?: Chip[]; remember?: boolean };
@@ -119,9 +122,14 @@ export const kin = {
   settings: () => invoke<KinSettings>("kin_settings"),
   setCap: (capUsd: number | null) => invoke<UsageReport>("kin_set_cap", { capUsd }),
   setModel: (task: DefaultTask, model: ModelRef | null) => invoke<KinSettings>("kin_set_model", { task, model }),
+  /** A task's default thinking level; null goes back to the model's own. */
+  setEffort: (task: DefaultTask, effort: ThinkingLevel | null) => invoke<KinSettings>("kin_set_effort", { task, effort }),
+  /** Turns a model on or off in the pickers. */
+  setEnabled: (model: ModelRef, on: boolean) => invoke<KinSettings>("kin_set_enabled", { model, on }),
   /** The model for one conversation (a thread's key, "" for general). */
   chatModel: (topic: string) => invoke<ChatModel>("kin_chat_model", { topic }),
   setChatModel: (topic: string, model: ModelRef | null) => invoke<ChatModel>("kin_chat_set_model", { topic, model }),
+  setChatEffort: (topic: string, effort: ThinkingLevel | null) => invoke<ChatModel>("kin_chat_set_effort", { topic, effort }),
 };
 
 /** Kin's memory and skills (About you), and the skills list for the / menu. */

@@ -1370,6 +1370,163 @@ pub(crate) mod tests {
             assert_eq!(requests[1].1["input"].as_array().unwrap()[..], input[..4]);
         }
 
+        /// The effort picked for a conversation (KI-77) reaches the request
+        /// of every wire, by way of the same resolution a turn uses
+        /// (`conversation_model`): Responses, Codex, Messages, chat
+        /// completions and Gemini, each in its own field.
+        #[test]
+        fn the_conversations_effort_reaches_every_wire() {
+            use crate::ai::{ProviderStatus, conversation_model, cost, picks::Pick};
+            let answer_responses = sse(&[
+                json!({ "type": "response.output_text.delta", "delta": "ok" }),
+                json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 10, "output_tokens": 1 } } }),
+            ]);
+            let answer_messages = sse(&[
+                json!({ "type": "message_start", "message": { "usage": { "input_tokens": 10, "output_tokens": 1 } } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "ok" } }),
+                json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+                json!({ "type": "message_stop" }),
+            ]);
+            let answer_chat = sse(&[
+                json!({ "choices": [{ "delta": { "content": "ok" }, "finish_reason": "stop" }] }),
+                json!({ "choices": [], "usage": { "prompt_tokens": 10, "completion_tokens": 1 } }),
+            ]) + "data: [DONE]\n\n";
+            let answer_gemini = sse(&[json!({
+                "candidates": [{ "content": { "parts": [{ "text": "ok" }], "role": "model" }, "finishReason": "STOP", "index": 0 }],
+                "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 1, "totalTokenCount": 11 },
+            })]);
+            let gemini_path = "/models/gemini-3.1-pro-preview:streamGenerateContent";
+            // (provider, model, the conversation's effort, path, answer, what the body must say)
+            let cases: Vec<(
+                &str,
+                &str,
+                Option<&str>,
+                &'static str,
+                String,
+                Box<dyn Fn(&Value)>,
+            )> = vec![
+                (
+                    "openai",
+                    "gpt-6.1-sol",
+                    Some("high"),
+                    "/responses",
+                    answer_responses.clone(),
+                    Box::new(|b| {
+                        assert_eq!(
+                            b["reasoning"],
+                            json!({ "effort": "high", "summary": "auto" })
+                        )
+                    }),
+                ),
+                // Codex maps minimal to low.
+                (
+                    "openai-codex",
+                    "gpt-6.1-sol",
+                    Some("minimal"),
+                    "/codex/responses",
+                    answer_responses,
+                    Box::new(|b| {
+                        assert_eq!(
+                            b["reasoning"],
+                            json!({ "effort": "low", "summary": "auto" })
+                        )
+                    }),
+                ),
+                (
+                    "anthropic",
+                    "claude-sonnet-5-5",
+                    Some("xhigh"),
+                    "/v1/messages",
+                    answer_messages,
+                    Box::new(|b| {
+                        assert_eq!(b["thinking"]["type"], "adaptive");
+                        assert_eq!(b["output_config"], json!({ "effort": "xhigh" }));
+                    }),
+                ),
+                // GLM-5.3 has no medium: the next stronger, high.
+                (
+                    "zai",
+                    "glm-5.3",
+                    Some("medium"),
+                    "/chat/completions",
+                    answer_chat.clone(),
+                    Box::new(|b| {
+                        assert_eq!(b["thinking"]["type"], "enabled");
+                        assert_eq!(b["reasoning_effort"], "high");
+                    }),
+                ),
+                // No effort for the conversation: the chat's default from Settings (low).
+                (
+                    "zai",
+                    "glm-5.3",
+                    None,
+                    "/chat/completions",
+                    answer_chat,
+                    Box::new(|b| assert_eq!(b["reasoning_effort"], "low")),
+                ),
+                (
+                    "google",
+                    "gemini-3.1-pro-preview",
+                    Some("low"),
+                    gemini_path,
+                    answer_gemini,
+                    Box::new(|b| {
+                        assert_eq!(
+                            b["generationConfig"]["thinkingConfig"],
+                            json!({ "includeThoughts": true, "thinkingLevel": "LOW" })
+                        )
+                    }),
+                ),
+            ];
+            let f = fixture();
+            let rt = runtime();
+            let mut settings = cost::Settings::default();
+            settings.efforts.insert("chat".into(), "low".into());
+            for (provider_id, model, effort, path, answer, check) in cases {
+                let statuses = [ProviderStatus {
+                    id: wire::provider(provider_id).unwrap().id,
+                    name: "",
+                    auth: "api_key",
+                    source: None,
+                }];
+                let pick = Pick {
+                    reasoning: effort.map(String::from),
+                    ..Pick::with_model(ModelRef {
+                        provider: provider_id.into(),
+                        model: model.into(),
+                        reasoning: None,
+                    })
+                };
+                let resolved = conversation_model(Some(&pick), &statuses, &settings).unwrap();
+                assert_eq!(resolved.model, model);
+                let (base, recorded) = rt.block_on(provider(path, vec![answer]));
+                let mut target = remote(provider_id, model, base);
+                target.model = resolved;
+                if provider_id == "openai-codex" {
+                    target.auth = Some(Auth::Bearer {
+                        token: "t".into(),
+                        account_id: Some("acct".into()),
+                    });
+                }
+                let summary = rt
+                    .block_on(run(
+                        &target,
+                        &f.harness(&Cancel::default(), Limits::default()),
+                        &turn(false),
+                        &mut |_| {},
+                    ))
+                    .unwrap();
+                assert_eq!(
+                    (summary.stop, summary.text.as_str()),
+                    (Stop::Answered, "ok"),
+                    "{provider_id}/{model}"
+                );
+                let requests = recorded.lock().unwrap();
+                assert_eq!(requests.len(), 1, "{provider_id}/{model}");
+                check(&requests[0].1);
+            }
+        }
+
         #[test]
         fn anthropic_turn_searches_the_vault_with_prompt_caching() {
             let f = fixture();

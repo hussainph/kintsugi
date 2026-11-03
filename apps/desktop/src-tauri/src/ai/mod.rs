@@ -210,17 +210,25 @@ struct Preferences {
     chat: Vec<ModelRef>,
     ideas: Vec<ModelRef>,
     triage: Vec<ModelRef>,
+    /// Models on in the pickers until he changes the list (KI-77), beside
+    /// every task's preferences: one or two strong alternatives per provider.
+    #[serde(default)]
+    enabled: Vec<ModelRef>,
 }
 
 /// The webview's `src/lib/models.ts` reads the same file, so both sides
 /// pick the same model for a task.
 const PREFERENCES_JSON: &str = include_str!("../../../src/lib/models.json");
 
-fn preferences(task: Task) -> &'static [ModelRef] {
+fn parsed() -> &'static Preferences {
     static PARSED: OnceLock<Preferences> = OnceLock::new();
-    let parsed = PARSED.get_or_init(|| {
+    PARSED.get_or_init(|| {
         serde_json::from_str(PREFERENCES_JSON).expect("src/lib/models.json is valid")
-    });
+    })
+}
+
+fn preferences(task: Task) -> &'static [ModelRef] {
+    let parsed = parsed();
     match task {
         Task::Edit => &parsed.edit,
         Task::Complete => &parsed.complete,
@@ -228,6 +236,95 @@ fn preferences(task: Task) -> &'static [ModelRef] {
         Task::Ideas => &parsed.ideas,
         Task::Triage => &parsed.triage,
     }
+}
+
+/// The same model, whatever its thinking level.
+pub(crate) fn same_model(a: &ModelRef, b: &ModelRef) -> bool {
+    a.provider == b.provider && a.model == b.model
+}
+
+fn bare(m: &ModelRef) -> ModelRef {
+    ModelRef {
+        provider: m.provider.clone(),
+        model: m.model.clone(),
+        reasoning: None,
+    }
+}
+
+fn add(list: &mut Vec<ModelRef>, m: &ModelRef) {
+    if !list.iter().any(|x| same_model(x, m)) {
+        list.push(bare(m));
+    }
+}
+
+/// The models on in the pickers before he changes anything: every task's
+/// preferences and `models.json`'s `enabled` alternatives.
+fn default_enabled() -> Vec<ModelRef> {
+    let mut list = Vec::new();
+    for task in Task::SETTINGS {
+        preferences(task).iter().for_each(|m| add(&mut list, m));
+    }
+    parsed().enabled.iter().for_each(|m| add(&mut list, m));
+    list
+}
+
+/// The models the pickers offer (KI-77): the default set with his changes
+/// from Settings, and every task's default as it resolves now, which is
+/// always on. Not filtered by credential: the pickers list only usable
+/// providers' models.
+fn enabled_models(statuses: &[ProviderStatus], settings: &cost::Settings) -> Vec<ModelRef> {
+    let mut list: Vec<ModelRef> = default_enabled()
+        .into_iter()
+        .filter(|m| !settings.disabled.iter().any(|x| same_model(x, m)))
+        .collect();
+    settings.enabled.iter().for_each(|m| add(&mut list, m));
+    for task in Task::SETTINGS {
+        if let Some(m) = chosen_base(task, statuses, settings) {
+            add(&mut list, &m);
+        }
+    }
+    list
+}
+
+/// Turns one model on or off in the pickers, as a change to the default set.
+fn toggle_enabled(settings: &mut cost::Settings, model: &ModelRef, on: bool) {
+    let model = bare(model);
+    let default = default_enabled().iter().any(|m| same_model(m, &model));
+    settings.enabled.retain(|m| !same_model(m, &model));
+    settings.disabled.retain(|m| !same_model(m, &model));
+    match (on, default) {
+        (true, false) => settings.enabled.push(model),
+        (false, true) => settings.disabled.push(model),
+        _ => {}
+    }
+}
+
+/// The thinking level a task runs at when nothing else names one, as Pi
+/// defaults to `medium`: the owner's tasks think at `medium`, edits at
+/// `low`, and the background's quick ones (completions, triage) as little
+/// as the model allows.
+fn nominal(task: Task) -> catalog::Level {
+    match task {
+        Task::Chat | Task::Ideas => catalog::Level::Medium,
+        Task::Edit => catalog::Level::Low,
+        Task::Complete | Task::Triage => catalog::Level::Off,
+    }
+}
+
+/// `model` with the thinking level it runs at: `explicit` (his pick), else
+/// the model choice's own, else the task's `nominal`, moved to the nearest
+/// level the model supports. A model the catalog says doesn't think gets
+/// none; one the catalog doesn't list keeps what was asked.
+fn with_effort(mut model: ModelRef, explicit: Option<&str>, task: Task) -> ModelRef {
+    let asked = explicit
+        .or(model.reasoning.as_deref())
+        .and_then(catalog::Level::parse);
+    model.reasoning = match catalog::find(&model.provider, &model.model) {
+        Some(m) if !m.reasoning => None,
+        Some(m) => Some(m.clamp(asked.unwrap_or(nominal(task))).id().into()),
+        None => asked.map(|l| l.id().into()),
+    };
+    model
 }
 
 /// Mirrors `usable` in src/lib/models.ts: local servers are never picked
@@ -251,8 +348,8 @@ fn model_for(task: Task, statuses: &[ProviderStatus]) -> Option<&'static ModelRe
 }
 
 /// The owner's choice for a task when its provider is usable, else the
-/// first usable preference.
-fn chosen_model(
+/// first usable preference; its thinking level as chosen.
+fn chosen_base(
     task: Task,
     statuses: &[ProviderStatus],
     settings: &cost::Settings,
@@ -265,17 +362,37 @@ fn chosen_model(
         .or_else(|| model_for(task, statuses).cloned())
 }
 
-/// The model for one conversation: the owner's pick for it when its
-/// provider is usable, else the chat default (`chosen_model`), which falls
-/// back to the next usable preference in turn.
-fn conversation_model(
-    pick: Option<&ModelRef>,
+/// The model a task runs on (`chosen_base`) and the thinking level it runs
+/// at: his default effort for the task, else the choice's own, else the
+/// task's (`with_effort`).
+fn chosen_model(
+    task: Task,
     statuses: &[ProviderStatus],
     settings: &cost::Settings,
 ) -> Option<ModelRef> {
-    pick.filter(|m| wire::provider(&m.provider).is_some() && ready(m, statuses))
-        .cloned()
-        .or_else(|| chosen_model(Task::Chat, statuses, settings))
+    let model = chosen_base(task, statuses, settings)?;
+    let effort = settings.efforts.get(task.id()).map(String::as_str);
+    Some(with_effort(model, effort, task))
+}
+
+/// The model for one conversation: the owner's pick for it when its
+/// provider is usable, else the chat default (`chosen_base`), which falls
+/// back to the next usable preference in turn. Its effort: the one picked
+/// for the conversation, else the chat's default effort, else the model
+/// choice's own, else `medium`.
+fn conversation_model(
+    pick: Option<&picks::Pick>,
+    statuses: &[ProviderStatus],
+    settings: &cost::Settings,
+) -> Option<ModelRef> {
+    let model = pick
+        .and_then(picks::Pick::model_ref)
+        .filter(|m| wire::provider(&m.provider).is_some() && ready(m, statuses))
+        .or_else(|| chosen_base(Task::Chat, statuses, settings))?;
+    let effort = pick
+        .and_then(|p| p.reasoning.as_deref())
+        .or(settings.efforts.get(Task::Chat.id()).map(String::as_str));
+    Some(with_effort(model, effort, Task::Chat))
 }
 
 /// The model a task would use now: the owner's default for it in Settings,
@@ -569,20 +686,34 @@ mod tests {
         assert_eq!(model_for(Task::Edit, &[]), None);
     }
 
-    #[test]
-    fn defaults_and_picks_fall_back_to_the_next_usable_model() {
-        let model = |provider: &str, id: &str| ModelRef {
+    fn model(provider: &str, id: &str) -> ModelRef {
+        ModelRef {
             provider: provider.into(),
             model: id.into(),
             reasoning: None,
-        };
+        }
+    }
+
+    fn at(m: &ModelRef, level: &str) -> ModelRef {
+        ModelRef {
+            reasoning: Some(level.into()),
+            ..m.clone()
+        }
+    }
+
+    fn pick(m: &ModelRef) -> picks::Pick {
+        picks::Pick::with_model(m.clone())
+    }
+
+    #[test]
+    fn defaults_and_picks_fall_back_to_the_next_usable_model() {
         let first = preferences(Task::Chat)[0].clone();
         let second = preferences(Task::Chat)[1].clone();
         let id = |m: &ModelRef| wire::provider(&m.provider).unwrap().id;
         let mut settings = cost::Settings::default();
         let haiku = model("anthropic", "claude-haiku-5-5");
         settings.models.insert("chat".into(), haiku.clone());
-        let pick = model("zai", "glm-5.3-flash");
+        let flash = model("zai", "glm-5.3-flash");
 
         // Everything usable: the pick, then the default.
         let all = vec![
@@ -591,25 +722,173 @@ mod tests {
             status("anthropic", "api_key"),
             status("zai", "api_key"),
         ];
+        // Chat thinks at medium, moved to what the model supports (GLM: high).
         assert_eq!(
-            conversation_model(Some(&pick), &all, &settings),
-            Some(pick.clone())
+            conversation_model(Some(&pick(&flash)), &all, &settings),
+            Some(at(&flash, "high"))
         );
         assert_eq!(
             conversation_model(None, &all, &settings),
-            Some(haiku.clone())
+            Some(at(&haiku, "medium"))
         );
-        assert_eq!(chosen_model(Task::Chat, &all, &settings), Some(haiku));
-        // No credential for the pick or the default: the next usable preference.
-        let few = vec![status(id(&first), "none"), status(id(&second), "login")];
         assert_eq!(
-            conversation_model(Some(&pick), &few, &settings),
+            chosen_model(Task::Chat, &all, &settings),
+            Some(at(&haiku, "medium"))
+        );
+        // No credential for the pick or the default: the next usable
+        // preference, at its own level.
+        let few = vec![status(id(&first), "none"), status(id(&second), "login")];
+        assert_eq!(second.reasoning.as_deref(), Some("medium"));
+        assert_eq!(
+            conversation_model(Some(&pick(&flash)), &few, &settings),
             Some(second.clone())
         );
         assert_eq!(chosen_model(Task::Chat, &few, &settings), Some(second));
-        // Edits and completions take a default too.
-        settings.models.insert("complete".into(), pick.clone());
-        assert_eq!(chosen_model(Task::Complete, &all, &settings), Some(pick));
+        // Edits and completions take a default too; completions think as
+        // little as the model allows.
+        settings.models.insert("complete".into(), flash.clone());
+        assert_eq!(
+            chosen_model(Task::Complete, &all, &settings),
+            Some(at(&flash, "low"))
+        );
+    }
+
+    #[test]
+    fn efforts_come_from_the_conversation_then_settings_then_the_choice() {
+        let codex = model("openai-codex", "gpt-6-luna");
+        let all = vec![
+            status("openai-codex", "login"),
+            status("opencode-go", "login"),
+        ];
+        let mut settings = cost::Settings::default();
+        settings.models.insert("chat".into(), codex.clone());
+        // Nothing named: the task's own level.
+        assert_eq!(
+            chosen_model(Task::Chat, &all, &settings),
+            Some(at(&codex, "medium"))
+        );
+        // Edits on a model the preferences don't name a level for: low.
+        settings
+            .models
+            .insert("edit".into(), model("opencode-go", "glm-5.3"));
+        assert_eq!(
+            chosen_model(Task::Edit, &all, &settings)
+                .unwrap()
+                .reasoning
+                .as_deref(),
+            Some("low")
+        );
+        // A default effort per task in Settings.
+        settings.efforts.insert("chat".into(), "high".into());
+        assert_eq!(
+            chosen_model(Task::Chat, &all, &settings),
+            Some(at(&codex, "high"))
+        );
+        assert_eq!(
+            conversation_model(None, &all, &settings),
+            Some(at(&codex, "high"))
+        );
+        // The conversation's effort wins, with or without a model of its own.
+        let effort_only = picks::Pick {
+            reasoning: Some("xhigh".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            conversation_model(Some(&effort_only), &all, &settings),
+            Some(at(&codex, "xhigh"))
+        );
+        let glm = model("opencode-go", "glm-5.3");
+        let both = picks::Pick {
+            reasoning: Some("medium".into()),
+            ..pick(&glm)
+        };
+        // GLM-5.3 has no medium: the next stronger.
+        assert_eq!(
+            conversation_model(Some(&both), &all, &settings),
+            Some(at(&glm, "high"))
+        );
+        // A model that doesn't think gets no level at all.
+        let plain = crate::ai::catalog::all()
+            .iter()
+            .find(|m| m.provider == "opencode-go" && !m.reasoning);
+        if let Some(plain) = plain {
+            let plain = model("opencode-go", &plain.id);
+            assert_eq!(
+                conversation_model(
+                    Some(&picks::Pick {
+                        reasoning: Some("high".into()),
+                        ..pick(&plain)
+                    }),
+                    &all,
+                    &settings
+                ),
+                Some(plain)
+            );
+        }
+        // Background work keeps the preference's own level.
+        let triage = chosen_model(Task::Triage, &all, &settings).unwrap();
+        assert_eq!(triage.model, "glm-5.3-flash");
+        assert_eq!(triage.reasoning.as_deref(), Some("low"));
+    }
+
+    #[test]
+    fn the_enabled_list_starts_short_follows_his_changes_and_keeps_task_defaults() {
+        let mut settings = cost::Settings::default();
+        let all = vec![
+            status("opencode-go", "login"),
+            status("anthropic", "api_key"),
+        ];
+        let defaults = enabled_models(&all, &settings);
+        // A short list: every preference and a few alternatives, all in the catalog.
+        assert!(defaults.len() < 60, "{}", defaults.len());
+        for m in &defaults {
+            assert!(
+                catalog::find(&m.provider, &m.model).is_some(),
+                "{}/{} isn't in the catalog",
+                m.provider,
+                m.model
+            );
+            assert!(m.reasoning.is_none());
+        }
+        let per = |provider: &str| defaults.iter().filter(|m| m.provider == provider).count();
+        for provider in [
+            "opencode-go",
+            "anthropic",
+            "openai-codex",
+            "zai",
+            "opencode",
+            "openrouter",
+        ] {
+            assert!(
+                (2..=6).contains(&per(provider)),
+                "{provider}: {}",
+                per(provider)
+            );
+        }
+        let on = |s: &cost::Settings, m: &ModelRef| {
+            enabled_models(&all, s).iter().any(|x| same_model(x, m))
+        };
+
+        // One turned on, one of the defaults turned off.
+        let minimax = model("opencode-go", "minimax-m3");
+        let opus = model("anthropic", "claude-opus-5-5");
+        assert!(!on(&settings, &minimax) && on(&settings, &opus));
+        toggle_enabled(&mut settings, &minimax, true);
+        toggle_enabled(&mut settings, &opus, false);
+        assert!(on(&settings, &minimax) && !on(&settings, &opus));
+        assert_eq!((settings.enabled.len(), settings.disabled.len()), (1, 1));
+        // Back again leaves nothing stored.
+        toggle_enabled(&mut settings, &minimax, false);
+        toggle_enabled(&mut settings, &opus, true);
+        assert_eq!(settings, cost::Settings::default());
+
+        // A task's default is always on, even turned off.
+        settings.models.insert("chat".into(), minimax.clone());
+        toggle_enabled(&mut settings, &minimax, false);
+        assert!(on(&settings, &minimax));
+        let resolved = chosen_base(Task::Triage, &all, &settings).unwrap();
+        toggle_enabled(&mut settings, &resolved, false);
+        assert!(on(&settings, &resolved));
     }
 
     #[test]

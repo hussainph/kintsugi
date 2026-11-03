@@ -6,12 +6,10 @@ import { Button } from "@kintsugi/ui/components/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@kintsugi/ui/components/popover";
 import { Textarea } from "@kintsugi/ui/components/textarea";
 import { cn } from "@kintsugi/ui/lib/utils";
-import { models as listModels, type ProviderModels } from "@/lib/ai";
-import { kin, type ChatModel } from "@/lib/kin";
 import { chat, type ChatEvent, type Entry, type Job, jobs, onDiscuss, onOpenKin, onScreenChanged, type Page, screenChips, type Topic } from "@/lib/chat";
 import { type Chip, chipKey, chipTitle, mergeChips, snippet, throttle } from "@/lib/chips";
 import { KinAvatar } from "./Avatar";
-import { ModelMenu } from "./ModelMenu";
+import { ChatModelPicker } from "./ModelPicker";
 
 const EMPTY: Page = { entries: [], threads: [], pending: [], running: null };
 const ACTIVE: Job["status"][] = ["queued", "running", "waiting"];
@@ -132,8 +130,6 @@ export function KinChat() {
   const [unread, setUnread] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [threadsOpen, setThreadsOpen] = useState(false);
-  const [providers, setProviders] = useState<ProviderModels[] | null>(null);
-  const [model, setModel] = useState<ChatModel | null>(null);
   /** Bumped when another vault opens: its conversations have their own picks. */
   const [vaultSeq, setVaultSeq] = useState(0);
   const viewRef = useRef(view);
@@ -182,26 +178,6 @@ export function KinChat() {
   // The conversation a message sent now belongs to: the thread shown, else
   // the one for what's on screen. Its model is picked per conversation.
   const conversation = view ?? topic?.key ?? "";
-  useEffect(() => {
-    if (!open) return;
-    listModels().then(setProviders).catch(() => setProviders([]));
-  }, [open]);
-  useEffect(() => {
-    if (!open) return;
-    let current = true;
-    kin.chatModel(conversation).then((m) => current && setModel(m)).catch(() => current && setModel(null));
-    return () => {
-      current = false;
-    };
-  }, [open, conversation, vaultSeq]);
-
-  const pickModel = async (next: ChatModel["chosen"]) => {
-    try {
-      setModel(await kin.setChatModel(conversation, next));
-    } catch (e) {
-      toast.error(String(e));
-    }
-  };
 
   // The conversation's events: new entries, Kin streaming, helpers.
   useEffect(() => {
@@ -512,18 +488,7 @@ export function KinChat() {
                 </Button>
               ) : null}
             </div>
-            <div className="mt-1 flex items-center" data-testid="chat-model">
-              <ModelMenu
-                look="compact"
-                providers={providers}
-                chosen={model?.chosen ?? null}
-                current={model?.resolved ?? null}
-                onChange={(next) => void pickModel(next)}
-                label="Model"
-                automatic="Default"
-                disabled={!model}
-              />
-            </div>
+            <ChatModelPicker conversation={conversation} vault={vaultSeq} onManage={close} />
           </div>
         </section>
       )}

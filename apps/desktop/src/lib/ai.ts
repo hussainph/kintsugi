@@ -97,6 +97,33 @@ export type ProviderModels = ProviderStatus & {
 /** The providers with a usable credential and their models; `all` lists every provider. */
 export const models = (all = false) => invoke<ProviderModels[]>("ai_models", { all });
 
+/** The same model, whatever its thinking level. */
+export const sameEntry = (a: ModelRef | null | undefined, b: ModelRef | null | undefined) =>
+  !!a && !!b && a.provider === b.provider && a.model === b.model;
+
+/** A model's catalog entry, while its provider is listed. */
+export function modelInfo(list: ProviderModels[] | null, m: ModelRef | null | undefined): ModelInfo | null {
+  if (!m) return null;
+  return list?.find((p) => p.id === m.provider)?.models.find((x) => x.id === m.model) ?? null;
+}
+
+/** The levels an effort control offers for a model: none unless it thinks
+ *  and has more than one. */
+export function effortLevels(model: ModelInfo | null): ThinkingLevel[] {
+  return model?.reasoning && model.thinkingLevels.length > 1 ? model.thinkingLevels : [];
+}
+
+const LEVEL_NAMES: Record<ThinkingLevel, string> = {
+  off: "Off",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+export const levelName = (level: ThinkingLevel) => LEVEL_NAMES[level];
+
 /** A model's name from the catalog, else its id. */
 export function modelName(list: ProviderModels[] | null, m: ModelRef): string {
   return list?.find((p) => p.id === m.provider)?.models.find((x) => x.id === m.model)?.name ?? m.model;
