@@ -1,4 +1,5 @@
 mod ai;
+mod alternatives;
 mod blog;
 mod books;
 mod clip_capture;
@@ -12,6 +13,7 @@ mod navigation;
 mod phone;
 mod references;
 mod search;
+mod sidecar;
 mod smoke;
 mod tools;
 mod vault;
@@ -152,6 +154,8 @@ fn builder() -> tauri::Builder<Runtime> {
             ai::chat::kin_job_create,
             ai::chat::kin_jobs,
             ai::chat::kin_job_cancel,
+            alternatives::alternatives_load,
+            alternatives::alternatives_save,
             ai::chat::comments::kin_comments,
             ai::chat::comments::kin_comment_create,
             ai::chat::comments::kin_comment_reply,

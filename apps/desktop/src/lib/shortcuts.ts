@@ -28,6 +28,7 @@ export const GROUPS = {
   app: { title: "App", scope: "app" },
   document: { title: "Document", scope: "writing" },
   kin: { title: "Kin", scope: "writing" },
+  alternatives: { title: "Alternatives", scope: "editor" },
   formatting: { title: "Formatting", scope: "editor" },
   text: { title: "Text", scope: "editor" },
   review: { title: "Reviewing an edit", scope: "refine" },
@@ -121,10 +122,13 @@ export const SHORTCUTS = {
 
   kinDev: { key: "Mod-Shift-k", label: "Developer panel", scope: "app" },
 
+  // The editor's alternatives keymap (`alternativeShortcuts` in
+  // @kintsugi/editor/alternatives); a test keeps the two the same.
+  alternatives: { key: "Mod-Alt-a", label: "Alternatives", group: "alternatives" },
+  nextAlternative: { key: "Mod-Alt-]", label: "Next alternative", group: "alternatives" },
+  previousAlternative: { key: "Mod-Alt-[", label: "Previous alternative", group: "alternatives" },
+
   // Reserved for the tickets that add them (Write_On's alternative control).
-  alternatives: { key: "Mod-Alt-a", label: "Alternatives", scope: "editor", soon: "KI-86" },
-  previousAlternative: { key: "Mod-Alt-[", label: "Previous alternative", scope: "editor", soon: "KI-86" },
-  nextAlternative: { key: "Mod-Alt-]", label: "Next alternative", scope: "editor", soon: "KI-86" },
   kinAlternatives: { key: "Mod-Shift-Alt-a", label: "Kin's alternatives", scope: "editor", soon: "KI-87" },
   refineAlternatives: { key: "Shift-Enter", label: "Keep as alternatives", scope: "refine", soon: "KI-87" },
   stash: { key: "Mod-Alt-x", label: "Stash", scope: "editor", soon: "KI-89" },

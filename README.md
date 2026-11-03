@@ -54,6 +54,14 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | ⌥⌘S | Synonyms |
 | ⇧F10 | Selection menu |
 
+### Alternatives
+
+| Keys | Action |
+| --- | --- |
+| ⌥⌘A | Alternatives |
+| `⌥⌘]` | Next alternative |
+| `⌥⌘[` | Previous alternative |
+
 ### Formatting
 
 | Keys | Action |

@@ -135,3 +135,62 @@ but it never applies one; only the writer edits `tags`.
   are ANDed).
 - Each document shows its tags faintly under its title. Tags are edited on
   the Mac (or in the frontmatter); the phone keeps whatever is there.
+
+## Alternatives
+
+Keep more than one version of a word, a selection, a sentence or a paragraph
+and swap between them in place (KI-86). The document only ever holds the
+version that's showing, so the file stays plain for Obsidian and publishing.
+
+**On the Mac**
+
+- ⌥⌘A opens the alternatives for the selection, or for the cursor's word.
+  ←/→ switch between word (or selection), sentence and paragraph. Type a new
+  version and press Enter to add it; it shows in place. ↑/↓ and Enter pick
+  one, ⌫ removes the highlighted one, Escape closes.
+- ⌥⌘] and ⌥⌘[ show the next and previous version without opening anything.
+  Each swap is its own undo step.
+- A word, selection or sentence with alternatives has a dotted underline and
+  a small count; a paragraph has the count in the left margin. Click a count
+  to open its alternatives.
+- The version showing is always one of the set. Typing inside it edits that
+  version; replacing the whole span (a paste, an undo) keeps the new text as
+  another version. One version left means no alternatives, and the set goes.
+
+**Stored beside the document**
+
+`.kintsugi/alternatives/<document path>.json`, one file per document
+(`apps/desktop/src-tauri/src/alternatives.rs`):
+
+```json
+{ "version": 1, "path": "drafts/bowls.md", "sets": [{
+  "id": "a-…", "level": "word", "current": "e-2",
+  "anchor": { "exact": "ancient", "prefix": "…broke along an ", "suffix": " line. I…", "line": 5 },
+  "entries": [{ "id": "e-1", "text": "old", "by": "owner", "created": "…" },
+              { "id": "e-2", "text": "ancient", "by": "owner", "created": "…" }],
+  "created": "…" }] }
+```
+
+- `level` is `word`, `phrase` (a selection), `sentence` or `paragraph`;
+  `by` is `owner` or `kin`.
+- Anchors work like comment threads' (`packages/editor/src/anchors.ts`, with
+  words and sentences in `spans.ts`). On open, a set is found by any of its
+  versions' text (the occurrence whose context and line fit best; a word
+  that repeats needs some of its context), else, for a sentence or
+  paragraph, the most similar one. A set whose text changed elsewhere (the
+  phone, Obsidian) shows whichever version is there, or takes the edit.
+- While the document is open, edits map the span and snap it to its word,
+  sentence or paragraph. Deleting its text detaches the set; it's kept
+  (`orphaned`) and comes back when the text does (an undo).
+- Renaming or moving the document (or its folder) moves its file.
+
+**For the host**
+
+The editor's `alternatives` prop (`packages/editor/src/alternatives.ts`)
+takes the loaded sets and an `onSave(path, sets)` that receives the whole
+list once edits pause. `addAlternatives(view, { from, to, texts, by })` adds
+versions to a span without showing them (Kin's suggestions, KI-87).
+`alternativesPanelModel` and `alternativePanelCommands` drive the panel
+(`alternatives-panel.ts`), so another panel can replace it. The phone
+doesn't show alternatives yet; edits made there are picked up when the Mac
+re-resolves the anchors.

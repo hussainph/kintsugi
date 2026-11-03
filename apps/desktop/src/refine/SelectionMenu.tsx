@@ -1,7 +1,7 @@
 import type { EditorView } from "@codemirror/view";
 import { Fragment, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { toast } from "sonner";
-import { formatShortcuts, isDimmed, toggleDimRange } from "@kintsugi/editor/Editor";
+import { formatShortcuts, isDimmed, openAlternatives, toggleDimRange } from "@kintsugi/editor/Editor";
 import { Menu } from "@kintsugi/ui/graphical";
 import { discuss } from "@/lib/chat";
 import { ariaKeys, keysOf, matches } from "@/lib/keys";
@@ -27,7 +27,7 @@ type Row = { id: string; label: string; keys?: string; spec?: string; run: () =>
 /** Right-click on a selection, or ⇧F10 (the context-menu key too): what can
  *  be done with it, each row with its key, which is how the keys are learnt.
  *  Anywhere else the Mac's own menu shows, with its spelling suggestions.
- *  Alternatives and stash (KI-86, KI-89) add their rows here. */
+ *  Stash (KI-89) adds its row here. */
 export function SelectionMenu({ viewRef, path, onRefine }: Props) {
   const [at, setAt] = useState<Place | null>(null);
   // An item that moves focus itself (⌘K, Kin's chat) keeps it.
@@ -113,6 +113,8 @@ export function SelectionMenu({ viewRef, path, onRefine }: Props) {
         })),
     // Writes the passage's comment markers; no model involved (KI-88).
     locked ? [] : [{ id: "dim", label: isDimmed(view.state, from, to) ? "Undim" : "Dim", keys: keysOf(DIM), spec: DIM, run: () => { toggleDimRange(view, from, to); view.focus(); } }],
+    // Other versions of the selection, swapped in place (KI-86). The panel takes focus.
+    locked ? [] : [{ id: "alternatives", label: "Alternatives…", ...key("alternatives"), run: leave(() => { view.dispatch({ selection: { anchor: from, head: to } }); openAlternatives(view); }) }],
     [
       { id: "refine", label: "Edit with Kin…", ...key("refine"), run: leave(() => onRefine(from, to)) },
       { id: "ask", label: "Ask Kin", ...key("kin"), run: leave(() => discuss(passageChips(view, path, from, to))) },

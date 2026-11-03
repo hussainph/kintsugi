@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { beginComment, reviewDraft } from "@/comments/api";
 import { useComments } from "@/comments/useComments";
+import { useAlternatives } from "@/alternatives/useAlternatives";
 import { registerInsert, type Found } from "@/lib/insert";
 import { memory } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
@@ -157,6 +158,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     if (view) beginComment(view, anchor.from, anchor.to, "mention");
   }, [editor.viewRef]);
   const comments = useComments(editor.path, editor.viewRef, sources, open);
+  const alternatives = useAlternatives(editor.path);
   const options = useMemo(() => ({ sources, search, readClipText, onError: onReferenceError, onOpen: open, onParagraph: setParagraph, onKin }), [sources, search, readClipText, onReferenceError, open, onKin]);
 
   // Skills flagged for the / menu. Re-read when he comes back to the window,
@@ -188,7 +190,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
 
   return (
     <div className="reference-writing">
-      <Editor {...editor} references={options} commands={commands} comments={comments} />
+      <Editor {...editor} references={options} commands={commands} comments={comments} alternatives={alternatives} />
       {onRefine && <SelectionMenu viewRef={editor.viewRef} path={editor.path} onRefine={onRefine} />}
       <Tooltip><TooltipTrigger asChild><button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} onClick={() => {
         const next = !margin; setMargin(next); saveMargin(next);
