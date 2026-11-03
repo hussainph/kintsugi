@@ -12,7 +12,7 @@ import { startAppearanceServer } from './appearance-runtime/server.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const desktop = createRequire(resolve(here, '../../desktop/package.json'));
 const { chromium } = desktop('playwright');
-const shots = resolve(here, '../../../docs/review/ki-100');
+const shots = resolve(here, '../../../.headless/phone-appearance/shots');
 let server;
 let url;
 let browser;
