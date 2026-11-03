@@ -122,6 +122,8 @@ pub struct Trace {
     /// `provider/model`.
     pub model: String,
     pub steps: Vec<StepTrace>,
+    /// The web searches and pages that worked, for the reply's sources.
+    pub web: Vec<super::web::WebCall>,
 }
 
 impl Trace {

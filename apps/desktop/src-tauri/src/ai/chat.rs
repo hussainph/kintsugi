@@ -109,6 +109,10 @@ pub trait Brain: Send + Sync + 'static {
     fn feed(&self) -> Option<super::tools::FeedTool> {
         None
     }
+    /// `web_search` and `web_fetch` (KI-78), while they're on in Settings.
+    fn web(&self) -> Option<Arc<super::web::Web>> {
+        None
+    }
     fn meter(&self) -> &Meter;
     fn emit(&self, event: ChatEvent);
     fn today(&self) -> String {
@@ -518,7 +522,7 @@ impl<B: Brain> Engine<B> {
         let pick = vault
             .as_deref()
             .and_then(|vault| self.0.brain.picked(vault, &info.topic));
-        let (streamed, result, _) = self
+        let (streamed, result, trace) = self
             .execute_as(&info.turn, &request, &cancel, true, pick)
             .await;
 
@@ -534,6 +538,7 @@ impl<B: Brain> Engine<B> {
         let base = Draft {
             topic: info.topic.clone(),
             answers: info.answers.clone(),
+            web: trace.web,
             ..Draft::default()
         };
         let (draft, settled) = match result {
@@ -635,6 +640,9 @@ impl<B: Brain> Engine<B> {
             if let Some(feed) = self.0.brain.feed() {
                 tools = tools.with_feed(feed);
             }
+            if let Some(web) = self.0.brain.web() {
+                tools = tools.with_web(web);
+            }
             if chat
                 && let Some(access) = self.0.brain.memory_access(&vault, turn, &request.question)
             {
@@ -670,6 +678,11 @@ impl<B: Brain> Engine<B> {
                     } => {
                         streamed.clear();
                         trace.call(name, arguments);
+                    }
+                    KinEvent::ToolResult { web: Some(call), .. }
+                        if trace.web.len() < super::web::MAX_CALLS_PER_REPLY =>
+                    {
+                        trace.web.push(call.clone());
                     }
                     _ => {}
                 }
@@ -1075,6 +1088,10 @@ impl Brain for AppBrain {
 
     fn feed(&self) -> Option<super::tools::FeedTool> {
         Some(crate::feed::kin_hook(&self.0))
+    }
+
+    fn web(&self) -> Option<Arc<super::web::Web>> {
+        super::web::for_turn()
     }
 
     fn meter(&self) -> &Meter {

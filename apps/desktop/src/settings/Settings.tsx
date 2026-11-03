@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ArrowLeft, Brain, FileExport, Globe, Key, Lock, Settings as SettingsIcon, Smartphone } from "@kintsugi/ui/icons";
+import { ArrowLeft, Brain, FileExport, Globe, Key, Lock, Search, Settings as SettingsIcon, Smartphone } from "@kintsugi/ui/icons";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import {
   Sidebar,
@@ -19,11 +19,13 @@ import { ModelSettings } from "./Models";
 import { PhoneSettings } from "./Phone";
 import { PrivacySettings } from "./Privacy";
 import { ProviderSettings } from "./Providers";
+import { WebSettings } from "./Web";
 
 export const SECTIONS: { id: SettingsSection; label: string; icon: typeof SettingsIcon }[] = [
   { id: "general", label: "General", icon: SettingsIcon },
   { id: "kin", label: "Kin and models", icon: Brain },
   { id: "providers", label: "Providers", icon: Key },
+  { id: "web", label: "Web", icon: Search },
   { id: "phone", label: "Phone", icon: Smartphone },
   { id: "blog", label: "Blog", icon: Globe },
   { id: "export", label: "Export", icon: FileExport },
@@ -107,6 +109,7 @@ export function Settings(props: Props) {
         {section === "general" && <GeneralSettings root={props.root} onOpenVault={props.onOpenVault} />}
         {section === "kin" && <ModelSettings />}
         {section === "providers" && <ProviderSettings />}
+        {section === "web" && <WebSettings />}
         {section === "phone" && <PhoneSettings status={props.phoneStatus} onStatus={props.onPhoneStatus} />}
         {section === "blog" && <BlogSettings />}
         {section === "export" && <ExportSettings />}

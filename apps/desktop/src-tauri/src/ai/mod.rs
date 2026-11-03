@@ -41,6 +41,7 @@ mod providers;
 #[cfg(feature = "headless")]
 mod scripted;
 pub(crate) mod tools;
+pub mod web;
 mod wire;
 
 pub use chat::Chat;
@@ -416,6 +417,7 @@ pub fn meter() -> &'static cost::Meter {
 /// any AI work, in native and headless runs alike.
 pub fn init(app: &AppHandle) {
     let _ = METER.set(cost::Meter::open(kin::data_dir(app)));
+    web::init(kin::data_dir(app));
     chat::init(app);
     ideas::init(app);
 }

@@ -501,6 +501,126 @@ fn a_failed_render_keeps_the_static_page() {
     assert_ne!(item.extras["extractor"], "defuddle");
 }
 
+// --- The public-web guard (Kin's web_fetch) ------------------------------------
+
+#[test]
+fn only_public_unicast_addresses_pass_the_guard() {
+    use std::net::IpAddr;
+    for ip in [
+        "127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254",
+        "0.0.0.0", "100.64.0.1", "192.0.0.8", "198.18.0.1", "224.0.0.1",
+        "255.255.255.255", "240.0.0.1", "192.0.2.1", "::1", "::", "fe80::1",
+        "fc00::1", "fd12::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "64:ff9b::a00:1",
+        "2001:db8::1", "2002:a00:1::", "ff02::1", "::127.0.0.1",
+    ] {
+        assert!(!guard::public_ip(ip.parse::<IpAddr>().unwrap()), "{ip}");
+    }
+    for ip in ["93.184.216.34", "1.1.1.1", "8.8.8.8", "2606:4700::1111", "::ffff:1.1.1.1"] {
+        assert!(guard::public_ip(ip.parse::<IpAddr>().unwrap()), "{ip}");
+    }
+}
+
+#[test]
+fn guarded_urls_refuse_this_machine_private_networks_and_other_schemes() {
+    for raw in [
+        "http://127.0.0.1/", "http://[::1]:8080/", "http://10.0.0.1/admin",
+        "http://169.254.169.254/latest/meta-data/", "http://localhost:1423/",
+        "http://app.localhost/", "http://printer.local/", "http://router/",
+        "http://metadata.google.internal/", "http://2130706433/", "http://0x7f.1/",
+        "file:///etc/passwd", "ftp://example.com/", "http://user:pw@example.com/",
+        "javascript:alert(1)", "data:text/html,hi",
+    ] {
+        let ok = Url::parse(raw).map(|u| guard::public_url(&u)).unwrap_or(false);
+        assert!(!ok, "{raw}");
+    }
+    for raw in ["https://example.com/a?b", "http://93.184.216.34/", "https://sub.example.co.uk./"] {
+        assert!(guard::public_url(&Url::parse(raw).unwrap()), "{raw}");
+    }
+}
+
+#[test]
+fn the_guard_resolver_drops_non_public_addresses() {
+    use reqwest::dns::Resolve;
+    let refused = run(guard::PublicResolver.resolve("localhost".parse().unwrap()));
+    assert!(refused.is_err());
+    let mixed = guard::public_addrs([
+        "127.0.0.1:0".parse().unwrap(),
+        "93.184.216.34:0".parse().unwrap(),
+        "[fd00::1]:0".parse().unwrap(),
+    ]);
+    assert_eq!(mixed, ["93.184.216.34:0".parse().unwrap()]);
+}
+
+#[test]
+fn a_reader_refuses_loopback_before_connecting() {
+    // Nothing listens: a refused URL must fail without any request.
+    let reader = WebAdapter::reader(Limits::default()).unwrap();
+    for raw in ["http://127.0.0.1:9/", "http://localhost:9/", "http://[::1]:9/"] {
+        let target = Target::url(raw).unwrap();
+        assert!(!reader.matches(&target), "{raw}");
+        let error = run(reader.fetch(&web_url(raw).unwrap(), CaptureOptions::default()));
+        assert_eq!(error.unwrap_err(), Error::InvalidUrl, "{raw}");
+    }
+}
+
+/// A loopback server standing in for a public host, through a pinned name.
+fn pinned_reader(base: &str) -> (WebAdapter, String) {
+    let addr: std::net::SocketAddr = base.trim_start_matches("http://").parse().unwrap();
+    let reader = WebAdapter::reader_pinned(Limits::default(), &[("public.test", addr)]).unwrap();
+    (reader, format!("http://public.test:{}", addr.port()))
+}
+
+#[test]
+fn a_reader_follows_no_redirect_into_private_addresses() {
+    for location in ["http://127.0.0.1:{port}/secret", "http://localhost:{port}/secret", "http://10.0.0.1/"] {
+        let (base, thread) = {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let port = listener.local_addr().unwrap().port().to_string();
+            let location = location.replace("{port}", &port);
+            let thread = std::thread::spawn(move || {
+                // Only the first request may arrive; a second would be the secret.
+                let (mut stream, _) = listener.accept().unwrap();
+                let _ = stream.read(&mut [0; 4096]);
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                );
+                listener.set_nonblocking(true).unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                assert!(listener.accept().is_err(), "the redirect was followed");
+            });
+            (base, thread)
+        };
+        let (reader, public) = pinned_reader(&base);
+        let result = run(reader.fetch(&web_url(&format!("{public}/")).unwrap(), CaptureOptions::default()));
+        assert!(result.is_err(), "{location}");
+        thread.join().unwrap();
+    }
+}
+
+#[test]
+fn a_reader_reads_public_html_and_plain_text() {
+    let (base, thread) = serve(vec![
+        ("/story", ok("html"), include_bytes!("../../fixtures/article.html").to_vec()),
+        (
+            "/notes.txt",
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\n",
+            b"Line one.\n\nLine two.".to_vec(),
+        ),
+    ]);
+    let (reader, public) = pinned_reader(&base);
+    let page = run(reader.fetch(&web_url(&format!("{public}/story")).unwrap(), CaptureOptions::default())).unwrap();
+    assert_eq!(page.title.as_deref(), Some("Sleep & attention"));
+    assert!(page.body.contains("A quiet *mind* needs rest."));
+    let text = run(reader.fetch(&web_url(&format!("{public}/notes.txt")).unwrap(), CaptureOptions::default())).unwrap();
+    assert_eq!(text.body, "Line one.\n\nLine two.");
+    assert_eq!(text.extras["extractor"], "text");
+    thread.join().unwrap();
+    // The clipper keeps its behaviour: plain text isn't a page to clip.
+    assert!(!WebAdapter::new().unwrap().plain_text);
+}
+
 #[test]
 #[ignore]
 fn live_article_and_video_metadata() {

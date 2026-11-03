@@ -17,6 +17,7 @@
 //!   instructions to follow.
 
 use super::memory::Access;
+use super::web::{Web, WebCall};
 use super::wire::{ToolCall, ToolSpec};
 use kintsugi_search::{Hit, Kind, Query};
 use kintsugi_vault::{self as vault, INBOX, INSPIRATION};
@@ -135,6 +136,46 @@ pub fn specs() -> &'static [ToolSpec] {
     })
 }
 
+/// The web tools (KI-78), loaded with the core tools while they're on.
+fn web_specs() -> [ToolSpec; 2] {
+    [
+        ToolSpec {
+            name: "web_search",
+            description: "Search the web. Returns JSON, best first: title, url, snippet, date. For outside facts, sources and what others wrote; read a result with web_fetch before relying on it.",
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string" },
+                    "count": { "type": "integer", "description": "Max results (default 8, max 20)." }
+                },
+                "required": ["query"]
+            }),
+        },
+        ToolSpec {
+            name: "web_fetch",
+            description: "Read a public web page as Markdown: title, URL, author, date, then its text. Long pages come in parts; pass start to read on.",
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "url": { "type": "string", "description": "An http(s) URL." },
+                    "start": { "type": "integer", "description": "Character to start from (default 0)." }
+                },
+                "required": ["url"]
+            }),
+        },
+    ]
+}
+
+/// The core tools plus `web_search` and `web_fetch`.
+pub fn specs_with_web() -> &'static [ToolSpec] {
+    static SPECS: OnceLock<Vec<ToolSpec>> = OnceLock::new();
+    SPECS.get_or_init(|| {
+        let mut all = specs().to_vec();
+        all.extend(web_specs());
+        all
+    })
+}
+
 /// A tool loaded on demand through `tool`.
 pub struct Extra {
     pub name: &'static str,
@@ -221,6 +262,8 @@ const FEED_EXTRAS: [&str; 5] = [
 pub struct Output {
     pub content: String,
     pub is_error: bool,
+    /// A web tool's results, for the chat to show (never sent to the model).
+    pub web: Option<WebCall>,
 }
 
 impl Output {
@@ -228,6 +271,15 @@ impl Output {
         Output {
             content: message.into(),
             is_error: true,
+            web: None,
+        }
+    }
+
+    fn ok(content: String) -> Self {
+        Output {
+            content,
+            is_error: false,
+            web: None,
         }
     }
 }
@@ -246,6 +298,8 @@ pub struct Tools {
     searcher: Option<Searcher>,
     ideas: Option<IdeaReader>,
     feed: Option<FeedTool>,
+    /// `web_search` and `web_fetch`; without it, neither is offered.
+    web: Option<std::sync::Arc<Web>>,
 }
 
 impl Tools {
@@ -265,6 +319,7 @@ impl Tools {
             searcher: None,
             ideas: None,
             feed: None,
+            web: None,
         })
     }
 
@@ -292,6 +347,48 @@ impl Tools {
         self
     }
 
+    /// Lets Kin search the web and read pages (KI-78).
+    pub fn with_web(mut self, web: std::sync::Arc<Web>) -> Self {
+        self.web = Some(web);
+        self
+    }
+
+    /// The tool list for this turn's requests: the core tools, plus the web
+    /// tools while they're on. Fixed for the turn, so the prefix caches.
+    pub fn specs(&self) -> &'static [ToolSpec] {
+        if self.web.is_some() {
+            specs_with_web()
+        } else {
+            specs()
+        }
+    }
+
+    /// Runs any tool call. The web tools wait on the network; the rest are
+    /// [`run`](Self::run).
+    pub async fn call(&self, call: &ToolCall) -> Output {
+        let web = match (call.name.as_str(), &self.web) {
+            ("web_search" | "web_fetch", Some(web)) => web,
+            ("web_search" | "web_fetch", None) => {
+                return Output::error("Web tools are off in Settings › Web.");
+            }
+            _ => return self.run(call),
+        };
+        let answer = if call.name == "web_search" {
+            web.search(&call.arguments).await
+        } else {
+            web.fetch(&call.arguments).await
+        };
+        match answer {
+            Ok(answer) => Output {
+                // Web text is never spilled to a file: web_fetch pages itself.
+                content: wrap(&call.name, &answer.text),
+                is_error: false,
+                web: Some(answer.call),
+            },
+            Err(message) => Output::error(message),
+        }
+    }
+
     /// Lets Kin search the conversation log.
     pub fn with_history(mut self, history: History) -> Self {
         self.history = Some(history);
@@ -316,10 +413,7 @@ impl Tools {
                     access.skill(args)
                 };
                 return match result {
-                    Ok(text) => Output {
-                        content: text,
-                        is_error: false,
-                    },
+                    Ok(text) => Output::ok(text),
                     Err(message) => Output::error(message),
                 };
             }
@@ -328,10 +422,7 @@ impl Tools {
             )),
         };
         match result {
-            Ok(text) => Output {
-                content: self.fit(&call.id, wrap(&call.name, &text)),
-                is_error: false,
-            },
+            Ok(text) => Output::ok(self.fit(&call.id, wrap(&call.name, &text))),
             Err(message) => Output::error(message),
         }
     }
@@ -1260,5 +1351,32 @@ pub(crate) mod tests {
         assert_eq!(code.matches("write_atomic").count(), 1, "only spill writes");
         let names: Vec<_> = specs().iter().map(|s| s.name).collect();
         assert_eq!(names, ["search", "read", "list", "memory", "skill", "tool"]);
+        let names: Vec<_> = specs_with_web().iter().map(|s| s.name).collect();
+        assert_eq!(
+            names,
+            ["search", "read", "list", "memory", "skill", "tool", "web_search", "web_fetch"]
+        );
+    }
+
+    /// The web tools are offered only with a web hook, and their text comes
+    /// back wrapped as data like any tool's.
+    #[test]
+    fn web_tools_are_offered_only_when_on() {
+        let vault = scratch_vault();
+        let (off, _out) = tools(vault.path());
+        assert_eq!(off.specs().len(), specs().len());
+        let call_ = call("web_search", json!({ "query": "kiln" }));
+        let refused = crate::ai::agent::tests::block_on(off.call(&call_));
+        assert!(refused.is_error && refused.content.contains("off in Settings"), "{}", refused.content);
+        let (on, _out2) = tools(vault.path());
+        let on = on.with_web(std::sync::Arc::new(Web::scripted()));
+        assert_eq!(on.specs().len(), specs_with_web().len());
+        let found = crate::ai::agent::tests::block_on(on.call(&call_));
+        assert!(!found.is_error);
+        assert!(found.content.starts_with("<data tool=\"web_search\">\n["), "{}", found.content);
+        assert_eq!(found.web.unwrap().results.len(), 3);
+        // Other tools run as before.
+        let listed = crate::ai::agent::tests::block_on(on.call(&call("list", json!({}))));
+        assert!(listed.content.contains("the vault:") && listed.web.is_none());
     }
 }

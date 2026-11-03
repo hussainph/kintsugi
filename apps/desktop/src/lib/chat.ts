@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
 import type { Chip } from "./chips";
 import type { KinEvent } from "./kin";
+import type { WebCall } from "./web";
 
 /** Mirrors `history::Entry` in src-tauri/src/ai/history.rs. */
 export type Entry = {
@@ -21,6 +22,8 @@ export type Entry = {
   comment?: string;
   /** "Kin, review this draft" and Kin's note on it. */
   review?: boolean;
+  /** Kin's reply: the web searches and pages it used (KI-78). */
+  web?: WebCall[];
 };
 
 /** Mirrors `history::Thread`: a view of the one log, with a running summary. */

@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { beginComment, reviewDraft } from "@/comments/api";
 import { useComments } from "@/comments/useComments";
+import { registerInsert } from "@/lib/insert";
 import { memory } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
 import { type Action } from "@/refine/prompts";
@@ -105,6 +106,17 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     view.dispatch({ changes: { from, to, insert: replacement }, selection: { anchor: from + replacement.length }, annotations: isolateHistory.of("full"), userEvent: "input.reference" });
     view.focus();
   }, [editor.viewRef]);
+  // Kin's chat adds a web source here as a link (KI-78): after the
+  // selection, never over it, so none of his words are replaced.
+  const append = useCallback((text: string) => {
+    const view = editor.viewRef.current;
+    if (!view || !text) return;
+    const at = view.state.selection.main.to;
+    const before = at > 0 && !/\s/.test(view.state.sliceDoc(at - 1, at)) ? " " : "";
+    const replacement = before + text;
+    view.dispatch({ changes: { from: at, insert: replacement }, selection: { anchor: at + replacement.length }, annotations: isolateHistory.of("full"), userEvent: "input.reference" });
+  }, [editor.viewRef]);
+  useEffect(() => (editor.readOnly ? undefined : registerInsert(editor.path, append)), [editor.readOnly, editor.path, append]);
   const quote = useCallback(async (source: ReferenceSource) => {
     const path = activePath.current;
     try {
