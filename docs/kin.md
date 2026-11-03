@@ -470,11 +470,19 @@ conversation and reuse it.
 
 ### About you
 
-The sidebar's **About you** (also linked from Settings) shows both files
-with their caps, each line's origin (click it to find the change) and how
-many conversations loaded it, the skills with their `/` flag and use count,
-and the change log with undo per change. Hussain can forget a line or add
-one; his edits pass the same caps and checks.
+The sidebar footer's **About you** (also linked from Settings) answers what
+Kin currently believes, in four tabs (KI-70):
+
+- **You** (`USER.md`) and **Vault** (`NOTES.md`): the count bar against the
+  cap, then one row per line with its origin (click it to open History at
+  that change) and how many conversations loaded it. Hovering a row offers
+  edit (a `patch`, in place; Escape cancels) and forget. Adding a line sits
+  behind an "Add a line" button.
+- **Skills**: each skill with its `/` flag, origin and use count.
+- **History**: every change, newest first, with undo (redo for an undo).
+
+It opens on **You** each time. File names stay out of the UI. Hussain's
+edits pass the same caps and checks as Kin's.
 
 ## Models per task
 

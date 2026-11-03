@@ -89,7 +89,7 @@ and `useRender` are re-exported unchanged.
 Used directly by screens: `Toggle` (Inspiration tag filters), `Menu` with its
 filter parts (the model picker in Kin's chat and Settings), `Slider` (the
 effort beside a model, `src/kin/Effort.tsx`), `Meter` (the monthly cap in
-Settings), `SelectField` and `Checkbox` (the Kin developer
+Settings, and About you's count bars), `Tabs` (About you), `SelectField` and `Checkbox` (the Kin developer
 panel). The rest are ready to import; they are covered by the specification
 tests, not yet by a rendered screen.
 
@@ -135,7 +135,8 @@ Sonner or native behavior.
 | Ideas (ledger, beside, cards) | Themed through the semantic aliases; the Kin accent now reads `--kin` / `--kin-ink` |
 | Settings (KI-61) | A page of its own, converted to `ki-settings-*` roles; model pickers are `Menu` |
 | Kin chat model picker | `Menu` with `ki-model-*` roles, and the effort `Slider` with `ki-effort-*` (KI-77) |
-| Kin chat, About you | Themed through the semantic aliases |
+| Kin chat | Themed through the semantic aliases |
+| About you | Graphical `Tabs` and `Meter`; rows through the semantic aliases |
 | Kin developer panel | `SelectField` and `Checkbox` |
 | Publish and Export dialogs | Dialog chrome moved to theme tokens; the warning color is `--warning` |
 | Comments in the editor | Themed through the editor theme |
