@@ -29,7 +29,6 @@
   --editor-size: calc(19px * var(--editor-text-scale, 1));
   --editor-line: calc(29px * var(--editor-text-scale, 1));
   --editor-faint: color-mix(in oklch, var(--muted-foreground) 65%, transparent);
-  --editor-selection: color-mix(in oklch, var(--primary) 14%, transparent);
   color-scheme: light;
 }
 

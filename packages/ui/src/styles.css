@@ -104,7 +104,6 @@
     --font-prose: var(--font-editorial);
     --font-mono: var(--font-data);
     --editor-faint: var(--neutral-6);
-    --editor-selection: var(--color-2-transparent);
     border-color: var(--border);
     text-wrap: pretty;
     /* Pin the UI face to Sans/upright, including roots mounted outside the app.

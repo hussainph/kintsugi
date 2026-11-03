@@ -16,6 +16,9 @@ const tokens = {
   // Between paragraphs: the blank line, plus this.
   "--editor-paragraph-gap": "calc(var(--editor-size) * 0.35)",
   "--editor-measure": "58ch",
+  // KI-83: an opaque blue range, separate from ink version marks, dimmed
+  // prose and Kin's gold. Owned here so Mac and phone use the same fill.
+  "--editor-selection": "#a9cef7",
 };
 const body = {
   fontFamily: "var(--font-editorial)",
@@ -41,6 +44,7 @@ const data = (scale: number) => ({
 export const theme = EditorView.theme({
   "&": { ...tokens, height: "100%", ...body, color: "var(--neutral-10)", backgroundColor: "transparent" },
   "&.cm-focused": { outline: "none" },
+  '[data-color-mode="dark"] &, .dark &': { "--editor-selection": "#264b73" },
   ".cm-scroller": { ...body, textWrap: "wrap" },
   ".cm-content": {
     width: "100%",
@@ -54,8 +58,12 @@ export const theme = EditorView.theme({
   ".cm-underline": { textDecoration: "underline", textUnderlineOffset: "0.15em" },
   ".cm-cursor, .cm-dropCursor": { borderLeft: "var(--border-l) solid var(--neutral-10)" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground": {
-    backgroundColor: "var(--neutral-5-transparent)",
+    backgroundColor: "var(--editor-selection)",
   },
+  // Native selection (notably iOS). drawSelection deliberately hides this
+  // background with !important where it paints the range itself; don't
+  // override that or the two fills stack. Keep syntax and dim colours intact.
+  ".cm-content::selection, .cm-content ::selection": { backgroundColor: "var(--editor-selection)" },
   ".cm-line.cm-frontmatter": { ...data(0.72), lineHeight: "calc(var(--editor-size) * 1.15)", color: "var(--neutral-7)", paddingBottom: "0" },
   ".cm-placeholder": { color: "var(--neutral-7)", fontStyle: "italic" },
   ".cm-panels": {
