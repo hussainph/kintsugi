@@ -87,12 +87,14 @@ test("older writing is discovered once, admitted slowly, dated, lazy and optiona
   await page.getByRole("switch", { name: "Older writing from A Smart Bear" }).waitFor();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
-    await page.screenshot({ path: resolve(app.shots, `catalogue-sources-${colorScheme}.png`) });
+    await page.locator(`[data-graphical-theme][data-color-mode="${colorScheme}"]`).first().waitFor();
+    await page.screenshot({ path: resolve(app.shots, `catalogue-sources-${colorScheme}.png`), animations: "disabled" });
   }
   await page.keyboard.press("Escape");
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
-    await page.screenshot({ path: resolve(app.shots, `catalogue-feed-${colorScheme}.png`) });
+    await page.locator(`[data-graphical-theme][data-color-mode="${colorScheme}"]`).first().waitFor();
+    await page.screenshot({ path: resolve(app.shots, `catalogue-feed-${colorScheme}.png`), animations: "disabled" });
   }
   await invoke("feed_catalogue", { id: first.source.id, enabled: false });
   const off = await invoke<{ items: FeedItem[] }>("feed_items");
@@ -142,7 +144,8 @@ test("a conservative neighbour explains its link and follows the discovered feed
   await page.getByText(/^Linked from /).first().waitFor();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
-    await page.screenshot({ path: resolve(app.shots, `catalogue-neighbour-${colorScheme}.png`) });
+    await page.locator(`[data-graphical-theme][data-color-mode="${colorScheme}"]`).first().waitFor();
+    await page.screenshot({ path: resolve(app.shots, `catalogue-neighbour-${colorScheme}.png`), animations: "disabled" });
   }
   await page.keyboard.press("Escape");
   await row.getByRole("button", { name: "Follow", exact: true }).click();
