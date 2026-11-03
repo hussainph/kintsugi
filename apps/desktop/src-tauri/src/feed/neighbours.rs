@@ -109,6 +109,10 @@ fn discover_in_store(store: &super::Store) -> Result<usize> {
     // Two distinct positive items must link to an origin. Take at most
     // three destinations per pass; the durable journal prevents repeats.
     for (origin, candidates) in by_origin {
+        let source_title = Url::parse(&origin).ok().and_then(|url| {
+            url.host_str()
+                .map(|host| host.trim_start_matches("www.").to_string())
+        });
         let anchors: HashSet<i64> = candidates.iter().map(|(id, _)| *id).collect();
         if anchors.len() < 2 {
             continue;
@@ -125,7 +129,13 @@ fn discover_in_store(store: &super::Store) -> Result<usize> {
                 media: "article",
                 ..Default::default()
             };
-            added += store.insert_suggested_catalogue(&origin, None, anchor, &[entry], now)?;
+            added += store.insert_suggested_catalogue(
+                &origin,
+                source_title.as_deref(),
+                anchor,
+                &[entry],
+                now,
+            )?;
             store.mark_neighbour_checked(&link.url, now)?;
         }
     }

@@ -102,4 +102,54 @@ test("older writing is discovered once, admitted slowly, dated, lazy and optiona
   const read = await invoke<{ item: FeedItem; text: string }>("feed_read", { id: old.find((item) => item.url?.includes("/value-time/"))?.id ?? old[0].id });
   assert.match(read.text, /original article text/i);
   assert.equal(read.item.publishedAt, old.find((item) => item.id === read.item.id)!.publishedAt, "lazy reads preserve the known original date");
+  assert.equal(read.item.title, old.find((item) => item.id === read.item.id)!.title, "lazy reads preserve the feed's actual title");
+});
+
+test("a conservative neighbour explains its link and follows the discovered feed", { timeout: TIMEOUT }, async () => {
+  const neighbour = await serve("cohen");
+  const sources = await invoke<Source[]>("feed_sources");
+  const anchorSource = sources.find((source) => source.title === "A Smart Bear")!;
+  // Isolate this fixture's next-day admission from the earlier archive pool.
+  for (const source of sources) await invoke("feed_catalogue", { id: source.id, enabled: false });
+  const title = "What is the value of one hour of a startup founder's time?";
+  const db = new DatabaseSync(resolve(app.config, "feed.sqlite"));
+  let anchor = 0;
+  try {
+    db.exec("PRAGMA busy_timeout=5000; BEGIN IMMEDIATE");
+    // Clock fixture only: real UTC-day and restart quotas are covered in Rust.
+    db.exec("UPDATE catalogue_releases SET day = day - 1");
+    const now = Math.floor(Date.now() / 1000);
+    const insert = db.prepare("INSERT INTO items (source_id, guid, url, url_key, title, content, media, published_at, fetched_at, sort_at, liked_at) VALUES (?, ?, ?, ?, ?, ?, 'article', ?, ?, ?, ?)");
+    for (const n of [1, 2]) {
+      const url = `${anchorSource.url}/neighbour-anchor-${n}`;
+      const result = insert.run(anchorSource.id, `neighbour-anchor-${n}`, url, url, n === 1 ? title : `${title} Notes`, `${title}\n\n[${title}](${neighbour.base}/value-time/)`, now, now, now, now);
+      const id = Number(result.lastInsertRowid);
+      if (n === 1) anchor = id;
+      db.prepare("INSERT INTO events (at, kind, item_id, source_id, surface) VALUES (?, 'like', ?, ?, 'newest')").run(Date.now(), id, anchorSource.id);
+    }
+    db.exec("COMMIT");
+  } finally { db.close(); }
+  await invoke("feed_note", { id: anchor, note: "Worth reading" });
+  const suggestion = await until(async () => {
+    const db = new DatabaseSync(resolve(app.config, "feed.sqlite"), { readOnly: true });
+    try { return db.prepare("SELECT id FROM items WHERE url = ? AND catalogue_released_at IS NOT NULL").get(`${neighbour.base}/value-time/`) as { id: number } | undefined; }
+    finally { db.close(); }
+  }, (item) => !!item);
+  assert.equal(neighbour.requests.length, 0, "neighbour discovery uses stored links, without a crawl");
+  const row = page.getByRole("feed", { name: "Newest first" }).locator(`article[data-feed-item="${suggestion!.id}"]`);
+  await row.getByRole("button", { name: "Follow", exact: true }).waitFor();
+  await row.getByRole("button", { name: "About this suggestion" }).click();
+  await page.getByText(/^Linked from /).first().waitFor();
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.screenshot({ path: resolve(app.shots, `catalogue-neighbour-${colorScheme}.png`) });
+  }
+  await page.keyboard.press("Escape");
+  await row.getByRole("button", { name: "Follow", exact: true }).click();
+  const followed = await until(() => invoke<Source[]>("feed_sources"), (sources) => sources.some((source) => source.url === `${neighbour.base}/index.xml`));
+  const source = followed.find((source) => source.url === `${neighbour.base}/index.xml`)!;
+  const reading = await invoke<{ item: FeedItem }>("feed_read", { id: suggestion!.id });
+  assert.equal(reading.item.sourceId, source.id);
+  assert.equal(reading.item.suggestion, null);
+  assert.ok(neighbour.requests.includes("/index.xml"), "Follow resolves the site's real feed");
 });
