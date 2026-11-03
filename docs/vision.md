@@ -24,6 +24,31 @@ Tailscale, and there's no cloud and no account. AI is bring-your-own-key. It's
 free and open source so anyone who likes it can run their own copy, but
 nothing is built for multi-user use, hosting or onboarding at scale.
 
+## The life of a piece
+
+Every piece of writing goes through the same five stages. Most sparks happen
+outside Kintsugi, on a walk or in another app.
+
+| Stage | What happens | Where |
+| --- | --- | --- |
+| **Spark** | Something catches his attention: a thought, a post, a conversation | Anywhere. The phone's capture box and share sheet, the Feed, the Mac |
+| **I want to write about this** | A spark becomes an idea, his or Kin's, or he just starts writing | Ideas, or a new draft |
+| **Research and test it** | What he already has on it comes back, and Kin argues with it | The draft and its margin |
+| **Write and revise** | He writes. Kin reads and questions, and edits only when asked | The draft |
+| **Publish or keep** | It goes to the blog, or he marks it complete and keeps it | Publish, or the status |
+
+Two things get in the way, and Kintsugi's job is to remove both:
+
+- **A. Collecting.** Getting sparks, sources and his own thoughts in, from
+  inside Kintsugi and outside it, with as little effort as possible.
+- **B. Recall.** Getting them back while he writes, without going to look
+  for them. This is the harder problem and the one that matters most. A
+  library he has to visit and search only half solves it.
+
+Nothing is carried by hand between stages. He doesn't attach sources to an
+idea or file a clip under a draft; what he collected comes back beside the
+draft when it fits what he's writing (see Writing › Recall).
+
 ## The shape
 
 Kintsugi has four places, and Kin is in all of them:
@@ -32,7 +57,7 @@ Kintsugi has four places, and Kin is in all of them:
 | --- | --- | --- |
 | **Feed** | A personal compilation, new and old, from followed sources and close neighbours | Automatic |
 | **Inspiration** | A small, curated library of what's worth keeping | **Hussain only** |
-| **Ideas** | A few specific, grounded ideas a day about his writing and collection | Kin |
+| **Ideas** | Bite-sized sparks: his own, and a few of Kin's each day | **Hussain** and Kin |
 | **Writing** | Notes, drafts and posts, on the Mac and the phone | **Hussain only** |
 
 **Kin** is on every screen: one avatar, one chat that
@@ -40,9 +65,14 @@ picks up whatever he's looking at, and comment threads in his drafts.
 
 ```
  sources ─▶ Feed ──save──▶ Inspiration ─┐
-             ▲                          ├─▶ Kin ──▶ Ideas ──adopt──▶ Writing ──▶ export
-             └── ranking ◀── signals ◀──┴── Writing ◀───────────────────┘
+             ▲                          ├─▶ Kin ──▶ Ideas ──start writing──▶ Writing ──▶ publish or keep
+             └── ranking ◀── signals ◀──┴── Writing ◀───────────────────────────┘
+
+ Feed, Inspiration, Ideas, notes, earlier writing ──recall──▶ the draft's margin
 ```
+
+The bottom row is problem B: everything he has collected or written can
+come back beside the draft he's working on, without a trip to its page.
 
 Writing matters most. When features compete, the one that makes writing and
 publishing a piece easier or more pleasant wins.
@@ -67,7 +97,9 @@ Nothing in it is saved unless he saves it.
   📝 note (a strong signal; travels with the item if saved), ⤓ save (copies
   it into Inspiration, the only way anything gets there), and **Not
   interested** (the strongest negative). Ignored items are a weak negative
-  and drop out after 30 days.
+  and drop out after 30 days. Items he liked or noted stay
+  searchable after they leave the Feed, so recall can still bring them
+  back.
 - **Discuss** on any item opens Kin with that item in context.
 - Feed items and the subscription list live in the app's own data, not the
   vault. Subscriptions import and export as OPML. Each source shows its
@@ -110,6 +142,10 @@ share sheet, the Mac, a pasted link or a dropped file.
   and full source one tap away. The owner designs the exact shape in Paper
   before the file format changes.
 - Each clip shows where it's been referenced in his writing.
+- Inspiration stays a page of its own, where he sees what he has kept. Its
+  second job matters more: everything in it can come back beside a draft
+  through recall, without him opening the page. His note on a clip is
+  optional, and when he writes one, it's what recall matches first.
 - Anything machine-made on a card (summary, transcript excerpt) is labelled.
   Quotes are verbatim and link back to the passage or
   timestamp.
@@ -134,6 +170,28 @@ Kin is the agent. It reads everything Hussain collects and writes, the same
 way he does, and helps him. It never writes his prose. It has no "Muse"-style
 persona. It's called Kin ("your Kin"), and he
 customizes its look (designed in Paper).
+
+### Who Kin is
+
+Paul Graham ends his essays by thanking the people who read drafts and
+suggested ideas. Kin is meant to be those people for Hussain: friends who
+respect his mind and his work, read what he's working on, bring ideas and
+sources, ask the hard question, and leave the writing to him. A
+collaborator and a light editor.
+
+This describes who Kin is, not a feature. Posts carry no thanks to Kin.
+
+A test for any Kin feature: would a friend like that do it?
+
+What Kin does at each stage of a piece:
+
+| Stage | Kin |
+| --- | --- |
+| Spark | Notices. Offers a few sparks a day from his writing and saves |
+| I want to write about this | Stays out of the way. The idea is his line, with nothing attached |
+| Research and test it | Gathers what he already has when asked, his own writing first. Asks what a sharp reader would ask, and finds who disagrees |
+| Write and revise | Reads. Comments and questions; writing suggestions only when he turns them on, into the stash; edits only when asked |
+| Publish or keep | Checks links and quotes. Moves nothing by itself |
 
 ### Present everywhere
 
@@ -213,23 +271,38 @@ This follows how always-on agents like Grok Bot are built.
 
 ## Ideas
 
-A small daily batch (up to about five), plus ideas on demand. Each one is
-specific and grounded in his own writing and collection: "You've saved seven
-things about tools that shape thinking and never written about it",
-"Two clips this month disagree about X", "This draft argues the opposite of
-what you published in March."
+An idea is a bite-sized spark: one line that gets his mind going. It
+condenses things he has read and written into something short, and adding
+detail to it works against that. His own ideas sit beside Kin's.
+
+- **His ideas** are typed with **New idea**, on the Mac or the phone. A
+  title and at most a line, nothing attached: no sources, no questions.
+  They're his words, so they're kept in the vault, work offline on the
+  phone, and never fade.
+- **An idea isn't a status.** A document has no `status: idea`. **Start
+  writing** makes a draft that lists the idea in its frontmatter, or adds
+  the idea to a draft he picks, and the idea shows the drafts it's in. One
+  idea can start several pieces, and one piece can grow from several ideas.
+  He can also just start writing; most pieces never need an idea first.
+- Ideas, his and Kin's, are in the search index, so recall can bring one
+  back beside a draft it fits.
+
+**Kin's ideas** are a small daily batch (up to about five), plus ideas on
+demand. Each one is specific and grounded in his own writing and
+collection: "You've saved seven things about tools that shape thinking and
+never written about it", "Two clips this month disagree about X", "This
+draft argues the opposite of what you published in March."
 
 - **Progressive disclosure.** Most ideas will be ignored, so the list shows
   a title and at most a one-line snippet. Detail appears only when he
   engages: Kin's hunch and a few observed takeaways, each citing its quoted
   clip inline (`[1]`) rather than justifying itself at length.
-- **Actions:** Adopt (creates a new draft titled after the idea with an
-  empty body, the idea and its clips beside it and in the draft's metadata,
-  never in the prose; or attaches it to an existing draft), Discuss with Kin,
-  Refine, Dismiss (a signal). Unused ideas fade after about a week.
-- Ideas have their own section. They don't appear in the editor margin.
-  Inside a draft, "ideas for this draft" is a command that opens Ideas
-  filtered to that document.
+- **Actions:** Start writing (today's Adopt: a new draft titled after the
+  idea with an empty body, the idea in the draft's metadata, never in the
+  prose; or added to a draft he's started), Discuss with Kin, Refine,
+  Dismiss (a signal). Unused ideas of Kin's fade after about a week.
+- Inside a draft, "ideas for this draft" opens Ideas filtered to that
+  document. Kin's suggestions for a draft go to its stash (KI-89).
 
 ## Writing
 
@@ -238,11 +311,41 @@ Writing works fully on both the Mac and the phone.
 - **The editor:** focused Markdown/MDX, with a Notion-style `/` menu for
   blocks and AI commands (skills), and `@` to reference clips, documents
   and Kin. `@` opens the same picker as `[[` and writes the same `[[link]]`
-  to disk, so files stay Obsidian-compatible. ⌘K's AI edits on a selection
+  to disk. The picker ranks by what he's writing, not by name (see
+  Recall). ⌘K's AI edits on a selection
   stay, alongside non-prose actions like "find supporting clips", "who
   disagrees?" and "Discuss this paragraph".
+- **One margin.** The draft column keeps a fixed measure. One margin on
+  the right holds three tabs, Kin, References and Stash, and opening it
+  never re-wraps a line (KI-103).
 - **Organizing:** drafts can be tagged and organized (folders on disk, tags
   in frontmatter), and filtered on both devices.
+- **Two endings.** A finished piece is published, or he marks it complete
+  and keeps it. Neither moves the file. How document status works overall
+  (draft, complete, published) needs its own revisit.
+
+### Recall
+
+What he has collected and written comes back to him while he writes,
+without him going to look. The References tab does this, in order of how
+much it asks of him:
+
+- **Along this paragraph**, always on. When he pauses, the paragraph he's
+  in is searched against everything: his posts and notes first, then his
+  ideas, clips, and Feed items he liked, noted or saved. It's the local
+  search index (see `docs/search.md`), so it costs no model calls. It shows
+  a few items, each with the sentence that matched, and nothing when
+  nothing clears the bar. What he has already linked, or set aside for this
+  draft, doesn't come back.
+- **`[[` and `@`** use the same ranking: before he types a letter, the
+  picker offers what fits the paragraph.
+- **Gather**, when he asks. Kin reads the section and lays out what he has
+  on it: what he's said before, what supports it, what argues against it,
+  each with a quote checked against its source. One Kin turn, under the
+  monthly cap.
+
+What he inserts and what he waves away teach the ranking, the way Feed
+signals do.
 
 ### The phone is a notes app
 
@@ -261,7 +364,9 @@ to feel like a simple notes app.
   Expo's web components, so `/`, `@` and Kin's comment threads behave the
   same on both devices. Native keyboard, selection and toolbar feel get
   proven in a spike first.
-- Feed, Inspiration, Ideas and Kin are all on the phone too.
+- Feed, Inspiration, Ideas and Kin are all on the phone too. A thought
+  typed on the phone is a note in `inbox/` or a new idea, and recall finds
+  either one later on the Mac.
 
 ## Export
 
@@ -306,6 +411,8 @@ directory, not the vault.
 
 - **Writing comes first.** Every feature serves turning inspiration into
   finished pieces.
+- **Nothing is carried by hand.** What he collects comes back to him while
+  he writes. He never has to file it, attach it or go looking for it.
 - **Kin helps; it doesn't ghostwrite.** It finds, connects, questions and
   suggests. Prose is Hussain's, apart from edits he explicitly asks for.
 - **Hussain curates.** Only Hussain puts things in Inspiration and
