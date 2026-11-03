@@ -15,7 +15,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
-import { startApp, type App } from "./headless-app.ts";
+import { startApp, type App, openApp } from "./headless-app.ts";
 
 const DOC = "drafts/seams.md";
 const BODY = [
@@ -37,7 +37,7 @@ before(async () => {
     throw new Error(`${e}\nInstall it with: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`);
   });
   page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
-  await page.goto(app.url);
+  await openApp(page, app.url, app.output);
   await openDoc();
 }, { timeout: TIMEOUT });
 
@@ -156,7 +156,10 @@ test("resolve hides the thread, Show resolved brings it back, and it reopens", {
   await until(() => stored().threads[0].status === "open", "reopened is stored");
   // With nothing resolved left, the toggle goes away.
   await page.getByRole("button", { name: "Hide resolved" }).waitFor({ state: "detached" });
+  // Reopened, he carries on: the reply box has focus, so Escape reaches the popover.
+  await page.waitForFunction(() => document.activeElement?.matches(".cm-comment-popover .cm-comment-input") ?? false);
   await page.keyboard.press("Escape");
+  await popover().waitFor({ state: "detached" });
 });
 
 test("deleting the paragraph keeps the thread, detached, across a reload", { timeout: 90_000 }, async () => {

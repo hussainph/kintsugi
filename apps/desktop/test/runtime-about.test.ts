@@ -12,7 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
-import { startApp, type App } from "./headless-app.ts";
+import { startApp, type App, openApp } from "./headless-app.ts";
 
 const TIMEOUT = Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000);
 const SCHEME = process.env.KINTSUGI_COLOR_SCHEME === "dark" ? "dark" : "light";
@@ -36,7 +36,7 @@ before(async () => {
     throw new Error(`${e}\nInstall it with: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`);
   });
   page = await browser.newPage({ viewport: { width: 1280, height: 860 }, colorScheme: SCHEME });
-  await page.goto(app.url);
+  await openApp(page, app.url, app.output);
 }, { timeout: TIMEOUT });
 
 after(async () => {

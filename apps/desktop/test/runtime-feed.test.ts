@@ -20,7 +20,7 @@ import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
-import { stopRunner } from "./headless-app.ts";
+import { stopRunner, openApp } from "./headless-app.ts";
 import { BLOG_TITLES, WORKSHOP, startFeedFixtures, type Fixtures } from "./feed-fixtures.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -98,7 +98,7 @@ before(async () => {
   // Only loopback: the app and the fixture feeds. Anything else would be the
   // live network (a YouTube link, say), which a test must never reach.
   await page.route(/^https?:\/\/(?!127\.0\.0\.1[:/])/, (route) => route.abort());
-  await page.goto(url);
+  await openApp(page, url, () => output);
 }, { timeout: TIMEOUT });
 
 after(async () => {

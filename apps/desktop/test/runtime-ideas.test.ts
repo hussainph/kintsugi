@@ -17,7 +17,7 @@ import { dirname, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
-import { stopRunner } from "./headless-app.ts";
+import { stopRunner, openApp } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const STARTED = "drafts/kintsugi-and-gold.md";
@@ -30,6 +30,8 @@ let scratch = "";
 let vault = "";
 let config = "";
 let shots = "";
+/** What the current runner printed. */
+let output = "";
 
 const freePort = () =>
   new Promise<number>((done, fail) => {
@@ -44,7 +46,7 @@ const freePort = () =>
 /** Starts the headless app on the scratch vault and config; returns its URL. */
 async function start(env: Record<string, string> = {}) {
   const [frontend, backend] = [await freePort(), await freePort()];
-  let output = "";
+  output = "";
   runner = spawn(process.execPath, [resolve(root, "scripts/desktop-headless.mjs")], {
     cwd: root,
     detached: true,
@@ -106,7 +108,7 @@ before(async () => {
     throw new Error(`${e}\nInstall it with: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`);
   });
   page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
-  await page.goto(url);
+  await openApp(page, url, () => output);
 }, { timeout: TIMEOUT });
 
 after(async () => {

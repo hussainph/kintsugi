@@ -12,7 +12,7 @@ import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "nod
 import { resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
-import { startApp, type App } from "./headless-app.ts";
+import { startApp, type App, openApp } from "./headless-app.ts";
 
 const DOC = "notes/outside.md";
 const TIMEOUT = Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000);
@@ -36,7 +36,7 @@ before(async () => {
     if (call?.cmd === "doc_write" && gate) await gate;
     await route.continue();
   });
-  await page.goto(app.url);
+  await openApp(page, app.url, app.output);
 }, { timeout: TIMEOUT });
 
 after(async () => {
