@@ -91,7 +91,8 @@ normal events, but the filesystem adapter moves files into
 `$KINTSUGI_CONFIG_DIR/trash/<batch>/` with an `original-paths.json` recovery
 manifest. It never invokes the trash crate's Finder AppleScript default,
 requests Automation permission, plays a sound, or touches the owner's Trash.
-Window dragging is a no-op. Other unsupported platform APIs fail explicitly.
+Window dragging and native appearance changes are no-ops. The tab's appearance
+still follows its own setting. Other unsupported platform APIs fail explicitly.
 
 The backend accepts only its exact loopback Host and frontend Origin, never
 wildcard CORS. All content endpoints require the token; only CORS preflight is

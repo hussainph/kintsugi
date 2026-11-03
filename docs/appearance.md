@@ -8,7 +8,8 @@ the phone sheet without reverting anything.
 
 Light, Dark or System. System is the default and follows that device's
 appearance, including changes while Kintsugi is open. An explicit Light or
-Dark choice overrides the system across the app, popups and editor.
+Dark choice overrides the system across the app, popups and editor, including
+native window chrome on the Mac and native menus on the phone.
 
 The Mac gallery uses miniature app captures. System combines the left half
 of Light with the right half of Dark. The phone uses a segmented control
@@ -19,7 +20,7 @@ and one live text sample.
 Text size scales the editor, not the rest of the interface. Both devices
 use 80, 90, 100, 110, 120, 135 and 150%. The sample uses the selected size.
 The Mac's ⌘−, ⌘= and ⌘0 still work while writing; hold ⌘ or open the keyboard
-cheatsheet to find them.
+shortcuts list (⇧⌘/) to find them.
 
 Editor font is read-only: LT Superior Serif on the Mac and New York on iOS.
 Colour themes and font choices are not shipped yet.

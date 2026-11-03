@@ -173,19 +173,20 @@
 .ki-settings-cap { width: 7rem; }
 .ki-settings-size { min-width: 3.5em; text-align: center; }
 /* Appearance gallery: the existing Settings column stays 640px wide. */
-.ki-appearance-gallery.ui-stack { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-l); }
+.ki-appearance-gallery { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-l); }
 .ki-appearance-option { display: flex; min-width: 0; flex-direction: column; gap: var(--space-s); cursor: pointer; }
 .ki-appearance-thumbnail { position: relative; display: block; width: 100%; aspect-ratio: 1.6; overflow: hidden; border-radius: var(--radius-m); box-shadow: 0 0 0 var(--border-s) var(--neutral-5); }
 .ki-appearance-thumbnail img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .ki-appearance-thumbnail .ki-appearance-split { position: absolute; inset: 0; clip-path: inset(0 0 0 50%); }
+.ki-appearance-option:hover .ki-appearance-thumbnail { box-shadow: 0 0 0 var(--border-s) var(--neutral-7); }
 .ki-appearance-option:has([data-checked]) .ki-appearance-thumbnail { box-shadow: 0 0 0 var(--border-l) var(--neutral-10); }
 .ki-appearance-option:has(:focus-visible) .ki-appearance-thumbnail { outline: var(--border-l) solid var(--neutral-10); outline-offset: var(--space-xxs); }
 .ki-appearance-writing .ki-settings-row { min-height: calc(var(--space-xxl) + var(--space-s)); }
-/* Matches the Mac editor's KI-65 body, heading and scale. The preview grows
+/* Matches packages/editor/src/theme.ts's KI-65 body, heading and scale. The preview grows
    with the text, leaving the space below available for KI-98. */
 .ki-appearance-sample { --editor-size: calc(var(--size-m) * 1.2 * var(--editor-text-scale, 1)); border-radius: var(--radius-m); box-shadow: var(--border-shadow-s); padding: var(--space-l); margin-bottom: calc(2 * var(--space-xxl)); font-family: var(--font-editorial); font-weight: var(--weight-editorial-regular); font-size: var(--editor-size); line-height: 1.7; letter-spacing: 0.012em; text-wrap: pretty; } /* copy-lint-allow: editorial prose tracking from KI-65, never a label */
-.ki-appearance-sample h2 { margin: 0 0 var(--space-l); font-weight: var(--weight-editorial-heavy); font-size: calc(var(--editor-size) * 1.7); line-height: 1.25; letter-spacing: 0; }
 .ki-appearance-sample p { margin: 0; }
+.ki-appearance-sample .ki-appearance-sample-title { margin-bottom: var(--space-l); font-weight: var(--weight-editorial-heavy); font-size: calc(var(--editor-size) * 1.7); line-height: 1.25; letter-spacing: 0; }
 .ki-settings-pairing { align-items: center; }
 .ki-settings-prose { max-width: 36rem; color: var(--neutral-10); text-wrap: pretty; }
 .ki-sign-in-actions { display: flex; align-items: center; gap: var(--space-xs); margin-inline-start: auto; }

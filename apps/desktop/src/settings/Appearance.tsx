@@ -52,10 +52,10 @@ export function AppearanceSettings() {
         </Row>
         <Row label="Editor font"><span className="ki-text-s ki-muted">LT Superior Serif</span></Row>
       </Group>
-      <div className="ki-appearance-sample" aria-label="Text sample">
-        <h2>Kintsugi and gold</h2>{/* copy-lint-allow: verbatim Paper writing sample */}
+      <section className="ki-appearance-sample" aria-label="Text sample">
+        <p className="ki-appearance-sample-title">Kintsugi and gold</p>{/* copy-lint-allow: verbatim Paper writing sample */}
         <p>The first time I saw a kintsugi bowl I thought the gold was decoration. It is not. The gold is a decision: this break is part of the object now, and we are not going to pretend otherwise.</p>{/* copy-lint-allow: verbatim Paper writing sample */}
-      </div>
+      </section>
     </Page>
   );
 }
