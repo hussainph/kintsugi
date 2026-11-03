@@ -26,9 +26,9 @@ export const SUGGESTIONS: Suggestion[] = [
 export type StashItem = { id: string; by: "owner" | "kin"; text: string; suggestion?: string; fresh?: boolean };
 export const STASH: StashItem[] = [
   { id: "st-1", by: "owner", text: "Ask Mum what happened to the teapot lid." },
-  { id: "st-2", by: "kin", text: "On craft and repair says sanding is where you learn the wood. That argues against paragraph five. Worth a line?" },
+  { id: "st-2", by: "kin", text: "On craft and repair says sanding is where you learn the wood. That argues against paragraph five. Worth a line?" }, // copy-lint-allow: a scratch vault title
   { id: "st-3", by: "owner", text: "Strength before looks. Is that true for essays, or only for bowls?" },
-  { id: "st-4", by: "kin", text: "Golden joinery: lacquer did the repair, gold was only the finish." },
+  { id: "st-4", by: "kin", text: "Golden joinery: lacquer did the repair, gold was only the finish." }, // copy-lint-allow: his draft's words and the scratch vault's titles
 ];
 
 /** A word or sentence with versions he kept (KI-86); Kin's are marked. */
@@ -62,13 +62,13 @@ export type Chat = {
 };
 
 export const CHATS: Chat[] = [
-  { id: "c-draft", title: "Kintsugi and gold", group: "draft", kind: "draft", when: "2m", messages: [], real: true },
+  { id: "c-draft", title: "Kintsugi and gold", group: "draft", kind: "draft", when: "2m", messages: [], real: true }, // copy-lint-allow: his draft's words and the scratch vault's titles
   {
     id: "c-decision", title: "Is “decision” too strong here?", group: "draft", kind: "paragraph", when: "9m",
     paragraph: "The first time I saw a kintsugi bowl",
     messages: [
       { by: "owner", text: "Is “decision” too strong here?" },
-      { by: "kin", text: "Keep it. The rest of the draft argues for it. On craft and repair leans the other way, so link it if you want the tension." },
+      { by: "kin", text: "Keep it. The rest of the draft argues for it. On craft and repair leans the other way, so link it if you want the tension." }, // copy-lint-allow: his draft's words and the scratch vault's titles
     ],
   },
   {
@@ -79,9 +79,9 @@ export const CHATS: Chat[] = [
     ],
   },
   { id: "c-general", title: "General", group: "else", kind: "general", when: "Yesterday", messages: [], real: true },
-  { id: "c-quiet", title: "The quiet web, revisited", group: "else", kind: "feed", when: "Mon", messages: [{ by: "kin", text: "It's the third post this month on slow sites." }] },
+  { id: "c-quiet", title: "The quiet web, revisited", group: "else", kind: "feed", when: "Mon", messages: [{ by: "kin", text: "It's the third post this month on slow sites." }] }, // copy-lint-allow: his draft's words and the scratch vault's titles
   { id: "c-cost", title: "What repair costs", group: "else", kind: "idea", when: "Sun", messages: [{ by: "kin", text: "You've written about what repair is, never what it costs." }] },
-  { id: "c-joinery", title: "Golden joinery", group: "else", kind: "clip", when: "Oct 28", messages: [{ by: "owner", text: "Is this the Britannica piece or the museum one?" }] },
+  { id: "c-joinery", title: "Golden joinery", group: "else", kind: "clip", when: "Oct 28", messages: [{ by: "owner", text: "Is this the Britannica piece or the museum one?" }] }, // copy-lint-allow: his draft's words and the scratch vault's titles
   { id: "c-today", title: "Ideas for today", group: "else", kind: "helper", when: "6:00", messages: [{ by: "kin", text: "3 new ideas, 1 dropped for a bad quote." }] },
   { id: "c-rain", title: "Field notes on rain", group: "else", kind: "draft", when: "Oct 26", messages: [{ by: "kin", text: "The second paragraph repeats the first." }] },
   { id: "c-morning", title: "Morning pages", group: "else", kind: "draft", when: "Oct 25", messages: [{ by: "owner", text: "Is the kitchen light a metaphor?" }] },
@@ -92,8 +92,8 @@ export const ASKS = ["Who disagrees?", "Find a clip", "Have I said this before?"
 
 /** Kin's scripted answers: to an inline ask, and to "Why?" on a suggestion. */
 export const ANSWERS: Record<string, string> = {
-  "Who disagrees?": "Your own post does. On craft and repair says the second hour of sanding is where the work admits what it is. That's polish first, the opposite of this.",
-  "Find a clip": "Golden joinery has it: “The repair is not hidden. It is given a color of its own.”",
+  "Who disagrees?": "Your own post does. On craft and repair says the second hour of sanding is where the work admits what it is. That's polish first, the opposite of this.", // copy-lint-allow: his draft's words and the scratch vault's titles
+  "Find a clip": "Golden joinery has it: “The repair is not hidden. It is given a color of its own.”", // copy-lint-allow: his draft's words and the scratch vault's titles
   "Have I said this before?": "Once. In Attention has a cost you wrote that the drafts you keep are the ones that broke.",
   why: "You say “bowl” two sentences back. “Object” makes the reader switch pictures.",
   default: "Fair. I'd keep your version and see how it reads tomorrow.",
@@ -101,9 +101,9 @@ export const ANSWERS: Record<string, string> = {
 
 export const REFERENCES = {
   here: [
-    { title: "Repair is a kind of attention", meta: "draft", summary: "We tend to think of repair as restoration: make it look as if nothing…" },
-    { title: "On craft and repair", meta: "complete", summary: "There is a moment, somewhere in the second hour of sanding, when the…" },
-    { title: "Golden joinery", meta: "Encyclopaedia Britannica", summary: "The history of kintsugi, and why a visible repair can make an object…" },
+    { title: "Repair is a kind of attention", meta: "draft", summary: "We tend to think of repair as restoration: make it look as if nothing…" }, // copy-lint-allow: his draft's words and the scratch vault's titles
+    { title: "On craft and repair", meta: "complete", summary: "There is a moment, somewhere in the second hour of sanding, when the…" }, // copy-lint-allow: his draft's words and the scratch vault's titles
+    { title: "Golden joinery", meta: "Encyclopaedia Britannica", summary: "The history of kintsugi, and why a visible repair can make an object…" }, // copy-lint-allow: his draft's words and the scratch vault's titles
   ],
   along: [
     { title: "Attention has a cost", meta: "draft", summary: "Every unfinished thought keeps a tab open somewhere in my head…" },
