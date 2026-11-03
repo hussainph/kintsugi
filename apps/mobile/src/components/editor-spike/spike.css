@@ -11,7 +11,6 @@
   --font-prose: ui-serif, "New York", Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   --editor-faint: color-mix(in oklch, var(--muted-foreground) 65%, transparent);
-  --editor-selection: color-mix(in oklch, var(--primary) 14%, transparent);
   color-scheme: light;
 }
 
