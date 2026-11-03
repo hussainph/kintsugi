@@ -1,6 +1,8 @@
 /** Just enough YAML frontmatter handling to read and set top-level scalar
  *  fields (`title`, `status`) without disturbing anything else in the block. */
 
+import { withoutDimmed } from "./dim.ts";
+
 type Line = { from: number; to: number; text: string };
 type Block = { fields: Line[]; close: number };
 
@@ -51,8 +53,9 @@ export function body(text: string): string {
   return after === -1 ? "" : text.slice(after + 1);
 }
 
+/** Words in the body, leaving out dimmed text (comments). */
 export function wordCount(text: string): number {
-  return body(text).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
+  return withoutDimmed(body(text)).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
 }
 
 /** The frontmatter block plus the blank line after it, and the writing

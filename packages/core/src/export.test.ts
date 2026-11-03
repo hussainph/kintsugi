@@ -186,3 +186,14 @@ test("markdown: lists, tasks, tables and nested structure", () => {
   assert.equal(blocks[0].t, "list");
   assert.deepEqual(blocks[1], { t: "table", align: ["left", "right"], head: [[{ t: "text", v: "x" }], [{ t: "text", v: "y" }]], rows: [[[{ t: "text", v: "1" }], [{ t: "text", v: "2" }]]] });
 });
+
+test("dimmed text in every comment form is left out of the export", () => {
+  const text = "---\ntitle: Dimmed\n---\n\nKeep this. {/* not this */} And this.\n\n<!-- Not this paragraph. -->\n\nAlso %%not this%% here.\n";
+  const piece = preparePiece(input({ text }));
+  const json = JSON.stringify(piece.blocks);
+  assert.ok(!/not this|Not this/.test(json), json);
+  assert.ok(json.includes("And this.") && json.includes("here."));
+  assert.equal(piece.blocks.length, 2);
+  assert.equal(piece.words, 6);
+  assert.deepEqual(piece.checks.filter((c) => c.level === "warning"), []);
+});

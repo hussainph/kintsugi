@@ -91,3 +91,12 @@ test("a paragraph added next to one edited on the other side merges", () => {
   assert.deepEqual(merge3("b\n", "b, edited\n", "b\n\nadded\n"), { clean: true, text: "b, edited\n\nadded\n" });
   assert.deepEqual(merge3("a\nb", "a\nx\nb", "a\nB"), { clean: true, text: "a\nx\nB" });
 });
+
+test("dimming on one side and an edit to another paragraph on the other merge", () => {
+  const base = doc("First.", "Second.", "Third.");
+  const mine = doc("<!-- First. -->", "Second.", "Third.");
+  const theirs = doc("First.", "Second.", "Third, edited on the phone.");
+  assert.deepEqual(merge3(base, mine, theirs), { clean: true, text: doc("<!-- First. -->", "Second.", "Third, edited on the phone.") });
+  const mdx = doc("{/* First. */}", "Second.", "Third.");
+  assert.deepEqual(merge3(base, theirs, mdx), { clean: true, text: doc("{/* First. */}", "Second.", "Third, edited on the phone.") });
+});

@@ -53,6 +53,32 @@ editor and the phone, and adds the one write, `setTags`.
 `tags` array beside `title` and `status`; older Macs omit it, and readers
 treat it as empty.
 
+## Dimmed text
+
+Dim a passage to read the draft without it and keep it where it was. ⌘/
+(or **Dim** in ⌘K) dims the selection; with nothing selected, it dims the
+line the cursor is on, list marker or heading marker included. Over several
+lines, each line is dimmed on its own. ⌘/ inside or right beside dimmed text
+undims it. Each is one undo step.
+
+On disk, dimmed text is a comment, so the file stays plain Markdown/MDX and
+other tools hide it too:
+
+- `.md`: `<!-- the passage -->`
+- `.mdx`: `{/* the passage */}` (MDX rejects HTML comments)
+
+The editor shows every comment form as dimmed text: those two and Obsidian's
+`%%…%%`, whoever wrote them. It hides the markers and fades the text, which
+stays selectable and editable. The cursor steps over a hidden marker in one
+move, and deleting one marker (⌫ just after it) undims the passage.
+Lines in code blocks and the frontmatter aren't dimmed.
+
+Dimmed text doesn't count in the word count, and Publish and Export leave it
+out (`docs/publishing.md`, `docs/export.md`). It's in the shared editor
+(`packages/editor/src/dim.ts`, with the scanner in `packages/core/src/dim.ts`),
+so the phone shows it the same way; the phone has no dim key. A dimmed line
+syncs and merges like any other line.
+
 ## Organizing
 
 Organizing is optional: nothing asks for a folder, tag or status, and

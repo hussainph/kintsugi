@@ -168,7 +168,7 @@ autosave behave as usual.
 
 Heading fragments are dropped (the blog's anchor slugs aren't guaranteed to
 match). `![[note]]` embeds of documents are treated as links. Links inside
-code and HTML comments are left alone.
+code and comments are left alone.
 
 **Images.** Markdown images (`![alt](path "caption")`) and Obsidian embeds
 (`![[file.png|alt]]`) with a local path are resolved against the document's
@@ -185,12 +185,13 @@ colocated assets would add optimisation; the mapping is one function.)
   a missing module is an error.
 - A capitalised JSX tag with no matching import is an error (MDX fails the
   build on it).
-- In `.mdx`, HTML comments are invalid, so private `<!-- -->` notes are
-  stripped (said in the checks); in `.md` they're stripped too, since
-  they're notes to self, not content.
+- Dimmed text and other comments are left out, in every form: `<!-- -->`
+  (invalid in `.mdx`), `{/* */}` and `%%…%%` (see `docs/writing.md` ›
+  Dimmed text). A comment alone on its line takes the line with it. The
+  checks note how many were left out; none is a warning.
 - In `.mdx`, a `{` in prose is JavaScript; it's a warning to escape it.
 - Obsidian-only syntax that the blog renders as literal text (`==highlight==`,
-  `%%comments%%`) is a warning.
+  an unmatched `%%`) is a warning.
 
 **Provenance: sources appendix and statement.** Both optional and off by
 default (Settings → Export, overridable per publish). The appendix lists the

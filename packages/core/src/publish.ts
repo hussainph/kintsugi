@@ -3,6 +3,7 @@
  *  copy, and what to tell the writer first. See docs/publishing.md. The
  *  desktop backend checks the plan against the repository and writes it. */
 
+import { cutRange, scanSpans } from "./dim.ts";
 import { frontmatter, splitFrontmatter } from "./frontmatter.ts";
 import { parseWikilinks, resolveReference, type ReferenceSource } from "./references.ts";
 
@@ -175,47 +176,9 @@ function blogHref(url: string, site: string): string {
   }
 }
 
-type Span = { from: number; to: number };
-
-/** Fenced code, inline code and HTML comments: never rewritten as links or images. */
-export function protectedSpans(body: string): { code: Span[]; comments: Span[] } {
-  const code: Span[] = [];
-  const comments: Span[] = [];
-  let fence: { marker: string; from: number } | null = null;
-  let pos = 0;
-  for (const line of body.split("\n")) {
-    const end = pos + line.length + 1;
-    const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line.replace(/^(\s*>\s?)+/, ""))?.[1];
-    if (fence) {
-      if (marker && marker[0] === fence.marker[0] && marker.length >= fence.marker.length) {
-        code.push({ from: fence.from, to: Math.min(end, body.length) });
-        fence = null;
-      }
-    } else if (marker) fence = { marker, from: pos };
-    pos = end;
-  }
-  if (fence) code.push({ from: fence.from, to: body.length });
-  const inside = (spans: Span[], at: number) => spans.some((s) => at >= s.from && at < s.to);
-  for (let i = 0; i < body.length; i++) {
-    if (inside(code, i)) continue;
-    if (body.startsWith("<!--", i)) {
-      const close = body.indexOf("-->", i + 4);
-      const to = close === -1 ? body.length : close + 3;
-      comments.push({ from: i, to });
-      i = to - 1;
-    } else if (body[i] === "`" && body[i - 1] !== "\\") {
-      let run = i;
-      while (body[run] === "`") run++;
-      const ticks = body.slice(i, run);
-      const close = body.indexOf(ticks, run);
-      if (close !== -1 && !body.slice(run, close).includes("\n\n")) {
-        code.push({ from: i, to: close + ticks.length });
-        i = close + ticks.length - 1;
-      } else i = run - 1;
-    }
-  }
-  return { code, comments };
-}
+/** Fenced code, inline code and comments (dimmed text, see dim.ts): never
+ *  rewritten as links or images. */
+export const protectedSpans = scanSpans;
 
 function normalize(path: string): string | null {
   const parts: string[] = [];
@@ -305,14 +268,9 @@ export function planPublish(input: PublishInput): PublishPlan {
     edits.push({ from: 0, to, insert: "" });
   }
 
-  if (comments.length) {
-    for (const span of comments) {
-      let to = span.to;
-      if (original[to] === "\n" && (span.from === 0 || original[span.from - 1] === "\n")) to++;
-      edits.push({ from: span.from, to, insert: "" });
-    }
-    say("note", `${comments.length === 1 ? "An HTML comment was" : `${comments.length} HTML comments were`} left out (they're notes to yourself, and MDX rejects them).`);
-  }
+  // Dimmed text and other comments are notes to self (and MDX rejects HTML comments).
+  for (const span of comments) edits.push({ ...cutRange(original, span), insert: "" });
+  if (comments.length) say("note", `${comments.length === 1 ? "A dimmed passage was" : `${comments.length} dimmed passages were`} left out.`);
 
   // Images: Markdown images and ![[embeds]] of image files.
   const imageRefs: ImageRef[] = [];

@@ -66,9 +66,10 @@ document's text and does what Publish does, minus the blog's specifics:
   (`export_images`, the same resolver Publish uses) and become *assets*
   (`asset:image-1.png` in the blocks). A missing image is a warning, not an
   error: exporting a draft shouldn't stop on it;
-- HTML comments, MDX `import`/`export` lines and components, `%%comments%%`
-  go; `==highlights==` keep their words. Each MDX component left out is a
-  warning (it only renders on the blog);
+- dimmed text and other comments (`<!-- -->`, `{/* */}`, `%%…%%`), MDX
+  `import`/`export` lines and components go; `==highlights==` keep their
+  words. Comments go without a check and don't count in `words`. Each MDX
+  component left out is a warning (it only renders on the blog);
 - the body is read into blocks by `markdown.ts`, a small destination-neutral
   tree over `@lezer/markdown` (the editor's parser, CommonMark + GFM):
   paragraphs, headings, quotes, `[!NOTE]`-style callouts, lists and tasks,

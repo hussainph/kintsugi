@@ -20,6 +20,7 @@ Hold ⌘ for a moment to see the shortcuts that work where you are, beside their
 | ⌘E / ⇧⌘X / ⌘L | Inline code / strikethrough / link |
 | ⌥⌘1–6 / ⌥⌘0 | Heading 1–6 / plain text |
 | ⇧⌘7 / ⇧⌘8 / ⇧⌘9 / ⇧⌘. | Numbered list / bullets / to-do / quote |
+| ⌘/ | Dim the selection (or the line) in place, or undim it; dimmed text is left out of publish and export |
 | ⌘= / ⌘− / ⌘0 | Larger / smaller / default text size (also in Settings › General) |
 | ⇧⌘D | Toggle draft / complete |
 | ⌘F | Find in document |
