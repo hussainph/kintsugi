@@ -1,11 +1,10 @@
 import { Pencil, Plus, Redo2, Undo2, X } from "@kintsugi/ui/icons";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Badge } from "@kintsugi/ui/components/badge";
 import { Button } from "@kintsugi/ui/components/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Input } from "@kintsugi/ui/components/input";
-import { Meter, Tabs } from "@kintsugi/ui/graphical";
+import { Dialog, Meter, Tabs } from "@kintsugi/ui/graphical";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { memory, MemoryEdit, MemoryFile, MemorySource, MemoryView, Origin } from "@/lib/kin";
 
@@ -13,10 +12,10 @@ type Change = MemoryView["changes"][number];
 type Entry = MemoryView["files"][number]["entries"][number];
 type Tab = "you" | "vault" | "skills" | "history";
 
-/** Each memory file's tab. The file names stay out of the UI. */
+/** A vertical section list. The file names stay out of the UI. */
 const TABS: { tab: Tab; label: string; file?: MemoryFile }[] = [
   { tab: "you", label: "You", file: "user" },
-  { tab: "vault", label: "Vault", file: "notes" },
+  { tab: "vault", label: "This vault", file: "notes" },
   { tab: "skills", label: "Skills" },
   { tab: "history", label: "History" },
 ];
@@ -100,6 +99,13 @@ function Line({
       <li data-editing className="py-(--space-xs)">
         <form
           className="flex items-center gap-(--space-xs)"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
+              setDraft(null);
+            }
+          }}
           onSubmit={(e) => {
             e.preventDefault();
             void save();
@@ -107,10 +113,9 @@ function Line({
         >
           <Input
             autoFocus
-            className="h-8"
+            className="h-8 ki-about-prose"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && setDraft(null)}
             aria-label="Edit line"
           />
           <Button size="sm" variant="ghost" type="button" onClick={() => setDraft(null)}>
@@ -125,9 +130,9 @@ function Line({
   }
 
   return (
-    <li className="group flex items-start gap-(--space-s) border-b border-border py-(--space-xs) last:border-b-0">
+    <li className="ki-about-row group flex items-start gap-(--space-s)">
       <div className="min-w-0 flex-1 space-y-0.5">
-        <p className="break-words text-pretty">
+        <p className="ki-about-prose break-words text-pretty">
           {entry.text}
           {entry.blocked && (
             <Badge variant="destructive" className="ml-2 align-middle" title={entry.blocked}>
@@ -163,7 +168,14 @@ function AddLine({ file, onAdd }: { file: MemoryFile; onAdd: (text: string) => P
   return (
     <form
       data-editing
-      className="flex items-center gap-(--space-xs)"
+      className="ki-about-form flex items-center gap-(--space-xs)"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          e.stopPropagation();
+          setDraft(null);
+        }
+      }}
       onSubmit={async (e) => {
         e.preventDefault();
         const text = draft.trim();
@@ -172,11 +184,10 @@ function AddLine({ file, onAdd }: { file: MemoryFile; onAdd: (text: string) => P
     >
       <Input
         autoFocus
-        className="h-8"
+        className="h-8 ki-about-prose"
         placeholder={PLACEHOLDER[file]}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => e.key === "Escape" && setDraft(null)}
         aria-label="New line"
       />
       <Button size="sm" variant="ghost" type="button" onClick={() => setDraft(null)}>
@@ -194,13 +205,13 @@ function ChangeLines({ change }: { change: Change }) {
   if (change.skill) {
     const action = change.skill.action[0].toUpperCase() + change.skill.action.slice(1);
     return (
-      <p>
+      <p className="ki-about-prose">
         {action} the skill <span className="font-medium">{change.skill.name}</span>
       </p>
     );
   }
   return (
-    <ul className="space-y-0.5">
+    <ul className="ki-about-prose space-y-0.5">
       {change.ops.map((op, i) => (
         <li key={i} className="flex gap-(--space-xs)">
           <span aria-hidden className={cn("w-3 shrink-0 ki-data leading-[inherit]", op.op === "remove" ? "text-destructive" : "text-(--success)")}>
@@ -227,6 +238,8 @@ export function AboutYou() {
   const [view, setView] = useState<MemoryView | null>(null);
   const [tab, setTab] = useState<Tab>("you");
   const [focus, setFocus] = useState<string | null>(null);
+  const youTab = useRef<HTMLButtonElement>(null);
+  const panels = useRef<HTMLDivElement>(null);
 
   const run = useCallback(async (action: () => Promise<MemoryView>, done?: string) => {
     try {
@@ -240,23 +253,24 @@ export function AboutYou() {
   }, []);
 
   useEffect(() => {
-    const show = () => setOpen(true);
+    const show = () => {
+      setTab("you");
+      setFocus(null);
+      setOpen(true);
+    };
     window.addEventListener("kintsugi:open-about-you", show);
     return () => window.removeEventListener("kintsugi:open-about-you", show);
   }, []);
 
   useEffect(() => {
     if (open) void run(memory.view);
-    else {
-      setFocus(null);
-      setTab("you");
-    }
   }, [open, run]);
 
-  // A line's origin opens History at its change.
+  // A section starts at the top; a line's origin opens History at its change.
   useEffect(() => {
+    panels.current?.scrollTo({ top: 0 });
     if (tab === "history" && focus) document.getElementById(`change-${focus}`)?.scrollIntoView({ block: "nearest" });
-  }, [tab, focus]);
+  }, [tab, focus, open]);
 
   const edit = (file: MemoryFile, edits: MemoryEdit[], done: string) => run(() => memory.edit(file, edits), done);
 
@@ -266,121 +280,155 @@ export function AboutYou() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent
-        aria-describedby={undefined}
-        aria-label="About you"
-        className="ki-about h-[min(40rem,85svh)] grid-rows-[auto_minmax(0,1fr)] sm:max-w-2xl"
+    <Dialog.Root
+      open={open}
+      onOpenChange={(next, details) => {
         // Escape in a line being edited cancels the edit, not the dialog.
-        onEscapeKeyDown={(e) => (e.target as Element | null)?.closest?.("[data-editing]") && e.preventDefault()}
-      >
-        <DialogHeader>
-          <DialogTitle>About you</DialogTitle>
-        </DialogHeader>
-
-        <Tabs.Root value={tab} onValueChange={(value) => setTab(value as Tab)} className="flex min-h-0 flex-col gap-(--space-xs)">
-          <Tabs.List className="self-start">
-            {TABS.map(({ tab, label }) => (
-              <Tabs.Tab key={tab} value={tab}>
-                {label}
-              </Tabs.Tab>
-            ))}
-          </Tabs.List>
-
-          {view?.files.map((file) => {
-            const tab = TABS.find((t) => t.file === file.file)!.tab;
-            return (
-              <Tabs.Panel key={file.file} value={tab} className="flex min-h-0 flex-col gap-(--space-s) overflow-y-auto">
-                <Meter.Root value={Math.min(file.used, file.cap)} max={file.cap} aria-label="Characters used" data-high={file.used >= file.cap * 0.9 || undefined}>
-                  <Meter.Heading>
-                    <span className="ki-text-s ki-muted">{times(file.entries.length, "line")}</span>
-                    <Meter.Value>{() => `${file.used.toLocaleString()} / ${file.cap.toLocaleString()} characters`}</Meter.Value>
-                  </Meter.Heading>
-                  <Meter.Track>
-                    <Meter.Indicator />
-                  </Meter.Track>
-                </Meter.Root>
-                {file.entries.length === 0 ? (
-                  <p className="ki-muted">{EMPTY[file.file]}</p>
-                ) : (
-                  <ul aria-label={TABS.find((t) => t.file === file.file)!.label}>
-                    {file.entries.map((entry) => (
-                      <Line
-                        key={entry.text}
-                        entry={entry}
-                        onSave={(text) => edit(file.file, [{ op: "patch", old: entry.text, text }], "Saved.")}
-                        onForget={() => void edit(file.file, [{ op: "remove", old: entry.text }], "Forgotten.")}
-                        onShow={showChange}
-                      />
-                    ))}
-                  </ul>
-                )}
-                <AddLine file={file.file} onAdd={(text) => edit(file.file, [{ op: "add", text }], "Added.")} />
-              </Tabs.Panel>
-            );
-          })}
-
-          {view && (
-            <Tabs.Panel value="skills" className="min-h-0 overflow-y-auto">
-              {view.skills.length === 0 ? (
-                <p className="ki-muted">No skills yet. Kin makes one when you repeat a request.</p>
-              ) : (
-                <ul aria-label="Skills">
-                  {view.skills.map((skill) => (
-                    <li key={skill.name} className="space-y-0.5 border-b border-border py-(--space-xs) last:border-b-0">
-                      <p className="flex flex-wrap items-baseline gap-x-(--space-xs)">
-                        <span className="font-medium">{skill.command ? `/${skill.name}` : skill.name}</span>
-                        {skill.blocked && (
-                          <Badge variant="destructive" className="self-center" title={skill.blocked}>
-                            Not loaded
-                          </Badge>
-                        )}
-                        <span className="ki-muted">{skill.description}</span>
-                      </p>
-                      <Provenance origin={skill.origin} used={skill.uses ? `Used ${times(skill.uses, "time")}` : "Not used yet"} onShow={showChange} />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Tabs.Panel>
-          )}
-
-          {view && (
-            <Tabs.Panel value="history" className="min-h-0 overflow-y-auto">
-              {view.changes.length === 0 ? (
-                <p className="ki-muted">No changes yet.</p>
-              ) : (
-                <ol aria-label="History" className="-mx-(--space-xs)">
-                  {view.changes.map((change) => (
-                    <li
-                      key={change.id}
-                      id={`change-${change.id}`}
-                      data-focus={focus === change.id || undefined}
-                      className="flex items-start gap-(--space-s) rounded-(--radius-s) border-b border-border px-(--space-xs) py-(--space-xs) last:border-b-0 data-focus:border-transparent data-focus:bg-muted"
-                    >
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="flex flex-wrap items-baseline gap-x-(--space-xs)">
-                          <span className="font-medium">{change.undoes ? "Undo" : sourceLabel(change.source)}</span>
-                          <span className="ki-text-xs ki-muted">{when(change.at)}</span>
-                        </p>
-                        <ChangeLines change={change} />
-                      </div>
-                      {change.undoneBy ? (
-                        <span className="ki-text-xs ki-muted px-(--space-xs) py-1">Undone</span>
-                      ) : (
-                        <Button size="xs" variant="ghost" onClick={() => run(() => memory.undo(change.id), change.undoes ? "Redone." : "Undone.")}>
-                          {change.undoes ? <Redo2 data-icon="inline-start" /> : <Undo2 data-icon="inline-start" />}
-                          {change.undoes ? "Redo" : "Undo"}
-                        </Button>
+        if (details.reason === "escape-key" && (details.event.target as Element | null)?.closest?.("[data-editing]")) {
+          details.cancel();
+          return;
+        }
+        setOpen(next);
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Backdrop />
+        <Dialog.Popup aria-describedby={undefined} className="ki-about" initialFocus={youTab}>
+          <Tabs.Root value={tab} onValueChange={(value) => setTab(value as Tab)} orientation="vertical" className="ki-about-layout">
+            <div className="ki-about-nav">
+              <Dialog.Title className="ki-about-title">About you</Dialog.Title>
+              <Tabs.List activateOnFocus aria-label="About you sections" className="ki-about-sections">
+                {TABS.map(({ tab, label, file: name }) => {
+                  const file = view?.files.find((file) => file.file === name);
+                  const count = file ? `${file.used.toLocaleString()} / ${file.cap.toLocaleString()}` :
+                    view ? (tab === "skills" ? view.skills.length : view.changes.length).toLocaleString() : "…";
+                  return (
+                    <div key={tab} className="ki-about-section" data-memory={!!name || undefined}>
+                      <Tabs.Tab
+                        value={tab}
+                        ref={tab === "you" ? youTab : undefined}
+                        aria-label={label}
+                        aria-describedby={`about-${tab}-count`}
+                        className="ki-about-section-button"
+                      >
+                        <span>{label}</span>
+                        <span id={`about-${tab}-count`} className="ki-about-count">{count}{file && <span className="sr-only"> characters</span>}</span>
+                      </Tabs.Tab>
+                      {file && (
+                        <Meter.Root
+                          className="ki-about-meter"
+                          value={Math.min(file.used, file.cap)}
+                          max={file.cap}
+                          aria-label={`${label} characters used`}
+                          aria-valuetext={`${count} characters`}
+                          data-high={file.used >= file.cap * 0.9 || undefined}
+                        >
+                          <Meter.Track>
+                            <Meter.Indicator />
+                          </Meter.Track>
+                        </Meter.Root>
                       )}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </Tabs.Panel>
-          )}
-        </Tabs.Root>
-      </DialogContent>
-    </Dialog>
+                    </div>
+                  );
+                })}
+              </Tabs.List>
+            </div>
+            <div className="ki-about-detail">
+              <header className="ki-about-header">
+                <h3 className="ki-about-prose ki-about-heading">{TABS.find((section) => section.tab === tab)!.label}</h3>
+              </header>
+              <div ref={panels} className="ki-about-panels">
+                {view?.files.map((file) => {
+                  const tab = TABS.find((t) => t.file === file.file)!.tab;
+                  return (
+                    <Tabs.Panel key={file.file} value={tab} className="ki-about-panel flex flex-col gap-(--space-s)">
+                      {file.entries.length === 0 ? (
+                        <p className="ki-about-prose ki-muted">{EMPTY[file.file]}</p>
+                      ) : (
+                        <ul aria-label={TABS.find((t) => t.file === file.file)!.label}>
+                          {file.entries.map((entry) => (
+                            <Line
+                              key={entry.text}
+                              entry={entry}
+                              onSave={(text) => edit(file.file, [{ op: "patch", old: entry.text, text }], "Saved.")}
+                              onForget={() => void edit(file.file, [{ op: "remove", old: entry.text }], "Forgotten.")}
+                              onShow={showChange}
+                            />
+                          ))}
+                        </ul>
+                      )}
+                      <AddLine file={file.file} onAdd={(text) => edit(file.file, [{ op: "add", text }], "Added.")} />
+                    </Tabs.Panel>
+                  );
+                })}
+
+                {view && (
+                  <Tabs.Panel value="skills" className="ki-about-panel">
+                    {view.skills.length === 0 ? (
+                      <p className="ki-about-prose ki-muted">No skills yet. Kin makes one when you repeat a request.</p>
+                    ) : (
+                      <ul aria-label="Skills">
+                        {view.skills.map((skill) => (
+                          <li key={skill.name} className="ki-about-row space-y-0.5">
+                            <p className="ki-about-prose flex flex-wrap items-baseline gap-x-(--space-xs)">
+                              <span className="font-medium">{skill.command ? `/${skill.name}` : skill.name}</span>
+                              {skill.blocked && (
+                                <Badge variant="destructive" className="self-center" title={skill.blocked}>
+                                  Not loaded
+                                </Badge>
+                              )}
+                              <span className="ki-muted">{skill.description}</span>
+                            </p>
+                            <Provenance origin={skill.origin} used={skill.uses ? `Used ${times(skill.uses, "time")}` : "Not used yet"} onShow={showChange} />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </Tabs.Panel>
+                )}
+
+                {view && (
+                  <Tabs.Panel value="history" className="ki-about-panel">
+                    {view.changes.length === 0 ? (
+                      <p className="ki-about-prose ki-muted">No changes yet.</p>
+                    ) : (
+                      <ol aria-label="History">
+                        {view.changes.map((change) => (
+                          <li
+                            key={change.id}
+                            id={`change-${change.id}`}
+                            data-focus={focus === change.id || undefined}
+                            className="ki-about-row flex items-start gap-(--space-s) rounded-(--radius-s) data-focus:bg-muted"
+                          >
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <p className="flex flex-wrap items-baseline gap-x-(--space-xs)">
+                                <span className="font-medium">{change.undoes ? "Undo" : sourceLabel(change.source)}</span>
+                                <span className="ki-text-xs ki-muted">{when(change.at)}</span>
+                              </p>
+                              <ChangeLines change={change} />
+                            </div>
+                            {change.undoneBy ? (
+                              <span className="ki-text-xs ki-muted px-(--space-xs) py-1">Undone</span>
+                            ) : (
+                              <Button size="xs" variant="ghost" onClick={() => run(() => memory.undo(change.id), change.undoes ? "Redone." : "Undone.")}>
+                                {change.undoes ? <Redo2 data-icon="inline-start" /> : <Undo2 data-icon="inline-start" />}
+                                {change.undoes ? "Redo" : "Undo"}
+                              </Button>
+                            )}
+                          </li>
+                        ))}
+                      </ol>
+                    )}
+                  </Tabs.Panel>
+                )}
+              </div>
+              <Dialog.Close aria-label="Close" className="ki-about-close">
+                <X />
+              </Dialog.Close>
+            </div>
+          </Tabs.Root>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
