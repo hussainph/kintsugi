@@ -203,8 +203,9 @@
 .ki-about .ki-about-heading { margin: 0; font-weight: var(--weight-editorial-medium); }
 .ki-about .ki-about-close { position: absolute; top: var(--space-l); right: var(--space-xl); padding: var(--space-xxs); color: var(--neutral-7); }
 .ki-about-close svg { width: var(--space-m); height: var(--space-m); }
-.ki-about-panels { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-.ki-about .ki-about-panel { padding: 0; }
+/* Keep control focus rings inside the scroll clip without shifting the rows. */
+.ki-about-panels { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--space-xs); margin: calc(-1 * var(--space-xs)); }
+.ki-about .ki-about-panel { padding: 0; overflow-wrap: anywhere; }
 .ki-about-panel:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: calc(-1 * var(--border-l)); }
 .ki-about-row { padding: var(--space-s); box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4); }
 .ki-about-row:last-child { box-shadow: none; }
