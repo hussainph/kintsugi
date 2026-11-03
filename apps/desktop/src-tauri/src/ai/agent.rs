@@ -282,7 +282,10 @@ async fn steps(
     let reference = model.model();
     let system = prompt::system(memory);
     let mut items = Vec::with_capacity(turn.history.len() * 2 + 1);
+    // His words are where web links may come from (KI-81); Kin's answers aren't.
+    tools.heard(&turn.question);
     for (said, answered) in &turn.history {
+        tools.heard(said);
         items.push(Item::User(said.clone()));
         items.push(Item::Assistant {
             text: answered.clone(),

@@ -202,7 +202,7 @@ async fn start(
         .with_memory(access)
         .with_searcher(crate::search::searcher(app))
         .with_feed(crate::feed::kin_hook(app));
-    if let Some(web) = super::web::for_turn() {
+    if let Some(web) = super::web::for_turn(turn.background) {
         tools = tools.with_web(web);
     }
     let request = agent::Turn {

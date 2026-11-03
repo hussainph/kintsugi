@@ -91,6 +91,8 @@ struct TestBrain {
     connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>>,
     /// Web tools on (scripted results, KI-78).
     web: Arc<Mutex<bool>>,
+    /// Helpers get them too (KI-81).
+    web_helpers: Arc<Mutex<bool>>,
 }
 
 impl Brain for TestBrain {
@@ -129,6 +131,10 @@ impl Brain for TestBrain {
         (*self.web.lock().unwrap()).then(|| Arc::new(crate::ai::web::Web::scripted()))
     }
 
+    fn web_for_helpers(&self) -> bool {
+        *self.web_helpers.lock().unwrap()
+    }
+
     fn finish_job(&self, job: &Job, report: String, trace: &Trace) -> Result<String> {
         self.finished
             .lock()
@@ -156,6 +162,7 @@ struct Fixture {
     events: Arc<Mutex<Vec<ChatEvent>>>,
     connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>>,
     web: Arc<Mutex<bool>>,
+    web_helpers: Arc<Mutex<bool>>,
     _vault: tempfile::TempDir,
     _ledger: tempfile::TempDir,
 }
@@ -179,8 +186,10 @@ fn fixture_in(
     let events: Arc<Mutex<Vec<ChatEvent>>> = Arc::default();
     let connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>> = Arc::default();
     let web: Arc<Mutex<bool>> = Arc::default();
+    let web_helpers: Arc<Mutex<bool>> = Arc::default();
     let brain = TestBrain {
         web: web.clone(),
+        web_helpers: web_helpers.clone(),
         script: script.clone(),
         vault: Mutex::new(vault.path().into()),
         meter: Meter::with_clock(Some(ledger.path().into()), || "2026-11".into()),
@@ -195,6 +204,7 @@ fn fixture_in(
         events,
         connected,
         web,
+        web_helpers,
         _vault: vault,
         _ledger: ledger,
     }
@@ -317,7 +327,7 @@ fn a_reply_keeps_its_web_sources() {
                 &[(
                     "w2",
                     "web_fetch",
-                    json!({ "url": "https://example.org/essays/x" }),
+                    json!({ "url": "https://example.org/essays/golden-joinery" }),
                 )],
                 "",
             ),
@@ -336,7 +346,10 @@ fn a_reply_keeps_its_web_sources() {
     assert_eq!(reply.web[0].query.as_deref(), Some("golden joinery"));
     assert_eq!(reply.web[0].results.len(), 3);
     assert_eq!(reply.web[1].tool, "fetch");
-    assert_eq!(reply.web[1].results[0].url, "https://example.org/essays/x");
+    assert_eq!(
+        reply.web[1].results[0].url,
+        "https://example.org/essays/golden-joinery"
+    );
     let seen = f.script.seen();
     assert_eq!(seen[0].tools, crate::ai::tools::specs_with_web().len());
     // Sources are for the chat; the next turn's history carries only text.
@@ -759,6 +772,40 @@ fn helper_jobs_run_in_the_background_and_report_quietly() {
     );
     // Its cost went on the ledger as the triage task.
     assert_eq!(f.engine.0.brain.meter.report().by_task[0].task, "triage");
+}
+
+/// KI-81: helpers run unattended, so they get the web tools only while
+/// Settings › Web allows it.
+#[test]
+fn helpers_get_the_web_only_when_allowed() {
+    let f = fixture(
+        vec![answer("Nothing new."), answer("Still nothing.")],
+        Duration::ZERO,
+    );
+    *f.web.lock().unwrap() = true;
+    let job = |brief: &str| NewJob {
+        kind: "ideas".into(),
+        task: Some("ideas".into()),
+        brief: brief.into(),
+        topic: None,
+    };
+    f.engine.create_job(job("Today's ideas.")).unwrap();
+    wait("the first job", || {
+        f.engine.jobs().iter().any(|j| j.status == Status::Done)
+    });
+    *f.web_helpers.lock().unwrap() = true;
+    f.engine.create_job(job("Tomorrow's ideas.")).unwrap();
+    wait("the second job", || {
+        f.engine
+            .jobs()
+            .iter()
+            .filter(|j| j.status == Status::Done)
+            .count()
+            == 2
+    });
+    let seen = f.script.seen();
+    assert_eq!(seen[0].tools, crate::ai::tools::specs().len());
+    assert_eq!(seen[1].tools, crate::ai::tools::specs_with_web().len());
 }
 
 #[test]

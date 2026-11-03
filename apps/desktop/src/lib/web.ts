@@ -6,6 +6,8 @@ export type WebProvider = "exa" | "brave" | "tavily";
 /** Mirrors `ai::web::View`. Holds no key: keys never leave Rust. */
 export type WebSettings = {
   enabled: boolean;
+  /** Background helpers (the daily Ideas batch and others) get web tools too. */
+  helpers: boolean;
   /** His pick, if any. */
   provider: WebProvider | null;
   /** What `web_search` uses now. */
@@ -22,6 +24,7 @@ export type WebCall = { tool: "search" | "fetch"; query?: string; provider?: str
 export const web = {
   settings: () => invoke<WebSettings>("web_settings"),
   setEnabled: (enabled: boolean) => invoke<WebSettings>("web_set_enabled", { enabled }),
+  setHelpers: (helpers: boolean) => invoke<WebSettings>("web_set_helpers", { helpers }),
   setProvider: (provider: WebProvider | null) => invoke<WebSettings>("web_set_provider", { provider }),
   /** An empty or null key removes the saved one. */
   setKey: (provider: WebProvider, key: string | null) => invoke<WebSettings>("web_set_key", { provider, key }),
