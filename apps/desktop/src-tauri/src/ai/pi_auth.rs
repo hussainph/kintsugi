@@ -297,6 +297,10 @@ impl Store {
         };
         match serde_json::from_str(text.trim_start_matches('\u{feff}')) {
             Ok(Value::Object(map)) => Ok(map),
+            // Kintsugi's own file is only ever written whole by Kintsugi; if
+            // it's damaged anyway, it counts as empty, so Settings still
+            // opens and the next save replaces it. Pi's is never replaced.
+            _ if self.owner == Owner::Kintsugi => Ok(Map::new()),
             _ => Err(format!("{} is not valid credentials JSON", path.display())),
         }
     }
@@ -314,6 +318,8 @@ impl Store {
         self.ensure_dir()?;
         let tmp = path.with_file_name(format!(".{AUTH_FILE}.kintsugi-{}", std::process::id()));
         let fail = |_| format!("could not write {}", path.display());
+        // A leftover from a crash could have other permissions; start afresh.
+        let _ = fs::remove_file(&tmp);
         let mut file = fs::OpenOptions::new()
             .write(true)
             .create(true)
@@ -610,16 +616,28 @@ fn api_key(cred: &Value) -> Option<String> {
                 out.push_str(&rest[..1]);
                 rest = &rest[1..];
             }
-            Some('{') => {
-                let end = rest.find('}')?;
-                out.push_str(&env(&rest[1..end])?);
-                rest = &rest[end + 1..];
-            }
+            // As Pi's `parseConfigValueTemplate`: an unclosed `${` or a bad
+            // name inside one is kept as it is.
+            Some('{') => match rest.find('}') {
+                None => out.push('$'),
+                Some(end) => {
+                    let name = &rest[1..end];
+                    let valid = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+                    if valid {
+                        out.push_str(&env(name)?);
+                    } else {
+                        out.push('$');
+                        out.push_str(&rest[..=end]);
+                    }
+                    rest = &rest[end + 1..];
+                }
+            },
             _ => {
                 let len = rest
                     .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
                     .unwrap_or(rest.len());
-                if len == 0 {
+                if len == 0 || rest.starts_with(|c: char| c.is_ascii_digit()) {
                     out.push('$');
                     continue;
                 }
@@ -1471,5 +1489,31 @@ mod tests {
         assert_eq!(normalize_domain("  "), None);
         assert_eq!(trusted_http_url("file:///etc/passwd"), None);
         assert_eq!(trusted_http_url("https://github.com/login/device").as_deref(), Some("https://github.com/login/device"));
+    }
+
+    #[test]
+    fn a_damaged_kintsugi_file_counts_as_empty_and_the_next_save_replaces_it() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(AUTH_FILE), "{\"groq\": sk-half-written").unwrap();
+        let store = Store::kintsugi(dir.path());
+        assert_eq!(store.held("groq").unwrap(), None);
+        store.save("zai", json!({ "type": "api_key", "key": "zk" })).unwrap();
+        let text = fs::read_to_string(dir.path().join(AUTH_FILE)).unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), json!({ "zai": { "type": "api_key", "key": "zk" } }));
+        // Pi's own file is never treated that way.
+        fs::write(dir.path().join(AUTH_FILE), "{").unwrap();
+        assert!(Store::new(dir.path()).held("zai").is_err());
+    }
+
+    #[test]
+    fn templates_read_as_pi_reads_them() {
+        let key = |raw: &str| api_key(&json!({ "type": "api_key", "key": raw, "env": { "A_B": "x" } }));
+        assert_eq!(key("${A_B}-k").as_deref(), Some("x-k"));
+        assert_eq!(key("$A_B").as_deref(), Some("x"));
+        assert_eq!(key("k${unclosed").as_deref(), Some("k${unclosed"));
+        assert_eq!(key("k${bad-name}").as_deref(), Some("k${bad-name}"));
+        assert_eq!(key("$1abc").as_deref(), Some("$1abc"));
+        assert_eq!(key("a$$b$!c").as_deref(), Some("a$b!c"));
+        assert_eq!(key("${KI92_UNSET_FOR_TEST}"), None);
     }
 }

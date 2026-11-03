@@ -375,8 +375,15 @@ async fn chatgpt(i: &Interaction, calls: &Calls<'_>, device_id: Option<&str>) ->
         i,
         Some(server),
         move |url| {
+            // Unlike Pi, an error counts only with this sign-in's state, so
+            // another page can't end the sign-in by loading the callback.
             if let Some(error) = param(url, "error") {
-                return Verdict::Fail(format!("ChatGPT authorization failed: {error}"));
+                return match param(url, "state") {
+                    Some(state) if state == expected => {
+                        Verdict::Fail(format!("ChatGPT authorization failed: {error}"))
+                    }
+                    _ => Verdict::Ignore(400, "State mismatch.".into()),
+                };
             }
             match chatgpt_result(url, &expected) {
                 Ok(result) => Verdict::Accept(result),

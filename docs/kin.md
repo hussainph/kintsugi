@@ -328,8 +328,9 @@ Not matched, on purpose:
   `chatgpt-token-sharing` sign-in stays refused.
 - Small differences: every request is capped at 15s (Pi allows 30s for
   some), a Kimi refresh isn't retried (it holds the lock), errors never
-  quote a server's answer, and Sign in with ChatGPT names Kintsugi rather
-  than Pi on OpenAI's consent page.
+  quote a server's answer, Sign in with ChatGPT names Kintsugi rather
+  than Pi on OpenAI's consent page, and its callback takes an `error` only
+  with the sign-in's own `state` (in Pi, any page could end the sign-in).
 
 `sign_in::tests::drift` checks the port against Pi's source:
 `pnpm gen:models` writes `ai/auth.pi.json` (every login module's

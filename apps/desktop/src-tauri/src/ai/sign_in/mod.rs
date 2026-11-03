@@ -29,6 +29,7 @@ use crate::AppHandle;
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tauri::{State, async_runtime};
@@ -269,6 +270,18 @@ type Pending = Arc<Mutex<HashMap<u32, oneshot::Sender<String>>>>;
 struct Session {
     task: async_runtime::JoinHandle<()>,
     pending: Pending,
+    /// Set on cancel, so a save already under way is skipped.
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Session {
+    /// Stops it and waits until it has stopped, so its loopback port is
+    /// free before another sign-in binds it.
+    async fn stop(self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        self.task.abort();
+        let _ = self.task.await;
+    }
 }
 
 /// The sign-in under way, if any.
@@ -297,7 +310,7 @@ fn device_id(app: &AppHandle) -> Option<String> {
 /// OpenAI logins listen on port 1455). `events` gets its prompts and
 /// progress; the answer is the sign-in's id.
 #[tauri::command]
-pub fn ai_sign_in(
+pub async fn ai_sign_in(
     app: AppHandle,
     state: State<'_, SignIns>,
     provider: String,
@@ -314,9 +327,9 @@ pub fn ai_sign_in(
         .then(|| device_id(&app))
         .flatten();
     let _ = &app;
-    let mut sessions = state.0.lock().unwrap();
-    for (_, old) in sessions.drain() {
-        old.task.abort();
+    let old: Vec<Session> = state.0.lock().unwrap().drain().map(|(_, s)| s).collect();
+    for session in old {
+        session.stop().await;
     }
     let id = uuid::Uuid::new_v4().to_string();
     let pending = Pending::default();
@@ -338,6 +351,8 @@ pub fn ai_sign_in(
         }
     });
     let store = credentials::kintsugi().clone();
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let stopped = cancelled.clone();
     let task = async_runtime::spawn(async move {
         let result = async {
             #[cfg(feature = "headless")]
@@ -348,7 +363,12 @@ pub fn ai_sign_in(
             #[cfg(not(feature = "headless"))]
             let credential = login(provider, &interaction, &store.endpoints(), device.as_deref()).await?;
             let saving = store.clone();
-            tokio::task::spawn_blocking(move || saving.save(provider, credential))
+            tokio::task::spawn_blocking(move || {
+                if stopped.load(Ordering::SeqCst) {
+                    return Err(CANCELLED.to_string());
+                }
+                saving.save(provider, credential)
+            })
                 .await
                 .map_err(|_| "Couldn't save the sign-in.".to_string())?
         }
@@ -358,7 +378,14 @@ pub fn ai_sign_in(
             Err(message) => Event::Failed { message },
         });
     });
-    sessions.insert(id.clone(), Session { task, pending });
+    state.0.lock().unwrap().insert(
+        id.clone(),
+        Session {
+            task,
+            pending,
+            cancelled,
+        },
+    );
     Ok(id)
 }
 
@@ -375,8 +402,10 @@ pub fn ai_sign_in_answer(state: State<'_, SignIns>, id: String, prompt: u32, val
 
 /// Stops a sign-in: its loopback server closes and nothing is saved.
 #[tauri::command]
-pub fn ai_sign_in_cancel(state: State<'_, SignIns>, id: String) {
-    if let Some(session) = state.0.lock().unwrap().remove(&id) {
-        session.task.abort();
+pub async fn ai_sign_in_cancel(state: State<'_, SignIns>, id: String) -> Result<()> {
+    let session = state.0.lock().unwrap().remove(&id);
+    if let Some(session) = session {
+        session.stop().await;
     }
+    Ok(())
 }
