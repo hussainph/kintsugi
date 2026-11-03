@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Palette, PaletteMode } from "@/components/Palette";
 import { UnsavedChoice, UnsavedDialog } from "@/components/UnsavedDialog";
 import { OutsideChoice, OutsideDialog } from "@/components/OutsideDialog";
-import { Sidebar } from "@/components/Sidebar";
+import { Sidebar, useSidebarOpen } from "@/components/Sidebar";
 import { DocTags } from "@/components/Tags";
 import { Badge } from "@kintsugi/ui/components/badge";
 import { Kbd } from "@kintsugi/ui/components/kbd";
@@ -99,6 +99,8 @@ export default function App() {
   const [collision, setCollision] = useState<Collision | null>(null);
   // The sidebar's tag filter; it belongs to the vault it was chosen in.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+  // Expanded or collapsed to icons; kept across restarts (KI-56).
+  const [navOpen, setNavOpen] = useSidebarOpen();
 
   const viewRef = useRef<EditorView | null>(null);
   const libraryRef = useRef<LibraryHandle>(null);
@@ -847,7 +849,7 @@ export default function App() {
   const vaultName = root?.split("/").filter(Boolean).pop() ?? "";
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={navOpen} onOpenChange={setNavOpen}>
       <Sidebar
         tree={tree}
         vaultName={vaultName}

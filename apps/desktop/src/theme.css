@@ -34,6 +34,9 @@
 .ki-footer-action:hover { color: var(--neutral-10); }
 .ki-status-dot { width: var(--space-xs); height: var(--space-xs); flex-shrink: 0; border-radius: var(--radius-full); box-shadow: inset 0 0 0 var(--border-s) var(--neutral-7); }
 .ki-status-dot[data-complete="true"] { background: var(--neutral-10); box-shadow: none; }
+/* Phone access in the sidebar footer: green when on, red when off. */
+.ki-phone-dot { position: absolute; top: calc(50% - var(--space-xs)); right: calc(50% - var(--space-xs)); width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--error); box-shadow: 0 0 0 var(--border-l) var(--sidebar); }
+.ki-phone-dot[data-phone-on="true"] { background: var(--success); }
 .ki-chevron { transition: transform var(--motion-large-duration) var(--motion-large-easing); }
 .ki-error-surface { border: 0; border-radius: var(--radius-s); padding: var(--space-s); color: var(--error); background: var(--error-transparent); }
 

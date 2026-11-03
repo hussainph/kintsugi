@@ -1,5 +1,5 @@
 import { Bookmark, ChevronRight, FileText, Folder, Lightbulb, Rss, Settings, Smartphone, UserRound } from "@kintsugi/ui/icons";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@kintsugi/ui/components/collapsible";
 import {
   ContextMenu,
@@ -10,6 +10,7 @@ import {
   ContextMenuTrigger,
 } from "@kintsugi/ui/components/context-menu";
 import { Input } from "@kintsugi/ui/components/input";
+import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import {
   Sidebar as SidebarRoot,
@@ -23,6 +24,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
+  SidebarTrigger,
+  useSidebar,
 } from "@kintsugi/ui/components/sidebar";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { openAboutYou, openSettings } from "@/lib/kin";
@@ -58,7 +61,22 @@ type Props = {
   onTagFilter?: (tags: string[]) => void;
 };
 
+const SIDEBAR_KEY = "kintsugi:sidebar";
+/** Expanded or collapsed to the icon rail, kept across restarts. Toggled by
+ *  the trigger and ⌘\ (⌘B is the editor's bold). */
+export function useSidebarOpen(): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(SIDEBAR_KEY) !== "collapsed"; } catch { return true; }
+  });
+  const change = useCallback((next: boolean) => {
+    setOpen(next);
+    try { localStorage.setItem(SIDEBAR_KEY, next ? "expanded" : "collapsed"); } catch { /* A convenience only. */ }
+  }, []);
+  return [open, change];
+}
+
 export function Sidebar(props: Props) {
+  const collapsed = useSidebar().state === "collapsed";
   const [renaming, setRenaming] = useState<string | null>(null);
   const [ownFilter, setOwnFilter] = useState<string[]>([]);
   const { tree } = props;
@@ -173,37 +191,54 @@ export function Sidebar(props: Props) {
     );
   };
 
+  const toggleLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  const phoneLabel = props.phoneOn ? "Phone access on" : "Connect your phone";
+
   return (
-    <SidebarRoot inert={props.inert}>
-      {/* Room for the traffic lights; the whole strip drags the window. */}
-      <SidebarHeader className="h-10" data-tauri-drag-region />
+    <SidebarRoot collapsible="icon" inert={props.inert}>
+      {/* Room for the traffic lights; the whole strip drags the window. In the
+          rail they take the strip, so the trigger sits under them. */}
+      <SidebarHeader
+        className="h-10 flex-row items-center justify-end group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pt-10"
+        data-tauri-drag-region
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <SidebarTrigger aria-label={toggleLabel} />
+          </TooltipTrigger>
+          <TooltipContent side="right">
+            {toggleLabel} <Kbd>⌘\</Kbd>
+          </TooltipContent>
+        </Tooltip>
+      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} title="Feed (⇧⌘F)">
+              <SidebarMenuButton isActive={props.feedOpen} onClick={props.onFeed} tooltip={{ children: <>Feed <Kbd>⇧⌘F</Kbd></> }}>
                 <Rss />
                 <span>Feed</span>
-                <span className="ki-data ki-muted ml-auto">⇧⌘F</span>
+                <span className="ki-data ki-muted ml-auto group-data-[collapsible=icon]:hidden">⇧⌘F</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} title="Inspiration (⇧⌘I)">
+              <SidebarMenuButton isActive={props.libraryOpen} onClick={props.onLibrary} tooltip={{ children: <>Inspiration <Kbd>⇧⌘I</Kbd></> }}>
                 <Bookmark />
                 <span>Inspiration</span>
-                <span className="ki-data ml-auto ki-muted">⇧⌘I</span>
+                <span className="ki-data ml-auto ki-muted group-data-[collapsible=icon]:hidden">⇧⌘I</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
-              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} title="Ideas from Kin (⇧⌘E)">
+              <SidebarMenuButton isActive={props.ideasOpen} onClick={props.onIdeas} tooltip={{ children: <>Ideas <Kbd>⇧⌘E</Kbd></> }}>
                 <Lightbulb />
                 <span>Ideas</span>
-                <span className="ki-data ki-muted ml-auto">⇧⌘E</span>
+                <span className="ki-data ki-muted ml-auto group-data-[collapsible=icon]:hidden">⇧⌘E</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
-        <SidebarGroup>
+        {/* The tree needs its names; the rail leaves it out. */}
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <Tooltip>
             <TooltipTrigger asChild>
               <SidebarGroupLabel
@@ -231,25 +266,36 @@ export function Sidebar(props: Props) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      {/* One row: Settings with its label, then phone and About you as icons.
+          In the rail they stack. */}
       <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="sm" onClick={props.onPhone}>
-              <Smartphone />
-              <span>{props.phoneOn ? "Phone access on" : "Connect your phone"}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="sm" onClick={openAboutYou} title="What Kin remembers about you">
-              <UserRound />
-              <span>About you</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="sm" isActive={props.settingsOpen} onClick={() => openSettings()} title="Settings (⌘,)">
+        <SidebarMenu className="flex-row items-center gap-(--space-xxs) group-data-[collapsible=icon]:flex-col">
+          <SidebarMenuItem className="min-w-0 flex-1 group-data-[collapsible=icon]:flex-none">
+            <SidebarMenuButton size="sm" isActive={props.settingsOpen} onClick={() => openSettings()} tooltip={{ children: <>Settings <Kbd>⌘,</Kbd></> }}>
               <Settings />
               <span>Settings</span>
             </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarMenuButton size="sm" className="relative size-8! justify-center!" onClick={props.onPhone} aria-label={phoneLabel}>
+                  <Smartphone />
+                  <span className="ki-phone-dot" data-phone-on={props.phoneOn} />
+                </SidebarMenuButton>
+              </TooltipTrigger>
+              <TooltipContent side={collapsed ? "right" : "top"}>{phoneLabel}</TooltipContent>
+            </Tooltip>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarMenuButton size="sm" className="size-8! justify-center!" onClick={openAboutYou} aria-label="About you">
+                  <UserRound />
+                </SidebarMenuButton>
+              </TooltipTrigger>
+              <TooltipContent side={collapsed ? "right" : "top"}>About you</TooltipContent>
+            </Tooltip>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
