@@ -125,13 +125,19 @@
 .ki-model-filter { margin: var(--space-xs); width: auto; }
 .ki-model-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--space-xxs) var(--space-xxs); }
 .ki-model-group { color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
-.ki-model-option { display: grid !important; grid-template-columns: 1em minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-xs); }
+.ki-model-list-plain { padding-top: var(--space-xxs); }
+.ki-model-option { display: grid !important; grid-template-columns: 1em minmax(0, 1fr) auto; align-items: center; gap: var(--space-xs); }
 .ki-model-check { display: flex; grid-column: 1; }
 .ki-model-check svg { width: 1em; height: 1em; }
 .ki-model-name { grid-column: 2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ki-model-badges { grid-column: 3; display: inline-flex; gap: var(--space-xxs); color: var(--neutral-6); }
-.ki-model-badges svg { width: 0.875em; height: 0.875em; }
-.ki-model-price { grid-column: 4; font-family: var(--font-data); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-variant-numeric: tabular-nums; color: var(--neutral-7); white-space: nowrap; }
+.ki-model-manage { color: var(--neutral-7); }
+.ki-model-manage svg.ki-model-check { width: 1em; height: 1em; }
+.ki-model-picker { display: flex; min-width: 0; align-items: center; gap: var(--space-s); margin-top: var(--space-xxs); }
+.ki-effort.ui-range { flex-direction: row; align-items: center; gap: var(--space-xs); width: auto; flex-shrink: 0; }
+.ki-effort-control.ui-range-control { width: 4.5rem; min-height: var(--space-m); margin-inline: var(--space-xs); }
+.ki-effort-value { min-width: 4.5em; font-family: var(--font-ui); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); color: var(--neutral-7); white-space: nowrap; }
+.ki-effort[data-disabled] .ki-effort-value { color: var(--neutral-6); }
+.ki-model-price { grid-column: 3; font-family: var(--font-data); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-variant-numeric: tabular-nums; color: var(--neutral-7); white-space: nowrap; }
 
 /* The headless transport uses a real native <dialog>, inside the theme scope,
    rather than an unobservable browser prompt. Keep its keyboard contract. */

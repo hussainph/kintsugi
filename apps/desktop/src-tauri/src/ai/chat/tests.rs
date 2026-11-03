@@ -88,7 +88,7 @@ struct TestBrain {
     /// Jobs the finish hook saw, with their traces.
     finished: Arc<Mutex<Vec<(String, Trace)>>>,
     /// Every model asked for: the task and the conversation's pick.
-    connected: Arc<Mutex<Vec<(Task, Option<ModelRef>)>>>,
+    connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>>,
 }
 
 impl Brain for TestBrain {
@@ -98,7 +98,11 @@ impl Brain for TestBrain {
         Ok(self.script.clone())
     }
 
-    async fn connect_to(&self, task: Task, pick: Option<ModelRef>) -> Result<Arc<Script>> {
+    async fn connect_to(
+        &self,
+        task: Task,
+        pick: Option<crate::ai::picks::Pick>,
+    ) -> Result<Arc<Script>> {
         self.connected.lock().unwrap().push((task, pick));
         Ok(self.script.clone())
     }
@@ -144,7 +148,7 @@ struct Fixture {
     engine: Engine<TestBrain>,
     script: Arc<Script>,
     events: Arc<Mutex<Vec<ChatEvent>>>,
-    connected: Arc<Mutex<Vec<(Task, Option<ModelRef>)>>>,
+    connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>>,
     _vault: tempfile::TempDir,
     _ledger: tempfile::TempDir,
 }
@@ -166,7 +170,7 @@ fn fixture_in(
     let ledger = tempfile::tempdir().unwrap();
     let script = Script::new(replies, delay);
     let events: Arc<Mutex<Vec<ChatEvent>>> = Arc::default();
-    let connected: Arc<Mutex<Vec<(Task, Option<ModelRef>)>>> = Arc::default();
+    let connected: Arc<Mutex<Vec<(Task, Option<crate::ai::picks::Pick>)>>> = Arc::default();
     let brain = TestBrain {
         script: script.clone(),
         vault: Mutex::new(vault.path().into()),
@@ -389,6 +393,7 @@ fn a_conversation_runs_on_the_model_picked_for_it() {
     };
     let dir = crate::ai::history::vault_dir(f._vault.path()).unwrap();
     crate::ai::picks::set(&dir, "drafts/x.md", Some(light.clone())).unwrap();
+    crate::ai::picks::set_effort(&dir, "drafts/x.md", Some("high".into())).unwrap();
     f.engine
         .send("Tighten this?", vec![doc("drafts/x.md", "Draft X")])
         .unwrap();
@@ -402,7 +407,16 @@ fn a_conversation_runs_on_the_model_picked_for_it() {
     f.wait_replies(2);
     assert_eq!(
         *f.connected.lock().unwrap(),
-        [(Task::Chat, Some(light)), (Task::Chat, None)]
+        [
+            (
+                Task::Chat,
+                Some(crate::ai::picks::Pick {
+                    reasoning: Some("high".into()),
+                    ..crate::ai::picks::Pick::with_model(light)
+                })
+            ),
+            (Task::Chat, None)
+        ]
     );
 }
 

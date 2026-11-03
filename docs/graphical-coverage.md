@@ -87,8 +87,9 @@ Base UI's non-visual helpers `CSPProvider`, `DirectionProvider`, `mergeProps`
 and `useRender` are re-exported unchanged.
 
 Used directly by screens: `Toggle` (Inspiration tag filters), `Menu` with its
-filter parts (the model picker in Kin's chat and Settings), `Meter` (the
-monthly cap in Settings), `SelectField` and `Checkbox` (the Kin developer
+filter parts (the model picker in Kin's chat and Settings), `Slider` (the
+effort beside a model, `src/kin/Effort.tsx`), `Meter` (the monthly cap in
+Settings), `SelectField` and `Checkbox` (the Kin developer
 panel). The rest are ready to import; they are covered by the specification
 tests, not yet by a rendered screen.
 
@@ -133,7 +134,7 @@ Sonner or native behavior.
 | Feed, sources, picked | Themed through the semantic aliases; type sizes moved onto the theme scale; page title uses `ki-title` |
 | Ideas (ledger, beside, cards) | Themed through the semantic aliases; the Kin accent now reads `--kin` / `--kin-ink` |
 | Settings (KI-61) | A page of its own, converted to `ki-settings-*` roles; model pickers are `Menu` |
-| Kin chat model picker | `Menu` with `ki-model-*` roles |
+| Kin chat model picker | `Menu` with `ki-model-*` roles, and the effort `Slider` with `ki-effort-*` (KI-77) |
 | Kin chat, About you | Themed through the semantic aliases |
 | Kin developer panel | `SelectField` and `Checkbox` |
 | Publish and Export dialogs | Dialog chrome moved to theme tokens; the warning color is `--warning` |

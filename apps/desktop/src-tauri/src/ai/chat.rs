@@ -27,6 +27,7 @@
 //! vault, memory, the meter and somewhere to send events, so tests run it
 //! against scripted models.
 
+use super::Task;
 use super::agent::{self, Cancel, Harness, KinEvent, Limits, Model, Stop};
 use super::cost::Meter;
 use super::history::{self, Draft, Entry, Hit, Log, Role, Thread, Topic};
@@ -35,7 +36,6 @@ use super::memory::Access;
 use super::prompt::{Chip, Memory};
 use super::tools::Tools;
 use super::wire::{Exchange, Item};
-use super::{ModelRef, Task};
 use serde::Serialize;
 use serde_json::Value;
 use std::future::Future;
@@ -62,14 +62,14 @@ pub trait Brain: Send + Sync + 'static {
     fn connect(&self, task: Task) -> impl Future<Output = Result<Self::Model>> + Send;
     /// The model he picked for one conversation of a vault (KI-61), if
     /// any: `models.json` beside that vault's log.
-    fn picked(&self, vault: &Path, topic: &str) -> Option<ModelRef> {
+    fn picked(&self, vault: &Path, topic: &str) -> Option<super::picks::Pick> {
         super::picks::get(&self.log_dir(vault)?, topic)
     }
     /// The model for a task, or `pick` while its provider is usable.
     fn connect_to(
         &self,
         task: Task,
-        pick: Option<ModelRef>,
+        pick: Option<super::picks::Pick>,
     ) -> impl Future<Output = Result<Self::Model>> + Send {
         let _ = pick;
         self.connect(task)
@@ -613,7 +613,7 @@ impl<B: Brain> Engine<B> {
         request: &agent::Turn,
         cancel: &Cancel,
         chat: bool,
-        pick: Option<ModelRef>,
+        pick: Option<super::picks::Pick>,
     ) -> (String, Result<agent::Summary>, Trace) {
         let mut streamed = String::new();
         let mut trace = Trace::default();
@@ -1039,7 +1039,7 @@ impl Brain for AppBrain {
         super::kin::connect(task).await
     }
 
-    async fn connect_to(&self, task: Task, pick: Option<ModelRef>) -> Result<Connected> {
+    async fn connect_to(&self, task: Task, pick: Option<super::picks::Pick>) -> Result<Connected> {
         super::kin::connect_to(task, pick).await
     }
 

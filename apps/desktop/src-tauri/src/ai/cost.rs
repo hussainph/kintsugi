@@ -78,6 +78,16 @@ pub struct Settings {
     /// `"complete"`, `"triage"`), overriding the preference list.
     #[serde(default)]
     pub models: BTreeMap<String, ModelRef>,
+    /// The owner's default thinking level for a task, by task id, overriding
+    /// the preference's and the task's own (`ai::effort_for`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub efforts: BTreeMap<String, String>,
+    /// Models he turned on in Settings beyond the default set (KI-77).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub enabled: Vec<ModelRef>,
+    /// Models of the default set he turned off.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disabled: Vec<ModelRef>,
 }
 
 /// One priced call, as written to the ledger.
