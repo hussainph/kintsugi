@@ -230,6 +230,20 @@ test("dark mode", { timeout: 60_000 }, async () => {
   await page.emulateMedia({ colorScheme: "light" });
 });
 
+test("the selection menu opens alternatives for the selection", { timeout: 60_000 }, async () => {
+  await cursorIn("Kilns");
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+End");
+  await page.keyboard.press("Shift+F10");
+  const item = page.locator('.ki-selection-menu [data-action="alternatives"]');
+  await item.waitFor();
+  assert.match(await item.textContent() ?? "", /Alternatives…\s*⌥⌘A/);
+  await item.click();
+  await field().waitFor();
+  assert.equal(await panel().getByRole("tab", { selected: true }).textContent(), "Paragraph");
+  await field().press("Escape");
+});
+
 test("a renamed document takes its alternatives", { timeout: 90_000 }, async () => {
   await until(() => disk().includes("along an ancient line."), "saved before the rename");
   await page.waitForTimeout(1200);

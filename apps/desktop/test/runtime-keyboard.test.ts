@@ -111,7 +111,7 @@ test("right-click on a selection shows what applies to it, each with its key", {
   const rows = await menu().getByRole("menuitem").evaluateAll((items) => items.map((item) => item.textContent?.trim()));
   assert.deepEqual(rows, [
     "Tighten⌥⌘T", "Rephrase⌥⌘R", "Simplify⌥⌘P", "Fix grammar and spelling⌥⌘F", "Synonyms⌥⌘S",
-    "Dim⌘/", "Edit with Kin…⌘K", "Ask Kin⌘J", "Cut⌘X", "Copy⌘C",
+    "Dim⌘/", "Alternatives…⌥⌘A", "Edit with Kin…⌘K", "Ask Kin⌘J", "Cut⌘X", "Copy⌘C",
   ]);
   await shot("03-selection-menu");
   await page.keyboard.press("Escape");
