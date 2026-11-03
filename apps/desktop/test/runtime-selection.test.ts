@@ -58,12 +58,9 @@ for (const mode of ["light", "dark"] as const) {
       await page.locator(`[title="${DOC}"]`).click();
       const line = page.locator(".cm-line", { hasText: TEXT });
       await line.click();
-      // Select the whole paragraph, including wrapped lines, using normal keys.
-      await page.keyboard.press("Control+Home");
-      await page.keyboard.press("ArrowDown");
-      await page.keyboard.press("ArrowDown");
-      await page.keyboard.press("Home");
-      await page.keyboard.press("Shift+Control+End");
+      // Select all, including the wrapped paragraph. CodeMirror uses Cmd on
+      // macOS and Ctrl elsewhere; Ctrl+Home/End aren't document keys on Mac.
+      await page.keyboard.press("ControlOrMeta+a");
       await page.locator(".cm-selectionBackground").first().waitFor();
       assert.ok(await page.locator(".cm-selectionBackground").count() >= 2, "a multiline range is painted");
       await check(page, mode);
@@ -71,7 +68,8 @@ for (const mode of ["light", "dark"] as const) {
       assert.equal(await line.evaluate((el) => getComputedStyle(el, "::selection").backgroundColor), "rgba(0, 0, 0, 0)");
       await page.screenshot({ path: resolve(app.shots, `mac-${mode}-focused.png`) });
       await page.locator(".cm-content").evaluate((content) => (content as HTMLElement).blur());
-      assert.equal(await page.locator(".cm-editor.cm-focused").count(), 0);
+      // CodeMirror updates its focus class after the DOM blur event.
+      await page.locator(".cm-editor.cm-focused").waitFor({ state: "detached" });
       await check(page, mode);
       await page.screenshot({ path: resolve(app.shots, `mac-${mode}-unfocused.png`) });
     } finally { await page.close(); }
@@ -93,6 +91,7 @@ for (const mode of ["light", "dark"] as const) {
         await check(page, mode, native, true);
         await page.screenshot({ path: resolve(app.shots, `phone-${mode}-${native ? "native" : "drawn"}.png`) });
         await page.locator(".cm-content").evaluate((content) => (content as HTMLElement).blur());
+        await page.locator(".cm-editor.cm-focused").waitFor({ state: "detached" });
         await check(page, mode, native, true);
         // The phone toggles .dark without rebuilding its editor.
         await page.locator("html").evaluate((html) => html.classList.toggle("dark"));
