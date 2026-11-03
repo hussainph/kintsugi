@@ -186,6 +186,17 @@ KI-82 found more of the same:
   Ideas test, a restarted app on the same vault). `stopRunner` in
   `test/headless-app.ts` now waits until the runner, backend and Vite have
   exited.
+- **An app race behind Escape.** Reopen on a resolved comment focused the
+  reply box on the next frame. The box stays hidden until the new status
+  arrives, and when that came later, focus fell to the page. Escape then
+  never reached the popover. The reply box now takes focus when the
+  reopened thread is drawn, and the test waits for that focus before
+  pressing Escape.
+- **Letting a test's first step wait for the app to load.** Once both
+  Links tests timed out on their first locator in a full run. A first load
+  that never finishes looked like a failing step. `openApp` now waits in
+  setup until the sidebar lists the vault, and if it doesn't, it fails with
+  the page's errors and the runner's output.
 - **Errors after a test ends.** node:test reports those as a diagnostic and
   fails the file with only "test failed". The reporter used to drop that
   diagnostic. It now prints it (with a ⚠) and says how the file's process

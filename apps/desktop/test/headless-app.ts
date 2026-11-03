@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync } from "node:fs";
 import { createServer } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ConsoleMessage, Page } from "playwright";
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
@@ -98,4 +99,32 @@ export async function startApp(prefix: string, env: Record<string, string>, prep
   }
   const stop = () => stopRunner(runner, () => output);
   return { url, scratch, vault, config, shots, output: () => output, stop };
+}
+
+/**
+ * Opens the app and waits until the sidebar lists the vault's documents.
+ * Every test starts from there, so a first load that never finishes fails
+ * here, in setup, with the page's errors and the runner's output, instead of
+ * as a timeout on whichever locator a test happens to use first.
+ */
+export async function openApp(page: Page, url: string, output: () => string = () => "") {
+  const errors: string[] = [];
+  const pageError = (error: Error) => errors.push(String(error));
+  const consoleError = (message: ConsoleMessage) => {
+    if (message.type() === "error") errors.push(message.text());
+  };
+  page.on("pageerror", pageError);
+  page.on("console", consoleError);
+  try {
+    await page.goto(url);
+    await page.locator('[data-sidebar=sidebar] [title*=".md"]').first().waitFor();
+  } catch (error) {
+    throw new Error(
+      `The app didn't list the vault: ${String((error as Error).message).split("\n")[0]}\n` +
+        `Page errors:\n${errors.slice(-20).join("\n") || "none"}\nThe runner printed:\n${output().slice(-3000)}`,
+    );
+  } finally {
+    page.off("pageerror", pageError);
+    page.off("console", consoleError);
+  }
 }

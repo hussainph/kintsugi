@@ -391,6 +391,8 @@ function threadCard(view: EditorView, getConfig: () => Comments | undefined, id:
   form.append(composer);
   dom.append(header, body, form);
   let signature = "";
+  /** Reopen was clicked: focus the composer once the reopened thread is drawn. */
+  let reopening = false;
   const send = () => {
     const text = composer.value.trim();
     const config = getConfig();
@@ -420,8 +422,9 @@ function threadCard(view: EditorView, getConfig: () => Comments | undefined, id:
       config.onStatus(id, resolving ? "resolved" : "open");
       // Resolving puts it away, as in any comments UI.
       if (resolving && !inPanel) { openComment(view, null); view.focus(); }
-      // Reopened: carry on the conversation (the button is redrawn away).
-      else if (!resolving) requestAnimationFrame(() => composer.focus());
+      // Reopened: carry on the conversation. The button is redrawn away and
+      // the composer only shows once the new status arrives, so focus it then.
+      else if (!resolving) reopening = true;
     });
     header.append(status);
     if (!inPanel) {
@@ -435,6 +438,10 @@ function threadCard(view: EditorView, getConfig: () => Comments | undefined, id:
     if (!range) body.append(element("blockquote", "cm-comment-was", `Was on: “${quote(thread.anchor.exact)}”`));
     body.append(renderMessages(view, thread, config, range));
     form.hidden = thread.status === "resolved";
+    if (reopening && thread.status === "open") {
+      reopening = false;
+      composer.focus();
+    }
   };
   render();
   return { dom, render, focus: () => composer.focus() };

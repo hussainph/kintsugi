@@ -16,7 +16,7 @@ import { dirname, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
-import { stopRunner } from "./headless-app.ts";
+import { stopRunner, openApp } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DRAFT = "drafts/kintsugi-and-gold.md";
@@ -90,7 +90,7 @@ before(async () => {
     throw new Error(`${e}\nInstall it with: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`);
   });
   page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
-  await page.goto(url);
+  await openApp(page, url, () => output);
 }, { timeout: TIMEOUT });
 
 after(async () => {

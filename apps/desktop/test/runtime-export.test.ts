@@ -14,7 +14,7 @@ import { deflateSync } from "node:zlib";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { stopRunner } from "./headless-app.ts";
+import { stopRunner, openApp } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DOC = "posts/on-craft.mdx";
@@ -135,7 +135,7 @@ after(async () => {
 
 test("Settings › Export picks the menu's destinations and words the statement", { timeout: 120_000 }, async () => {
   page = await context.newPage();
-  await page.goto(url);
+  await openApp(page, url, () => output);
   await page.locator(`[title="${DOC}"]`).click();
   await page.locator(`[title="${DOC}"][data-active="true"]`).waitFor();
 

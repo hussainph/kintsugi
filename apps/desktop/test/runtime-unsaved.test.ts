@@ -14,7 +14,7 @@ import { dirname, resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
-import { stopRunner } from "./headless-app.ts";
+import { stopRunner, openApp } from "./headless-app.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DOC = "posts/the-quiet-web.mdx";
@@ -109,7 +109,7 @@ async function failedSave(marker: string) {
       body: JSON.stringify({ ok: true, value: null }),
     });
   });
-  await page.goto(url);
+  await openApp(page, url, () => output);
   await page.locator(`[title="${DOC}"]`).click();
   await page.locator(`[title="${DOC}"][data-active="true"]`).waitFor();
   readOnly(true);
