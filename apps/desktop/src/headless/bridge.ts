@@ -353,6 +353,10 @@ export function createHeadlessBridge(config: HeadlessConfig, deps: BridgeDeps) {
       case "plugin:window|start_dragging":
         // No window to drag in a browser tab (`data-tauri-drag-region`).
         return { value: null };
+      case "plugin:window|set_theme":
+        // The frontend owns the tab's colours. Never change a native app's
+        // appearance from the headless transport.
+        return { value: null };
       default:
         return null;
     }

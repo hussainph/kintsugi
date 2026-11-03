@@ -438,6 +438,13 @@ describe("native UI stays in the tab", () => {
     assert.equal(backend.calls.length, 0);
   });
 
+  test("window appearance is a local no-op in both modes and System", async () => {
+    await getCurrentWindow().setTheme("light");
+    await getCurrentWindow().setTheme("dark");
+    await getCurrentWindow().setTheme(null);
+    assert.equal(backend.calls.length, 0, "no native theme commands reach the backend");
+  });
+
   test("convertFileSrc points at the bridge's asset route", () => {
     const url = new URL(convertFileSrc("/Users/h/vault/a b.png"));
     assert.equal(url.origin + url.pathname, `${BASE}/asset`);
