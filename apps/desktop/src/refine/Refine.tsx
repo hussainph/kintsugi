@@ -1,4 +1,5 @@
 import { EditorView } from "@codemirror/view";
+import { heldPassage, holdPassage, releasePassage } from "@kintsugi/editor/Editor";
 import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
@@ -34,7 +35,8 @@ type Version = { text: string; done: boolean };
  *  Nothing reaches the document until the writer presses Enter. Kin's
  *  actions below the edits write nothing: they find clips or open the chat. */
 export function Refine({ view, from, to, path, docs, initial, onClose }: Props) {
-  const original = view.state.sliceDoc(from, to);
+  // The passage as it read when ⌘K opened; `from`/`to` are only where it was then.
+  const [original] = useState(() => view.state.sliceDoc(from, to));
   const [action, setAction] = useState<Action | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
   const [index, setIndex] = useState(0);
@@ -45,6 +47,33 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
   const [found, setFound] = useState<{ clips: Found[] | null; error?: string } | null>(null);
   const inflight = useRef<{ cancel: () => void } | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+
+  // Held in the editor so it moves with edits above it (KI-80): sync, undo
+  // or an outside edit while the model thinks mustn't retarget the rewrite.
+  const held = useRef<number | null>(null);
+  useEffect(() => {
+    const { id, effect } = holdPassage(from, to);
+    view.dispatch({ effects: effect });
+    held.current = id;
+    return () => {
+      held.current = null;
+      try {
+        view.dispatch({ effects: releasePassage(id) });
+      } catch {
+        // The editor is gone, and the hold with it.
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+  /** Where the passage is now, or null (after a toast and closing) if it changed. */
+  const here = (message = "The text changed. Try again.") => {
+    const at = held.current === null ? null : heldPassage(view.state, held.current, original);
+    if (!at) {
+      toast.error(message);
+      onClose();
+    }
+    return at;
+  };
 
   useEffect(() => () => inflight.current?.cancel(), []);
   useEffect(() => {
@@ -69,6 +98,8 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
 
   const run = async (next: Action, retry = false) => {
     inflight.current?.cancel();
+    const at = here();
+    if (!at) return;
     setAction(next);
     setError(null);
     const slot = retry ? versions.length : 0;
@@ -78,7 +109,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
     setChoice(0);
     requestAnimationFrame(() => resultRef.current?.focus());
 
-    const request = ask(next, view.state.doc.toString(), from, to);
+    const request = ask(next, view.state.doc.toString(), at.from, at.to);
     // On a retry, show the model what it already offered so it tries something else.
     for (const text of previous) {
       request.messages.push({ role: "assistant", content: text } satisfies Message);
@@ -97,33 +128,35 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
   };
 
   const accept = (replacement: string) => {
-    if (view.state.sliceDoc(from, to) !== original) {
-      toast.error("The text changed while Kintsugi was thinking. Try again.");
-      return onClose();
-    }
+    const at = here("The text changed while Kintsugi was thinking. Try again.");
+    if (!at) return;
     view.dispatch({
-      changes: { from, to, insert: replacement },
-      selection: { anchor: from + replacement.length },
+      changes: { from: at.from, to: at.to, insert: replacement },
+      selection: { anchor: at.from + replacement.length },
       userEvent: "input.refine",
     });
     onClose();
   };
 
   const kinAction = (a: KinAction) => {
-    const chips = passageChips(view, path, from, to);
     if (a.id === "ideas") {
       onClose();
       return ideasForDraft(path);
     }
     if (a.id === "discuss") {
+      const at = here();
+      if (!at) return;
       onClose();
-      return beginComment(view, from, to, "discuss");
+      return beginComment(view, at.from, at.to, "discuss");
     }
     if (a.id === "review") {
       onClose();
       return reviewDraft(view, path);
     }
     if (a.id === "disagrees") {
+      const at = here();
+      if (!at) return;
+      const chips = passageChips(view, path, at.from, at.to);
       onClose();
       return discuss(chips, WHO_DISAGREES, { send: true });
     }
@@ -133,12 +166,10 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
 
   /** A reference to a supporting clip, after the passage: his choice, never prose. */
   const reference = (link: string) => {
-    if (view.state.sliceDoc(from, to) !== original) {
-      toast.error("The text changed. Try again.");
-      return onClose();
-    }
+    const passage = here();
+    if (!passage) return;
     // Right after the passage's last word, before any trailing whitespace.
-    const at = to - /\s*$/.exec(original)![0].length;
+    const at = passage.to - /\s*$/.exec(original)![0].length;
     const insert = ` ${link}`;
     view.dispatch({ changes: { from: at, insert }, selection: { anchor: at + insert.length }, userEvent: "input.reference" });
     onClose();
