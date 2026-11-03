@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Impression, Source } from "./api.ts";
-import { ago, catalogueStatus, itemDate, health, Impressions, itemTitle, paragraphs, sourceLogos, sourceName, webUrl } from "./model.ts";
+import { ago, catalogueStatus, citeLabel, health, Impressions, itemDate, itemSource, itemTitle, layoutFor, MAGAZINE_MIN_WIDTH, paragraphs, sourceIcon, sourceLogos, sourceName, sourcesLine, storyBlurb, storyCount, bySource, summaryNote, webUrl } from "./model.ts";
 
 const NOW = 1_800_000_000;
 const source = (patch: Partial<Source> = {}): Source => ({
@@ -83,4 +83,42 @@ test("sources show a podcast's artwork, a site's favicon, or their type icon", (
   assert.deepEqual(sourceLogos(source({ kind: "page", url: "https://site.example/changelog", image: "https://site.example/og.png" })), ["https://site.example/favicon.ico"]);
   assert.deepEqual(sourceLogos(source({ url: "file:///etc/passwd", image: "javascript:alert(1)" })), []);
   for (const kind of ["hn", "youtube", "x", "author"] as const) assert.deepEqual(sourceLogos(source({ kind, image: "https://img.example/a.png" })), []);
+});
+
+test("the magazine needs room; narrower, the Feed becomes tabs", () => {
+  assert.equal(MAGAZINE_MIN_WIDTH, 960);
+  assert.equal(layoutFor(1180), "magazine");
+  assert.equal(layoutFor(960), "magazine");
+  assert.equal(layoutFor(959), "tabs");
+});
+
+test("stories count sources, name two, and HN items name the site they link to", () => {
+  assert.equal(sourcesLine([{ title: "The Verge" }]), "The Verge");
+  assert.equal(sourcesLine([{ title: "The Verge" }, { title: "Ars Technica" }]), "The Verge, Ars Technica");
+  assert.equal(sourcesLine([{ title: "A", items: 5 }, { title: "B", items: 1 }, { title: "C", items: 1 }]), "7 articles from 3 sources");
+  assert.equal(storyCount([{ items: 1 }, { items: 1 }]), "2 articles from 2 sources");
+  // Tiles keep each source's articles together, the most-covered source first.
+  const items = [{ id: 1, sourceId: 9 }, { id: 2, sourceId: 5 }, { id: 3, sourceId: 9 }, { id: 4, sourceId: 7 }, { id: 5, sourceId: 5 }];
+  assert.deepEqual(bySource(items, [{ id: 5 }, { id: 9 }, { id: 7 }]).map((i) => i.id), [2, 5, 1, 3, 4]);
+  assert.deepEqual(itemSource({ sourceTitle: "Hacker News", sourceKind: "hn", url: "https://www.apple.com/newsroom/x" }), { name: "apple.com", via: "Hacker News" });
+  assert.deepEqual(itemSource({ sourceTitle: "The Verge", sourceKind: "feed", url: null }), { name: "The Verge", via: null });
+  assert.equal(sourceIcon({ title: "The Verge", kind: "feed", site: "https://www.theverge.com/rss" }), "https://www.theverge.com/favicon.ico");
+  assert.equal(sourceIcon({ title: "HN", kind: "hn", site: "https://hnrss.org/frontpage" }), null);
+  assert.equal(sourceIcon({ title: "Bad", kind: "feed", site: "javascript:alert(1)" }), null);
+});
+
+test("citations name their source, and a story without a summary says why", () => {
+  const items = [
+    { id: 1, sourceTitle: "9to5Mac", sourceKind: "feed" as const, url: null },
+    { id: 2, sourceTitle: "The Verge", sourceKind: "feed" as const, url: null },
+  ];
+  assert.equal(citeLabel([1], items), "9to5mac");
+  assert.equal(citeLabel([2, 1], items), "verge +1");
+  assert.equal(citeLabel([9], items), null);
+  assert.equal(summaryNote("ready"), null);
+  assert.match(summaryNote("capped")!, /AI limit/);
+  assert.match(summaryNote("failed")!, /first article/);
+  const lead = { summary: "The lead's own words." };
+  assert.equal(storyBlurb({ summary: null, lead }), "The lead's own words.");
+  assert.equal(storyBlurb({ summary: { paragraphs: [[{ text: "One." }, { text: "Two." }]] }, lead }), "One. Two.");
 });

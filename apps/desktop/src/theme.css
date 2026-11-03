@@ -374,3 +374,8 @@
   .ki-clip-card:active, .ki-refine-choice:active { transform: none; }
   :root[data-shortcuts] .ki-shortcut-hint, .ki-shortcuts-panel { animation: none; }
 }
+
+/* Feed stories (KI-94): a citation after each sentence of Kin's summary, in
+   Kin's colour because Kin wrote it. */
+.ki-cite { display: inline-flex; margin-inline-start: 0.3em; border: 0; border-radius: var(--radius-s); padding: 0.05em 0.4em; vertical-align: 0.15em; color: var(--kin-ink); background: color-mix(in oklab, var(--kin) 16%, transparent); font-family: var(--font-data); font-size: var(--size-xxs); line-height: var(--line-xxs); white-space: nowrap; cursor: pointer; transition: background-color var(--motion-duration) var(--motion-easing); }
+.ki-cite:hover, .ki-cite:focus-visible { background: color-mix(in oklab, var(--kin) 30%, transparent); outline: none; }

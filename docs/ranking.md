@@ -1,7 +1,7 @@
 # Ranking
 
 The contract for Feed ranking as built (KI-32): **Picked for you**, its
-"Why this?", what a like changed, and Kin's ranking tools. Direction lives in
+reasons (the (?) card), what a like changed, and Kin's ranking tools. Direction lives in
 [vision.md](vision.md) › "Ranking without burning tokens". If you change the
 code this describes, change this document in the same commit.
 
@@ -102,7 +102,7 @@ best-scoring item stands for it, plus **0.03 per extra source** (at most
 like a touched item. The pick carries `storyId`, and `feed_picked` adds
 the story.
 
-## Why this?
+## Why this? (the (?) card)
 
 Each pick carries up to four reasons, strongest first. A story's first
 reason is fixed: "N sources you follow covered this". Removable ones are
@@ -120,12 +120,16 @@ event (`data: { reason }`, surface `picked`); the ranker then treats that
 source, author or topic as neutral and drops that anchor from taste
 entirely. Undo logs `undo_correction`. Both replay like every other event.
 
+The (?) card leaves out "Still learning…": that's about the ranker, not the
+item (KI-91).
+
 ## What a like changed
 
-After a like, the webview asks `feed_effect({ id })`: the affinities that
-action moved (before → after, as the Beta mean) and the picks that came in
-or went out of Picked for you since it was last shown. The toast says so,
-with Undo (an `unlike`, so the ranker returns exactly to before).
+`feed_effect({ id })` answers with the affinities that action moved (before
+→ after, as the Beta mean) and the picks that came in or went out of Picked
+for you since it was last shown. Since KI-91 nothing on screen reports it:
+a like changes the heart, and clicking it again is the exact undo (an
+`unlike`).
 
 ## Kin's tools
 
@@ -169,7 +173,8 @@ save 4, note 3, like 2, discuss 1.5, open 1. Newest first is the baseline.
 - `cargo test -p kintsugi --no-default-features --features headless`: a
   seeded log through the real store into the ranker, and Kin's feed hook.
 - `apps/desktop/test/runtime-feed.test.ts` drives the headless runtime:
-  Picked for you from the seeded clips, Why this? with a correction and its
-  undo, a like's effect toast and undo, picked impressions, and Kin (the
-  headless mock model) reading a feed item and calling `shortlist`.
-  Screenshots go to `.headless/feed-shots/09-…` to `14-…`.
+  Picked for you from the seeded clips, the (?) card with a correction and
+  its undo, a like with no ranking report, picked impressions, and Kin (the
+  headless mock model) reading a feed item and calling `shortlist`; then
+  stories (one candidate, the story reason). Screenshots go to
+  `.headless/feed-shots/`.

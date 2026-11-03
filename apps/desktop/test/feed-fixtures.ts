@@ -116,6 +116,64 @@ ${WORKSHOP.map((p) => `<item><title>${escape(p.title)}</title><link>${base}/work
 </channel></rss>`;
 }
 
+/**
+ * KI-94's stories: three news feeds covering the same things. Lumen's
+ * quarter runs across all three (five articles, long titles, one without a
+ * picture); Kestrel Code's game rule across two; a third story's text asks
+ * the mock summariser to fail ("mock-fail"). Each feed also has a story of its own.
+ */
+export const NEWS = {
+  /** The first article to cover Lumen's quarter (its lead), and Kin's mock title. */
+  quarter: "Lumen reports Q4 2026 earnings: $114.5 billion in revenue, up 12%",
+  rule: "Kestrel Code now refuses to clone existing games",
+  failing: "Harbor Q7 reactor test ends early",
+  /** Each feed's story of its own. */
+  alone: ["Tide tables, explained", "How old bridges carry new trucks", "Sourdough at altitude"],
+};
+type Post = { slug: string; title: string; hours: number; image?: number; body: string };
+const NEWS_FEEDS: Record<string, { title: string; posts: Post[] }> = {
+  orchard: {
+    title: "Orchard Daily",
+    posts: [
+      { slug: "q4", title: "Lumen reports Q4 2026 earnings: $114.5 billion in revenue, up 12%", hours: 3, image: 4, body: "Lumen today reported fourth quarter revenue of $114.5 billion, up 12 percent, with record phone sales and services. Profit was $30.7 billion." },
+      { slug: "forecast", title: "Lumen forecasts its biggest revenue quarter ever despite Duo supply constraints and memory prices that keep climbing through the winter", hours: 2, image: 2, body: "Lumen expects the December quarter to beat its record Q4 2026 earnings of $114.5 billion in revenue, though Duo supply is short and memory prices weigh on Lumen margins." },
+      { slug: "stock", title: "Lumen stock drops nearly 3% after hours following Q4 2026 results", hours: 1, body: "Lumen shares fell nearly 3 percent after Lumen reported Q4 2026 earnings: $114.5 billion in revenue, up 12 percent, with record phone sales." },
+      { slug: "tide", title: "Tide tables, explained", hours: 6, image: 2, body: "Why the tide comes in twice a day, and what the moon has to do with it." },
+    ],
+  },
+  ledger: {
+    title: "The Ledger",
+    posts: [
+      { slug: "lumen", title: "Lumen set a phone sales record in Q4 even without a new standard phone", hours: 2, image: 3, body: "Lumen's Q4 revenue was $114.5 billion, and phones made $57.6 billion, a record for the quarter without a new standard model." },
+      { slug: "kestrel", title: "Kestrel Code now refuses to clone existing games", hours: 7, image: 1, body: "Kestrel changed the Kestrel Code system prompt so it won't re-create existing video games after a wave of AI-made ports and decompilations." },
+      { slug: "harbor", title: "Harbor Q7 reactor test ends early", hours: 5, body: "The Harbor Q7 reactor test stopped after four minutes when a coolant valve stuck. (mock-fail)" },
+      { slug: "bridges", title: "How old bridges carry new trucks", hours: 9, body: "Engineers on retrofitting a 1930s bridge for modern loads." },
+    ],
+  },
+  bench: {
+    title: "Bench Notes",
+    posts: [
+      { slug: "lumen", title: "Lumen reports fourth quarter results: $114.5 billion", hours: 3, body: "Lumen announced results for its fiscal Q4 2026: revenue of $114.5 billion, up 12 percent year over year, and record phone revenue." },
+      { slug: "kestrel", title: "Kestrel Code's new rule against cloning games won't slow the copying much", hours: 6, body: "The Kestrel Code system prompt now tells the model not to clone existing video games. Bench Notes thinks the rule won't slow AI game ports much." },
+      { slug: "harbor", title: "Harbor Q7 reactor test stopped after a valve stuck", hours: 4, image: 3, body: "Harbor's Q7 reactor ran for four minutes before a coolant valve stuck and the test ended. (mock-fail)" },
+      { slug: "sourdough", title: "Sourdough at altitude", hours: 8, body: "Baking bread at 2,000 metres: less yeast, more water, shorter proofs." },
+    ],
+  },
+};
+function news(base: string, name: string) {
+  const { title, posts } = NEWS_FEEDS[name];
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>${title}</title><link>${base}/${name}</link>
+${posts
+  .map(
+    (p) => `<item><title>${escape(p.title)}</title><link>${base}/${name}/${p.slug}</link><guid>${base}/${name}/${p.slug}</guid>
+<pubDate>${rfc822(p.hours)}</pubDate><description>${escape(p.body.replace(" (mock-fail)", ""))}</description>
+<content:encoded><![CDATA[${p.image ? `<p><img src="${base}/art/${p.image}.png"></p>` : ""}<p>${p.body}</p>]]></content:encoded></item>`,
+  )
+  .join("\n")}
+</channel></rss>`;
+}
+
 /** The full article behind a post: more than the feed carries. */
 const article = (slug: string) => `<!doctype html><html><head><title>${slug}</title></head><body><nav>Home · About</nav>
 <article><h1>${slug}</h1><p>Every tool is an argument about what matters.</p>
@@ -196,6 +254,10 @@ export async function startFeedFixtures(): Promise<Fixtures> {
         return send("application/rss+xml", workshop(base));
       case "/notes.json":
         return send("application/feed+json", notes(base));
+      case "/orchard.xml":
+      case "/ledger.xml":
+      case "/bench.xml":
+        return send("application/rss+xml", news(base, path.slice(1, -4)));
       case "/broken.xml":
         return send("text/plain", "down for maintenance", 503);
       default:

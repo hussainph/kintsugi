@@ -125,6 +125,8 @@ export type Picked = { picks: Pick[]; examples: number; learnedShare: number };
 export type Change = { key: string; label: string; before: number; after: number };
 export type Effect = { changes: Change[]; added: { id: number; title: string }[]; removed: { id: number; title: string }[] };
 
+const reads = new Map<number, { at: number; reading: Promise<Reading> }>();
+
 export const feed = {
   sources: () => invoke<Source[]>("feed_sources"),
   subscribe: (input: Subscribe) => invoke<Subscribed>("feed_subscribe", { input }),
@@ -137,7 +139,15 @@ export const feed = {
   importOpml: (opml: string) => invoke<Imported>("feed_opml_import", { opml }),
   exportOpml: (path: string) => invoke<number>("feed_opml_export", { path }),
   items: (query: { offset?: number; limit?: number; source?: number } = {}) => invoke<Page>("feed_items", query),
-  read: (id: number, place?: Place) => invoke<Reading>("feed_read", { id, place }),
+  /** Opening to read, logged as an `open`. A second ask within a second
+   *  (React's development double mount) shares the first. */
+  read: (id: number, place?: Place) => {
+    const recent = reads.get(id);
+    if (recent && Date.now() - recent.at < 1000) return recent.reading;
+    const reading = invoke<Reading>("feed_read", { id, place });
+    reads.set(id, { at: Date.now(), reading });
+    return reading;
+  },
   act: (id: number, action: Action, place?: Place) => invoke<FeedItem>("feed_act", { id, action, place }),
   note: (id: number, note: string, place?: Place) => invoke<FeedItem>("feed_note", { id, note, place }),
   save: (id: number, place?: Place) => invoke<FeedItem>("feed_save", { id, place }),

@@ -18,7 +18,7 @@ import {
   InboxIcon, Note01Icon, Book02Icon, StarIcon, CodeIcon, MusicNote01Icon,
   Camera01Icon, Briefcase01Icon, Archive02Icon,
   MinusSignIcon, ArrowUp02Icon, ArrowDown02Icon, Clock01Icon, Coins01Icon, HourglassIcon,
-  FolderOpenIcon, WifiDisconnected01Icon, KeyboardIcon,
+  FolderOpenIcon, WifiDisconnected01Icon, KeyboardIcon, MoreHorizontalIcon,
   TriangleAlertIcon as WarningGlyph, OctagonXIcon as ErrorGlyph,
 } from "@hugeicons/core-free-icons";
 
@@ -85,6 +85,7 @@ export const Globe = glyph(Globe02Icon);
 export const Headphones = glyph(HeadphonesIcon);
 export const Hourglass = glyph(HourglassIcon);
 export const Heart = glyph(FavouriteIcon);
+export const MoreHorizontal = glyph(MoreHorizontalIcon);
 export const ImageIcon = glyph(Image01Icon);
 export const ImageOff = glyph(ImageOffIcon);
 export const ImagePlus = glyph(ImageAdd01Icon);

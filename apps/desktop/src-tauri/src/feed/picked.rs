@@ -406,18 +406,7 @@ fn picked_items(app: &AppHandle, picks: Vec<Pick>) -> Result<Vec<PickedItem>> {
             .into_iter()
             .filter_map(|mut pick| {
                 let item = s.item(pick.id).ok()?;
-                if item.back_catalogue {
-                    let (key, label) = match &item.suggestion {
-                        Some(suggestion) => ("suggestion", suggestion.reason.clone()),
-                        None => ("catalogue", "Older writing from a source you follow".into()),
-                    };
-                    pick.reasons.push(rank::Reason {
-                        key: key.into(),
-                        label,
-                        removable: false,
-                        weight: 0.0,
-                    });
-                }
+                add_catalogue_reason(&item, &mut pick.reasons);
                 Some(PickedItem {
                     story: pick.story.and_then(|id| s.story(id).ok()),
                     item,
@@ -428,13 +417,37 @@ fn picked_items(app: &AppHandle, picks: Vec<Pick>) -> Result<Vec<PickedItem>> {
     })
 }
 
+/// Older writing says so (KI-95); a suggestion's reason (where it was
+/// linked from) comes first, since it's why an unfollowed source is here.
+fn add_catalogue_reason(item: &Item, reasons: &mut Vec<rank::Reason>) {
+    if !item.back_catalogue {
+        return;
+    }
+    // "New: …" is about when it arrived, which says nothing about older writing.
+    reasons.retain(|r| r.key != "fresh");
+    let reason = |key: &str, label: String| rank::Reason {
+        key: key.into(),
+        label,
+        removable: false,
+        weight: 0.0,
+    };
+    match &item.suggestion {
+        Some(suggestion) => reasons.insert(0, reason("suggestion", suggestion.reason.clone())),
+        None => reasons.push(reason(
+            "catalogue",
+            "Older writing from a source you follow".into(),
+        )),
+    }
+}
+
 /// The reasons behind any item, for its (?) card: what Picked for you
 /// would say about it, and for a story how many sources covered it.
 #[tauri::command]
 pub fn feed_why(app: AppHandle, id: i64) -> Result<Vec<rank::Reason>> {
-    let story = with(&app, |s| {
+    let (item, story) = with(&app, |s| {
         let item = s.item(id)?;
-        Ok(s.story_of(&item)?.map(|story| story.sources.len()))
+        let story = s.story_of(&item)?.map(|story| story.sources.len());
+        Ok((item, story))
     })?;
     ranked(&app, |state, world, _, now| {
         let mut reasons = state
@@ -454,6 +467,7 @@ pub fn feed_why(app: AppHandle, id: i64) -> Result<Vec<rank::Reason>> {
             );
             reasons.truncate(4);
         }
+        add_catalogue_reason(&item, &mut reasons);
         Ok(reasons)
     })
 }

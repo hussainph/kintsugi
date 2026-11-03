@@ -171,8 +171,9 @@ local similarity of at least 0.55 before release. This same threshold applies
 to model and hashed vectors, so uncertain matches are left out.
 
 At most one neighbour is admitted per day, within the two-piece older-work
-quota. It is marked **Suggested**, with a (?) reason naming the kept item
-that linked to it, and **Follow**. It stays out of Following, polling and
+quota. It is marked **Suggested**, with **Follow**, and its (?) card (the
+same one every item has) starts with the reason: the kept item that linked
+to it. It stays out of Following, polling and
 OPML until Follow. Follow discovers its feed when available, else follows
 its homepage as a Page. Unfollowed sources are never revived by discovery.
 
@@ -189,9 +190,9 @@ after 30 days.
 
 ## Actions
 
-- **Like** toggles `liked_at`. The toast says what it changed in Picked for
-  you (the source, author or topic affinities it moved, and picks that came
-  in or made room, from `feed_effect`), with Undo, which reverses it exactly.
+- **Like** toggles `liked_at`. The heart is the acknowledgement and the
+  undo; ranking learns in the background and nothing reports what moved
+  (KI-91). `feed_effect` still answers, for Kin and tests.
 - **Note** stays on the item, saved as he types. Once saved, the note lives
   in the clip and is edited in Inspiration.
 - **Save** is the only way from the Feed into Inspiration. It goes through
@@ -233,7 +234,9 @@ starts one with the closest single item, when:
 - or it links to the same page (an HN item and the article it points at).
 
 Decisions are kept (`items.story_id`), so a story keeps its id and summary
-while sources join. Clustering runs when ranking builds its world (it has
+while sources join. Older writing (above) clusters like anything else, but
+only with pieces from within 72 hours of its own date, so it never joins
+today's news; the Newest list keeps placing it by when it was offered. Clustering runs when ranking builds its world (it has
 the vectors): after a poll that added items, and before the Newest list
 when new items are waiting. The thresholds came from one hand-labelled day
 of the KI-72 run (The Verge, 9to5Mac, Ars Technica, Simon Willison, HN):
@@ -260,8 +263,8 @@ at a time in the background:
 - Headless runs with `KINTSUGI_HEADLESS_KIN=mock` summarise with Kin's
   scripted model ($0). It writes a paragraph per article (up to four, to
   test long summaries), plus one uncited sentence and one citing an
-  article that isn't there, which must be dropped. An article titled with
-  `[mock-fail]` makes it fail.
+  article that isn't there, which must be dropped. `mock-fail` in an
+  article's text makes it fail.
 
 **Acting on a story.** Like and Save on the story act on its lead article.
 Not interested hides every item in it (`feed_dismiss_many`, with Undo). On
@@ -309,10 +312,47 @@ story folded into one entry at its newest item), `feed_story({ id })` and
 ## UI
 
 `apps/desktop/src/feed/`. The Feed sits beside Inspiration in the sidebar
-(⇧⌘F). `Feed` takes a `picked?: ReactNode` slot above the newest list:
-`Picked.tsx` renders **Picked for you** there (eight picks, four shown until
-"Show more", one exploring), each with "Why this?", and logs its impressions
-with surface `picked`. See [ranking.md](ranking.md).
+(⇧⌘F). Cards and rows show an article or a story the same way: its picture
+(none when the feed sends none, and no stand-in art), a serif title, two
+lines of text (Kin's summary for a story, else the feed's), and who said it:
+stacked source icons and "The Verge", "The Verge, Ars Technica" or "7
+articles from 3 sources" (counts are articles; names are sources). A Hacker News item names the site it
+links to, with "via Hacker News" linking to the discussion.
+
+**Two layouts, chosen by width** (`model.ts`, `MAGAZINE_MIN_WIDTH`):
+
+- **Magazine** (the Feed pane is at least **960 px** wide): Picked for you
+  on the left (a lead card, then a grid; "Show more" for the rest) and
+  Newest down the right as dense rows.
+- **Tabs** (narrower): For you / Newest. For you is the lead card and the
+  grid; Newest is the rows, each with a small picture when it has one.
+
+The switch follows the pane's width (a `ResizeObserver`), not a setting;
+the Feed's region carries `data-layout`.
+
+**Actions.** A card's row is Like, Save, a … menu (Note, Discuss, Open the
+original, Not interested) and **(?)**, which opens a small card with the
+reasons (`feed_why`, or the pick's own; removable ones can be taken away,
+with Undo; see [ranking.md](ranking.md)). A like changes the heart and
+nothing else on screen.
+
+**Opening.** A row or card opens its page in place of the lists, and Back
+returns to where he was:
+
+- **An article**: its text (the full article once fetched), the note, and
+  Like, Save, Note, Discuss, (?), Open the original and Not interested.
+- **A story**: its title; "7 articles from 3 sources · updated 1h ago"
+  with the sources' icons; its articles as one horizontal strip of compact
+  tiles, each source's together (source, title, a small square picture when
+  there is one; four, then "+N more", so the tiles add up to the count);
+  then Kin's summary with a citation chip after every sentence (Kin's
+  colour; a chip opens its article), or the lead's text with one line
+  saying why there's no summary. A tile's actions (Open, Like,
+  Save, Note, Discuss, Not interested) float over its corner on hover or
+  focus; at rest it shows only a small mark when liked or saved.
+
+Picked impressions are logged with surface `picked`, rows with `newest`;
+a story logs its best (or lead) item.
 **Following** (a sheet) adds sources (tabs: Link, HN, YouTube, Podcast, X,
 Page, Author; each is an icon, and only the selected one shows its name),
 shows each one's health, mutes, fetches now, unfollows, and imports/exports
@@ -374,4 +414,10 @@ headless mock model (`KINTSUGI_HEADLESS_KIN=mock`) for the ranking tools.
 The fixture server also serves a `/now` page whose version the test switches (noise only,
 then a real edit, with ETags), and stands in for Google Books: the test sets
 `KINTSUGI_HEADLESS_BOOKS=<fixture base>/`, which headless builds honour only
-for an `http://127.0.0.1` URL.
+for an `http://127.0.0.1` URL. For stories it serves three news feeds
+(Orchard Daily, The Ledger, Bench Notes) covering the same events: a
+quarter across all three, a rule across two, and one whose text asks the
+mock to fail. The test summarises them at the cap and after it, checks
+the story page, the strip and the (?) card, and switches the window from
+1440 to 1000 px wide to see the magazine become tabs, with light and dark
+screenshots of each.

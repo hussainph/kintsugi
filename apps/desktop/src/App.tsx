@@ -37,7 +37,6 @@ import { IdeasBeside } from "@/ideas/Beside";
 import { ideasForDraft, onOpenIdeas } from "@/ideas/api";
 import { Publish } from "@/publish/Publish";
 import { openPublish } from "@/lib/blog";
-import { Picked } from "@/feed/Picked";
 import { Export } from "@/export/Export";
 import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
 import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
@@ -947,7 +946,7 @@ export default function App() {
       <SidebarInset className="relative h-svh min-w-0" inert={!!settingsAt}>
         <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
         {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} renderUsedIn={(clip) => <UsedIn root={root} path={clip.path} onOpen={openDoc} />} />}
-        {feedOpen && <Feed picked={<Picked />} />}
+        {feedOpen && <Feed />}
         {ideasOpen && (
           <Ideas
             key={root}

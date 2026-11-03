@@ -145,3 +145,93 @@ export class Impressions {
     }
   }
 }
+
+// ── Stories and layout (KI-94) ───────────────────────────────────────────
+
+/**
+ * Below this many pixels of Feed width, the magazine's two columns (picks
+ * on the left, newest down the right) become For you / Newest tabs.
+ */
+export const MAGAZINE_MIN_WIDTH = 960;
+export type Layout = "magazine" | "tabs";
+export const layoutFor = (width: number): Layout => (width >= MAGAZINE_MIN_WIDTH ? "magazine" : "tabs");
+
+type SourceRef = { title: string | null; kind: string; site: string | null };
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * Who covered a story, for a card or row: one or two sources by name, more
+ * as a count of articles and sources (counts are articles; names are
+ * sources).
+ */
+export function sourcesLine(sources: { title: string | null; items?: number }[]): string {
+  const names = sources.map((s) => s.title || "Feed");
+  if (names.length <= 2) return names.join(", ");
+  return storyCount(sources);
+}
+
+/** "7 articles from 3 sources": the story page's count, which its tiles add up to. */
+export function storyCount(sources: { items?: number }[]): string {
+  const articles = sources.reduce((n, s) => n + (s.items ?? 1), 0);
+  return `${plural(articles, "article")} from ${plural(sources.length, "source")}`;
+}
+
+/** A story's articles with each source's together, most covered first. */
+export function bySource<T extends { sourceId: number }>(items: T[], sources: { id: number }[]): T[] {
+  const order = new Map(sources.map((s, i) => [s.id, i]));
+  return items
+    .map((item, i) => ({ item, i }))
+    .sort((a, b) => (order.get(a.item.sourceId) ?? 99) - (order.get(b.item.sourceId) ?? 99) || a.i - b.i)
+    .map(({ item }) => item);
+}
+
+/**
+ * Where an item comes from, as its row says it. A Hacker News item names the
+ * site it links to; HN is the secondary link.
+ */
+export function itemSource(item: Pick<FeedItem, "sourceTitle" | "sourceKind" | "url">): { name: string; via: string | null } {
+  if (item.sourceKind === "hn") return { name: hostname(item.url) ?? "Hacker News", via: "Hacker News" };
+  return { name: item.sourceTitle || hostname(item.url) || "Feed", via: null };
+}
+
+/** A source's icon: its site's favicon (none for HN, YouTube, X or authors). */
+export function sourceIcon(source: SourceRef): string | null {
+  if (source.kind !== "feed" && source.kind !== "page" && source.kind !== "podcast") return null;
+  const site = webUrl(source.site);
+  return site ? `${new URL(site).origin}/favicon.ico` : null;
+}
+
+/** The letter a source's icon falls back to. */
+export const sourceLetter = (title: string | null) => (title?.trim()[0] ?? "·").toUpperCase();
+
+/** A citation chip's label: the first cited article's source, "+N" for more. */
+export function citeLabel(cites: number[], items: Pick<FeedItem, "id" | "sourceTitle" | "sourceKind" | "url">[]): string | null {
+  const first = items.find((i) => i.id === cites[0]);
+  if (!first) return null;
+  const name = itemSource(first).name.toLowerCase().replace(/^the /, "");
+  return cites.length > 1 ? `${name} +${cites.length - 1}` : name;
+}
+
+/** The one line a story without Kin's summary shows under its text. */
+export function summaryNote(state: string): string | null {
+  switch (state) {
+    case "pending":
+      return "Kin is writing a summary.";
+    case "failed":
+      return "Couldn't write a summary, so this is the first article's text.";
+    case "capped":
+      return "This month's AI limit is reached, so there's no summary yet.";
+    case "unavailable":
+      return "Set up an AI provider in Settings for summaries.";
+    default:
+      return null;
+  }
+}
+
+/** A story's text for a card: Kin's first sentences, else the lead's summary. */
+export function storyBlurb(story: { summary: { paragraphs: { text: string }[][] } | null; lead: Pick<FeedItem, "summary"> }): string | null {
+  const first = story.summary?.paragraphs[0];
+  if (first?.length) return first.map((s) => s.text).join(" ");
+  return story.lead.summary;
+}
