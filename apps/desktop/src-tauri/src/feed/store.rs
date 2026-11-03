@@ -247,7 +247,6 @@ pub(super) mod mixing;
 /// What ranking (KI-32, `feed::picked`) reads: every item and source, and
 /// the event log from a cursor.
 mod ranking;
-pub use catalogue::FavouriteLink;
 
 const SOURCE_COLUMNS: &str = "s.id, s.url, s.kind, s.title, s.site_url, s.image, s.muted, s.added_at,
   s.last_fetch_at, s.last_success_at, s.last_status, s.last_error, s.failures, s.next_fetch_at,
