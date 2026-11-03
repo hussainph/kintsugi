@@ -122,7 +122,7 @@ const section = () => page.getByRole("region", { name: "Ideas" });
 const rows = () => section().locator("li[data-idea]");
 const openIdeas = async () => {
   // ⇧⌘E, like ⇧⌘F for the Feed and ⇧⌘I for Inspiration; the sidebar shows it.
-  await page.locator('[title="Ideas from Kin (⇧⌘E)"]').waitFor();
+  await page.locator("[data-sidebar=sidebar]").getByRole("button", { name: /^Ideas/ }).waitFor();
   await page.keyboard.press("Meta+Shift+e");
   await section().waitFor();
 };
