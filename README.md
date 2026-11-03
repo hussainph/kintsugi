@@ -14,6 +14,11 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 | ⌘K | Edit the selection (or paragraph) with AI: tighten, rephrase, synonyms, your `/` skills; or find supporting clips, ask who disagrees, discuss it with Kin, see ideas for this draft |
 | `/` | Insert a block (headings, lists, quote, callout, code, table…) or run a skill on the paragraph |
 | `@` or `[[` | Link a document or clip; `@Kin` asks Kin about the paragraph |
+| ⌘B / ⌘I / ⌘U | Bold / italic / underline (`<u>…</u>`) on the selection or the word |
+| ⌘E / ⇧⌘X / ⌘L | Inline code / strikethrough / link |
+| ⌥⌘1–6 / ⌥⌘0 | Heading 1–6 / plain text |
+| ⇧⌘7 / ⇧⌘8 / ⇧⌘9 / ⇧⌘. | Numbered list / bullets / to-do / quote |
+| ⌘= / ⌘− / ⌘0 | Larger / smaller / default text size (also in Settings › General) |
 | ⇧⌘D | Toggle draft / complete |
 | ⌘F | Find in document |
 | ⇧⌘O | Open a different vault |

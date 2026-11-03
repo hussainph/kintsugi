@@ -8,7 +8,8 @@ import { EditorSelection, EditorState, Transaction, type Extension } from "@code
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { RefObject, useEffect, useRef } from "react";
 import { frontmatter } from "@kintsugi/core/frontmatter";
-import { frontmatterLines, highlight, theme } from "./theme";
+import { frontmatterLines, highlight, spacingLines, theme } from "./theme";
+import { formatKeymap, underlines } from "./format";
 import { commandExtensions, refreshCommands, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
 import { commentExtensions, refreshComments, type Comments } from "./comments";
@@ -16,6 +17,7 @@ import { commentExtensions, refreshComments, type Comments } from "./comments";
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
 export { paragraphNear, paragraphRange } from "./references";
+export { formatKeymap, setHeading, toggleLink, toggleList, toggleMark, type ListKind, type Mark } from "./format";
 export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPlace, Comments, CommentThread } from "./comments";
 export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
 
@@ -72,10 +74,12 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         drawSelection(),
         EditorView.lineWrapping,
         search({ top: true }),
-        keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+        keymap.of([...formatKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
         yamlFrontmatter({ content: markdown({ base: markdownLanguage, codeLanguages: languages }) }),
         syntaxHighlighting(highlight),
         frontmatterLines,
+        spacingLines,
+        underlines,
         theme,
         placeholder("Start writing…"),
         EditorState.readOnly.of(readOnly),

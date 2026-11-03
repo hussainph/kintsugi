@@ -4,6 +4,7 @@ import { EditorView, keymap, showTooltip } from "@codemirror/view";
 import { isReferenceContext } from "@kintsugi/core/references";
 import { element, hint, menuTheme, reveal } from "./menu.ts";
 import { paragraphNear } from "./references.ts";
+import { MARKER } from "./format.ts";
 
 /** A skill flagged `command: true` (Kin's skills, KI-30). */
 export type CommandSkill = { name: string; description: string };
@@ -140,7 +141,6 @@ function menuAt(state: EditorState, commands: Commands | undefined, dismissed: n
   return items.length ? { from, to: head, query: match[1], items, index: 0 } : null;
 }
 
-const MARKER = /^(?:#{1,6}\s+|[-*+]\s+\[[ xX]\]\s+|[-*+]\s+|\d{1,9}[.)]\s+|>\s?(?:\[![A-Za-z]+\]\s*)?)/;
 
 /** Turns the `/command`'s line into `block`, as one undoable change. */
 export function applyBlock(view: EditorView, block: Block, from: number, to: number) {
