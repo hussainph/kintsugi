@@ -40,19 +40,19 @@ mod pi_auth;
 pub mod picks;
 pub mod prompt;
 mod providers;
-pub mod sign_in;
 #[cfg(feature = "headless")]
 mod scripted;
+pub mod sign_in;
 pub(crate) mod tools;
 pub mod web;
 mod wire;
 
 pub use chat::Chat;
 pub use kin::Kin;
-pub use sign_in::SignIns;
 /// OpenCode's data folder (its credentials live there), for path guards.
 #[cfg(feature = "headless")]
 pub(crate) use opencode_auth::data_dir as opencode_data_dir;
+pub use sign_in::SignIns;
 
 use crate::AppHandle;
 use credentials::{Chain, Kind, Source};
@@ -123,7 +123,11 @@ pub fn ai_credentials() -> Result<Vec<CredentialView>> {
     #[cfg(feature = "headless")]
     if !crate::headless::ai_enabled() {
         for s in statuses.iter_mut().filter(|s| s.auth == "none") {
-            let status = credentials::Status::of(Source::Kintsugi, store.lookup(wire::provider(s.id).unwrap())?);
+            let lookup = store.lookup(wire::provider(s.id).unwrap());
+            let status = credentials::Status::of(
+                Source::Kintsugi,
+                lookup.unwrap_or(credentials::Lookup::Missing),
+            );
             s.auth = status.auth;
             s.source = status.source;
         }
@@ -132,7 +136,9 @@ pub fn ai_credentials() -> Result<Vec<CredentialView>> {
         .into_iter()
         .map(|s| {
             let provider = wire::provider(s.id).ok_or("unknown provider")?;
-            let saved = store.held(s.id)?;
+            // An unreadable store shows as holding nothing; it can't hide
+            // the other sources.
+            let saved = store.held(s.id).ok().flatten();
             Ok(CredentialView {
                 id: s.id,
                 name: s.name,
@@ -1028,6 +1034,68 @@ mod tests {
         }
         assert!(!truncated("stop") && !truncated("end_turn"));
     }
+
+    /// Headless only: there, statuses never read the owner's OpenCode or
+    /// Pi files, and Kintsugi's store is in memory.
+    #[cfg(feature = "headless")]
+    #[test]
+    fn credential_commands_never_return_a_secret() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let secret = "sk-ki92-command-secret";
+        let views = rt
+            .block_on(ai_set_key("deepseek".into(), format!("  {secret} ")))
+            .unwrap();
+        let text = serde_json::to_string(&views).unwrap();
+        assert!(!text.contains(secret), "{text}");
+        let deepseek = serde_json::to_value(&views)
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["id"] == "deepseek")
+            .cloned()
+            .unwrap();
+        assert_eq!(deepseek["saved"], "api_key");
+        assert_eq!(deepseek["source"], "kintsugi");
+        assert_eq!(deepseek["auth"], "api_key");
+        assert_eq!(deepseek["listed"], true);
+        // Saved as Pi stores it, and read back as typed.
+        assert_eq!(
+            rt.block_on(credentials::kintsugi().auth("deepseek"))
+                .unwrap(),
+            Some(Auth::ApiKey(secret.into()))
+        );
+        assert!(
+            rt.block_on(ai_set_key("deepseek".into(), "has space".into()))
+                .unwrap_err()
+                .contains("API key")
+        );
+        assert!(
+            rt.block_on(ai_set_key("openai-codex".into(), "k".into()))
+                .is_err()
+        );
+        assert!(
+            rt.block_on(ai_set_key("ollama".into(), "k".into()))
+                .is_err()
+        );
+        let views = rt
+            .block_on(ai_remove_credential("deepseek".into()))
+            .unwrap();
+        let deepseek = views.iter().find(|v| v.id == "deepseek").unwrap();
+        assert_eq!((deepseek.saved, deepseek.auth), (None, "none"));
+        // Ollama, a keyless local server, takes neither.
+        let ollama = views.iter().find(|v| v.id == "ollama").unwrap();
+        assert!(!ollama.api_key && !ollama.sign_in);
+        assert!(
+            views
+                .iter()
+                .find(|v| v.id == "openai-codex")
+                .is_some_and(|v| v.sign_in && !v.api_key)
+        );
+    }
 }
 
 /// Real requests, ignored by default. `live_codex`, `live_zai`, `live_complete`
@@ -1262,37 +1330,5 @@ mod live {
             })
             .unwrap();
         println!("---\n{text}\n---");
-    }
-
-    /// Headless only: there, statuses never read the owner's OpenCode or
-    /// Pi files, and Kintsugi's store is in memory.
-    #[cfg(feature = "headless")]
-    #[test]
-    fn credential_commands_never_return_a_secret() {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        let secret = "sk-ki92-command-secret";
-        let views = rt.block_on(ai_set_key("deepseek".into(), format!("  {secret} "))).unwrap();
-        let text = serde_json::to_string(&views).unwrap();
-        assert!(!text.contains(secret), "{text}");
-        let deepseek = serde_json::to_value(&views).unwrap().as_array().unwrap().iter().find(|v| v["id"] == "deepseek").cloned().unwrap();
-        assert_eq!(deepseek["saved"], "api_key");
-        assert_eq!(deepseek["source"], "kintsugi");
-        assert_eq!(deepseek["auth"], "api_key");
-        assert_eq!(deepseek["listed"], true);
-        // Saved as Pi stores it, and read back as typed.
-        assert_eq!(
-            rt.block_on(credentials::kintsugi().auth("deepseek")).unwrap(),
-            Some(Auth::ApiKey(secret.into()))
-        );
-        assert!(rt.block_on(ai_set_key("deepseek".into(), "has space".into())).unwrap_err().contains("API key"));
-        assert!(rt.block_on(ai_set_key("openai-codex".into(), "k".into())).is_err());
-        assert!(rt.block_on(ai_set_key("ollama".into(), "k".into())).is_err());
-        let views = rt.block_on(ai_remove_credential("deepseek".into())).unwrap();
-        let deepseek = views.iter().find(|v| v.id == "deepseek").unwrap();
-        assert_eq!((deepseek.saved, deepseek.auth), (None, "none"));
-        // Ollama, a keyless local server, takes neither.
-        let ollama = views.iter().find(|v| v.id == "ollama").unwrap();
-        assert!(!ollama.api_key && !ollama.sign_in);
-        assert!(views.iter().find(|v| v.id == "openai-codex").is_some_and(|v| v.sign_in && !v.api_key));
     }
 }

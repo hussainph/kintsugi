@@ -138,10 +138,12 @@ export function ProviderSettings() {
 
   const cancel = () => {
     current.current = null;
-    if (flowId.current) void credentials.cancel(flowId.current);
+    const id = flowId.current;
     flowId.current = null;
     setFlow(null);
     setAnswer("");
+    // A save already under way can still finish: show what's there now.
+    if (id) void credentials.cancel(id).finally(() => void reload());
   };
 
   const reply = async (value: string) => {
@@ -321,7 +323,6 @@ function SignInPanel({ flow, name, answer, setAnswer, onReply, onCancel }: Panel
           <Input
             autoFocus
             spellCheck={false}
-            className="ki-data"
             placeholder={prompt.kind === "paste" ? prompt.message : prompt.placeholder}
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}

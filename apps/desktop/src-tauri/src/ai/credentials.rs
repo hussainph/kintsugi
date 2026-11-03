@@ -91,7 +91,13 @@ pub fn init(config_dir: Option<&std::path::Path>) {
         Some(dir) if !cfg!(feature = "headless") => pi_auth::Store::kintsugi(dir),
         _ => pi_auth::Store::memory(),
     };
-    let _ = KINTSUGI.set(store);
+    let fresh = KINTSUGI.set(store).is_ok();
+    // Set once, at startup. Headless test runs build many apps in one
+    // process; each keeps the first, in-memory store.
+    debug_assert!(
+        fresh || cfg!(any(test, feature = "headless")),
+        "Kintsugi's credential store was used before startup set it"
+    );
 }
 
 /// Kintsugi's own credentials (in memory until `init` runs).
@@ -127,7 +133,12 @@ impl Chain {
         Ok([
             (Source::Opencode, self.opencode.lookup(provider)?),
             (Source::Pi, self.pi.lookup(provider)?),
-            (Source::Kintsugi, self.kintsugi.lookup(provider)?),
+            // Kintsugi's own store comes after OpenCode's and Pi's: a file
+            // it can't read must not hide theirs, so it counts as empty.
+            (
+                Source::Kintsugi,
+                self.kintsugi.lookup(provider).unwrap_or(Lookup::Missing),
+            ),
         ])
     }
 
@@ -446,7 +457,10 @@ mod tests {
                 "xai": { "type": "oauth", "access": "ki-xai", "refresh": "r", "expires": later() },
                 "anthropic": { "type": "oauth", "access": "a", "refresh": "r", "expires": later() },
             }),
-            &[("DEEPSEEK_API_KEY", "env-deepseek"), ("TOGETHER_API_KEY", "env-together")],
+            &[
+                ("DEEPSEEK_API_KEY", "env-deepseek"),
+                ("TOGETHER_API_KEY", "env-together"),
+            ],
         );
         let c = &f.chain;
         // Existing OpenCode and Pi users see no change.
@@ -457,13 +471,29 @@ mod tests {
         assert_eq!(status(c, "xai"), ("login", Some(Source::Kintsugi)));
         assert_eq!(status(c, "together"), ("api_key", Some(Source::Env)));
         // A Claude login saved by hand is still refused.
-        assert_eq!(status(c, "anthropic"), ("unsupported_login", Some(Source::Kintsugi)));
+        assert_eq!(
+            status(c, "anthropic"),
+            ("unsupported_login", Some(Source::Kintsugi))
+        );
         let resolve = |id| block_on(c.resolve(provider(id).unwrap()));
-        assert_eq!(resolve("groq").unwrap(), Some(Auth::ApiKey("from-opencode".into())));
-        assert_eq!(resolve("deepseek").unwrap(), Some(Auth::ApiKey("ki-deepseek".into())));
+        assert_eq!(
+            resolve("groq").unwrap(),
+            Some(Auth::ApiKey("from-opencode".into()))
+        );
+        assert_eq!(
+            resolve("deepseek").unwrap(),
+            Some(Auth::ApiKey("ki-deepseek".into()))
+        );
         assert_eq!(resolve("xai").unwrap(), Some(Auth::ApiKey("ki-xai".into())));
-        assert!(resolve("anthropic").unwrap_err().contains("only Anthropic API keys"));
-        assert_eq!(serde_json::to_value(Source::Kintsugi).unwrap(), json!("kintsugi"));
+        assert!(
+            resolve("anthropic")
+                .unwrap_err()
+                .contains("only Anthropic API keys")
+        );
+        assert_eq!(
+            serde_json::to_value(Source::Kintsugi).unwrap(),
+            json!("kintsugi")
+        );
     }
 
     #[test]
@@ -477,10 +507,39 @@ mod tests {
         f.chain.kintsugi = pi_auth::Store::memory();
         f.chain
             .kintsugi
-            .save("xai", json!({ "type": "oauth", "access": "old", "refresh": "r", "expires": 0 }))
+            .save(
+                "xai",
+                json!({ "type": "oauth", "access": "old", "refresh": "r", "expires": 0 }),
+            )
             .unwrap();
-        assert_eq!(status(&f.chain, "xai"), ("expired_login", Some(Source::Kintsugi)));
+        assert_eq!(
+            status(&f.chain, "xai"),
+            ("expired_login", Some(Source::Kintsugi))
+        );
         let err = block_on(f.chain.resolve(provider("xai").unwrap())).unwrap_err();
         assert!(err.contains("Settings › Providers"), "{err}");
+    }
+
+    #[test]
+    fn an_unreadable_kintsugi_store_hides_no_other_source() {
+        let mut f = fixture(
+            json!({ "groq": { "type": "api", "key": "from-opencode" } }),
+            json!({ "zai": { "type": "api_key", "key": "from-pi" } }),
+            &[("DEEPSEEK_API_KEY", "from-env")],
+        );
+        // A folder where Kintsugi's file should be: it can't be read.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("auth.json")).unwrap();
+        f.chain.kintsugi = pi_auth::Store::kintsugi(dir.path());
+        assert!(f.chain.kintsugi.held("groq").is_err());
+        let c = &f.chain;
+        assert_eq!(status(c, "groq"), ("api_key", Some(Source::Opencode)));
+        assert_eq!(status(c, "zai"), ("api_key", Some(Source::Pi)));
+        assert_eq!(status(c, "deepseek"), ("api_key", Some(Source::Env)));
+        assert_eq!(status(c, "mistral"), ("none", None));
+        assert_eq!(
+            block_on(c.resolve(provider("deepseek").unwrap())).unwrap(),
+            Some(Auth::ApiKey("from-env".into()))
+        );
     }
 }

@@ -207,7 +207,9 @@ impl Endpoints {
             .find_map(|part| part.trim().strip_prefix("proxy-ep="))
             .filter(|p| !p.is_empty())
         {
-            let host = proxy.strip_prefix("proxy.").map_or(proxy.to_string(), |rest| format!("api.{rest}"));
+            let host = proxy
+                .strip_prefix("proxy.")
+                .map_or(proxy.to_string(), |rest| format!("api.{rest}"));
             return format!("https://{host}");
         }
         match enterprise {
@@ -285,7 +287,17 @@ impl Store {
         self.endpoints.clone()
     }
 
+    /// What the store holds. Kintsugi's own file, if damaged, reads as
+    /// empty here, so Settings still opens; writes use `read_exact`.
     fn read(&self) -> Result<Map<String, Value>> {
+        match self.read_exact() {
+            Err(Damaged::Json(_)) if self.owner == Owner::Kintsugi => Ok(Map::new()),
+            Err(e) => Err(e.message()),
+            Ok(map) => Ok(map),
+        }
+    }
+
+    fn read_exact(&self) -> std::result::Result<Map<String, Value>, Damaged> {
         let path = match &self.backing {
             Backing::File(path) => path,
             Backing::Memory(map) => return Ok(map.lock().unwrap().clone()),
@@ -293,16 +305,23 @@ impl Store {
         let text = match fs::read_to_string(path) {
             Ok(text) => text,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Map::new()),
-            Err(_) => return Err(format!("could not read {}", path.display())),
+            Err(_) => return Err(Damaged::Unreadable(path.clone())),
         };
         match serde_json::from_str(text.trim_start_matches('\u{feff}')) {
             Ok(Value::Object(map)) => Ok(map),
-            // Kintsugi's own file is only ever written whole by Kintsugi; if
-            // it's damaged anyway, it counts as empty, so Settings still
-            // opens and the next save replaces it. Pi's is never replaced.
-            _ if self.owner == Owner::Kintsugi => Ok(Map::new()),
-            _ => Err(format!("{} is not valid credentials JSON", path.display())),
+            _ => Err(Damaged::Json(path.clone())),
         }
+    }
+
+    /// Kintsugi's own damaged file, moved aside (owner-only) before a write
+    /// replaces it, so nothing saved in it is lost for good. Pi's is never
+    /// touched this way.
+    fn set_aside(&self, path: &Path) -> Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+        let aside = path.with_file_name(format!("{AUTH_FILE}.damaged-{}", now_ms()));
+        fs::rename(path, &aside).map_err(|_| format!("could not move aside {}", path.display()))?;
+        let _ = fs::set_permissions(&aside, fs::Permissions::from_mode(0o600));
+        Ok(())
     }
 
     /// Whole-file atomic replace, owner-only, like the `pi` CLI leaves it.
@@ -396,7 +415,14 @@ impl Store {
             }
             Backing::File(_) => {
                 let lock = self.lock()?;
-                let mut map = self.read()?;
+                let mut map = match self.read_exact() {
+                    Ok(map) => map,
+                    Err(Damaged::Json(path)) if self.owner == Owner::Kintsugi => {
+                        self.set_aside(&path)?;
+                        Map::new()
+                    }
+                    Err(e) => return Err(e.message()),
+                };
                 change(&mut map);
                 let result = self.write(&map);
                 drop(lock);
@@ -444,10 +470,11 @@ impl Store {
     }
 
     fn expired_here(&self) -> String {
-        format!(
-            "{} login expired; refresh it outside headless mode",
-            self.owner.name()
-        )
+        match self.owner {
+            Owner::Pi => "Pi login expired; refresh it outside headless mode".into(),
+            // Kept in memory (headless, or an isolated dev run): no refresh.
+            Owner::Kintsugi => "Sign-in expired. Sign in again in Settings › Providers.".into(),
+        }
     }
 
     /// A usable credential for `provider`, refreshing an expiring OAuth token
@@ -486,7 +513,10 @@ impl Store {
         let store = self.clone();
         let (lock, mut map) = tokio::task::spawn_blocking(move || {
             let lock = store.lock()?;
-            store.read().map(|map| (lock, map))
+            store
+                .read_exact()
+                .map(|map| (lock, map))
+                .map_err(|e| e.message())
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -523,6 +553,22 @@ impl Store {
         .await
         .map_err(|e| e.to_string())??;
         login(provider, &updated)
+    }
+}
+
+/// Why a credential file couldn't be read.
+enum Damaged {
+    Unreadable(PathBuf),
+    Json(PathBuf),
+}
+
+impl Damaged {
+    /// By path alone: serde's messages can quote the file's text.
+    fn message(&self) -> String {
+        match self {
+            Damaged::Unreadable(path) => format!("could not read {}", path.display()),
+            Damaged::Json(path) => format!("{} is not valid credentials JSON", path.display()),
+        }
     }
 }
 
@@ -622,7 +668,10 @@ fn api_key(cred: &Value) -> Option<String> {
                 None => out.push('$'),
                 Some(end) => {
                     let name = &rest[1..end];
-                    let valid = name.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+                    let valid = name
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
                         && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
                     if valid {
                         out.push_str(&env(name)?);
@@ -787,13 +836,19 @@ pub(super) fn chatgpt_credential(json: &Value, client_id: &str) -> Result<Value>
             .filter(|s| !s.trim().is_empty())
             .ok_or_else(|| format!("OpenAI OAuth token response has invalid {key}"))
     };
-    let (access, refresh, scope) = (field("access_token")?, field("refresh_token")?, field("scope")?);
+    let (access, refresh, scope) = (
+        field("access_token")?,
+        field("refresh_token")?,
+        field("scope")?,
+    );
     let seconds = expires_in(json)
         .filter(|s| *s > 0.0)
         .ok_or("OpenAI OAuth token response has invalid expires_in")?;
     let scopes: Vec<&str> = scope.split_whitespace().collect();
     if !scopes.contains(&CHATGPT_DIRECT_SCOPE) {
-        return Err(format!("OpenAI OAuth grant did not include {CHATGPT_DIRECT_SCOPE}"));
+        return Err(format!(
+            "OpenAI OAuth grant did not include {CHATGPT_DIRECT_SCOPE}"
+        ));
     }
     Ok(json!({
         "type": "oauth",
@@ -851,7 +906,10 @@ pub(super) fn normalize_domain(input: &str) -> Option<String> {
     } else {
         reqwest::Url::parse(&format!("https://{trimmed}"))
     };
-    url.ok()?.host_str().filter(|h| !h.is_empty()).map(String::from)
+    url.ok()?
+        .host_str()
+        .filter(|h| !h.is_empty())
+        .map(String::from)
 }
 
 /// Pi's `refreshGitHubCopilotAccessToken`: the GitHub token is exchanged
@@ -882,7 +940,9 @@ pub(super) async fn copilot_token(
     credential.insert("access".into(), token.into());
     credential.insert(
         "expires".into(),
-        ((expires_at * 1000.0) as u64).saturating_sub(MINIMUM_VALIDITY_MS).into(),
+        ((expires_at * 1000.0) as u64)
+            .saturating_sub(MINIMUM_VALIDITY_MS)
+            .into(),
     );
     if let Some(domain) = enterprise {
         credential.insert("enterpriseUrl".into(), domain.into());
@@ -911,7 +971,13 @@ pub(super) async fn copilot_send(
             .timeout(Duration::from_secs(5))
             .send()
             .await
-            .map_err(|e| format!("GitHub Copilot {} failed: {}", calls.action, e.without_url()))?;
+            .map_err(|e| {
+                format!(
+                    "GitHub Copilot {} failed: {}",
+                    calls.action,
+                    e.without_url()
+                )
+            })?;
         let status = response.status().as_u16();
         if status != 429 || attempt >= retry.max {
             let body = response.json::<Value>().await.unwrap_or(Value::Null);
@@ -922,13 +988,16 @@ pub(super) async fn copilot_send(
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
         {
-            Some(value) => match value.trim().parse::<f64>() {
-                Ok(seconds) if seconds.is_finite() => Duration::from_secs_f64(seconds.max(0.0)),
-                _ => return Ok((status, Value::Null)),
+            Some(value) => match retry_after(value) {
+                Some(wait) => wait,
+                None => return Ok((status, Value::Null)),
             },
-            None => Duration::from_millis(500 * 2u64.pow(attempt)),
+            None => Duration::from_millis(500 * 2u64.pow(attempt.min(10))),
         };
-        if tokio::time::Instant::now() + wait >= deadline {
+        if tokio::time::Instant::now()
+            .checked_add(wait)
+            .is_none_or(|at| at >= deadline)
+        {
             return Ok((status, Value::Null));
         }
         tokio::time::sleep(wait).await;
@@ -970,7 +1039,10 @@ pub(super) async fn copilot_models(
 }
 
 /// Pi's `parseGitHubCopilotModelCatalog`.
-pub(super) fn copilot_catalog(raw: &Value, allow_fallback: bool) -> Result<(Vec<String>, Vec<String>)> {
+pub(super) fn copilot_catalog(
+    raw: &Value,
+    allow_fallback: bool,
+) -> Result<(Vec<String>, Vec<String>)> {
     let data = raw
         .get("data")
         .and_then(Value::as_array)
@@ -1016,6 +1088,13 @@ pub(super) fn copilot_catalog(raw: &Value, allow_fallback: bool) -> Result<(Vec<
     Ok((available, policy))
 }
 
+/// A `Retry-After` in seconds; `None` (give up waiting) for anything
+/// else, a date included. Never panics, whatever the server sent.
+pub(super) fn retry_after(value: &str) -> Option<Duration> {
+    let seconds = value.trim().parse::<f64>().ok()?;
+    Duration::try_from_secs_f64(seconds.max(0.0)).ok()
+}
+
 /// Pi's `mintApiKey` for Meta: the identity token mints a Model API key
 /// that lasts a day. The identity token itself can't be renewed.
 pub(super) async fn meta_mint(calls: &Calls<'_>, identity: &str) -> Result<Value> {
@@ -1032,16 +1111,25 @@ pub(super) async fn meta_mint(calls: &Calls<'_>, identity: &str) -> Result<Value
         )
         .await?;
     if status == 401 || status == 403 {
-        return Err(format!("Meta session expired ({status}); {}", calls.relogin));
+        return Err(format!(
+            "Meta session expired ({status}); {}",
+            calls.relogin
+        ));
     }
     if !(200..300).contains(&status) {
         return Err(format!("Meta API key mint failed ({status})"));
     }
     let Some(key) = str_field(&json, "api_key") else {
-        return Err(match json.get("action_url").and_then(Value::as_str).and_then(trusted_http_url) {
-            Some(url) => format!("Meta did not issue an API key. Complete setup at {url}"),
-            None => "Meta did not issue an API key.".into(),
-        });
+        return Err(
+            match json
+                .get("action_url")
+                .and_then(Value::as_str)
+                .and_then(trusted_http_url)
+            {
+                Some(url) => format!("Meta did not issue an API key. Complete setup at {url}"),
+                None => "Meta did not issue an API key.".into(),
+            },
+        );
     };
     Ok(json!({
         "type": "oauth",
@@ -1086,14 +1174,20 @@ async fn refresh_codex(calls: &Calls<'_>, current: &Value) -> Result<Value> {
 async fn refresh_chatgpt(calls: &Calls<'_>, current: &Value) -> Result<Value> {
     let refresh = refresh_token(current, "ChatGPT", calls.relogin)?;
     let client_id = str_field(current, "clientId").ok_or_else(|| {
-        format!("Stored OpenAI OAuth credential does not contain an issued client ID; {}", calls.relogin)
+        format!(
+            "Stored OpenAI OAuth credential does not contain an issued client ID; {}",
+            calls.relogin
+        )
     })?;
     let json = calls
         .json(
             "ChatGPT",
             calls
                 .client
-                .post(format!("{}/api/accounts/oauth/token", calls.endpoints.openai))
+                .post(format!(
+                    "{}/api/accounts/oauth/token",
+                    calls.endpoints.openai
+                ))
                 .form(&[
                     ("grant_type", "refresh_token"),
                     ("client_id", client_id.as_str()),
@@ -1154,7 +1248,10 @@ async fn refresh_copilot(calls: &Calls<'_>, current: &Value) -> Result<Value> {
         calls,
         &token,
         enterprise.as_deref(),
-        Retry { max: 0, budget: Duration::ZERO },
+        Retry {
+            max: 0,
+            budget: Duration::ZERO,
+        },
     )
     .await?;
     credential.insert("availableModelIds".into(), available.into());
@@ -1437,16 +1534,29 @@ mod tests {
         let dir = root.path().join("dev.phalasiya.kintsugi");
         let store = Store::kintsugi(&dir);
         assert_eq!(store.held("groq").unwrap(), None);
-        store.save("groq", json!({ "type": "api_key", "key": literal_key("gsk-1") })).unwrap();
-        store.save("zai", json!({ "type": "api_key", "key": "zk" })).unwrap();
+        store
+            .save(
+                "groq",
+                json!({ "type": "api_key", "key": literal_key("gsk-1") }),
+            )
+            .unwrap();
+        store
+            .save("zai", json!({ "type": "api_key", "key": "zk" }))
+            .unwrap();
         store.remove("zai").unwrap();
         let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&dir.join(AUTH_FILE)), 0o600);
         assert_eq!(mode(&dir), 0o700);
         let text = fs::read_to_string(dir.join(AUTH_FILE)).unwrap();
-        assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), json!({ "groq": { "type": "api_key", "key": "gsk-1" } }));
+        assert_eq!(
+            serde_json::from_str::<Value>(&text).unwrap(),
+            json!({ "groq": { "type": "api_key", "key": "gsk-1" } })
+        );
         assert_eq!(store.held("groq").unwrap(), Some(Kind::ApiKey));
-        assert_eq!(block_on(store.auth("groq")).unwrap(), Some(Auth::ApiKey("gsk-1".into())));
+        assert_eq!(
+            block_on(store.auth("groq")).unwrap(),
+            Some(Auth::ApiKey("gsk-1".into()))
+        );
         assert!(!dir.join("auth.json.lock").exists());
         // Only the lock and the file: no stray temp files.
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
@@ -1454,7 +1564,14 @@ mod tests {
 
     #[test]
     fn keys_are_stored_so_they_read_back_literally() {
-        for key in ["sk-plain", "has$dollar", "$LOOKS_LIKE_VAR", "!not-a-command", "a$$b", "${X}"] {
+        for key in [
+            "sk-plain",
+            "has$dollar",
+            "$LOOKS_LIKE_VAR",
+            "!not-a-command",
+            "a$$b",
+            "${X}",
+        ] {
             let cred = json!({ "type": "api_key", "key": literal_key(key) });
             assert_eq!(api_key(&cred).as_deref(), Some(key), "{key}");
         }
@@ -1464,12 +1581,26 @@ mod tests {
     fn a_memory_store_saves_and_removes_but_never_refreshes_or_touches_disk() {
         let store = Store::memory();
         assert_eq!(store.owner(), Owner::Kintsugi);
-        store.save("groq", json!({ "type": "api_key", "key": "gsk" })).unwrap();
-        store.save("xai", json!({ "type": "oauth", "access": "a", "refresh": "r", "expires": 0 })).unwrap();
+        store
+            .save("groq", json!({ "type": "api_key", "key": "gsk" }))
+            .unwrap();
+        store
+            .save(
+                "xai",
+                json!({ "type": "oauth", "access": "a", "refresh": "r", "expires": 0 }),
+            )
+            .unwrap();
         let p = |id| crate::ai::wire::provider(id).unwrap();
-        assert_eq!(store.lookup(p("groq")).unwrap(), Lookup::Usable(Kind::ApiKey));
+        assert_eq!(
+            store.lookup(p("groq")).unwrap(),
+            Lookup::Usable(Kind::ApiKey)
+        );
         assert_eq!(store.lookup(p("xai")).unwrap(), Lookup::Expired);
-        assert!(block_on(store.auth("xai")).unwrap_err().contains("outside headless"));
+        assert!(
+            block_on(store.auth("xai"))
+                .unwrap_err()
+                .contains("Sign in again")
+        );
         store.remove("groq").unwrap();
         assert_eq!(store.held("groq").unwrap(), None);
         // A read-only file store refuses writes.
@@ -1481,25 +1612,68 @@ mod tests {
     #[test]
     fn copilot_api_follows_the_token_then_the_enterprise() {
         let e = Endpoints::default();
-        assert_eq!(e.copilot_api("tid=1;proxy-ep=proxy.business.githubcopilot.com;x", None), "https://api.business.githubcopilot.com");
-        assert_eq!(e.copilot_api("opaque", Some("acme.ghe.com")), "https://copilot-api.acme.ghe.com");
-        assert_eq!(e.copilot_api("opaque", None), "https://api.individual.githubcopilot.com");
-        assert_eq!(normalize_domain(" https://acme.ghe.com/login "), Some("acme.ghe.com".into()));
-        assert_eq!(normalize_domain("acme.ghe.com"), Some("acme.ghe.com".into()));
+        assert_eq!(
+            e.copilot_api("tid=1;proxy-ep=proxy.business.githubcopilot.com;x", None),
+            "https://api.business.githubcopilot.com"
+        );
+        assert_eq!(
+            e.copilot_api("opaque", Some("acme.ghe.com")),
+            "https://copilot-api.acme.ghe.com"
+        );
+        assert_eq!(
+            e.copilot_api("opaque", None),
+            "https://api.individual.githubcopilot.com"
+        );
+        assert_eq!(
+            normalize_domain(" https://acme.ghe.com/login "),
+            Some("acme.ghe.com".into())
+        );
+        assert_eq!(
+            normalize_domain("acme.ghe.com"),
+            Some("acme.ghe.com".into())
+        );
         assert_eq!(normalize_domain("  "), None);
         assert_eq!(trusted_http_url("file:///etc/passwd"), None);
-        assert_eq!(trusted_http_url("https://github.com/login/device").as_deref(), Some("https://github.com/login/device"));
+        assert_eq!(
+            trusted_http_url("https://github.com/login/device").as_deref(),
+            Some("https://github.com/login/device")
+        );
     }
 
     #[test]
-    fn a_damaged_kintsugi_file_counts_as_empty_and_the_next_save_replaces_it() {
+    fn a_damaged_kintsugi_file_lists_as_empty_and_is_set_aside_before_a_save() {
+        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join(AUTH_FILE), "{\"groq\": sk-half-written").unwrap();
+        let damaged = "{\"groq\": sk-half-written";
+        fs::write(dir.path().join(AUTH_FILE), damaged).unwrap();
         let store = Store::kintsugi(dir.path());
+        // Settings still lists it, as holding nothing.
         assert_eq!(store.held("groq").unwrap(), None);
-        store.save("zai", json!({ "type": "api_key", "key": "zk" })).unwrap();
+        store
+            .save("zai", json!({ "type": "api_key", "key": "zk" }))
+            .unwrap();
         let text = fs::read_to_string(dir.path().join(AUTH_FILE)).unwrap();
-        assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), json!({ "zai": { "type": "api_key", "key": "zk" } }));
+        assert_eq!(
+            serde_json::from_str::<Value>(&text).unwrap(),
+            json!({ "zai": { "type": "api_key", "key": "zk" } })
+        );
+        // The damaged file is kept beside it, owner-only, byte for byte.
+        let aside: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| {
+                p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with("auth.json.damaged-")
+            })
+            .collect();
+        assert_eq!(aside.len(), 1);
+        assert_eq!(fs::read_to_string(&aside[0]).unwrap(), damaged);
+        assert_eq!(
+            fs::metadata(&aside[0]).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         // Pi's own file is never treated that way.
         fs::write(dir.path().join(AUTH_FILE), "{").unwrap();
         assert!(Store::new(dir.path()).held("zai").is_err());
@@ -1507,7 +1681,8 @@ mod tests {
 
     #[test]
     fn templates_read_as_pi_reads_them() {
-        let key = |raw: &str| api_key(&json!({ "type": "api_key", "key": raw, "env": { "A_B": "x" } }));
+        let key =
+            |raw: &str| api_key(&json!({ "type": "api_key", "key": raw, "env": { "A_B": "x" } }));
         assert_eq!(key("${A_B}-k").as_deref(), Some("x-k"));
         assert_eq!(key("$A_B").as_deref(), Some("x"));
         assert_eq!(key("k${unclosed").as_deref(), Some("k${unclosed"));
@@ -1515,5 +1690,15 @@ mod tests {
         assert_eq!(key("$1abc").as_deref(), Some("$1abc"));
         assert_eq!(key("a$$b$!c").as_deref(), Some("a$b!c"));
         assert_eq!(key("${KI92_UNSET_FOR_TEST}"), None);
+    }
+
+    #[test]
+    fn retry_after_never_panics_on_what_a_server_sends() {
+        assert_eq!(retry_after("2"), Some(Duration::from_secs(2)));
+        assert_eq!(retry_after("-3"), Some(Duration::ZERO));
+        assert_eq!(retry_after("NaN"), Some(Duration::ZERO));
+        assert_eq!(retry_after("1e300"), None);
+        assert_eq!(retry_after("inf"), None);
+        assert_eq!(retry_after("Wed, 21 Oct 2026 07:28:00 GMT"), None);
     }
 }

@@ -114,13 +114,19 @@ async fn callback_or_paste<A, T, F>(
     check: impl FnMut(&reqwest::Url) -> Verdict<A>,
     complete: impl FnOnce(A) -> F,
     prompt: Prompt,
+    timeout: Duration,
 ) -> Result<Got<T>>
 where
     F: std::future::Future<Output = Result<T>>,
 {
     let paste = i.prompt(prompt);
     match server {
-        None => paste.await.map(Got::Pasted),
+        // Only the pasted URL can finish it (Codex, when port 1455 is
+        // taken); it gives up after the same timeout as a callback.
+        None => tokio::time::timeout(timeout, paste)
+            .await
+            .map_err(|_| "OpenAI sign-in timed out".to_string())?
+            .map(Got::Pasted),
         Some(server) => tokio::select! {
             got = server.wait(check, complete) => got.map(Got::Callback),
             pasted = paste => pasted.map(Got::Pasted),
@@ -167,7 +173,12 @@ async fn codex(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     }
 }
 
-async fn codex_exchange(calls: &Calls<'_>, code: &str, verifier: &str, redirect: &str) -> Result<Value> {
+async fn codex_exchange(
+    calls: &Calls<'_>,
+    code: &str,
+    verifier: &str,
+    redirect: &str,
+) -> Result<Value> {
     let json = calls
         .json(
             "OpenAI Codex",
@@ -188,14 +199,24 @@ async fn codex_exchange(calls: &Calls<'_>, code: &str, verifier: &str, redirect:
 
 async fn codex_browser(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     let (verifier, challenge) = pkce();
-    let state = random(16).iter().map(|b| format!("{b:02x}")).collect::<String>();
+    let state = random(16)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
     let e = calls.endpoints;
     // Port 1455 is shared with the Codex CLI; when it's taken, the pasted
     // redirect URL is the only way back, as in Pi.
-    let server = Callback::bind(e.openai_callback_port, CODEX_CALLBACK_PATH, "OpenAI", e.login_timeout)
-        .await
-        .ok();
-    let port = server.as_ref().map_or(e.openai_callback_port, Callback::port);
+    let server = Callback::bind(
+        e.openai_callback_port,
+        CODEX_CALLBACK_PATH,
+        "OpenAI",
+        e.login_timeout,
+    )
+    .await
+    .ok();
+    let port = server
+        .as_ref()
+        .map_or(e.openai_callback_port, Callback::port);
     let redirect = format!("http://localhost:{port}{CODEX_CALLBACK_PATH}");
     let url = with_query(
         &format!("{}/oauth/authorize", e.openai),
@@ -219,6 +240,7 @@ async fn codex_browser(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
         callback::standard(Some(state.clone()), "OpenAI"),
         |code| async move { Ok(code) },
         Prompt::paste(&redirect),
+        e.login_timeout,
     )
     .await?;
     let code = match got {
@@ -231,7 +253,9 @@ async fn codex_browser(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             code
         }
     };
-    let code = code.filter(|c| !c.is_empty()).ok_or("Missing authorization code")?;
+    let code = code
+        .filter(|c| !c.is_empty())
+        .ok_or("Missing authorization code")?;
     codex_exchange(calls, &code, &verifier, &redirect).await
 }
 
@@ -247,10 +271,15 @@ async fn codex_device(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
         )
         .await?;
     if status == 404 {
-        return Err("OpenAI Codex device code login is not enabled for this server. Use the browser login.".into());
+        return Err(
+            "OpenAI Codex device code login is not enabled for this server. Use the browser login."
+                .into(),
+        );
     }
     if !(200..300).contains(&status) {
-        return Err(format!("OpenAI Codex device code request failed ({status})"));
+        return Err(format!(
+            "OpenAI Codex device code request failed ({status})"
+        ));
     }
     let interval = match json.get("interval") {
         Some(Value::String(s)) => s.trim().parse::<f64>().ok(),
@@ -287,10 +316,15 @@ async fn codex_device(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
                 )
                 .await?;
             if (200..300).contains(&status) {
-                return Ok(match (str_field(&json, "authorization_code"), str_field(&json, "code_verifier")) {
-                    (Some(code), Some(verifier)) => Poll::Complete((code, verifier)),
-                    _ => Poll::Failed("Invalid OpenAI Codex device auth token response".into()),
-                });
+                return Ok(
+                    match (
+                        str_field(&json, "authorization_code"),
+                        str_field(&json, "code_verifier"),
+                    ) {
+                        (Some(code), Some(verifier)) => Poll::Complete((code, verifier)),
+                        _ => Poll::Failed("Invalid OpenAI Codex device auth token response".into()),
+                    },
+                );
             }
             if status == 403 || status == 404 {
                 return Ok(Poll::Pending);
@@ -308,7 +342,13 @@ async fn codex_device(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
         },
     )
     .await?;
-    codex_exchange(calls, &code, &verifier, &format!("{}/deviceauth/callback", e.openai)).await
+    codex_exchange(
+        calls,
+        &code,
+        &verifier,
+        &format!("{}/deviceauth/callback", e.openai),
+    )
+    .await
 }
 
 // --- Sign in with ChatGPT (the OpenAI API) ----------------------------------
@@ -316,7 +356,9 @@ async fn codex_device(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
 /// OpenAI names each installation by a stable `urn:uuid:<uuid>`.
 pub(super) fn agent_host_id(device_id: Option<&str>) -> Result<String> {
     match device_id.and_then(|d| uuid::Uuid::parse_str(d).ok()) {
-        Some(id) if device_id.is_some_and(|d| d.len() == 36) => Ok(format!("urn:uuid:{}", id.hyphenated())),
+        Some(id) if device_id.is_some_and(|d| d.len() == 36) => {
+            Ok(format!("urn:uuid:{}", id.hyphenated()))
+        }
         _ => Err("Sign in with ChatGPT requires a device ID (UUID) for this installation".into()),
     }
 }
@@ -324,8 +366,12 @@ pub(super) fn agent_host_id(device_id: Option<&str>) -> Result<String> {
 /// Pi's `authorizationResultFromCallback`: the code, the matching state,
 /// and the client id OpenAI issued for this login.
 fn chatgpt_result(url: &reqwest::Url, expected: &str) -> Result<(String, String)> {
-    let code = param(url, "code").filter(|c| !c.is_empty()).ok_or("Missing authorization code")?;
-    let state = param(url, "state").filter(|s| !s.is_empty()).ok_or("Missing OAuth state")?;
+    let code = param(url, "code")
+        .filter(|c| !c.is_empty())
+        .ok_or("Missing authorization code")?;
+    let state = param(url, "state")
+        .filter(|s| !s.is_empty())
+        .ok_or("Missing OAuth state")?;
     if state != expected {
         return Err("OAuth state mismatch".into());
     }
@@ -392,6 +438,7 @@ async fn chatgpt(i: &Interaction, calls: &Calls<'_>, device_id: Option<&str>) ->
         },
         |result| async move { Ok(result) },
         Prompt::paste(&redirect),
+        e.login_timeout,
     )
     .await?;
     let (code, client_id) = match got {
@@ -401,7 +448,9 @@ async fn chatgpt(i: &Interaction, calls: &Calls<'_>, device_id: Option<&str>) ->
                 .map_err(|_| "Paste the full callback URL from the browser")?;
             let expected = reqwest::Url::parse(&redirect).map_err(|e| e.to_string())?;
             if url.origin() != expected.origin() || url.path() != expected.path() {
-                return Err(format!("The pasted callback URL must start with {redirect}"));
+                return Err(format!(
+                    "The pasted callback URL must start with {redirect}"
+                ));
             }
             if let Some(error) = param(&url, "error") {
                 return Err(format!("ChatGPT authorization failed: {error}"));
@@ -409,7 +458,9 @@ async fn chatgpt(i: &Interaction, calls: &Calls<'_>, device_id: Option<&str>) ->
             chatgpt_result(&url, &state)?
         }
     };
-    i.notify(Event::Progress { message: "Finishing sign-in…".into() });
+    i.notify(Event::Progress {
+        message: "Finishing sign-in…".into(),
+    });
     let json = calls
         .json(
             "ChatGPT",
@@ -438,7 +489,10 @@ async fn chatgpt(i: &Interaction, calls: &Calls<'_>, device_id: Option<&str>) ->
 async fn copilot(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     let e = calls.endpoints;
     let input = i
-        .prompt(Prompt::text("GitHub Enterprise domain", "Leave empty for github.com"))
+        .prompt(Prompt::text(
+            "GitHub Enterprise domain",
+            "Leave empty for github.com",
+        ))
         .await?;
     let enterprise = normalize_domain(&input);
     if !input.trim().is_empty() && enterprise.is_none() {
@@ -467,7 +521,8 @@ async fn copilot(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     if interval.is_some_and(|v| !v.is_number()) {
         return Err("Invalid device code response fields".into());
     }
-    let verification = trusted_http_url(verification).ok_or("Untrusted verification_uri in device code response")?;
+    let verification = trusted_http_url(verification)
+        .ok_or("Untrusted verification_uri in device code response")?;
     i.notify(Event::DeviceCode {
         user_code: user_code.into(),
         verification_uri: verification,
@@ -507,11 +562,21 @@ async fn copilot(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     )
     .await?;
     let mut credential = pi_auth::copilot_token(calls, &github, enterprise.as_deref()).await?;
-    let token = credential.get("access").and_then(Value::as_str).unwrap_or_default().to_string();
-    let retry = Retry { max: 2, budget: Duration::from_secs(5) };
-    let (mut available, policy) = pi_auth::copilot_models(calls, &token, enterprise.as_deref(), retry).await?;
+    let token = credential
+        .get("access")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let retry = Retry {
+        max: 2,
+        budget: Duration::from_secs(5),
+    };
+    let (mut available, policy) =
+        pi_auth::copilot_models(calls, &token, enterprise.as_deref(), retry).await?;
     if !policy.is_empty() {
-        i.notify(Event::Progress { message: "Turning on models…".into() });
+        i.notify(Event::Progress {
+            message: "Turning on models…".into(),
+        });
         let base = e.copilot_api(&token, enterprise.as_deref());
         for id in policy {
             let url = format!("{base}/models/{id}/policy");
@@ -568,7 +633,11 @@ async fn kimi(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     if !(200..300).contains(&status) {
         return Err(format!("Kimi Code device authorization failed ({status})"));
     }
-    let uri = |k: &str| json.get(k).and_then(Value::as_str).and_then(trusted_http_url);
+    let uri = |k: &str| {
+        json.get(k)
+            .and_then(Value::as_str)
+            .and_then(trusted_http_url)
+    };
     let (Some(device_code), Some(user_code), Some(_), Some(complete)) = (
         json.get("device_code").and_then(Value::as_str),
         json.get("user_code").and_then(Value::as_str),
@@ -577,7 +646,11 @@ async fn kimi(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     ) else {
         return Err("Invalid Kimi Code device authorization response".into());
     };
-    let positive = |k: &str| json.get(k).and_then(Value::as_f64).filter(|s| s.is_finite() && *s > 0.0);
+    let positive = |k: &str| {
+        json.get(k)
+            .and_then(Value::as_f64)
+            .filter(|s| s.is_finite() && *s > 0.0)
+    };
     i.notify(Event::DeviceCode {
         user_code: user_code.into(),
         verification_uri: complete,
@@ -593,20 +666,21 @@ async fn kimi(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             let (status, json) = calls
                 .send(
                     "Kimi",
-                    calls
-                        .client
-                        .post(format!("{host}/api/oauth/token"))
-                        .form(&[
-                            ("client_id", KIMI_CLIENT_ID),
-                            ("device_code", device_code),
-                            ("grant_type", DEVICE_GRANT),
-                        ]),
+                    calls.client.post(format!("{host}/api/oauth/token")).form(&[
+                        ("client_id", KIMI_CLIENT_ID),
+                        ("device_code", device_code),
+                        ("grant_type", DEVICE_GRANT),
+                    ]),
                 )
                 .await?;
             if status >= 500 {
-                return Ok(Poll::Failed(format!("Kimi Code device token request failed ({status})")));
+                return Ok(Poll::Failed(format!(
+                    "Kimi Code device token request failed ({status})"
+                )));
             }
-            if (200..300).contains(&status) && json.get("access_token").is_some_and(Value::is_string) {
+            if (200..300).contains(&status)
+                && json.get("access_token").is_some_and(Value::is_string)
+            {
                 return Ok(match kimi_credential(&json, "poll") {
                     Ok(credential) => Poll::Complete(credential),
                     Err(message) => Poll::Failed(message),
@@ -615,7 +689,9 @@ async fn kimi(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             Ok(match json.get("error").and_then(Value::as_str) {
                 Some("authorization_pending") => Poll::Pending,
                 Some("slow_down") => Poll::SlowDown(
-                    json.get("interval").and_then(Value::as_f64).filter(|s| *s > 0.0),
+                    json.get("interval")
+                        .and_then(Value::as_f64)
+                        .filter(|s| *s > 0.0),
                 ),
                 Some("expired_token") => {
                     Poll::Failed("Kimi Code device authorization expired. Sign in again.".into())
@@ -650,15 +726,25 @@ async fn xai(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             calls
                 .client
                 .post(format!("{}/oauth2/device/code", e.xai))
-                .form(&[("client_id", XAI_CLIENT_ID), ("scope", XAI_SCOPE), ("referrer", XAI_REFERRER)]),
+                .form(&[
+                    ("client_id", XAI_CLIENT_ID),
+                    ("scope", XAI_SCOPE),
+                    ("referrer", XAI_REFERRER),
+                ]),
         )
         .await?;
     if !(200..300).contains(&status) {
-        return Err(format!("xAI OAuth device authorization failed ({status}){}", oauth_error(&body)));
+        return Err(format!(
+            "xAI OAuth device authorization failed ({status}){}",
+            oauth_error(&body)
+        ));
     }
     let invalid = |f: &str| format!("Invalid xAI OAuth response field: {f}");
     let required = |f: &str| str_field(&body, f).ok_or_else(|| invalid(f));
-    let complete = match body.get("verification_uri_complete").and_then(Value::as_str) {
+    let complete = match body
+        .get("verification_uri_complete")
+        .and_then(Value::as_str)
+    {
         Some(raw) if !raw.is_empty() => Some(xai_uri(raw)?),
         _ => None,
     };
@@ -670,7 +756,10 @@ async fn xai(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
         .and_then(Value::as_f64)
         .filter(|s| s.is_finite() && *s > 0.0)
         .ok_or_else(|| invalid("expires_in"))?;
-    let interval = body.get("interval").and_then(Value::as_f64).filter(|s| s.is_finite() && *s > 0.0);
+    let interval = body
+        .get("interval")
+        .and_then(Value::as_f64)
+        .filter(|s| s.is_finite() && *s > 0.0);
     i.notify(Event::DeviceCode {
         user_code,
         verification_uri: complete.unwrap_or(uri),
@@ -686,14 +775,11 @@ async fn xai(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             let (status, body) = calls
                 .send(
                     "xAI",
-                    calls
-                        .client
-                        .post(format!("{}/oauth2/token", e.xai))
-                        .form(&[
-                            ("grant_type", DEVICE_GRANT),
-                            ("client_id", XAI_CLIENT_ID),
-                            ("device_code", device_code.as_str()),
-                        ]),
+                    calls.client.post(format!("{}/oauth2/token", e.xai)).form(&[
+                        ("grant_type", DEVICE_GRANT),
+                        ("client_id", XAI_CLIENT_ID),
+                        ("device_code", device_code.as_str()),
+                    ]),
                 )
                 .await?;
             if (200..300).contains(&status) {
@@ -732,8 +818,16 @@ async fn meta(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
     if !(200..300).contains(&status) {
         return Err(format!("Meta device authorization failed ({status})"));
     }
-    let uri = |k: &str| json.get(k).and_then(Value::as_str).and_then(trusted_http_url);
-    let positive = |k: &str| json.get(k).and_then(Value::as_f64).filter(|s| s.is_finite() && *s > 0.0);
+    let uri = |k: &str| {
+        json.get(k)
+            .and_then(Value::as_str)
+            .and_then(trusted_http_url)
+    };
+    let positive = |k: &str| {
+        json.get(k)
+            .and_then(Value::as_f64)
+            .filter(|s| s.is_finite() && *s > 0.0)
+    };
     let (Some(device_code), Some(user_code), Some(verification)) = (
         str_field(&json, "device_code"),
         str_field(&json, "user_code"),
@@ -774,7 +868,9 @@ async fn meta(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             Ok(match json.get("error").and_then(Value::as_str) {
                 Some("authorization_pending") => Poll::Pending,
                 Some("slow_down") => Poll::SlowDown(
-                    json.get("interval").and_then(Value::as_f64).filter(|s| s.is_finite() && *s > 0.0),
+                    json.get("interval")
+                        .and_then(Value::as_f64)
+                        .filter(|s| s.is_finite() && *s > 0.0),
                 ),
                 Some("access_denied") => Poll::Failed("Meta login was denied.".into()),
                 Some("expired_token") => {
@@ -785,7 +881,9 @@ async fn meta(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
         },
     )
     .await?;
-    i.notify(Event::Progress { message: "Turning on Meta Model API access…".into() });
+    i.notify(Event::Progress {
+        message: "Turning on Meta Model API access…".into(),
+    });
     pi_auth::meta_mint(calls, &identity).await
 }
 
@@ -802,13 +900,11 @@ async fn openrouter_exchange(calls: &Calls<'_>, code: &str, verifier: &str) -> R
         )
         .await?;
     if !(200..300).contains(&status) {
-        let detail = ["error_description", "message", "error"]
-            .iter()
-            .find_map(|k| body.get(*k).and_then(Value::as_str))
-            .or_else(|| body.pointer("/error/message").and_then(Value::as_str))
-            .map(|d| format!(": {}", d.chars().take(200).collect::<String>()))
-            .unwrap_or_default();
-        return Err(format!("OpenRouter OAuth key exchange failed ({status}){detail}"));
+        // Only the OAuth error fields, never the rest of the answer.
+        return Err(format!(
+            "OpenRouter OAuth key exchange failed ({status}){}",
+            oauth_error(&body)
+        ));
     }
     let key = str_field(&body, "key").ok_or("OpenRouter OAuth response carries no \"key\"")?;
     Ok(json!({ "type": "oauth", "access": key, "refresh": "", "expires": OPENROUTER_EXPIRES }))
@@ -842,6 +938,7 @@ async fn openrouter(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             async move { openrouter_exchange(calls, &code, &verifier).await }
         },
         Prompt::paste(&redirect),
+        e.login_timeout,
     )
     .await?;
     match got {
@@ -854,7 +951,9 @@ async fn openrouter(i: &Interaction, calls: &Calls<'_>) -> Result<Value> {
             }
             .filter(|c| !c.is_empty())
             .ok_or("Missing authorization code")?;
-            i.notify(Event::Progress { message: "Finishing sign-in…".into() });
+            i.notify(Event::Progress {
+                message: "Finishing sign-in…".into(),
+            });
             openrouter_exchange(calls, &code, &verifier).await
         }
     }

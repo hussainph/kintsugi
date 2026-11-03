@@ -10,6 +10,9 @@ use tokio::time::Instant;
 type Result<T> = std::result::Result<T, String>;
 
 pub const DEFAULT_INTERVAL_S: f64 = 5.0;
+/// The most any server-given time may be, in seconds: a day. Larger, NaN or
+/// infinite values are clamped, so nothing a server sends can overflow.
+pub const MAX_S: f64 = 86_400.0;
 pub const SLOW_DOWN_INCREMENT_S: u32 = 5;
 pub const TIMED_OUT: &str = "Device flow timed out";
 pub const SLOW_DOWN_TIMED_OUT: &str = "Device flow timed out after one or more slow_down responses. \
@@ -32,16 +35,35 @@ pub struct Options {
     pub second: Duration,
 }
 
+/// `seconds` of `second`s, within 0 and `MAX_S`; `None` for NaN.
+fn span(second: Duration, seconds: f64) -> Option<Duration> {
+    if seconds.is_nan() {
+        return None;
+    }
+    Some(second.mul_f64(seconds.clamp(0.0, MAX_S)))
+}
+
 pub async fn poll<T, F, Fut>(options: Options, mut poll: F) -> Result<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<Poll<T>>>,
 {
-    let second = options.second;
-    let deadline = options.expires_in.map(|s| Instant::now() + second.mul_f64(s.max(0.0)));
+    let second = options.second.min(Duration::from_secs(1));
+    let longest = span(second, MAX_S).unwrap_or(second);
+    // A NaN lifetime counts as the longest; a negative one as already over.
+    let deadline = options
+        .expires_in
+        .map(|s| Instant::now().checked_add(span(second, s).unwrap_or(longest)));
+    let deadline = match deadline {
+        Some(None) => Some(Instant::now() + longest),
+        Some(Some(at)) => Some(at),
+        None => None,
+    };
     let remaining = || deadline.map(|d| d.saturating_duration_since(Instant::now()));
-    let mut interval = second
-        .mul_f64(options.interval.unwrap_or(DEFAULT_INTERVAL_S).max(0.0))
+    let mut interval = options
+        .interval
+        .and_then(|s| span(second, s))
+        .unwrap_or_else(|| second.mul_f64(DEFAULT_INTERVAL_S))
         .max(second);
     let mut slowed = 0;
     if options.wait_first {
@@ -58,9 +80,9 @@ where
             Poll::Pending => {}
             Poll::SlowDown(asked) => {
                 slowed += 1;
-                interval = match asked {
-                    Some(s) if s.is_finite() && s > 0.0 => second.mul_f64(s).max(second),
-                    _ => (interval + second * SLOW_DOWN_INCREMENT_S).max(second),
+                interval = match asked.filter(|s| s.is_finite() && *s > 0.0) {
+                    Some(s) => span(second, s).unwrap_or(longest).max(second),
+                    None => (interval + second * SLOW_DOWN_INCREMENT_S).clamp(second, longest),
                 };
             }
         }
@@ -71,5 +93,10 @@ where
         };
         tokio::time::sleep(wait).await;
     }
-    Err(if slowed > 0 { SLOW_DOWN_TIMED_OUT } else { TIMED_OUT }.into())
+    Err(if slowed > 0 {
+        SLOW_DOWN_TIMED_OUT
+    } else {
+        TIMED_OUT
+    }
+    .into())
 }
