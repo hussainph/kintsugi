@@ -1,14 +1,16 @@
 import { save as pickSavePath } from "@tauri-apps/plugin-dialog";
-import { AtSign, BookOpen, Download, FileDiff, Headphones, Newspaper, RotateCw, Rss, Search, Trash2, Upload, Video } from "@kintsugi/ui/icons";
-import { useRef, useState, type FormEvent, type ReactNode } from "react";
+import { BookUser, Browser, Download, Newspaper, Podcast as PodcastIcon, RotateCw, Rss, Search, Trash2, Upload, XLogo, YouTube, type IconComponent } from "@kintsugi/ui/icons";
+import { Tabs } from "@kintsugi/ui/graphical";
+import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@kintsugi/ui/components/sheet";
 import { Switch } from "@kintsugi/ui/components/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { feed, HN_LISTS, type HnList, type Podcast, type Source, type SourceKind, type Subscribe } from "./api";
-import { health, sourceName } from "./model";
+import { health, sourceLogos, sourceName } from "./model";
 
 type Props = {
   open: boolean;
@@ -18,17 +20,42 @@ type Props = {
 };
 
 type Tab = "url" | "hn" | "youtube" | "podcast" | "x" | "page" | "author";
-const TABS: [Tab, string][] = [["url", "Link"], ["hn", "HN"], ["youtube", "YouTube"], ["podcast", "Podcast"], ["x", "X"], ["page", "Page"], ["author", "Author"]];
 
-const KIND_ICON: Record<SourceKind, ReactNode> = {
-  feed: <Rss className="size-3.5" />,
-  hn: <Newspaper className="size-3.5" />,
-  youtube: <Video className="size-3.5" />,
-  podcast: <Headphones className="size-3.5" />,
-  x: <AtSign className="size-3.5" />,
-  page: <FileDiff className="size-3.5" />,
-  author: <BookOpen className="size-3.5" />,
+const KIND_ICON: Record<SourceKind, IconComponent> = {
+  feed: Rss,
+  hn: Newspaper,
+  youtube: YouTube,
+  podcast: PodcastIcon,
+  x: XLogo,
+  page: Browser,
+  author: BookUser,
 };
+
+const TABS: [Tab, string, IconComponent][] = [
+  ["url", "Link", KIND_ICON.feed],
+  ["hn", "HN", KIND_ICON.hn],
+  ["youtube", "YouTube", KIND_ICON.youtube],
+  ["podcast", "Podcast", KIND_ICON.podcast],
+  ["x", "X", KIND_ICON.x],
+  ["page", "Page", KIND_ICON.page],
+  ["author", "Author", KIND_ICON.author],
+];
+
+/** A source's artwork or favicon, falling back to its type icon. */
+function SourceLogo({ source }: { source: Source }) {
+  const [failed, setFailed] = useState<string[]>([]);
+  const logo = sourceLogos(source).find((url) => !failed.includes(url));
+  const Icon = KIND_ICON[source.kind];
+  return (
+    <span aria-hidden className="mt-px flex size-5 shrink-0 items-center justify-center overflow-hidden rounded-sm text-muted-foreground">
+      {logo ? (
+        <img key={logo} src={logo} alt="" referrerPolicy="no-referrer" loading="lazy" className="size-full object-cover" onError={() => setFailed((urls) => [...urls, logo])} />
+      ) : (
+        <Icon className="size-4" />
+      )}
+    </span>
+  );
+}
 
 /** Following: add sources, see each one's health, mute, and move them in and out as OPML. */
 export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
@@ -156,26 +183,31 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-[420px] flex-col gap-0 sm:max-w-[420px]" aria-describedby={undefined}>
+      <SheetContent side="right" className="flex flex-col gap-0 data-[side=right]:w-full data-[side=right]:max-w-[420px] data-[side=right]:sm:max-w-[420px]" aria-describedby={undefined}>
         <SheetHeader className="pb-2">
           <SheetTitle>Following</SheetTitle>
         </SheetHeader>
 
         <form onSubmit={submit} className="space-y-3 px-4 pb-5" aria-label="Follow something">
-          <div role="tablist" aria-label="Kind of source" className="flex gap-1 rounded-lg bg-muted/60 p-1">
-            {TABS.map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={tab === key}
-                onClick={() => setTab(key)}
-                className={cn("flex-1 rounded-md px-2 py-1 text-xs whitespace-nowrap outline-none focus-visible:ring-2 focus-visible:ring-ring", tab === key ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <Tabs.Root value={tab} onValueChange={(value) => setTab(value as Tab)}>
+            <Tabs.List aria-label="Kind of source" className="flex w-full">
+              {TABS.map(([key, label, Icon]) => {
+                const active = tab === key;
+                const trigger = (
+                  <Tabs.Tab key={key} value={key} aria-label={label} className={cn("min-w-0 gap-1.5 px-2 text-xs", active ? "flex-none" : "flex-1")}>
+                    <Icon className="size-4 shrink-0" />
+                    {active && <span className="truncate">{label}</span>}
+                  </Tabs.Tab>
+                );
+                return active ? trigger : (
+                  <Tooltip key={key}>
+                    <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+                    <TooltipContent>{label}</TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </Tabs.List>
+          </Tabs.Root>
           {tab === "hn" ? (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Hacker News list">
@@ -239,7 +271,7 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                 const name = sourceName(source);
                 return (
                   <li key={source.id} aria-label={name} className={cn("group/source flex items-start gap-3 rounded-md py-2", source.muted && "opacity-60")}>
-                    <span className="mt-0.5 text-muted-foreground" aria-hidden>{KIND_ICON[source.kind]}</span>
+                    <SourceLogo source={source} />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm" title={source.url}>{name}</p>
                       <p className={cn("mt-0.5 flex items-center gap-1.5 text-xs", state.tone === "error" ? "text-destructive" : "text-muted-foreground")} data-health={state.tone}>

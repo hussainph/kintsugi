@@ -184,8 +184,11 @@ ranking's `feed_picked({ n? })`, `feed_correct({ reason, id?, undo? })`,
 "Show more", one exploring), each with "Why this?", and logs its impressions
 with surface `picked`. See [ranking.md](ranking.md).
 **Following** (a sheet) adds sources (tabs: Link, HN, YouTube, Podcast, X,
-Page, Author), shows each one's health, mutes,
-fetches now, unfollows, and imports/exports OPML.
+Page, Author; each is an icon, and only the selected one shows its name),
+shows each one's health, mutes, fetches now, unfollows, and imports/exports
+OPML. Each source shows a podcast's artwork or its site's `/favicon.ico`
+(loaded straight from that site, with no referrer), else its type icon.
+HN, YouTube, X and authors always use their type icon.
 
 ## On the phone (KI-42)
 
