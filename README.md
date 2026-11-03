@@ -8,7 +8,7 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 
 Hold ⌘ for a moment to see the shortcuts that work where you are, beside their buttons and in a list. ⇧⌘/ or the keyboard button under a document lists them all; type to filter. Right-click a selection (or press ⇧F10) for what you can do with it, each with its key.
 
-⌥⌘T, ⌥⌘R, ⌥⌘P, ⌥⌘F and ⌥⌘S run ⌘K's edits on the selection (or the paragraph) straight away, and show the result to accept or discard like ⌘K. In ⌘P, `#tag` filters by tag. ⌘= and ⌘− are also in Settings › General.
+⌥⌘T, ⌥⌘R, ⌥⌘P, ⌥⌘F and ⌥⌘S run ⌘K's edits on the selection (or the paragraph) straight away, and show the result to accept or discard like ⌘K. ⌘/ dims the selection (or the line) in place, and dimmed text is left out of publish and export. In ⌘P, `#tag` filters by tag. ⌘= and ⌘− are also in Settings › General.
 
 Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the editor's formatting keys in `packages/editor/src/format.ts`). The tests fail on a key that's taken twice, CodeMirror's and the Mac's own keys included, and on tables below that don't match; `pnpm shortcuts:readme` rewrites them.
 
@@ -72,6 +72,7 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | ⇧⌘8 | Bulleted list |
 | ⇧⌘9 | To-do list |
 | ⇧⌘. | Quote |
+| `⌘/` | Dim |
 
 ### Text
 
