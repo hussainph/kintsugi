@@ -3,7 +3,7 @@ import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from "@kintsugi/ui/components/command";
+import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandMeta } from "@kintsugi/ui/components/command";
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@kintsugi/ui/components/popover";
 import { Cancelled, Message, stream } from "@/lib/ai";
@@ -230,7 +230,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                     <CommandItem key={skill.name} value={`skill ${skill.name} ${skill.description}`} onSelect={() => run(skillAction(skill))}>
                       <Wand2 />
                       <span className="truncate">{skill.name}</span>
-                      <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">{skill.description}</span>
+                      <CommandMeta className="text-xs">{skill.description}</CommandMeta>
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -242,7 +242,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                     <CommandItem key={a.id} value={a.label} onSelect={() => kinAction(a)}>
                       <Icon />
                       <span className="truncate">{a.label}</span>
-                      <span className="ml-auto hidden truncate pl-2 text-xs text-muted-foreground sm:inline">{a.hint}</span>
+                      <CommandMeta className="hidden text-xs sm:inline">{a.hint}</CommandMeta>
                     </CommandItem>
                   );
                 })}
