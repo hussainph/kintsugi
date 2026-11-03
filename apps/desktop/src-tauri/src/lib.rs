@@ -79,6 +79,7 @@ fn builder() -> tauri::Builder<Runtime> {
         .manage(ai::Ai::default())
         .manage(ai::Kin::default())
         .manage(ai::Chat::default())
+        .manage(ai::SignIns::default())
         .manage(enrich::Worker::default())
         .manage(phone::Phone::default())
         .manage(feed::Feed::default())
@@ -111,6 +112,12 @@ fn builder() -> tauri::Builder<Runtime> {
             library::clip_image,
             search::search,
             ai::ai_providers,
+            ai::ai_credentials,
+            ai::ai_set_key,
+            ai::ai_remove_credential,
+            ai::sign_in::ai_sign_in,
+            ai::sign_in::ai_sign_in_answer,
+            ai::sign_in::ai_sign_in_cancel,
             ai::models::ai_models,
             ai::ai_model_for,
             ai::ai_stream,

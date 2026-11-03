@@ -1,16 +1,20 @@
 //! Where a provider's credential comes from, in order: the owner's OpenCode
-//! login (`opencode_auth`), then Pi's (`pi_auth`), then an environment
-//! variable, then nothing at all for local servers. The first source with a
-//! usable credential wins. A credential Kintsugi can't use (a Claude
-//! subscription login, an expired OpenCode login) doesn't stop the search;
-//! it is only reported when no later source has one either.
+//! login (`opencode_auth`), then Pi's (`pi_auth`), then Kintsugi's own
+//! (keys and logins saved in Settings › Providers, in Pi's format, see
+//! `pi_auth` and `sign_in`), then an environment variable, then nothing at
+//! all for local servers. The first source with a usable credential wins. A
+//! credential Kintsugi can't use (a Claude subscription login, an expired
+//! OpenCode login) doesn't stop the search; it is only reported when no
+//! later source has one either.
 //!
-//! Kintsugi stores no credentials of its own and never signs in itself.
+//! Kintsugi's own store comes after OpenCode's and Pi's, so anyone who
+//! already logs in with them sees no change.
 
 use super::opencode_auth;
 use super::pi_auth::{self, Auth};
 use super::wire::Provider;
 use serde::Serialize;
+use std::sync::OnceLock;
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -39,6 +43,8 @@ pub enum Lookup {
 pub enum Source {
     Opencode,
     Pi,
+    /// Saved in Kintsugi (Settings › Providers).
+    Kintsugi,
     Env,
     Local,
 }
@@ -52,16 +58,52 @@ pub struct Status {
 }
 
 impl Status {
-    const NONE: Status = Status {
+    pub const NONE: Status = Status {
         auth: "none",
         source: None,
     };
+
+    /// What one store's `lookup` means on its own.
+    #[cfg_attr(not(feature = "headless"), allow(dead_code))]
+    pub fn of(source: Source, lookup: Lookup) -> Status {
+        let auth = match lookup {
+            Lookup::Missing => return Status::NONE,
+            Lookup::Usable(Kind::ApiKey) => "api_key",
+            Lookup::Usable(Kind::Oauth) => "login",
+            Lookup::Unsupported => "unsupported_login",
+            Lookup::Expired => "expired_login",
+        };
+        Status {
+            auth,
+            source: Some(source),
+        }
+    }
+}
+
+/// Kintsugi's own store, set once at startup (`init`).
+static KINTSUGI: OnceLock<pi_auth::Store> = OnceLock::new();
+
+/// Points Kintsugi's store at `auth.json` in its config folder; `None`
+/// (headless, or an isolated dev run without a scratch config folder) keeps
+/// it in memory, so nothing is ever written there.
+pub fn init(config_dir: Option<&std::path::Path>) {
+    let store = match config_dir {
+        Some(dir) if !cfg!(feature = "headless") => pi_auth::Store::kintsugi(dir),
+        _ => pi_auth::Store::memory(),
+    };
+    let _ = KINTSUGI.set(store);
+}
+
+/// Kintsugi's own credentials (in memory until `init` runs).
+pub fn kintsugi() -> &'static pi_auth::Store {
+    KINTSUGI.get_or_init(pi_auth::Store::memory)
 }
 
 /// The credential sources, in the order they're consulted.
 pub struct Chain {
     pub opencode: opencode_auth::Store,
     pub pi: pi_auth::Store,
+    pub kintsugi: pi_auth::Store,
     pub env: Box<dyn Fn(&str) -> Option<String> + Send + Sync>,
 }
 
@@ -71,6 +113,7 @@ impl Chain {
         Ok(Chain {
             opencode: opencode_auth::Store::default_location()?,
             pi: pi_auth::Store::default_location()?,
+            kintsugi: kintsugi().clone(),
             env: Box::new(|key| std::env::var(key).ok().filter(|v| !v.is_empty())),
         })
     }
@@ -80,10 +123,11 @@ impl Chain {
         provider.env_keys.iter().find_map(|k| (self.env)(k))
     }
 
-    fn lookups(&self, provider: &Provider) -> Result<[(Source, Lookup); 2]> {
+    fn lookups(&self, provider: &Provider) -> Result<[(Source, Lookup); 3]> {
         Ok([
             (Source::Opencode, self.opencode.lookup(provider)?),
             (Source::Pi, self.pi.lookup(provider)?),
+            (Source::Kintsugi, self.kintsugi.lookup(provider)?),
         ])
     }
 
@@ -141,16 +185,22 @@ impl Chain {
             (_, Some(Source::Pi)) if matches!(status.auth, "api_key" | "login") => {
                 self.pi.auth(provider.id).await?.map(Some).ok_or_else(|| "Pi login changed; try again".into())
             }
+            (_, Some(Source::Kintsugi)) if matches!(status.auth, "api_key" | "login") => self
+                .kintsugi
+                .auth(provider.id)
+                .await?
+                .map(Some)
+                .ok_or_else(|| "The saved credential changed; try again".into()),
             (_, Some(Source::Env)) => Ok(self.env_key(provider).map(Auth::ApiKey)),
             (_, Some(Source::Local)) => Ok(None),
             ("unsupported_login", _) if provider.id == "openai-codex" => Err(
                 "OpenCode's newer ChatGPT sign-in doesn't work with the Codex backend Kintsugi uses. \
-                 Log in to OpenAI with the ChatGPT browser login in OpenCode or Pi, or add an OpenAI API key."
+                 Sign in to ChatGPT (Codex) in Settings › Providers, or use the ChatGPT browser login in OpenCode or Pi."
                     .into(),
             ),
             ("unsupported_login", _) => Err(format!(
                 "{} holds a Claude subscription login, but Kintsugi uses only Anthropic API keys. \
-                 Add an Anthropic API key in OpenCode or Pi, or set ANTHROPIC_API_KEY.",
+                 Add an Anthropic API key in Settings › Providers.",
                 source_name(status.source)
             )),
             ("expired_login", Some(Source::Opencode)) => Err(format!(
@@ -158,12 +208,16 @@ impl Chain {
                  Kintsugi never refreshes OpenCode's logins itself.",
                 provider.name
             )),
+            ("expired_login", Some(Source::Kintsugi)) => Err(format!(
+                "Your {} sign-in has expired. Sign in again in Settings › Providers.",
+                provider.name
+            )),
             ("expired_login", _) => Err(format!(
                 "Your Pi login for {} has expired; refresh it outside headless mode.",
                 provider.name
             )),
             _ => Err(format!(
-                "No credentials for {}. Log in with OpenCode (or Pi), or add an API key.",
+                "No credentials for {}. Add a key or sign in in Settings › Providers.",
                 provider.name
             )),
         }
@@ -174,6 +228,7 @@ fn source_name(source: Option<Source>) -> &'static str {
     match source {
         Some(Source::Opencode) => "OpenCode",
         Some(Source::Pi) => "Pi",
+        Some(Source::Kintsugi) => "Kintsugi",
         _ => "Your login",
     }
 }
@@ -197,14 +252,23 @@ mod tests {
 
     /// Fixture stores only: never the owner's files or environment.
     struct Fixture {
-        _dirs: (tempfile::TempDir, tempfile::TempDir),
+        _dirs: (tempfile::TempDir, tempfile::TempDir, tempfile::TempDir),
         chain: Chain,
     }
 
     fn fixture(opencode: Value, pi: Value, env: &[(&str, &str)]) -> Fixture {
-        let (oc, pi_dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        fixture_with(opencode, pi, json!({}), env)
+    }
+
+    fn fixture_with(opencode: Value, pi: Value, kintsugi: Value, env: &[(&str, &str)]) -> Fixture {
+        let (oc, pi_dir, ki) = (
+            tempfile::tempdir().unwrap(),
+            tempfile::tempdir().unwrap(),
+            tempfile::tempdir().unwrap(),
+        );
         std::fs::write(oc.path().join("auth.json"), opencode.to_string()).unwrap();
         std::fs::write(pi_dir.path().join("auth.json"), pi.to_string()).unwrap();
+        std::fs::write(ki.path().join("auth.json"), kintsugi.to_string()).unwrap();
         let env: HashMap<String, String> = env
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -212,10 +276,11 @@ mod tests {
         let chain = Chain {
             opencode: opencode_auth::Store::new(oc.path()),
             pi: pi_auth::Store::new(pi_dir.path()),
+            kintsugi: pi_auth::Store::kintsugi(ki.path()),
             env: Box::new(move |k| env.get(k).cloned()),
         };
         Fixture {
-            _dirs: (oc, pi_dir),
+            _dirs: (oc, pi_dir, ki),
             chain,
         }
     }
@@ -367,5 +432,55 @@ mod tests {
         let before = std::fs::read(path(f._dirs.0.path())).unwrap();
         block_on(f.chain.resolve(provider("openai-codex").unwrap())).unwrap();
         assert_eq!(std::fs::read(path(f._dirs.0.path())).unwrap(), before);
+    }
+
+    #[test]
+    fn kintsugi_comes_after_opencode_and_pi_and_before_the_environment() {
+        let f = fixture_with(
+            json!({ "groq": { "type": "api", "key": "from-opencode" } }),
+            json!({ "mistral": { "type": "api_key", "key": "from-pi" } }),
+            json!({
+                "groq": { "type": "api_key", "key": "ki-groq" },
+                "mistral": { "type": "api_key", "key": "ki-mistral" },
+                "deepseek": { "type": "api_key", "key": "ki-deepseek" },
+                "xai": { "type": "oauth", "access": "ki-xai", "refresh": "r", "expires": later() },
+                "anthropic": { "type": "oauth", "access": "a", "refresh": "r", "expires": later() },
+            }),
+            &[("DEEPSEEK_API_KEY", "env-deepseek"), ("TOGETHER_API_KEY", "env-together")],
+        );
+        let c = &f.chain;
+        // Existing OpenCode and Pi users see no change.
+        assert_eq!(status(c, "groq"), ("api_key", Some(Source::Opencode)));
+        assert_eq!(status(c, "mistral"), ("api_key", Some(Source::Pi)));
+        // Saved in Kintsugi beats the environment.
+        assert_eq!(status(c, "deepseek"), ("api_key", Some(Source::Kintsugi)));
+        assert_eq!(status(c, "xai"), ("login", Some(Source::Kintsugi)));
+        assert_eq!(status(c, "together"), ("api_key", Some(Source::Env)));
+        // A Claude login saved by hand is still refused.
+        assert_eq!(status(c, "anthropic"), ("unsupported_login", Some(Source::Kintsugi)));
+        let resolve = |id| block_on(c.resolve(provider(id).unwrap()));
+        assert_eq!(resolve("groq").unwrap(), Some(Auth::ApiKey("from-opencode".into())));
+        assert_eq!(resolve("deepseek").unwrap(), Some(Auth::ApiKey("ki-deepseek".into())));
+        assert_eq!(resolve("xai").unwrap(), Some(Auth::ApiKey("ki-xai".into())));
+        assert!(resolve("anthropic").unwrap_err().contains("only Anthropic API keys"));
+        assert_eq!(serde_json::to_value(Source::Kintsugi).unwrap(), json!("kintsugi"));
+    }
+
+    #[test]
+    fn an_expired_kintsugi_login_says_to_sign_in_again() {
+        let mut f = fixture_with(
+            json!({}),
+            json!({}),
+            json!({ "xai": { "type": "oauth", "access": "old", "refresh": "r", "expires": 0 } }),
+            &[],
+        );
+        f.chain.kintsugi = pi_auth::Store::memory();
+        f.chain
+            .kintsugi
+            .save("xai", json!({ "type": "oauth", "access": "old", "refresh": "r", "expires": 0 }))
+            .unwrap();
+        assert_eq!(status(&f.chain, "xai"), ("expired_login", Some(Source::Kintsugi)));
+        let err = block_on(f.chain.resolve(provider("xai").unwrap())).unwrap_err();
+        assert!(err.contains("Settings › Providers"), "{err}");
     }
 }

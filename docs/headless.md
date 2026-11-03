@@ -72,7 +72,11 @@ enrichment. In this mode OpenCode and Pi credentials are read-only: no lock,
 refresh or write is allowed; an expired login must be refreshed outside
 headless mode (open OpenCode, or the native app for Pi). Both credential
 folders (`~/.pi`, OpenCode's `$XDG_DATA_HOME/opencode` or
-`~/.local/share/opencode`) are refused as scratch paths, with their ancestors. Phone
+`~/.local/share/opencode`) are refused as scratch paths, with their ancestors.
+Kintsugi's own credentials (Settings › Providers) are held in memory, never
+written to the scratch config, and "Sign in" plays a scripted sign-in with no
+network (see `docs/kin.md` › Credentials; `KINTSUGI_HEADLESS_SIGN_IN_MS` sets
+how long its device code waits). Phone
 restoration is skipped and enabling phone access is refused because Tailscale
 configuration is machine-global. The daily Ideas batch never starts on its own in
 headless runs unless `KINTSUGI_HEADLESS_IDEAS_DAILY=1`, so a real-AI check
