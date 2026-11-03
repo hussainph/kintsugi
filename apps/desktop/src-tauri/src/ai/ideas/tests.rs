@@ -808,7 +808,10 @@ fn citations_point_at_real_quotes() {
         ground::keep_citations("Two drafts [1] and a clip [2] and [5].", 2),
         "Two drafts [1] and a clip [2] and."
     );
-    assert_eq!(ground::keep_citations("See [[notes/a]] [0]", 3), "See [[notes/a]]");
+    assert_eq!(
+        ground::keep_citations("See [[notes/a]] [0]", 3),
+        "See [[notes/a]]"
+    );
     let root = vault();
     let mut c = candidate("Cited", good_quotes());
     c.hunch = "The cost side [1], not the care [3].".into();
@@ -817,7 +820,10 @@ fn citations_point_at_real_quotes() {
     let idea = ground::check_one(c, &sources(root.path()), &[], &Footprint::default()).unwrap();
     assert_eq!(idea.hunch, "The cost side [1], not the care.");
     assert_eq!(idea.observed, ["Two documents [2]"]);
-    assert_eq!(idea.snippet, "Two documents", "the list's snippet carries no markers");
+    assert_eq!(
+        idea.snippet, "Two documents",
+        "the list's snippet carries no markers"
+    );
 }
 
 #[test]

@@ -219,13 +219,20 @@ pub fn keep_citations(text: &str, quotes: usize) -> String {
     let mut i = 0;
     while i < chars.len() {
         if chars[i] == '[' && (i == 0 || chars[i - 1] != '[') {
-            let digits = chars[i + 1..].iter().take_while(|c| c.is_ascii_digit()).count();
+            let digits = chars[i + 1..]
+                .iter()
+                .take_while(|c| c.is_ascii_digit())
+                .count();
             let close = i + 1 + digits;
             if (1..=2).contains(&digits)
                 && chars.get(close) == Some(&']')
                 && chars.get(close + 1) != Some(&']')
             {
-                let n: usize = chars[i + 1..close].iter().collect::<String>().parse().unwrap_or(0);
+                let n: usize = chars[i + 1..close]
+                    .iter()
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0);
                 if n == 0 || n > quotes {
                     while out.ends_with(' ') {
                         out.pop();
