@@ -257,7 +257,7 @@ export function Citation({ n, quote, onOpen }: { n: number; quote: Quote; onOpen
           <button
             type="button"
             aria-label={`Quote ${n}: ${quote.title}`}
-            className="mx-px inline-flex -translate-y-[0.35em] items-center rounded px-0.5 align-baseline font-sans text-xxs leading-none text-[var(--seam-ink)] tabular-nums hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none data-[popup-open]:bg-muted"
+            className="mx-px inline-flex -translate-y-[0.35em] items-center rounded border-0! px-0.5 shadow-none! before:hidden align-baseline font-sans text-xxs leading-none text-[var(--seam-ink)] tabular-nums hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring data-[popup-open]:bg-muted"
           />
         }
       >
@@ -265,7 +265,7 @@ export function Citation({ n, quote, onOpen }: { n: number; quote: Quote; onOpen
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="top" sideOffset={6} align="start">
-          <Popover.Popup className="w-80 max-w-[calc(100vw-2rem)] p-3.5">
+          <Popover.Popup className="w-max max-w-80 p-3.5">
             <ClipQuote quote={quote} compact onOpen={onOpen} />
           </Popover.Popup>
         </Popover.Positioner>
