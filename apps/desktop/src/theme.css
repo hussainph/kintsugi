@@ -179,9 +179,48 @@
 .ki-device-code { font-size: var(--size-m); line-height: var(--line-m); color: var(--neutral-10); user-select: all; }
 .ki-settings [data-reached] [data-slot="meter-indicator"], .ki-settings [data-reached] .ui-range-fill { background: var(--error); }
 
-/* About you (KI-70): each memory tab's room, full width; red near the cap. */
-.ki-about .ui-range { width: 100%; gap: var(--space-xs); }
+/* About you (KI-93): Paper C, over the current work. Shared primitives own
+   focus, dismissal and motion; the detail uses the editor's live serif. */
+.ki-about.ui-modal { width: min(820px, calc(100vw - var(--space-xl))); max-width: none; height: min(560px, calc(100dvh - var(--space-xl))); max-height: none; overflow: hidden; padding: 0; gap: 0; border-radius: var(--radius-l); background: var(--neutral-2); }
+.ki-about-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 0; height: 100%; }
+.ki-about-nav { min-width: 0; overflow-y: auto; padding: var(--space-l) var(--space-s); background: var(--neutral-1); }
+.ki-about .ki-about-title { margin: 0; padding: 0 var(--space-s) var(--space-m); font-family: var(--font-ui); font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); font-weight: var(--weight-ui-heavy); }
+.ki-about .ki-about-sections { display: flex; width: 100%; flex-direction: column; align-items: stretch; gap: var(--space-xxs); padding: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.ki-about-section { position: relative; min-width: 0; }
+.ki-about .ki-about-section-button { display: flex; justify-content: space-between; width: 100%; gap: var(--space-xs); padding: var(--space-xs) var(--space-s); text-align: start; background: transparent; box-shadow: none; }
+.ki-about .ki-about-section-button:is(:hover, [data-active]) { background: var(--neutral-3); box-shadow: none; }
+.ki-about .ki-about-section-button:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: calc(-1 * var(--border-l)); }
+.ki-about-section[data-memory] .ki-about-section-button { padding-bottom: calc(var(--space-xs) + var(--space-s)); }
+.ki-about-count { color: var(--neutral-7); font-size: var(--size-xs); line-height: var(--line-s); letter-spacing: var(--letter-spacing-xs); font-weight: var(--weight-ui-regular); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ki-about .ui-tabs-indicator { display: none; }
+.ki-about .ki-about-meter { position: absolute; z-index: 2; inset: auto var(--space-s) var(--space-xs); width: auto; pointer-events: none; }
+.ki-about-meter .ui-range-track { height: var(--space-xxs); min-height: 0; background: var(--neutral-4); }
+.ki-about-meter .ui-range-fill { background: var(--neutral-9); }
 .ki-about [data-high] .ui-range-fill { background: var(--error); }
+.ki-about-detail { position: relative; display: flex; min-width: 0; min-height: 0; flex-direction: column; gap: var(--space-xs); padding: var(--space-l) var(--space-xl); }
+.ki-about-header { padding-inline-end: var(--space-xl); display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: var(--space-xs); }
+.ki-about .ki-about-prose { font-family: var(--font-editorial); font-weight: var(--weight-editorial-regular); font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); }
+.ki-about .ki-about-heading { margin: 0; font-weight: var(--weight-editorial-medium); }
+.ki-about .ki-about-close { position: absolute; top: var(--space-l); right: var(--space-xl); padding: var(--space-xxs); color: var(--neutral-7); }
+.ki-about-close svg { width: var(--space-m); height: var(--space-m); }
+.ki-about-panels { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.ki-about .ki-about-panel { padding: 0; }
+.ki-about-panel:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: calc(-1 * var(--border-l)); }
+.ki-about-row { padding: var(--space-s); box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4); }
+.ki-about-row:last-child { box-shadow: none; }
+.ki-about-row[data-focus] { box-shadow: none; }
+.ki-about-panel [data-editing] { min-width: 0; }
+.ki-about-panel [data-editing] form, .ki-about-form { flex-wrap: wrap; }
+.ki-about-panel [data-editing] input { flex: 1 1 12rem; min-width: 0; }
+@media (max-width: 640px) {
+  .ki-about-layout { grid-template-columns: minmax(8rem, 30%) minmax(0, 1fr); }
+  .ki-about-nav { padding: var(--space-m) var(--space-xs); }
+  .ki-about .ki-about-title { padding-inline: var(--space-xs); }
+  .ki-about .ki-about-section-button { flex-wrap: wrap; gap: 0 var(--space-xs); padding-inline: var(--space-xs); }
+  .ki-about-detail { padding: var(--space-m); }
+  .ki-about .ki-about-close { top: var(--space-m); right: var(--space-m); }
+  .ki-about-row { padding-inline: 0; flex-wrap: wrap; }
+}
 
 /* The model picker (KI-61): a compact trigger in the chat's composer, a
    select-like one in Settings, and a filterable menu grouped by provider. */
