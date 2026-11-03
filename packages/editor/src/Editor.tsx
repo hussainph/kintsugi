@@ -13,6 +13,7 @@ import { formatKeymap, underlines } from "./format";
 import { commandExtensions, refreshCommands, type Commands } from "./commands";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "./references";
 import { commentExtensions, refreshComments, type Comments } from "./comments";
+import { heldPassages } from "./passages";
 
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
@@ -20,6 +21,7 @@ export { paragraphNear, paragraphRange } from "./references";
 export { formatKeymap, formatShortcuts, setHeading, toggleLink, toggleList, toggleMark, type ListKind, type Mark } from "./format";
 export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPlace, Comments, CommentThread } from "./comments";
 export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
+export { heldPassage, holdPassage, releasePassage, type Passage } from "./passages";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -86,6 +88,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         referenceExtensions(() => referencesRef.current && { ...referencesRef.current, currentPath: docPath }),
         commandExtensions(() => commandsRef.current),
         commentExtensions(() => commentsRef.current && { ...commentsRef.current, currentPath: docPath }),
+        heldPassages,
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged || !onChangeRef.current) return;

@@ -17,6 +17,11 @@ import { startApp, type App, openApp } from "./headless-app.ts";
 
 const DOC = "drafts/gold-seams.md";
 const MIRROR = "posts/mirrored.md";
+// After DOC in the tree, so a new window still opens DOC first.
+const DRIFT = "posts/drift.md";
+const SAME = "Same words really matter.";
+/** As long as SAME, so cutting it slides the next SAME under the old offsets. */
+const OTHER = "Another thought, cut out.";
 const TIMEOUT = Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000);
 
 let app: App;
@@ -26,6 +31,7 @@ let page: Page;
 before(async () => {
   app = await startApp("ki37", { KINTSUGI_HEADLESS_KIN: "mock" }, (vault) => {
     writeFileSync(resolve(vault, DOC), `---\ntitle: "Gold seams"\nstatus: draft\n---\n\n# Gold seams\n\nThe repair is really very visible, and that is the point.\n`);
+    writeFileSync(resolve(vault, DRIFT), `# Drift\n\n${OTHER}\n\n${SAME}\n\n${SAME}\n`);
     writeFileSync(resolve(vault, MIRROR), `---\ntitle: "Mirrored post"\nmirror: hussain.ph/blog/mirrored\n---\n\nA published paragraph about repair.\n`);
     const skill = (name: string, description: string, command: boolean, body: string) => {
       mkdirSync(resolve(vault, `.kintsugi/agent/skills/${name}`), { recursive: true });
@@ -215,6 +221,26 @@ test("in a read-only mirror, ⌘K offers only the actions that write nothing", {
   await refine().getByRole("option", { name: /Golden joinery/ }).waitFor({ timeout: 15_000 });
   await page.keyboard.press("Escape");
   assert.equal(readFileSync(resolve(app.vault, MIRROR), "utf8"), before);
+});
+
+test("an outside edit above the passage while ⌘K is open doesn't move the rewrite (KI-80)", { timeout: 60_000 }, async () => {
+  const file = resolve(app.vault, DRIFT);
+  await page.locator(`[title="${DRIFT}"]`).click();
+  await page.locator(`[title="${DRIFT}"][data-active="true"]`).waitFor();
+  assert.equal(OTHER.length, SAME.length);
+  await line(SAME).first().click();
+  await page.keyboard.press("Meta+k");
+  await refine().getByRole("option", { name: /Tighten/ }).click();
+  await refine().locator("del", { hasText: "really" }).waitFor({ timeout: 15_000 });
+  // The paragraph above is cut elsewhere while the diff is open, so the old
+  // offsets now hold the same words one paragraph too low.
+  writeFileSync(file, `# Drift\n\n${SAME}\n\n${SAME}\n`);
+  await line(OTHER).waitFor({ state: "detached" });
+  await refine().locator("del", { hasText: "really" }).waitFor();
+  await page.keyboard.press("Enter");
+  const want = `# Drift\n\nSame words matter.\n\n${SAME}\n`;
+  for (let i = 0; i < 100 && readFileSync(file, "utf8") !== want; i++) await page.waitForTimeout(100);
+  assert.equal(readFileSync(file, "utf8"), want, "the passage he chose is rewritten, not the one now at its old offsets");
 });
 
 test("at phone width with touch, the pickers fit the screen and rows are tap targets", { timeout: 120_000 }, async () => {
