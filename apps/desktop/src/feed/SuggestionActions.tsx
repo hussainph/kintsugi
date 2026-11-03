@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Button, Popover } from "@kintsugi/ui/graphical";
-import { CircleHelp } from "@kintsugi/ui/icons";
+import { Button } from "@kintsugi/ui/graphical";
 import { toast } from "sonner";
 import { feed, refreshPicked, type FeedItem } from "./api";
 
-/** Suggested sources stay unfollowed until this explicit action. */
-export function SuggestionActions({ item }: { item: FeedItem }) {
+/**
+ * Follow, on a suggested piece (KI-95): its source stays unfollowed until
+ * this one click. Why it's suggested is in the item's (?) card, with the
+ * rest of its reasons.
+ */
+export function FollowSuggestion({ item }: { item: FeedItem }) {
   const [busy, setBusy] = useState(false);
   const [followed, setFollowed] = useState(false);
   if (!item.suggestion) return null;
@@ -22,18 +25,8 @@ export function SuggestionActions({ item }: { item: FeedItem }) {
     }
   };
   return (
-    <>
-      <Popover.Root>
-        <Popover.Trigger render={<Button variant="ghost" aria-label="About this suggestion" />}><CircleHelp className="size-4" /></Popover.Trigger>
-        <Popover.Portal>
-          <Popover.Positioner>
-            <Popover.Popup className="max-w-[300px]">
-              <p>{item.suggestion.reason}</p>
-            </Popover.Popup>
-          </Popover.Positioner>
-        </Popover.Portal>
-      </Popover.Root>
-      <Button variant="ghost" disabled={busy || followed} onClick={() => void follow()}>{followed ? "Following" : busy ? "Following…" : "Follow"}</Button>
-    </>
+    <Button variant="ghost" disabled={busy || followed} onClick={() => void follow()}>
+      {followed ? "Following" : busy ? "Following…" : "Follow"}
+    </Button>
   );
 }

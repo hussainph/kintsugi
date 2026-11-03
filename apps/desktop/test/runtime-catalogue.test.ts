@@ -140,7 +140,7 @@ test("a conservative neighbour explains its link and follows the discovered feed
   assert.equal(neighbour.requests.length, 0, "neighbour discovery uses stored links, without a crawl");
   const row = page.getByRole("feed", { name: "Newest first" }).locator(`article[data-feed-item="${suggestion!.id}"]`);
   await row.getByRole("button", { name: "Follow", exact: true }).waitFor();
-  await row.getByRole("button", { name: "About this suggestion" }).click();
+  await row.getByRole("button", { name: "Why this?" }).click();
   await page.getByText(/^Linked from /).first().waitFor();
   for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
