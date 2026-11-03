@@ -54,7 +54,7 @@ export function WebSettings() {
           <Switch id="web-tools" checked={enabled} disabled={busy || !settings} onCheckedChange={(on) => void run(() => web.setEnabled(on))} />
         </Row>
         {enabled && withKeys.length > 0 && (
-          <Row label="Search with" data-testid="web-provider">
+          <Row label="Search provider" data-testid="web-provider" className="[&_.field-label]:sr-only">
             <SelectField<WebProvider>
               label="Search provider"
               value={settings?.active ?? undefined}
@@ -74,7 +74,7 @@ export function WebSettings() {
               htmlFor={`web-key-${p.id}`}
               data-web-provider={p.id}
               note={p.key === "settings" ? "Saved" : p.key === "environment" ? `From ${ENV[p.id]}` : undefined}
-              className="ki-settings-row-wide"
+              className={p.key === "settings" ? undefined : "ki-settings-row-wide"}
             >
               <div className="ki-settings-inline">
                 {p.key === "settings" ? (

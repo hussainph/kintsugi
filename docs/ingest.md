@@ -212,6 +212,17 @@ Nothing leaves the Mac except the page's own requests. Defuddle is bundled
 in the app binary, never fetched from a CDN. Headless runs (`pnpm desktop:headless`) have no
 webview, so they use static extraction only.
 
+### Reader mode (Kin's web_fetch)
+
+`WebAdapter::reader(limits)` is the same adapter for pages an agent picks
+rather than the owner: only the public internet, never rendered. URLs and
+every redirect must pass `guard::public_url` (no IP literal outside public
+unicast space, no `localhost`, `.local`, `.internal`, `.home.arpa` or dotless
+name), names resolve through `guard::PublicResolver`, which drops every
+non-public address before connecting, and system proxies are ignored. Plain
+text, Markdown and JSON pages are read as they are. See `docs/kin.md` › The
+web.
+
 ## Platform APIs
 
 The X and Reddit adapters share one bounded JSON client (`crates/ingest/src/api.rs`):
