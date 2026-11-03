@@ -103,6 +103,7 @@ jobs:
       - name: Playwright Chromium
         run: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell
       - run: pnpm --filter @kintsugi/desktop test:runtime
+      - run: pnpm --filter @kintsugi/mobile test:appearance
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

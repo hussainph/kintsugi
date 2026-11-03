@@ -29,6 +29,7 @@ async function mode(page: Page, dark: boolean) {
   }, dark);
 }
 async function shot(page: Page, name: string) {
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
   await page.mouse.move(1400, 10);
   await page.screenshot({ path: resolve(app.shots, `${name}.png`) });
 }
@@ -45,7 +46,7 @@ test("gallery overrides the system immediately, follows live System changes, and
     assert.equal(width, 640);
     assert.equal(await page.locator(".ki-appearance-thumbnail").count(), 3);
     assert.equal(await page.locator(".ki-appearance-split").count(), 1);
-    assert.ok(await page.locator(".ki-appearance-thumbnail img").evaluateAll((images) => images.every((image) => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0)));
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLImageElement>(".ki-appearance-thumbnail img")].every((image) => image.complete && image.naturalWidth > 0));
     await shot(page, "desktop-light-system");
     await radio(page, "Dark").click();
     await mode(page, true);
