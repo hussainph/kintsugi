@@ -15,6 +15,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
 import { stopRunner, openApp } from "./headless-app.ts";
+import { waitForFrontend } from "../../../scripts/frontend-ready.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const DOC = "posts/on-craft.mdx";
@@ -111,14 +112,7 @@ before(async () => {
     runner.stderr!.on("data", (chunk) => (output += chunk));
     runner.once("exit", (code) => fail(new Error(`desktop:headless exited (${code}):\n${output.slice(-4000)}`)));
   });
-  for (let i = 0; ; i++) {
-    try {
-      if ((await fetch(`http://127.0.0.1:${frontend}/`)).ok) break;
-    } catch {
-      if (i > 600) throw new Error(`frontend never started:\n${output.slice(-4000)}`);
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
+  await waitForFrontend(frontend, () => output);
   browser = await chromium.launch({ headless: true }).catch((e) => {
     throw new Error(`${e}\nInstall it with: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`);
   });
