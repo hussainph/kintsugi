@@ -27,7 +27,7 @@ slower, or reduced.
 | ⌘J | Kin; with text selected, ask about it |
 | Esc | Close the card, pill or popover |
 
-## The three candidates
+## The candidates
 
 - **A. One margin.** The draft column is pinned left, so a 360 px margin fits
   in the right gutter. Opening it slides it in over empty space. Tabs: Kin,
@@ -45,7 +45,9 @@ slower, or reduced.
   is a shelf that rises from the bottom. An inline ask answers in its pill. A
   paragraph's chat floats beside its paragraph. Off the editor, the same sheet.
 
-Kin's suggestions are the same in all three: off by default. When they're
+- **R. The recommendation.** A, with B's chat pane under the paragraph.
+
+Kin's suggestions are the same in all of them: off by default. When they're
 on, cuts are gold strikes in the text and rewrites wait in the stash, pinned
 to their words by a thin gold underline. One small card steps through all of
 them.
@@ -63,3 +65,14 @@ them.
   wash, and a strip shows "2 of 4" for 1.6 s.
 - Kin working: KI-62's band (1.6 s, linear) in A and C; KI-62 B's gutter rule
   in B. Under reduced motion both are still.
+
+## Recordings and stills
+
+`docs/review/ki-96/` on this branch holds the recordings (mp4, light and dark,
+two clips per candidate) and the stills on the Paper page. To make them again
+against a running prototype:
+
+```sh
+node apps/desktop/src/prototype-kin-surface/record.mjs '<the printed URL>'
+node apps/desktop/src/prototype-kin-surface/shots.mjs '<the printed URL>'
+```

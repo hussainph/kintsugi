@@ -49,7 +49,7 @@ const states = {
 
 const browser = await chromium.launch();
 try {
-  for (const v of ["A", "B", "C"]) for (const theme of ["light", "dark"]) for (const [name, run] of Object.entries(states)) {
+  for (const v of (process.env.VARIANTS ?? "A,B,C,R").split(",")) for (const theme of ["light", "dark"]) for (const [name, run] of Object.entries(states)) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: theme, deviceScaleFactor: 2 });
     const page = await context.newPage();
     await page.goto(url.replace(/\/(\?[^#]*)?#/, `/?proto=kin-surface&variant=${v}#`));

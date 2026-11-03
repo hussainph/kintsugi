@@ -61,7 +61,7 @@ const useProto = () => useContext(Ctx)!;
 
 const readVariant = (): Variant => {
   const v = new URLSearchParams(location.search).get("variant");
-  return v === "B" || v === "C" ? v : "A";
+  return v === "B" || v === "C" || v === "R" ? v : "A";
 };
 
 let uid = 0;
@@ -69,7 +69,10 @@ const id = (p: string) => `${p}-${++uid}`;
 const words = (text: string) => text.split(/(?<=\s)/);
 
 function useApi() {
-  const [variant, setVariantState] = useState<Variant>(readVariant);
+  const [raw, setVariantState] = useState<Variant>(readVariant);
+  // R is A with B's chat pane under the paragraph: A's layout everywhere else.
+  const variant: Exclude<Variant, "R"> = raw === "R" ? "A" : raw;
+  const under = raw === "B" || raw === "R";
   const [s, setS] = useState<State>(initial);
   const [tick, setTick] = useState(0);
   const sRef = useRef(s);
@@ -122,12 +125,12 @@ function useApi() {
   const openChat = useCallback((chatId: string) => {
     const c = sRef.current.chats.find((x) => x.id === chatId);
     if (!c) return;
-    if (c.kind === "paragraph" && variant !== "A") {
+    if (c.kind === "paragraph" && raw !== "A") {
       set(() => ({ pane: chatId }));
       const v = viewRef.current;
       const at = c.paragraph ? v?.state.doc.toString().indexOf(c.paragraph) ?? -1 : -1;
       if (v && at >= 0) {
-        if (variant === "B") v.dispatch({ effects: setPara.of({ id: `pane:${chatId}`, kind: "pane", at }) });
+        if (under) v.dispatch({ effects: setPara.of({ id: `pane:${chatId}`, kind: "pane", at }) });
         void teleport(v, at);
       }
       return;
@@ -141,7 +144,7 @@ function useApi() {
       v.dispatch({ effects: setSpan.of({ id: "flash", kind: "flash", from: at, to: v.state.doc.lineAt(at).to }) });
       window.setTimeout(() => viewRef.current?.dispatch({ effects: dropSpan.of("flash") }), 900 * factor());
     }
-  }, [variant, set]);
+  }, [raw, under, set]);
 
   const closePane = useCallback(() => {
     const pane = sRef.current.pane;
@@ -411,7 +414,7 @@ function useApi() {
   }, []);
 
   return {
-    variant, setVariant, s, set, tick, setTick, viewRef, chat, openChat, closePane, send, stream,
+    variant, raw, under, setVariant, s, set, tick, setTick, viewRef, chat, openChat, closePane, send, stream,
     toggleSuggestions, step, focusSuggestion, settle, discuss, openAsk, closeAsk, chooseAsk,
     activeSet, pick, cycle, addVersion, askVersions, stashSelection, stashReply, insertStash, dismissStash, highlight, view,
   };
@@ -513,7 +516,7 @@ function closeLeft(a: Api) {
 }
 
 function Switcher() {
-  const { variant, setVariant } = useProto();
+  const { raw: variant, setVariant } = useProto();
   const [dark, setDark] = useState(() => new URLSearchParams(location.search).get("theme") === "dark" || document.documentElement.classList.contains("dark"));
   const [speed, setSpeedState] = useState<Speed>(() => (new URLSearchParams(location.search).get("motion") as Speed) || "normal");
   useEffect(() => { document.documentElement.classList.toggle("dark", dark); }, [dark]);
@@ -799,7 +802,7 @@ function PaneMount() {
   const a = useProto();
   const [, bump] = useState(0);
   useEffect(() => { const off = onPaneHost(() => bump((n) => n + 1)); return () => { off(); }; }, []);
-  if (a.variant !== "B" || !a.s.pane) return null;
+  if (!a.under || !a.s.pane) return null;
   const host = paneHosts.get(`pane:${a.s.pane}`);
   const c = a.s.chats.find((x) => x.id === a.s.pane);
   if (!host || !c) return null;
@@ -969,7 +972,7 @@ function ChatPane({ chat, onClose, compact = false, bare = false }: { chat: Chat
         <header className="kp-pane-head">
           <KinAvatar className="kp-avatar" talking={a.s.streaming === chat.id} />
           <strong>{chat.title}</strong>
-          {a.variant !== "A" && <IconButton label="Open in the Kin panel" onClick={() => { onClose?.(); a.set(() => ({ open: chat.id })); a.chat.show(); }}><Icon.panelRight /></IconButton>}
+          {a.raw !== "A" && <IconButton label="Open in the Kin panel" onClick={() => { onClose?.(); a.set(() => ({ open: chat.id })); a.chat.show(); }}><Icon.panelRight /></IconButton>}
           {onClose && <IconButton label="Fold" onClick={onClose}><Icon.minus /></IconButton>}
         </header>
       )}

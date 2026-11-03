@@ -23,7 +23,7 @@ const cursorAfter = (page, quote) => page.evaluate((q) => window.__kp.cursorAfte
 async function panelsAndSuggestions(page, v) {
   await cursorAfter(page, "The first time");
   await wait(page, 1200);
-  if (v === "A") {
+  if (v === "A" || v === "R") {
     await click(page, ".kp-right-toggle", 1300);
     await click(page, '.kp-tabs [role="tab"]:nth-child(2)', 1100);
     await click(page, '.kp-tabs [role="tab"]:nth-child(3)', 1400);
@@ -68,7 +68,7 @@ async function asksVersionsThreads(page, v) {
   await press(page, "Meta+Alt+KeyA", 1100);
   await click(page, ".kp-kin-link", 2600);
   await click(page, '.kp-versions li[data-by="kin"] button', 1300);
-  if (v === "A") await click(page, ".kp-right-toggle", 800);
+  if (v === "A" || v === "R") await click(page, ".kp-right-toggle", 800);
   else await press(page, "Escape", 800);
   await select(page, "I polish a sentence long before I know whether it can carry any weight.");
   await press(page, "Meta+KeyJ", 1100);
@@ -82,7 +82,7 @@ async function asksVersionsThreads(page, v) {
   } else {
     await click(page, ".kp-reply", 1500);
     await click(page, '.kp-message .kp-link:has-text("Stash")', 1500);
-    if (v === "B") await click(page, '.kp-pane [aria-label="Fold"]', 900);
+    if (v === "B" || v === "R") await click(page, '.kp-pane [aria-label="Fold"]', 900);
   }
   await select(page, "I used to think that was sentimental.");
   await press(page, "Meta+Alt+KeyX", 1600);
@@ -103,7 +103,7 @@ async function asksVersionsThreads(page, v) {
 
 const browser = await chromium.launch();
 try {
-  for (const v of ["A", "B", "C"]) {
+  for (const v of (process.env.VARIANTS ?? "A,B,C,R").split(",")) {
     for (const theme of ["light", "dark"]) {
       for (const [name, run] of [["1-panels-and-suggestions", panelsAndSuggestions], ["2-asks-versions-threads", asksVersionsThreads]]) {
         const label = `ki96-${v}-${theme}-${name}`;

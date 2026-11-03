@@ -5,11 +5,12 @@ import draftText from "./draft.md?raw";
 export const DRAFT = draftText;
 export const DRAFT_PATH = "prototype/kintsugi-and-gold.md";
 
-export type Variant = "A" | "B" | "C";
+export type Variant = "A" | "B" | "C" | "R";
 export const VARIANTS: { key: Variant; name: string }[] = [
   { key: "A", name: "One margin" },
   { key: "B", name: "Two gutters" },
   { key: "C", name: "Kin at the text" },
+  { key: "R", name: "A, with B's chat pane" },
 ];
 
 /** Kin's suggestions when the toggle is on. Cuts are marks in the text;
