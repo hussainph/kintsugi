@@ -42,12 +42,9 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   const [paragraph, setParagraph] = useState("");
   const [related, setRelated] = useState<ReferenceSource[]>([]);
   const [clip, setClip] = useState<ReferenceSource | null>(null);
-  const [margin, setMargin] = useState(() => {
-    try {
-      const saved = localStorage.getItem("kintsugi:margin");
-      return saved ? saved === "visible" : window.matchMedia("(min-width: 1001px)").matches;
-    } catch { return window.innerWidth > 1000; }
-  });
+  // Open or closed is his choice, kept across paragraphs, documents and
+  // restarts. What the cursor is on never opens or closes it (KI-56).
+  const [margin, setMargin] = useState(readMargin);
   const rawSources = useMemo<ReferenceSource[]>(() => [
     ...index.documents.map((document) => ({
       kind: "document" as const, path: document.path, title: document.title || name(document.path), status: document.status,
@@ -120,7 +117,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
       insert(text);
     } catch (error) { toast.error(String(error)); }
   }, [sources, insert]);
-  const hasMargin = referenced.length + related.length + backlinks.length + unresolved.length > 0;
+  const marginEmpty = referenced.length + related.length + backlinks.length + unresolved.length === 0;
   const readClipText = useCallback(async (source: ReferenceSource) => (await invoke<Clip>("clip_read", { path: source.path })).text, []);
   const onReferenceError = useCallback((error: unknown) => toast.error(String(error)), []);
   // @Kin: a comment thread on the paragraph (KI-38). Kin replies in the
@@ -163,10 +160,10 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     <div className="reference-writing">
       <Editor {...editor} references={options} commands={commands} comments={comments} />
       <Tooltip><TooltipTrigger asChild><button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} onClick={() => {
-        const next = !margin; setMargin(next);
-        try { localStorage.setItem("kintsugi:margin", next ? "visible" : "hidden"); } catch { /* A convenience only. */ }
+        const next = !margin; setMargin(next); saveMargin(next);
       }}><PanelRight className="size-[var(--size-m)]" /></button></TooltipTrigger><TooltipContent>Reference margin</TooltipContent></Tooltip>
-      {margin && hasMargin && <aside className="reference-margin" aria-label="Reference margin">
+      {margin && <aside className="reference-margin" aria-label="Reference margin">
+        {marginEmpty && <p className="reference-empty">Nothing related to this paragraph.</p>}
         <MarginSection title="Referenced here" sources={referenced} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
         {unresolved.map((target) => <Tooltip key={target}><TooltipTrigger asChild><p className="reference-missing">{target}<span>not found</span></p></TooltipTrigger><TooltipContent>No matching document or clip</TooltipContent></Tooltip>)}
         <MarginSection title="Along this paragraph" sources={related.map((item) => byPath.get(item.path) ?? item)} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
@@ -176,6 +173,18 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
       {clip && <ClipCard key={`${root}:${clip.path}`} root={root} source={clip} onClose={() => setClip(null)} onQuote={() => quote(clip)} onReference={() => { setClip(null); insert(linkFor(clip, sources)); }} onOpenDoc={onOpenDoc} />}
     </div>
   );
+}
+
+const MARGIN_KEY = "kintsugi:margin";
+/** Saved choice first; with none yet, open when the window is wide enough. */
+function readMargin(): boolean {
+  try {
+    const saved = localStorage.getItem(MARGIN_KEY);
+    return saved ? saved === "visible" : window.matchMedia("(min-width: 1001px)").matches;
+  } catch { return window.innerWidth > 1000; }
+}
+function saveMargin(open: boolean) {
+  try { localStorage.setItem(MARGIN_KEY, open ? "visible" : "hidden"); } catch { /* A convenience only. */ }
 }
 
 const ACTIONS = [

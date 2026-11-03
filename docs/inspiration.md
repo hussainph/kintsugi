@@ -569,8 +569,11 @@ Use ↑/↓ and Enter in the picker; Shift+Enter quotes a clip with a captured
 passage, and Escape dismisses. Clicking a chip exposes the plain link for
 editing. Command-click (Control-click too) opens its target. Margin clips can
 be dragged in as attributed blockquotes; documents drag in as references.
-The margin button remembers its visibility; on narrow windows it starts
-closed, and an empty margin takes no space.
+The margin is open or closed only when the margin button is clicked, and it
+stays that way across paragraphs, documents and restarts; on narrow windows
+it starts closed. Moving the cursor never opens or closes it: on a paragraph
+with nothing related it keeps its width and shows the document's own
+references, or one line saying nothing relates.
 
 ### Updating links on rename
 

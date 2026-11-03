@@ -10,7 +10,7 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 | --- | --- |
 | ⌘N / ⇧⌘N | New document / folder |
 | ⌘P | Jump to a document; `#tag` filters by tag |
-| ⌘\ | Toggle the sidebar |
+| ⌘\ | Collapse the sidebar to icons, or expand it |
 | ⌘K | Edit the selection (or paragraph) with AI: tighten, rephrase, synonyms, your `/` skills; or find supporting clips, ask who disagrees, discuss it with Kin, see ideas for this draft |
 | `/` | Insert a block (headings, lists, quote, callout, code, table…) or run a skill on the paragraph |
 | `@` or `[[` | Link a document or clip; `@Kin` asks Kin about the paragraph |
@@ -25,7 +25,7 @@ Your writing lives in a **vault**: a plain folder of `.md` / `.mdx` files (by de
 The Kintsugi phone app is a notes app for your vault. It keeps its own copy of your writing (text only), so you can open, edit and start documents anywhere, and it syncs with Kintsugi on your Mac whenever the Mac is reachable. It connects over [Tailscale](https://tailscale.com), so nothing is exposed to the internet and there's no cloud copy of your writing.
 
 1. Install Tailscale on the Mac and the phone, signed in to the same tailnet. In the Tailscale admin console, turn on **DNS → HTTPS Certificates**.
-2. In Kintsugi on the Mac, click **Connect your phone** at the bottom of the sidebar and turn on phone access. Kintsugi runs `tailscale serve` to publish `https://<your-mac>.<tailnet>.ts.net:47474`.
+2. In Kintsugi on the Mac, click the phone icon at the bottom of the sidebar (green when phone access is on, red when off) and turn on phone access. Kintsugi runs `tailscale serve` to publish `https://<your-mac>.<tailnet>.ts.net:47474`.
 3. Scan the QR code with the phone's camera, or click **Copy link** and paste it into the app.
 
 Your folders are browsable, and chips above the list filter by **Drafts**, **Complete** and your tags. It opens where you left off. Tap the pencil, or type into **Capture an idea…**, to start a note; new notes go to `inbox/`, named after their first line. Paste a URL, or share a URL, text, image or screenshot into Kintsugi from another iPhone app, to save inspiration in `inspiration/`. Shares save on the phone first, then send to your Mac. If the Mac is asleep, they wait on the phone and send when it's back. **Inspiration** on the home screen shows your clips as a grid of cards with their images, kept on the phone so you can browse and search them offline; a clip opens to its source link, its summary and your notes, which you can edit there. The full source comes from the Mac when you ask for it. Edits carry the version they started from, so the phone never overwrites something you changed on the Mac. If both devices changed a document, edits to different parts merge on their own; only when both changed the same paragraph are you asked which version to keep. **Unpair phones** makes a new pairing code and signs out every phone that used the old one.
