@@ -922,7 +922,7 @@ function KinPanel({ floating = false }: { floating?: boolean }) {
                 {rows.map((c) => (
                   <button type="button" key={c.id} className="kp-chat-row" onClick={() => a.openChat(c.id)}>
                     <span className="kp-chat-icon" data-kind={c.kind}>{c.kind === "paragraph" ? "¶" : c.kind === "feed" ? "◎" : c.kind === "idea" ? "✦" : c.kind === "clip" ? "❏" : "•"}</span>
-                    <span className="kp-chat-main"><strong>{c.title}</strong><small>{c.messages.at(-1)?.text ?? (c.real ? "This draft's chat" : "")}</small></span>
+                    <span className="kp-chat-main"><strong>{c.title}</strong><small>{c.messages.at(-1)?.text ?? (c.real ? (c.kind === "draft" ? "This draft's chat" : "Anything else") : "")}</small></span>
                     <span className="kp-chat-when">{c.when}</span>
                   </button>
                 ))}
