@@ -315,7 +315,15 @@ async function alternativeUntil(check: () => boolean, what: string) {
   assert.fail(`${what}; the document is:\n${alternativeDisk()}`);
 }
 
+async function closeAltPanel() {
+  await page.keyboard.press("Escape");
+  await altPanel().waitFor({ state: "detached" });
+}
+
 async function openAlternativeDoc() {
+  // A tooltip is removed on CodeMirror's next measure, after Escape returns.
+  // Don't let a previous panel intercept the next passage's pointer selection.
+  if (await altPanel().count()) await closeAltPanel();
   await page.locator(`[title="${ALTERNATIVES}"]`).click();
   await page.locator(`[title="${ALTERNATIVES}"][data-active="true"]`).waitFor();
   // Counts can split the first sentence's text after alternatives are added.
@@ -427,7 +435,7 @@ test("⌘K acceptance keeps the owner and Kin versions; ⌥⌘[ swaps back (KI-8
   await altPanel().waitFor();
   assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"]').textContent(), ACCEPT);
   assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), 1);
-  await page.keyboard.press("Escape");
+  await closeAltPanel();
 });
 
 test("⇧Enter keeps only the selected completed rewrite without applying it (KI-87)", { timeout: 60_000 }, async () => {
@@ -451,7 +459,7 @@ test("⇧Enter keeps only the selected completed rewrite without applying it (KI
   await page.keyboard.press("Meta+Alt+KeyA");
   await kinOptions().first().waitFor();
   assert.deepEqual(await kinOptions().locator(".cm-alt-option-text").allTextContents(), [selected]);
-  await page.keyboard.press("Escape");
+  await closeAltPanel();
 });
 
 test("⇧Enter keeps only the highlighted synonym, leaving the word alone (KI-87)", { timeout: 60_000 }, async () => {
@@ -481,7 +489,7 @@ test("⇧Enter keeps only the highlighted synonym, leaving the word alone (KI-87
   await kinOptions().first().waitFor();
   assert.deepEqual(await kinOptions().locator(".cm-alt-option-text").allTextContents(), [selected]);
   assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), 1);
-  await page.keyboard.press("Escape");
+  await closeAltPanel();
 });
 
 test("explicit word, sentence and paragraph asks work with automatic suggestions off; nothing auto-applies (KI-87)", { timeout: 90_000 }, async () => {
@@ -545,7 +553,7 @@ test("explicit word, sentence and paragraph asks work with automatic suggestions
     // sentence set, is the target.
     await altPanel().getByRole("textbox", { name: "Add an alternative" }).press("Meta+Alt+BracketLeft");
     await alternativeUntil(() => alternativeDisk() === before && currentAlternative(alternativeSet(ASK)!)?.text === ASK, "the owner's paragraph is still one previous-cycle away");
-    await page.keyboard.press("Escape");
+    await closeAltPanel();
   } finally {
     requests.stop();
     await page.emulateMedia({ colorScheme: "light" });
@@ -568,7 +576,7 @@ test("⇧⌥⌘A on a selected phrase asks for that selection without applying (
   assert.ok(set.entries.slice(1).every((e) => e.by === "kin"));
   assert.equal(alternativeDisk(), before);
   assert.equal(await altText(), editorBefore);
-  await page.keyboard.press("Escape");
+  await closeAltPanel();
 });
 
 test("saved Kin attribution and unapplied alternatives survive a reload (KI-87)", { timeout: 60_000 }, async () => {
@@ -584,7 +592,7 @@ test("saved Kin attribution and unapplied alternatives survive a reload (KI-87)"
   assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), entries.filter((e) => e.by === "kin").length);
   assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"]').getAttribute("data-by"), "owner");
   assert.equal(alternativeDisk(), before);
-  await page.keyboard.press("Escape");
+  await closeAltPanel();
 });
 
 test("switching documents drops a pending answer and permits a new ask on return (KI-87)", { timeout: 60_000 }, async () => {
@@ -638,7 +646,7 @@ test("switching documents drops a pending answer and permits a new ask on return
     await alternativeUntil(() => (alternativeSet("quiet")?.entries.length ?? 0) > 1, "only the new ask is kept");
     assert.equal(currentAlternative(alternativeSet("quiet")!)?.text, "quiet");
     assert.equal(alternativeDisk(), before);
-    await page.keyboard.press("Escape");
+    await closeAltPanel();
   } finally {
     release();
     await page.unroute("**/invoke", holdFirstAsk);
@@ -654,10 +662,10 @@ test("a smaller word selected inside a word's phrase version gets its own altern
   await input.fill("very good");
   await input.press("Enter");
   await alternativeUntil(() => alternativeDisk().includes(ASK.replace("good", "very good")), "the existing word set can show a phrase");
-  await input.press("Escape");
+  await closeAltPanel();
   const before = alternativeDisk();
+  await alternativeUntil(() => savedAlternatives().sets.some((s) => s.level === "word" && s.anchor.exact === "very good"), "the containing set is saved before selecting inside it");
   const outer = savedAlternatives().sets.find((s) => s.level === "word" && s.anchor.exact === "very good")!;
-  assert.ok(outer);
   await alternativeCursor("good", true);
   await page.keyboard.press("Meta+Shift+Alt+KeyA");
   await completedAlternatives();
@@ -666,7 +674,7 @@ test("a smaller word selected inside a word's phrase version gets its own altern
   await alternativeUntil(() => savedAlternatives().sets.some((s) => s.id !== outer.id && s.anchor.exact === "good"), "the smaller exact range gets its own set");
   const smaller = savedAlternatives().sets.find((s) => s.id !== outer.id && s.anchor.exact === "good")!;
   assert.equal(alternativeDisk(), before, "asking about the smaller selection applies nothing");
-  await page.keyboard.press("Escape");
+  await closeAltPanel();
 
   await alternativeCursor("good", true);
   await page.keyboard.press("Meta+k");
@@ -718,7 +726,7 @@ test("a read-only mirror refuses Kin alternatives and swaps (KI-87)", { timeout:
     assert.equal(readFileSync(resolve(app.vault, MIRROR), "utf8"), before);
     assert.equal(await altText(), editorBefore);
     assert.equal(existsSync(alternativeStore(MIRROR)) ? readFileSync(alternativeStore(MIRROR), "utf8") : null, sidecar);
-    await page.keyboard.press("Escape");
+    await closeAltPanel();
   } finally {
     requests.stop();
   }
