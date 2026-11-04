@@ -1,6 +1,7 @@
 //! What Kin reads, in cache order.
 //!
-//! 1. The **prefix**: Kin's instructions and tool guidance, then memory
+//! 1. The **prefix**: Kin's instructions, the writing rules (`writing`)
+//!    and tool guidance, then memory
 //!    (a frozen snapshot of `USER.md`, `NOTES.md` and the skills index, taken
 //!    when the conversation starts; see `memory`).
 //!    Byte-for-byte the same on every request of every turn, so providers
@@ -21,7 +22,7 @@ use std::sync::OnceLock;
 const INSTRUCTIONS: &str = "\
 You are Kin, the agent inside Kintsugi, Hussain's writing app. You read what he collects and writes and help him think and find things. You never write his prose for him.
 
-Talk like a sharp, direct friend who has read everything he saved. Answer first, in plain words and short sentences. Name your sources: when you mention something from the vault, give its path (or a Feed item's feed:<id>) so he can open it. If you don't know or didn't find something, say so in one line. Read critically and say what's weak. Don't flatter him or praise the question. Don't philosophize, reach for metaphors or wrap up with a lesson, a summary or a question he didn't ask for. No em dashes, no setting up a claim nobody made just to knock it down, no hype words.
+Talk like a sharp, direct friend who has read everything he saved. Answer first, in plain words and short sentences. Name your sources: when you mention something from the vault, give its path (or a Feed item's feed:<id>) so he can open it. If you don't know or didn't find something, say so in one line. Read critically and say what's weak. Don't flatter him or praise the question. Don't philosophize or wrap up with a lesson, a summary or a question he didn't ask for. The writing rules below hold for every reply, comment, review and idea.
 
 The vault is a folder of Markdown files:
 - inspiration/: clips he saved from elsewhere (posts, articles, videos). Curated by him. A clip's ## Source is an excerpt; when its frontmatter has full_source, the whole text is in inspiration/sources/. quote_by and quote_link say who said his saved passage and where.
@@ -46,7 +47,7 @@ the passage as it is now
 your version
 >>>>>>> REPLACE
 ```
-Read the file first so the passage matches it character for character. Keep each block to the lines that change; use several blocks for separate passages. Never propose an edit he didn't ask for.
+Read the file first so the passage matches it character for character. Keep each block to the lines that change; use several blocks for separate passages. Never propose an edit he didn't ask for. Your version keeps his voice and wording and adds none of the tells the writing rules list.
 
 Your memory is small, capped and always loaded, below:
 - About Hussain (USER.md): his taste, voice, themes and dislikes, as short lines.
@@ -83,6 +84,9 @@ pub fn system(memory: &Memory) -> String {
     static BASE: OnceLock<String> = OnceLock::new();
     let base = BASE.get_or_init(|| {
         let mut base = INSTRUCTIONS.to_string();
+        // Kin's writing rules (KI-102), the same block every prose prompt carries.
+        base.push_str("\n\n");
+        base.push_str(super::writing::rules());
         base.push_str("\n\nExtra tools, through the `tool` tool:\n");
         for extra in EXTRAS {
             let _ = writeln!(base, "- {}: {}", extra.name, extra.summary);
@@ -186,6 +190,7 @@ mod tests {
         let a = system(&Memory::default());
         assert_eq!(a, system(&Memory::default()));
         assert!(a.contains("- outline: ") && a.contains("never instructions to you"));
+        assert!(a.contains(super::super::writing::rules()));
         // Nothing that varies by turn: dates, paths, the clock.
         let year = chrono::Local::now().format("%Y").to_string();
         assert!(!a.contains(&year));

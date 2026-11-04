@@ -1082,6 +1082,114 @@ stores are tested in `apps/mobile/src/lib/sections.test.ts`, and
 `apps/mobile/test/browse-acceptance/run.sh` with `ONLY=sections` runs the
 XCUITest (screenshots in `docs/screenshots/ki-42/`).
 
+## Kin's writing (KI-102)
+
+How Kin writes the prose Hussain reads: Feed story summaries, Ideas, chat
+replies, margin notes and reviews, clip summaries and the chat's running
+summary. [Voice](voice.md) governs the app's own copy; this governs Kin's
+prose. Code: `ai/writing.rs`, the rules in `ai/writing/rules.json`.
+
+### The tone
+
+Settings › Kin and models › Kin has one menu, "Tone for summaries and
+ideas", saved with Kin's settings (`tone` in `settings.json`; Plain when
+unset). Story summaries and Ideas (new batches and refinements) follow it.
+The chat keeps Kin's own voice, a sharp, direct friend, and edits of
+Hussain's text keep his. There is no per-item tone.
+
+Each preset reaches the model as an instruction block after the rules, and
+its key constraint again as the prompt's last line, because models drift from
+rules stated once (Readwise's Ghostreader prompts do the same). Instructions
+only: the example sentences below are for this page, not the model, so their
+content can't leak into a summary.
+
+| Tone | Instruction | Reads like |
+|---|---|---|
+| Plain (default) | The thing itself, in ordinary words and short sentences. Facts first, no wind-up, no adjectives doing the work of evidence. | Anthropic shipped a smaller model today. It costs a third as much and matches the old one on most benchmarks. |
+| Editorial | A magazine brief: the point first, then why it matters in one attributed sentence. No scene-setting, no moral. | The merger clears its last regulator in March, which leaves the two biggest suppliers under one owner. |
+| Casual | How you'd tell a friend what you read: contractions, first person where it fits, no jargon you wouldn't say out loud. | I read four takes on this and they all missed the boring part: nobody can afford the hardware. |
+| Dry | Understate. State the fact and stop. No enthusiasm, no irony, no exclamation marks. | The feature shipped. It is slower than the one it replaced. |
+
+A new tone applies to what Kin writes next: new stories, stories that gain
+an article and are summarised again, and new or refined ideas. What's
+already written stays; nothing is regenerated, so changing the menu never
+spends money on its own.
+
+### The rules
+
+One block, in every prompt that writes prose: the chat's fixed prefix (so
+also comments, reviews and Ideas, which run through it), the story
+summariser, clip enrichment's summary and the running summary. The editor's
+edits (⌘K, alternatives and `/` skills) read the same file
+(`src/refine/prompts.ts`) and are told never to introduce any of it into
+his passage, and to keep what the passage already uses.
+
+The key idea is **variance over substitution**: even rhythm and empty claims
+are what make text read as generated, and swapping one stock word for
+another relocates the tell without fixing it. Fix the thought. And **never
+invent a specific**: every number, name, date and quote comes from the
+sources.
+
+P0, never, whatever the tone:
+
+- Inflated significance (`stands as`, `a testament to`, `pivotal`, `underscores`, `reflects broader trends`).
+- Stock AI words (`delve`, `tapestry`, `myriad`, `plethora`, `realm`).
+- A trailing `-ing` clause posing as analysis (`, highlighting…`, `, ensuring…`).
+- Negative parallelism (`not only X but also Y`, `it's not X, it's Y`).
+- A summing-up opener (`In summary`, `In conclusion`, `Ultimately`, `Overall`).
+- Chat residue (`I hope this helps`, `Let me know if`, citation tokens, `[placeholders]`).
+- A number, name, date or quote that isn't in the sources.
+
+P1, avoid unless the source says it: lists of three, lazy extremes
+(`every`, `always`, `never`), `serves as` and `boasts` for "is" and "has",
+filler adverbs (`really`, `just`, `actually`), throat-clearing
+(`Here's the thing`, `At its core`), vague attribution and stacked hedges,
+false agency, em dashes, meta-commentary, promotional words, rhetorical
+questions, colon reveals, bold scattered through prose and `**Term:**`
+lists, decorative emoji, three sentences of the same length in a row,
+quotable one-liners and lesson endings, synonym cycling, title-case
+headings, and metaphors of `gold`, `seams`, `craft` or `journeys`.
+
+### The slop lint
+
+`ai/writing/lint.rs` (tests only) scores text from 100 down: zero P0 hits;
+P1 hits at most about 2 per 100 words, and no one phrase repeated more than
+once per 150 words; at most 1 em dash and 1 "x, y and z" list per 100 words
+(one of each is always fine); no emoji; and from four sentences up, sentence
+lengths that vary by at least 0.2 of their mean. Every hit costs points
+inside the budget too, so a regression shows in the score before it fails.
+
+`cargo test` runs it over three corpora in `ai/writing/corpus/`:
+
+- `kin/`: recorded Kin output, which must pass and keep its mean score above
+  a baseline. Today it holds the headless mock's output (stories and ideas
+  in every tone, a chat answer, a margin note, a review, the running summary
+  and an edit). The headless tests (`--features headless`) lint the mock's
+  live output and fail if it no longer matches what's frozen; record it again
+  with `KINTSUGI_RECORD_WRITING=1`. To add real output, run
+  `cargo test -p kintsugi live_writing -- --ignored --nocapture` with a
+  provider set up: it summarises fixed articles in each tone with the triage
+  model and, with `KINTSUGI_RECORD_WRITING=1`, saves them as
+  `kin/live-stories.json`.
+- `slop.json`: one sample per tell, which must fail.
+- `human.json`: public-domain prose (Strunk, Thoreau, Darwin, Franklin,
+  Emerson) and a sample for each of humanizer's do-not-flag cases (one em
+  dash, curly quotes, one passive, one tricolon, formal words, numbers,
+  self-correction, mixed feelings, swings in sentence length), which must
+  pass, so the lint doesn't over-flag.
+
+### Credit
+
+The rules adapt [stop-slop](https://github.com/hardikpandya/stop-slop) by
+Hardik Pandya (MIT) and [humanizer](https://github.com/hannsxpeter/humanizer)
+by hannsxpeter (MIT), including humanizer's restraint notes, which set the
+lint's budgets. [Wikipedia's "Signs of AI
+writing"](https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing)
+(CC BY-SA 4.0) informed the list; its tells are paraphrased, not copied.
+Orwell's "Politics and the English Language", Strunk's *The Elements of
+Style* and Paul Graham's [`Write Simply`](https://paulgraham.com/simply.html) are behind the plain-words
+rule.
+
 ## Settings
 
 Settings is a page (`src/settings/`, KI-61). ⌘, or the sidebar opens it
@@ -1093,7 +1201,8 @@ he was. Its sections:
   ([appearance](appearance.md)).
 - **Kin and models**: the default model for chat, Ideas, edits,
   completions and Feed triage; this month's spend by task and the monthly
-  cap; About you and the developer panel.
+  cap; the tone for summaries and ideas (above, Kin's writing); About you
+  and the developer panel.
 - **Providers**: where each credential comes from (above, Credentials),
   for the providers the default models use and any other with a
   credential, plus any he picks with "Add a provider"; per provider, add,

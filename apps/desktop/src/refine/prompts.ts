@@ -1,5 +1,6 @@
 import type { SpanLevel } from "@kintsugi/editor/alternatives";
 import type { Ask } from "@/lib/ai";
+import writing from "../../src-tauri/src/ai/writing/rules.json" with { type: "json" };
 
 export type Action = {
   id: string;
@@ -42,9 +43,13 @@ export const ACTIONS: Action[] = [
   },
 ];
 
-/** The tells that make prose read as generated, so the editor must never
- *  introduce them. The line names the banned words, hence the allow. */
-const NEVER = `Never introduce: em dashes, "not X, but Y" or "it's not just X, it's Y" constructions, lists of three for rhythm, rhetorical questions, or words like delve, tapestry, testament, crucial, seamless, elevate, unlock, landscape.`; // copy-lint-allow: tells the model which slop words and patterns to avoid
+/** The tells that make prose read as generated (KI-102). One copy, shared
+ *  with Kin's Rust prompts (`ai/writing.rs`), which render the same lists. */
+const bullets = (lines: string[]) => lines.map((line) => `- ${line}`).join("\n");
+export const WRITING_LISTS = `Never, whatever the tone:\n${bullets(writing.never)}\n\nAvoid unless the source says it:\n${bullets(writing.avoid)}`;
+
+/** An edit keeps what his passage already has and adds none of the tells. */
+const NEVER = `Never introduce any of these into the passage; what the passage already uses, keep.\n${WRITING_LISTS}`;
 
 /** The writer's voice comes first. */
 const EDITOR = `You are a careful editor helping a writer revise their own prose.

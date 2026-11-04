@@ -47,6 +47,7 @@ pub mod stash;
 pub(crate) mod tools;
 pub mod web;
 mod wire;
+pub mod writing;
 
 pub use chat::Chat;
 pub use kin::Kin;

@@ -7,6 +7,7 @@ use super::brief::{self, Ask, FeedSignal};
 use super::ground::{self, Candidate, RawQuote, RawReason, SourceDoc, Sources};
 use super::store::{Content, Footprint, SignalKind, Stage, Store};
 use super::*;
+use crate::ai::writing::Tone;
 use chrono::{DateTime, Duration as Days, FixedOffset};
 use std::fs;
 
@@ -416,7 +417,7 @@ fn refine_keeps_the_earlier_version_and_undo_restores_it() {
         .unwrap();
     store.set_refining(&idea.id, Some("job-r".into())).unwrap();
     let mut refine_job = job("job-r", REFINE);
-    refine_job.brief = brief::refine(store.get(&idea.id).unwrap(), "Narrower");
+    refine_job.brief = brief::refine(store.get(&idea.id).unwrap(), "Narrower", Default::default());
     assert!(
         !refine_job
             .brief
@@ -785,6 +786,7 @@ fn the_batch_brief_carries_rules_signals_and_the_feed() {
             count: 9,
             about: Some("drafts/started.mdx".into()),
             focus: Some("tools".into()),
+            tone: Tone::Casual,
         },
         &store.recent(14, day),
         &store.signals(40),
@@ -798,7 +800,14 @@ fn the_batch_brief_carries_rules_signals_and_the_feed() {
     assert!(text.contains("\"Repair's cost\": dismissed (\"Already on it\")"));
     assert!(text.contains("said \"A theme with saves and no post\" was not a reason"));
     assert!(text.contains("- feed:7 \"Tools shape us\" (HN): liked, noted \"yes!\""));
-    assert!(text.contains(brief::FORMAT) && text.trim_end().ends_with("</ideas>"));
+    assert!(text.contains(brief::FORMAT));
+    // The tone after the rules, and its reminder last (KI-102).
+    assert!(text.contains(Tone::Casual.voice()));
+    assert_eq!(Tone::in_prompt(&text), Some(Tone::Casual));
+    assert!(text.trim_end().ends_with("never prose he could paste in."));
+    assert!(text.find("</ideas>").unwrap() < text.find(Tone::Casual.reminder()).unwrap());
+    let refine = brief::refine(store.recent(14, day)[0], "Narrower", Tone::Dry);
+    assert!(refine.contains(Tone::Dry.voice()) && refine.contains(Tone::Dry.reminder()));
     // Kin cites quotes inline and isn't asked to justify itself (KI-76).
     assert!(text.contains("put [1] right after the claim"));
     assert!(!text.contains("\"steps\"") && !text.contains("\"reasons\""));

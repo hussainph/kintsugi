@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
 import { Switch } from "@kintsugi/ui/components/switch";
-import { Meter } from "@kintsugi/ui/graphical";
+import { Meter, SelectField } from "@kintsugi/ui/graphical";
 import { Effort } from "@/kin/Effort";
 import { ModelMenu } from "@/kin/ModelMenu";
 import {
@@ -18,7 +18,7 @@ import {
   type ProviderModels,
   type ThinkingLevel,
 } from "@/lib/ai";
-import { dollars, kin, type DefaultTask, type KinSettings, type UsageReport, openAboutYou, openKinDev } from "@/lib/kin";
+import { dollars, kin, type DefaultTask, type KinSettings, type Tone, type UsageReport, openAboutYou, openKinDev } from "@/lib/kin";
 import { Group, Page, Row } from "./parts";
 import { ShortcutHint } from "@/components/Shortcuts";
 
@@ -29,6 +29,14 @@ const TASKS: { task: DefaultTask; label: string }[] = [
   { task: "edit", label: "Edits" },
   { task: "complete", label: "Completions" },
   { task: "triage", label: "Feed triage" },
+];
+
+/** Kin's tones (KI-102), in the order the menu lists them. */
+const TONES: { value: Tone; label: string }[] = [
+  { value: "plain", label: "Plain" },
+  { value: "editorial", label: "Editorial" },
+  { value: "casual", label: "Casual" },
+  { value: "dry", label: "Dry" },
 ];
 
 /** The most search results listed at once. */
@@ -83,8 +91,8 @@ function EnabledModels({ providers, settings, onToggle }: { providers: ProviderM
 }
 
 /** Settings › Kin and models: the default model and effort per task, the
- *  models the pickers offer, this month's spend and the monthly cap, and
- *  Kin's memory. */
+ *  models the pickers offer, this month's spend and the monthly cap, the
+ *  tone Kin writes in (KI-102) and Kin's memory. */
 export function ModelSettings() {
   const [usage, setUsage] = useState<UsageReport | null>(null);
   const [settings, setSettings] = useState<KinSettings | null>(null);
@@ -203,6 +211,15 @@ export function ModelSettings() {
       </Group>
 
       <Group title="Kin">
+        <Row label="Tone for summaries and ideas" data-testid="kin-tone" className="[&_.field-label]:sr-only">
+          <SelectField<Tone>
+            label="Tone for summaries and ideas"
+            value={settings?.tone ?? "plain"}
+            onValueChange={(value) => value && void save(kin.setTone(value))}
+            options={TONES}
+            disabled={!settings}
+          />
+        </Row>
         <Row label="What Kin remembers">
           <Button size="sm" variant="outline" onClick={openAboutYou}>About you</Button>
         </Row>

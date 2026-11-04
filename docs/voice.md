@@ -2,6 +2,8 @@
 
 This is the owner's rule for every word Kintsugi shows: Mac app, phone app, editor, exports, Kin's replies, and these docs. The writing rules come from the `product-docs` skill (`~/.agents/skills/product-docs/references/voice.md`). Read it before you write copy.
 
+Kin's own prose (Feed summaries, Ideas, chat replies) follows [Kin's writing](kin.md#kins-writing-ki-102): its tone setting, never-do list and slop lint.
+
 ## No eyebrow text
 
 Don't put a small label above or beside a heading, card, panel or section. That means no uppercase, no letter-spacing and no tiny muted kicker such as "INSPIRATION", "ABOUT THIS NOTE", "HELPER REPORT", "THE WHOLE, IN ITS PARTS".

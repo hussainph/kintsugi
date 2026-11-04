@@ -135,6 +135,7 @@ fn builder() -> tauri::Builder<Runtime> {
             ai::kin::kin_chat_set_model,
             ai::kin::kin_chat_set_effort,
             ai::kin::kin_set_effort,
+            ai::kin::kin_set_tone,
             ai::kin::kin_set_enabled,
             ai::web::web_settings,
             ai::web::web_set_enabled,

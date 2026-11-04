@@ -54,7 +54,11 @@ export type KinSettings = {
   capUsd: number | null;
   tasks: { task: DefaultTask; chosen: ModelRef | null; effort: ThinkingLevel | null; resolved: ModelRef | null }[];
   enabled: ModelRef[];
+  tone: Tone;
 };
+
+/** Mirrors `writing::Tone`: how Kin writes Feed summaries and Ideas (KI-102). */
+export type Tone = "plain" | "editorial" | "casual" | "dry";
 
 /** Mirrors `kin::ChatModel`: the model and effort for one conversation in the chat. */
 export type ChatModel = { topic: string; chosen: ModelRef | null; effort: ThinkingLevel | null; resolved: ModelRef | null };
@@ -127,6 +131,7 @@ export const kin = {
   setEffort: (task: DefaultTask, effort: ThinkingLevel | null) => invoke<KinSettings>("kin_set_effort", { task, effort }),
   /** Turns a model on or off in the pickers. */
   setEnabled: (model: ModelRef, on: boolean) => invoke<KinSettings>("kin_set_enabled", { model, on }),
+  setTone: (tone: Tone) => invoke<KinSettings>("kin_set_tone", { tone }),
   /** The model for one conversation (a thread's key, "" for general). */
   chatModel: (topic: string) => invoke<ChatModel>("kin_chat_model", { topic }),
   setChatModel: (topic: string, model: ModelRef | null) => invoke<ChatModel>("kin_chat_set_model", { topic, model }),

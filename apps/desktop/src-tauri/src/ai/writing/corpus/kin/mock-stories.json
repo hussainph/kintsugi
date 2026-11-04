@@ -1,0 +1,50 @@
+[
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "plain",
+    "text": "Apple reports Q4\n9to5Mac reports: Apple reports Q4. Apple made $114.5 billion in the three months to September, more than analysts had expected.\nThe Verge reports: iPhone record. iPhone sales were $57.6 billion."
+  },
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "plain",
+    "text": "Duo supply is short\nThe Verge reports: Duo supply is short. Two suppliers have stopped taking orders until March.\n9to5Mac reports: Apple stock drops. Shares fell 3% in early trading after the report on the folding phone's screens, then recovered by noon.\nSix Colors reports: The iPhone Duo, explained. It folds."
+  },
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "editorial",
+    "text": "Apple reports Q4\nApple reports Q4, 9to5Mac reports. Apple made $114.5 billion in the three months to September, more than analysts had expected.\niPhone record, The Verge reports. iPhone sales were $57.6 billion."
+  },
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "editorial",
+    "text": "Duo supply is short\nDuo supply is short, The Verge reports. Two suppliers have stopped taking orders until March.\nApple stock drops, 9to5Mac reports. Shares fell 3% in early trading after the report on the folding phone's screens, then recovered by noon.\nThe iPhone Duo, explained, Six Colors reports. It folds."
+  },
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "casual",
+    "text": "Apple reports Q4\nI read it in 9to5Mac first: Apple reports Q4. Apple made $114.5 billion in the three months to September, more than analysts had expected.\nI read it in The Verge first: iPhone record. iPhone sales were $57.6 billion."
+  },
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "casual",
+    "text": "Duo supply is short\nI read it in The Verge first: Duo supply is short. Two suppliers have stopped taking orders until March.\nI read it in 9to5Mac first: Apple stock drops. Shares fell 3% in early trading after the report on the folding phone's screens, then recovered by noon.\nI read it in Six Colors first: The iPhone Duo, explained. It folds."
+  },
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "dry",
+    "text": "Apple reports Q4\n9to5Mac: Apple reports Q4. Apple made $114.5 billion in the three months to September, more than analysts had expected.\nThe Verge: iPhone record. iPhone sales were $57.6 billion."
+  },
+  {
+    "from": "mock",
+    "kind": "story",
+    "tone": "dry",
+    "text": "Duo supply is short\nThe Verge: Duo supply is short. Two suppliers have stopped taking orders until March.\n9to5Mac: Apple stock drops. Shares fell 3% in early trading after the report on the folding phone's screens, then recovered by noon.\nSix Colors: The iPhone Duo, explained. It folds."
+  }
+]
