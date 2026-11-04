@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { discussItem, FeedActions, FeedImage, FeedLinkTarget, FeedSources, itemRoute } from '@/components/FeedParts';
 import { type LocalItem, type LocalStory } from '@/lib/feed';
+import { itemExcerpt } from '@/lib/feed-reader';
 import { feed } from '@/lib/sections-store';
 import { fonts, useTheme } from '@/theme';
 
@@ -18,8 +19,8 @@ export function FeedRow({ item, story, hero = false, place, reasons, onDismiss }
 }) {
   const theme = useTheme();
   const lead = story?.lead ?? item;
-  const title = story?.title || item.title || item.summary?.slice(0, 80) || 'Untitled';
-  const summary = story?.summaryState === 'ready' && story.summary ? story.summary.paragraphs[0]?.map((s) => s.text).join(' ') : lead.summary;
+  const title = story?.title || item.title || itemExcerpt(item)?.slice(0, 80) || 'Untitled';
+  const summary = story?.summary != null ? story.summary.paragraphs[0]?.map((s) => s.text).join(' ') : itemExcerpt(lead);
   const href = story ? { pathname: '/feed-story' as const, params: { id: String(story.id), surface: place.surface, position: String(place.position) } } : itemRoute(item.id, place);
   return (
     <View style={[styles.row, { borderColor: theme.border }]}>

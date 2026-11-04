@@ -141,6 +141,35 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
         let id = first["id"].as_i64().unwrap();
         let picked = get("/v1/feed/picked").await;
         assert!(!picked["picks"].as_array().unwrap().is_empty());
+        // KI-105: the personal essay stands alone, in its author's words,
+        // and links to the news about the same study.
+        let essay = page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| {
+                i["sourceTitle"] == "Mara Ito" && i["title"].as_str().unwrap().starts_with("What")
+            })
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap();
+        let reading: serde_json::Value = post("/v1/feed/read", serde_json::json!({ "id": essay }))
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        assert_eq!(reading["item"]["writing"], true);
+        assert!(
+            reading["text"]
+                .as_str()
+                .unwrap()
+                .contains("## What I counted")
+        );
+        assert!(
+            !reading["coverage"].as_array().unwrap().is_empty(),
+            "{reading}"
+        );
 
         let place = serde_json::json!({ "surface": "newest", "position": 0 });
         let read: serde_json::Value = post(

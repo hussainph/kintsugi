@@ -1,6 +1,6 @@
 import { merge3 } from '@kintsugi/core/merge';
 import { type Remote, SECTIONS_API, STORIES_API, Unpaired, version } from '@kintsugi/core/remote';
-import type { FeedAction, FeedEntry, FeedItem, Impression, Pick as FeedPick, Place, Reason, Story, SummaryState } from '@kintsugi/core/sections';
+import type { Coverage, FeedAction, FeedEntry, FeedItem, Impression, Pick as FeedPick, Place, Reading, Reason, Story, SummaryState } from '@kintsugi/core/sections';
 
 import type { Connection, KV } from './library';
 import { Waiting } from './waiting.ts';
@@ -27,8 +27,10 @@ type State = {
   entries?: FeedEntry[];
   stories?: Record<string, Story>;
   reasons?: Record<string, Reason[]>;
-  /** Articles he opened, as the Mac sent them, to read again offline. */
+  /** Legacy plain-text cache, still readable after upgrading. */
   texts: Record<string, string>;
+  /** Latest first; includes coverage and items outside the current Feed page. */
+  readings?: Reading[];
   /** A note changed both here and on the Mac: his words, and the Mac's. */
   conflicts: Record<string, { mine: string; theirs: string; version: string }>;
 };
@@ -131,7 +133,8 @@ export class Feed extends Waiting<State, FeedOp> {
   private rawItem(id: number): FeedItem | undefined {
     return this.state.items.find((i) => i.id === id) ?? this.state.picks.find((p) => p.id === id)?.item
       ?? Object.values(this.state.stories ?? {}).flatMap((s) => s.items).find((i) => i.id === id)
-      ?? this.state.entries?.flatMap((e) => e.kind === 'story' ? e.story.items : [e.item]).find((i) => i.id === id);
+      ?? this.state.entries?.flatMap((e) => e.kind === 'story' ? e.story.items : [e.item]).find((i) => i.id === id)
+      ?? this.state.readings?.find((r) => r.item.id === id)?.item;
   }
 
   item(id: number): LocalItem | null {
@@ -171,7 +174,11 @@ export class Feed extends Waiting<State, FeedOp> {
 
   /** The article's text as last read here, for reading offline. */
   text(id: number): string | null {
-    return this.state.texts[id] ?? null;
+    return this.state.readings?.find((r) => r.item.id === id)?.text ?? this.state.texts[id] ?? null;
+  }
+
+  coverage(id: number): Coverage[] {
+    return this.state.readings?.find((r) => r.item.id === id)?.coverage ?? [];
   }
 
   // ── His actions ────────────────────────────────────────────────────────
@@ -294,17 +301,15 @@ export class Feed extends Waiting<State, FeedOp> {
       try {
         const reading = await client.feedRead(id, place);
         this.update(reading.item);
-        if (reading.text) {
-          const texts: Record<string, string> = { ...this.state.texts };
-          // Newest last, so the oldest are let go first.
-          delete texts[id];
-          texts[id] = reading.text;
-          const keys = Object.keys(texts);
-          for (const old of keys.slice(0, Math.max(0, keys.length - KEPT_TEXTS))) delete texts[old];
-          this.setState({ ...this.state, texts });
-        }
+        const kept = { ...reading, text: reading.text ?? this.text(id) };
+        const readings = [kept, ...(this.state.readings ?? []).filter((r) => r.item.id !== id)].slice(0, KEPT_TEXTS);
+        // A successful read replaces its legacy entry, including empty text.
+        const { [id]: _, ...legacy } = this.state.texts;
+        const room = KEPT_TEXTS - readings.length;
+        const texts = Object.fromEntries(room ? Object.entries(legacy).slice(-room) : []);
+        this.setState({ ...this.state, readings, texts });
         this.publish('online');
-        return reading.text;
+        return kept.text;
       } catch (e) {
         this.failed(e);
         if (e instanceof Unpaired) throw e;
@@ -356,6 +361,7 @@ export class Feed extends Waiting<State, FeedOp> {
     this.setState({
       ...this.state,
       items: this.state.items.map((i) => (i.id === item.id ? item : i)),
+      readings: this.state.readings?.map((r) => r.item.id === item.id ? { ...r, item } : r),
       entries: this.state.entries?.map((e) => e.kind === 'item' ? { ...e, item: e.item.id === item.id ? item : e.item } : { ...e, story: updateStory(e.story, item) }),
       stories: Object.fromEntries(Object.entries(this.state.stories ?? {}).map(([id, story]) => [id, updateStory(story, item)])),
       picks: this.state.picks.map((p) => ({ ...p, item: p.id === item.id ? item : p.item, story: p.story ? updateStory(p.story, item) : undefined })),
