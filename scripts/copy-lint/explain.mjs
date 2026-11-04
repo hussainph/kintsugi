@@ -43,6 +43,34 @@ const isHelper = (el, sf) => HELPER_TAG.test(tagOf(el, sf)) || HELPER_STYLE.test
 const isHeading = (el, sf) => HEADING_TAG.test(tagOf(el, sf)) || HEADING_STYLE.test(attrsText(el, sf));
 const isControl = (el, sf) => CONTROL.test(tagOf(el, sf)) || INPUT.test(tagOf(el, sf));
 
+/** Small muted field copy, not data, live status, or article content. */
+function isExplainer(t, el, sf) {
+  if (isHelper(el, sf)) return true;
+  if (!t.isJsxElement(el) || tagOf(el, sf) !== 'p') return false;
+  const attrs = attrsText(el, sf);
+  if (!/\btext-(?:xs|sm)\b/.test(attrs) || !/\btext-muted-foreground\b/.test(attrs) || /\b(?:role|aria-live)=/.test(attrs)) return false;
+  return el.children.every((c) => t.isJsxText(c) || t.isJsxExpression(c) && (!c.expression || t.isStringLiteral(c.expression) || t.isNoSubstitutionTemplateLiteral(c.expression)));
+}
+
+/** JSX rendered directly by a sibling, including conditional branches. */
+function renderedElements(t, node) {
+  if (t.isJsxElement(node) || t.isJsxSelfClosingElement(node)) return [node];
+  if (t.isJsxFragment(node)) return node.children.flatMap((c) => renderedElements(t, c));
+  if (t.isJsxExpression(node)) return node.expression ? renderedElements(t, node.expression) : [];
+  if (t.isParenthesizedExpression(node)) return renderedElements(t, node.expression);
+  if (t.isBinaryExpression(node) && node.operatorToken.kind === t.SyntaxKind.AmpersandAmpersandToken) return renderedElements(t, node.right);
+  if (t.isConditionalExpression(node)) return [...renderedElements(t, node.whenTrue), ...renderedElements(t, node.whenFalse)];
+  return [];
+}
+
+/** A layout wrapper containing only controls (such as an input/button row). */
+function isControlGroup(t, el, sf) {
+  if (isControl(el, sf)) return true;
+  if (!t.isJsxElement(el) || !/^(?:div|View)$/.test(tagOf(el, sf)) || showsText(t, el, sf)) return false;
+  const children = el.children.flatMap((c) => renderedElements(t, c));
+  return children.length > 0 && children.every((c) => isControlGroup(t, c, sf));
+}
+
 /** Has literal text of its own and isn't screen-reader only. */
 function showsText(t, el, sf) {
   for (let p = el; p; p = p.parent) if (isElement(t, p) && !t.isJsxFragment(p) && /\bsr-only\b/.test(attrsText(p, sf))) return false;
@@ -73,20 +101,26 @@ export function jsxRole(t, node, sf) {
 /**
  * Elements that only explain their neighbour: a helper-styled element (a
  * lede, subtitle, description or hint) straight after a heading or a
- * control, and helper props (`subtitle=`, `description=`, `hint=`) with
- * literal text. Returns [{ pos, detail }].
+ * control row, including conditional JSX and small muted paragraphs, and
+ * helper props (`subtitle=`, `description=`, `hint=`) with literal text.
+ * Returns [{ pos, detail }].
  */
 export function explainerElements(t, sf) {
   const out = [];
   const visit = (node) => {
     if (t.isJsxElement(node) || t.isJsxFragment(node)) {
-      let prev = null;
+      let prev = [];
       for (const child of node.children) {
-        if (t.isJsxText(child) && !child.text.trim()) continue;
-        if (isElement(t, child) && prev && isHelper(child, sf) && (isHeading(prev, sf) || isControl(prev, sf)) && showsText(t, child, sf)) {
-          out.push({ pos: child.getStart(sf), detail: `<${tagOf(child, sf)}> under <${tagOf(prev, sf)}>: delete it, or keep one fact the UI can't show` });
+        if (t.isJsxText(child) && !child.text.trim() || t.isJsxExpression(child) && !child.expression) continue;
+        const elements = renderedElements(t, child);
+        const neighbour = prev.find((el) => isHeading(el, sf) || isControlGroup(t, el, sf));
+        for (const el of elements) {
+          if (neighbour && isExplainer(t, el, sf) && showsText(t, el, sf)) {
+            out.push({ pos: el.getStart(sf), detail: `<${tagOf(el, sf)}> under <${tagOf(neighbour, sf)}>: delete it, or keep one fact the UI can't show` });
+          }
         }
-        prev = isElement(t, child) ? child : null;
+        // Several conditional hints can belong to the same control row.
+        if (!elements.length || !elements.every((el) => isExplainer(t, el, sf))) prev = elements;
       }
     }
     if ((t.isJsxElement(node)) && EMPTY_STYLE.test(attrsText(node, sf))) {
