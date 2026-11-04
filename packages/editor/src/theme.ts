@@ -16,6 +16,8 @@ const tokens = {
   // Between paragraphs: the blank line, plus this.
   "--editor-paragraph-gap": "calc(var(--editor-size) * 0.35)",
   "--editor-measure": "58ch",
+  // Line padding; gutter controls use it to keep their place beside the text.
+  "--editor-gutter": "var(--space-xxl)",
   // KI-83: an opaque blue range, separate from ink version marks, dimmed
   // prose and Kin's gold. Owned here so Mac and phone use the same fill.
   "--editor-selection": "#a9cef7",
@@ -50,9 +52,13 @@ export const theme = EditorView.theme({
     width: "100%",
     maxWidth: "calc(var(--editor-measure) + 2 * var(--space-xxl))",
     margin: "0 auto",
-    padding: "calc(var(--space-xxl) + var(--space-l)) var(--space-xxl) 40vh",
+    padding: "calc(var(--space-xxl) + var(--space-l)) 0 40vh",
     caretColor: "var(--neutral-10)",
   },
+  // drawSelection measures the content box and subtracts line padding, not
+  // content padding. Keep the gutter on each line (and CodeMirror's 6/2 px
+  // insets) so wrapped ranges and the final newline stay in the text column.
+  ".cm-line": { paddingLeft: "calc(var(--editor-gutter) + 6px)", paddingRight: "calc(var(--editor-gutter) + 2px)" },
   ".cm-line.cm-blank": { paddingBottom: "var(--editor-paragraph-gap)" },
   ".cm-line.cm-heading": { paddingTop: "calc(var(--editor-size) * 0.5)" },
   ".cm-underline": { textDecoration: "underline", textUnderlineOffset: "0.15em" },

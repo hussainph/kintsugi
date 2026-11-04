@@ -102,8 +102,8 @@ async function wraps() {
 
 async function textRight() {
   return page.evaluate(() => {
-    const content = document.querySelector(".cm-content") as HTMLElement;
-    return content.getBoundingClientRect().right - parseFloat(getComputedStyle(content).paddingRight);
+    const line = document.querySelector(".cm-content .cm-line") as HTMLElement;
+    return line.getBoundingClientRect().right - parseFloat(getComputedStyle(line).paddingRight);
   });
 }
 
@@ -128,7 +128,7 @@ async function everyTab(label: string, same: () => Promise<void>, folds: boolean
   await same();
 }
 
-test("opening the margin never moves or re-wraps a line, at 1440 and 1280", { timeout: 180_000 }, async () => {
+test("opening the margin never moves or re-wraps a line, at 1440, 1360 and 1280", { timeout: 180_000 }, async () => {
   await openDoc(DRAFT);
   await page.locator(".cm-line", { hasText: "The first time I saw a kintsugi bowl" }).click();
 
@@ -140,6 +140,13 @@ test("opening the margin never moves or re-wraps a line, at 1440 and 1280", { ti
   let before = await lineBoxes();
   assert.ok(before.length > 10, `enough lines to compare (${before.length})`);
   await everyTab("1440", async () => assert.deepEqual(await lineBoxes(), before, "1440: no line moved"), false);
+
+  // KI-107: just above the folding threshold. Reading the content box
+  // instead of the line's text area would fold the sidebar too early.
+  await page.setViewportSize({ width: 1360, height: 900 });
+  await settle();
+  before = await lineBoxes();
+  await everyTab("1360", async () => assert.deepEqual(await lineBoxes(), before, "1360: no line moved"), false);
 
   // 1280 with the sidebar as icons (⌘\): the margin fits; nothing moves.
   await page.setViewportSize({ width: 1280, height: 900 });

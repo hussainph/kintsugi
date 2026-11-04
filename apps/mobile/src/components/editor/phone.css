@@ -66,9 +66,9 @@ body,
 
 /* Three classes to outrank the theme's scoped two, which CodeMirror injects
    later. Matches the plain editor's 19/29 serif and 20 pt margins. */
-.phone-editor .cm-editor.cm-editor { --editor-size: calc(19px * var(--editor-text-scale, 1)); --editor-line: calc(29px * var(--editor-text-scale, 1)); font-size: var(--editor-size); }
-.phone-editor .cm-editor .cm-content { padding: 12px 20px 40vh; line-height: var(--editor-line); }
-.phone-editor .cm-editor .cm-line { padding: 0; }
+.phone-editor .cm-editor.cm-editor { --editor-size: calc(19px * var(--editor-text-scale, 1)); --editor-line: calc(29px * var(--editor-text-scale, 1)); --editor-gutter: 20px; font-size: var(--editor-size); }
+.phone-editor .cm-editor .cm-content { padding: 12px 0 40vh; line-height: var(--editor-line); }
+.phone-editor .cm-editor .cm-line { padding: 0 var(--editor-gutter); }
 
 /* The [[ picker, for a thumb: the width of the screen, rows you can hit, and
    no hardware-keyboard hints. CodeMirror positions it inline. */

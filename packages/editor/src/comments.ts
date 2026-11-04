@@ -744,7 +744,7 @@ const kinInk = "var(--kin-ink, oklch(0.5 0.1 68))";
 const commentTheme = EditorView.theme({
   ".cm-comment-line": { position: "relative" },
   ".cm-comment-marker": {
-    position: "absolute", right: "-30px", top: "0.25em", width: "24px", height: "22px", padding: "0", border: "1px solid var(--border)",
+    position: "absolute", right: "calc(var(--editor-gutter, 0px) - 30px)", top: "0.25em", width: "24px", height: "22px", padding: "0", border: "1px solid var(--border)",
     borderRadius: "11px 11px 11px 3px", backgroundColor: "var(--background)", color: "var(--muted-foreground)", cursor: "pointer",
     display: "grid", placeItems: "center", fontFamily: "var(--font-sans)", fontSize: "11px", fontStyle: "normal", fontWeight: "500", lineHeight: "1",
   },
