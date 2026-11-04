@@ -48,8 +48,8 @@ test("a span is found by any of its versions, by context when a word repeats, el
 
 type Host = Alternatives & { saved: AlternativeSet[][] };
 
-function editor(text: string, sets: AlternativeSet[] = [], options: { path?: string; ask?: Alternatives["ask"] } = {}) {
-  const host: Host = { path: options.path ?? PATH, sets, saved: [], ask: options.ask, onSave: (_path, list) => host.saved.push(list) };
+function editor(text: string, sets: AlternativeSet[] = [], options: { path?: string; externalPanel?: boolean; ask?: Alternatives["ask"] } = {}) {
+  const host: Host = { path: options.path ?? PATH, externalPanel: options.externalPanel, sets, saved: [], ask: options.ask, onSave: (_path, list) => host.saved.push(list) };
   let state = EditorState.create({
     doc: text,
     selection: EditorSelection.cursor(0),
@@ -120,6 +120,26 @@ test("the cursor's word: add versions, cycle them in place, each swap one undo s
   assert.equal(alternativesAt(e.state, at)[0].entries.find((x) => x.id === alternativesAt(e.state, at)[0].current)?.text, "old", "the showing one follows the text");
   // The document only ever holds the showing version.
   assert.equal(e.text(), DOC);
+});
+
+test("external versions follow the cursor and preserve the span on a swap", () => {
+  const e = editor(DOC, [], { externalPanel: true });
+  e.cursor(DOC.indexOf("old") + 1);
+  openAlternatives(e.view);
+  e.commands().add("ancient");
+  assert.equal(e.panel()?.entries.at(-1)?.text, "ancient");
+  assert.equal(e.panel()?.entries.at(-1)?.current, true);
+  e.cursor(e.text().indexOf("Kilns") + 1);
+  assert.deepEqual(e.shown(), ["*Kilns"]);
+  e.cursor(e.text().indexOf("ancient") + 1);
+  assert.equal(e.panel()?.highlight, 1, "returning to a span highlights its showing version");
+  e.commands().pick(e.panel()!.highlight);
+  assert.ok(e.text().includes("an ancient line"));
+  closeAlternatives(e.view);
+  e.cursor(e.text().indexOf("ancient") + 1);
+  assert.ok(cycleAlternative(e.view, 1), "cycling needs no open margin");
+  assert.ok(e.text().includes("an old line"));
+  assert.equal(e.panel(), null);
 });
 
 test("removing versions, and the set goes when only one is left", () => {

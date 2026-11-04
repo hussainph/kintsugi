@@ -66,7 +66,7 @@ async function open(path: string) {
 
 const line = (text: string) => page.locator(".cm-line", { hasText: text });
 const panel = () => page.locator(".cm-alt-panel");
-const field = () => panel().getByRole("textbox", { name: "Add an alternative" });
+const field = () => panel().getByRole("textbox", { name: "Add a version" });
 const options = () => panel().getByRole("option");
 /** The editor's text without the alternatives' counts. */
 const editorText = () => page.evaluate(() => {
@@ -135,9 +135,9 @@ test("⌥⌘A on a word: typing adds a version and shows it in place; only the s
   await field().press("Enter");
   await shows("along an old line");
   await field().press("Escape");
-  await panel().waitFor({ state: "detached" });
+  await panel().waitFor({ state: "hidden" });
   await line("The bowl broke").locator(".cm-alt-span").waitFor();
-  assert.equal(await line("The bowl broke").locator(".cm-alt-count").textContent(), "3");
+  assert.equal(await line("The bowl broke").locator(".cm-alt-count .cm-alt-dot").count(), 3);
 });
 
 test("⌥⌘] and ⌥⌘[ cycle in place; ⌘Z undoes one swap at a time", { timeout: 60_000 }, async () => {
@@ -189,7 +189,7 @@ test("sentence and paragraph: ←/→ switch, ⌫ removes, a mark in the gutter"
   await shows("I fixed it with glue.");
   await field().press("Escape");
   await line("The bowl broke").locator(".cm-alt-gutter").waitFor();
-  assert.equal(await line("The bowl broke").locator(".cm-alt-gutter").textContent(), "2");
+  assert.equal(await line("The bowl broke").locator(".cm-alt-gutter .cm-alt-dot").count(), 2);
   await shot("03-markers-light");
 
   await until(() => stored().sets.length === 3, "a word, a sentence and a paragraph");

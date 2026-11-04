@@ -8,7 +8,8 @@
     "./format": "./src/format.ts",
     "./keys": "./src/keys.ts",
     "./keymaps": "./src/keymaps.ts",
-    "./alternatives": "./src/alternatives.ts"
+    "./alternatives": "./src/alternatives.ts",
+    "./stash": "./src/stash.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

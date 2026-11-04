@@ -17,6 +17,7 @@ import { commentExtensions, refreshComments, type Comments } from "./comments";
 import { heldPassages } from "./passages";
 import { dimExtensions } from "./dim";
 import { alternativeExtensions, refreshAlternatives, type Alternatives } from "./alternatives";
+import { stashExtensions, refreshStash, type Stash } from "./stash";
 
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
@@ -28,6 +29,8 @@ export { heldPassage, holdPassage, releasePassage, type Passage } from "./passag
 export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
 export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet, SpanLevel } from "./alternatives";
 export { addAlternatives, applyAlternative, askForAlternatives, alternativesAt, alternativesPanelModel, alternativePanelCommands, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives } from "./alternatives";
+export type { Stash, StashItem } from "./stash";
+export { addRequestedStashItems, addStashNote, flushStash, focusStashItem, insertStashItem, moveStashItem, openStashPicker, removeStashItem, reorderStashItems, stashCommands, stashItems, stashKinReply, stashMime, stashSelection, stashShortcuts } from "./stash";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */
@@ -51,6 +54,8 @@ type Props = {
   comments?: Comments;
   /** Other versions of words, sentences and paragraphs, swapped in place (KI-86). */
   alternatives?: Alternatives;
+  /** Text set aside and Kin's requested ideas or anchored rewrites (KI-89). */
+  stash?: Stash;
   /** Added to each document's state when it is first opened, such as the
    *  phone's keyboard settings. */
   extensions?: Extension;
@@ -60,7 +65,7 @@ type Props = {
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, alternatives, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, alternatives, stash, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
@@ -74,6 +79,8 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
   commentsRef.current = comments;
   const alternativesRef = useRef(alternatives);
   alternativesRef.current = alternatives;
+  const stashRef = useRef(stash);
+  stashRef.current = stash;
   const extensionsRef = useRef(extensions);
   extensionsRef.current = extensions;
 
@@ -101,6 +108,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         commentExtensions(() => commentsRef.current && { ...commentsRef.current, currentPath: docPath }),
         heldPassages,
         alternativeExtensions(() => alternativesRef.current && { ...alternativesRef.current, currentPath: docPath }),
+        stashExtensions(() => stashRef.current && { ...stashRef.current, currentPath: docPath }),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged || !onChangeRef.current) return;
@@ -151,6 +159,12 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
     const view = viewRef.current;
     if (view) view.dispatch({ effects: refreshAlternatives.of(null) });
   }, [alternatives?.path, alternatives?.sets, viewRef]);
+
+  // Stash data can arrive after opening; refresh only this document's field.
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view) view.dispatch({ effects: refreshStash.of(null) });
+  }, [path, stash?.path, stash?.items, stash?.onChange, stash?.onUpdate, viewRef]);
 
   // Skills load after the editor mounts; an open / menu picks them up.
   useEffect(() => {

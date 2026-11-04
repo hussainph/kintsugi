@@ -52,14 +52,18 @@ export type Alternatives = {
   onSave: (path: string, sets: AlternativeSet[]) => void;
   /** Explicit asks only. The host chooses the edit model and enforces its cost cap. */
   ask?: (passage: { doc: string; from: number; to: number; level: SpanLevel }) => Promise<string[]>;
+  /** The desktop draws the versions in its Stash tab instead of a tooltip. */
+  externalPanel?: boolean;
+  onPanelOpen?: () => void;
+  onPanelChange?: (model: PanelModel | null) => void;
 };
 
 /** The key specs, for the host's shortcut list (the Mac's registry mirrors them). */
 export const alternativeShortcuts = [
-  { key: "Mod-Alt-a", label: "Alternatives" },
-  { key: "Mod-Alt-]", label: "Next alternative" },
-  { key: "Mod-Alt-[", label: "Previous alternative" },
-  { key: "Mod-Shift-Alt-a", label: "Kin's alternatives" },
+  { key: "Mod-Alt-a", label: "Versions" },
+  { key: "Mod-Alt-]", label: "Next version" },
+  { key: "Mod-Alt-[", label: "Previous version" },
+  { key: "Mod-Shift-Alt-a", label: "Kin's versions" },
 ] as const;
 
 type Live = Omit<AlternativeSet, "orphaned"> & { range: Range | null };
@@ -251,7 +255,21 @@ function makeField(getConfig: () => Alternatives | undefined) {
         else if (effect.is(askStatus)) value = { ...value, request: effect.value.request, askError: effect.value.error };
         else if (effect.is(cycleSet)) value = { ...value, cycleId: effect.value };
       }
-      if (value.panel) value = { ...value, panel: clampPanel(tr.state, value, value.panel) };
+      // In the margin, versions follow the writer's cursor. Panel commands
+      // carry their own target and must not be retargeted by a swap.
+      const followsCursor = !!value.panel && !!tr.selection && getConfig()?.externalPanel && !tr.effects.some((effect) => effect.is(setPanel));
+      if (value.panel && followsCursor) {
+        const selection = tr.state.selection.main;
+        const phrase = selection.empty ? null : { from: selection.from, to: selection.to };
+        const level = phrase ? levelOf(tr.state, phrase) : value.panel.level === "phrase" ? "word" : value.panel.level;
+        value = { ...value, panel: { ...value.panel, pos: phrase ? phrase.from : selection.head, phrase: level === "phrase" ? phrase : null, level, setId: null, homes: {}, highlight: 0 } };
+      }
+      if (value.panel) {
+        let panel = clampPanel(tr.state, value, value.panel);
+        const live = followsCursor && panel.setId ? value.sets.get(panel.setId) : null;
+        if (live) panel = { ...panel, highlight: Math.max(0, live.entries.findIndex((entry) => entry.id === live.current)) };
+        value = { ...value, panel };
+      }
       return value;
     },
     provide: (field) => fieldFacet.of(field),
@@ -581,14 +599,14 @@ function panelModel(state: EditorState, field: Field, panel: Panel): PanelModel 
   };
 }
 
-function popover(field: StateField<Field>): Extension {
+function popover(field: StateField<Field>, getConfig: () => Alternatives | undefined): Extension {
   // One Tooltip per opening, so his typing in it survives updates.
   let cached: (Tooltip & { pos: number }) | null = null;
   let opened: Panel | null = null;
   return showTooltip.compute([field], (state) => {
     const value = state.field(field);
     const panel = value.panel;
-    if (!panel) return (cached = opened = null);
+    if (!panel || getConfig()?.externalPanel) return (cached = opened = null);
     const { range } = target(state, value, panel);
     if (!range) return (cached = opened = null);
     const same = opened?.key === panel.key;
@@ -619,17 +637,25 @@ class Count extends WidgetType {
   readonly id: string;
   readonly count: number;
   readonly paragraph: boolean;
-  constructor(id: string, count: number, paragraph: boolean) {
+  readonly current: number;
+  constructor(id: string, count: number, paragraph: boolean, current: number) {
     super();
     this.id = id;
     this.count = count;
     this.paragraph = paragraph;
+    this.current = current;
   }
-  eq(other: Count) { return other.id === this.id && other.count === this.count && other.paragraph === this.paragraph; }
+  eq(other: Count) { return other.id === this.id && other.count === this.count && other.paragraph === this.paragraph && other.current === this.current; }
   toDOM(view: EditorView) {
-    const dom = element("span", this.paragraph ? "cm-alt-gutter" : "cm-alt-count", String(this.count));
+    const dom = element("span", this.paragraph ? "cm-alt-gutter" : "cm-alt-count");
+    for (let i = 0; i < this.count; i++) {
+      const dot = element("span", "cm-alt-dot");
+      if (i === this.current) dot.dataset.current = "true";
+      dot.setAttribute("aria-hidden", "true");
+      dom.append(dot);
+    }
     dom.dataset.alternatives = this.id;
-    dom.setAttribute("aria-label", `${this.count} alternatives`);
+    dom.setAttribute("aria-label", `Version ${this.current + 1} of ${this.count}`);
     dom.addEventListener("mousedown", (event) => {
       event.preventDefault();
       const live = read(view.state)?.sets.get(this.id);
@@ -653,10 +679,10 @@ function decorations(state: EditorState): DecorationSet {
     if (!range || live.entries.length < 2) continue;
     if (live.level === "paragraph") {
       ranges.push(Decoration.line({ class: "cm-alt-paragraph" }).range(state.doc.lineAt(range.from).from));
-      ranges.push(Decoration.widget({ widget: new Count(live.id, live.entries.length, true), side: -1 }).range(range.from));
+      ranges.push(Decoration.widget({ widget: new Count(live.id, live.entries.length, true, live.entries.findIndex((entry) => entry.id === live.current)), side: -1 }).range(range.from));
     } else {
       ranges.push(Decoration.mark({ class: "cm-alt-span", attributes: { "data-alternatives": live.id } }).range(range.from, range.to));
-      ranges.push(Decoration.widget({ widget: new Count(live.id, live.entries.length, false), side: 1 }).range(range.to));
+      ranges.push(Decoration.widget({ widget: new Count(live.id, live.entries.length, false, live.entries.findIndex((entry) => entry.id === live.current)), side: 1 }).range(range.to));
     }
   }
   if (open && open.to > open.from) ranges.push(Decoration.mark({ class: "cm-alt-open" }).range(open.from, open.to));
@@ -731,7 +757,17 @@ export function alternativeExtensions(getConfig: () => Alternatives | undefined)
     { key: alternativeShortcuts[3].key, run: askForAlternatives },
     { key: "Escape", run: closeAlternatives },
   ]);
-  return [heldPassages, askFacet.of(getConfig), field, draw, keys, popover(field), persistence(getConfig), alternativesTheme, panelTheme];
+  const external = ViewPlugin.fromClass(class {
+    update(update: ViewUpdate) {
+      const config = getConfig();
+      if (!config?.externalPanel || read(update.startState) === read(update.state)) return;
+      const before = read(update.startState)?.panel;
+      const after = read(update.state)?.panel;
+      config.onPanelChange?.(alternativesPanelModel(update.state));
+      if (after && before?.key !== after.key) config.onPanelOpen?.();
+    }
+  });
+  return [heldPassages, askFacet.of(getConfig), field, draw, keys, popover(field, getConfig), external, persistence(getConfig), alternativesTheme, panelTheme];
 }
 
 const alternativesTheme = EditorView.theme({
@@ -743,14 +779,15 @@ const alternativesTheme = EditorView.theme({
     fontFamily: "var(--font-ui, var(--font-sans))", fontStyle: "normal", fontWeight: "500", letterSpacing: "0",
     color: "var(--neutral-7, var(--muted-foreground))", cursor: "pointer", userSelect: "none",
   },
-  ".cm-alt-count": { fontSize: "0.58em", verticalAlign: "super", lineHeight: "0", padding: "0 0.15em 0 0.1em" },
+  ".cm-alt-count": { display: "inline-flex", position: "relative", verticalAlign: "baseline", top: "0.5em", width: "0", justifyContent: "flex-end", gap: "2px", lineHeight: "0", pointerEvents: "auto" },
+  ".cm-alt-dot": { display: "inline-block", flexShrink: "0", width: "3px", height: "3px", borderRadius: "50%", boxShadow: "inset 0 0 0 0.75px currentColor" },
+  ".cm-alt-dot[data-current=true]": { background: "currentColor" },
   ".cm-alt-paragraph": { position: "relative" },
   ".cm-alt-gutter": {
-    position: "absolute", left: "-26px", top: "0.3em", minWidth: "16px", height: "18px", boxSizing: "border-box", padding: "0 4px",
-    display: "grid", placeItems: "center", fontSize: "11px", lineHeight: "1", borderRadius: "9px",
-    border: "1px solid color-mix(in oklch, var(--neutral-10, currentColor) 22%, transparent)",
+    position: "absolute", left: "-22px", top: "0.3em", minWidth: "14px", minHeight: "18px", boxSizing: "border-box", padding: "2px 4px",
+    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px", lineHeight: "1",
   },
-  ".cm-alt-count:hover, .cm-alt-gutter:hover": { color: "var(--neutral-10, var(--foreground))" },
+  "@media (hover: hover) and (pointer: fine)": { ".cm-alt-count:hover, .cm-alt-gutter:hover": { color: "var(--neutral-10, var(--foreground))" } },
   ".cm-alt-open": { backgroundColor: "color-mix(in oklch, var(--neutral-10, currentColor) 8%, transparent)", borderRadius: "2px" },
   "@media (pointer: coarse)": { ".cm-alt-gutter": { left: "-30px", minWidth: "24px", height: "24px" } },
 });

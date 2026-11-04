@@ -386,8 +386,11 @@ list, so the tool array (part of the cached prefix) never changes mid-turn.
   ranking never learns from, so Kin can't train the ranker on its own picks.
 - Paths stay inside the vault: no `..`, absolute paths, hidden entries or
   symlinks.
-- Nothing writes to the vault except Kin's own memory and skills in
-  `.kintsugi/agent/` (below). Outputs over 8,000 characters are saved to
+- Ordinary turns write only Kin's memory and skills in `.kintsugi/agent/`.
+  **Ask Kin** in a draft's Stash tab grants one turn the narrow `stash` add
+  tool, scoped to that draft's stash file. It cannot choose another file or
+  write the draft. Items pass the memory injection scan; a turn adds at most
+  five. Outputs over 8,000 characters are saved to
   `<config>/kin/outputs/<turn>/<call>.txt` and previewed; Kin reads the rest
   with `read @out/<turn>/<call>.txt`.
 - Everything a tool returns is wrapped in `<data>…</data>`, with closing tags
@@ -523,7 +526,9 @@ the first result, then answers. `test/runtime-kin.test.ts` drives it.
 2. **Conversation**: only appended to within a turn.
 3. **Dynamic context**, at the end of the user message: the date,
    on-screen chips as paths to read on demand (a selected paragraph carries
-   its line range), and the thread's running summary.
+   its line range), and the thread's running summary. Reading a draft also
+   returns its stash as data, never instructions, so Kin avoids repeating
+   an idea or rewrite that is already waiting.
 
 A chat turn's conversation is its thread's latest answered exchanges (at
 most six, newer than the summary), then the new message. Interrupted and
@@ -574,9 +579,10 @@ Modelled on Hermes Agent (KI-30). Code: `ai/memory.rs` (the store) and
   since can't be undone underneath and is refused. Undoing an undo redoes.
 - **Don't remember this.** A turn with `remember: false` tells Kin so in the
   dynamic context, and `memory` / `skill write|delete` refuse.
-- **Only vault writes.** All of them go through `Store::set`, which resolves
-  inside `.kintsugi/agent/` and follows no links; source-audit tests in
-  `tools.rs` and `memory.rs` and an end-to-end vault diff check it.
+- **Memory writes.** They go through `Store::set`, which resolves inside
+  `.kintsugi/agent/` and follows no links. The separate, explicitly scoped
+  stash tool goes through the shared sidecar checks, never `Store::set`.
+  Source-audit and vault-diff tests cover these boundaries.
 
 For helper jobs (KI-31): `about::snapshot(app, root)` returns the snapshot
 (USER.md, NOTES.md, skills index) for a job's prefix. A background review
@@ -789,8 +795,9 @@ margin or a comment thread can use them.
   with long strings cut, whether it failed; at most 24), `ms` (how long the
   turn took), `model` and `capReached`. None of it is sent back to the
   model.
-- **Under a reply**: its web sources, Copy, and the model and cost, shown on
-  hover (always on the latest reply).
+- **Under a reply**: its web sources, Copy, **Stash** while a writable draft
+  is open, and the model and cost, shown on hover (always on the latest reply).
+  Stash saves the reply as Kin's item beside the draft, never in its prose.
 - **Errors** say what failed: "Kin couldn’t answer" with the provider's
   message, or "The model stopped responding" for a timeout, each with Try
   again (it sends the messages the reply answered again). A reply that ran
@@ -893,6 +900,26 @@ Ideas opens from the sidebar or ⇧⌘E.
   plus one with an invented quote that the checks must drop.
   `test/runtime-ideas.test.ts` drives it in headless Chromium.
 
+## The shared stash
+
+The Stash tab holds the writer's set-aside text and notes with Kin's rewrites
+and requested ideas. Versions of the cursor's span sit above them. **Ask Kin**
+on the stash runs one turn with the draft, its existing stash and the vault's
+read tools, and may add up to five items. Rewrites are anchored to their words;
+ideas can carry `[[links]]`. **Stash** on a reply is the other explicit way to
+save an idea here.
+
+Kin never adds anything on its own. There is no proactive add hook,
+background job or suggestions setting for the stash. What the writer asks
+for on a span belongs to that span's versions, not here.
+
+Only the writer inserts an item. A rewrite replaces its still-matching words;
+other items insert at the cursor. Undo restores the draft and stash together.
+Dismissals of Kin's items are saved as signals. Discuss opens Kin with the
+item in context. The Markdown sidecar lives at
+`.kintsugi/stash/<document path>.md` and moves with the draft. It is never
+published. See [writing.md](writing.md#stash).
+
 ## In the editor (KI-37)
 
 Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
@@ -967,8 +994,8 @@ Code: `packages/editor/src/anchors.ts` (anchoring, pure) and `comments.ts`
   the placeholder avatar (the host's `kinMark`; KI-41 replaces it).
 - **References.** Any `[[link]]` or vault path in Kin's reply is a chip:
   drag it into the draft (the same drop as the reference margin), tap `+` to
-  add it after the paragraph's last word, or click to open it. Nothing else
-  of Kin's ever lands in the document.
+  add it after the paragraph's last word, or click to open it. Other text
+  stays outside the draft until he explicitly inserts or applies it.
 - **Stored outside the document.** `.kintsugi/comments/<document path>.json`
   in the vault, one file per document: each thread's id, anchor, status,
   origin and whether it's detached. Renaming or moving a document (or its
