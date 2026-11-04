@@ -432,6 +432,9 @@ test("a dragged draft selection carries its span and stashes on drop if the word
   dragstart(5, 5);
   assert.equal(data.has(draftSelectionMime), false, "no selection, no payload");
   dragstart(5, 16);
+  for (const target of [{ draggable: true }, { closest: () => ({ draggable: true }) }]) {
+    e.handlers.dragstart({ target, dataTransfer: { setData: () => assert.fail("widget drags must not carry the draft selection") } }, e.view);
+  }
   const payload = data.get(draftSelectionMime)!;
   assert.deepEqual(JSON.parse(payload), { path: PATH, from: 5, to: 16, text: "these words" });
   for (const bad of ["bad JSON", "null", JSON.stringify({ ...JSON.parse(payload), path: "other.md" }), JSON.stringify({ ...JSON.parse(payload), text: "those words" })]) {

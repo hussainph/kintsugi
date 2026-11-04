@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, setMarks, stashRange, toggleDimRange } from "@kintsugi/editor/Editor";
+import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, setMarks, stashRange, stashTargetAt, toggleDimRange } from "@kintsugi/editor/Editor";
 import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
@@ -352,11 +352,9 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                   <CommandShortcut>{keysOf("Mod-/")}</CommandShortcut>
                 </CommandItem>
                 {/* Moves the passage into the Stash tab, as ⌥⌘X does (KI-110). */}
-                <CommandItem value="Stash" onSelect={() => {
+                <CommandItem value="Stash" disabled={!stashTargetAt(view.state)} onSelect={() => {
                   const at = here();
-                  if (!at) return;
-                  stashRange(view, at.from, at.to);
-                  onClose();
+                  if (at && stashRange(view, at.from, at.to)) onClose();
                 }}>
                   Stash
                   <CommandShortcut>{keysOf(SHORTCUTS.stash.key)}</CommandShortcut>

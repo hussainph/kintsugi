@@ -11,7 +11,7 @@ import { registerStashTarget } from "@/lib/stash";
 import { trackStashWrite } from "@/lib/stashFlush";
 import { snippet } from "@/lib/chips";
 import { noticeStash } from "@/margin/state";
-import { StashTab } from "./StashTab";
+import { FRESH_MS, StashTab } from "./StashTab";
 import { useStash } from "./useStash";
 import "./writing-stash.css";
 
@@ -29,6 +29,12 @@ export function useWritingStash({ root, path, viewRef, readOnly = false, show }:
   // KI-110: a stash from anywhere lights its row if the Stash tab is showing,
   // else pulses a dot. It no longer opens the margin.
   const [fresh, setFresh] = useState<string | null>(null);
+  useEffect(() => { setFresh(null); }, [root, path]);
+  useEffect(() => {
+    if (!fresh) return;
+    const timer = setTimeout(() => setFresh(null), FRESH_MS);
+    return () => clearTimeout(timer);
+  }, [fresh]);
   const onStashed = useCallback((id: string) => { if (noticeStash() === "row") setFresh(id); }, []);
   const config = useMemo(() => store.config && { ...store.config, onStashed, onPicker: openPicker, onError }, [store.config, onStashed, openPicker, onError]);
   // What the Stash selection button would take, from the editor's state.

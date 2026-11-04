@@ -219,8 +219,9 @@ test("Stash keeps a rewrite for later; Escape closes the rest", { timeout: 60_00
   await focused().filter({ hasText: "leverage" }).waitFor();
   await action("stash").click();
   // Like every stash (KI-110): a lit row or a pulsing dot, never a toast.
-  await page.locator(".ki-margin-pulse, .ki-stash-row[data-fresh]").first().waitFor({ state: "attached" });
-  assert.equal(await page.getByText("Added to stash").count(), 0);
+  await page.locator(".ki-margin-toggle .ki-margin-pulse").waitFor({ state: "attached" });
+  assert.equal(await page.locator("[data-sonner-toast]").count(), 0, "a review rewrite uses the same quiet feedback, without a toast");
+  assert.equal(await page.locator("aside.ki-margin[data-open]").count(), 0, "stashing keeps the margin closed");
   await until(async () => (await marked()).length === 2, "the stashed one goes");
   const sidecar = resolve(app.vault, `.kintsugi/stash/${DOC}.md`);
   await until(() => existsSync(sidecar) && /\buse\b/.test(readFileSync(sidecar, "utf8")), "the rewrite is in the stash");

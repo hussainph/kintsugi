@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
 import { draftSelectionMime } from "@kintsugi/editor/stash";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components
 import { ArrowDown, MessageCircle, Plus, Trash2, X } from "@kintsugi/ui/icons";
 import { toast } from "sonner";
 import { ShortcutHint } from "@/components/Shortcuts";
-import { keysOf } from "@/lib/keys";
+import { ariaKeys, keysOf } from "@/lib/keys";
 import { SHORTCUTS } from "@/lib/shortcuts";
 import { KinAvatar } from "../kin/Avatar";
 import { openLink } from "../kin/links";
@@ -84,20 +84,13 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
   const dragging = useRef<string | null>(null);
   const disabled = readOnly || loading || !path;
   const [dropping, setDropping] = useState(false);
-  const [highlight, setHighlight] = useState<string | null>(null);
   const draftDrag = (event: DragEvent) => !disabled && !!onStashDrop && event.dataTransfer.types.includes(draftSelectionMime);
 
-  // A fresh stash lights its row once, when the row arrives.
+  // The host expires this notice even while the tab is unmounted.
+  const shown = fresh !== null && items.some((item) => item.id === fresh);
   useEffect(() => {
-    if (!fresh) return;
-    setHighlight(fresh);
-    const timer = setTimeout(() => setHighlight((current) => current === fresh ? null : current), FRESH_MS);
-    return () => clearTimeout(timer);
-  }, [fresh]);
-  const shown = highlight !== null && items.some((item) => item.id === highlight);
-  useEffect(() => {
-    if (shown) rows.current.get(highlight!)?.scrollIntoView({ block: "nearest" });
-  }, [shown, highlight]);
+    if (shown) rows.current.get(fresh!)?.scrollIntoView({ block: "nearest" });
+  }, [shown, fresh]);
 
   const focusRow = (id: string) => rows.current.get(id)?.focus({ preventScroll: true });
   const focusItem = (item: StashItem) => {
@@ -170,6 +163,7 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
   return (
     <div
       className="ki-stash"
+      style={{ "--ki-stash-fresh-duration": `${FRESH_MS}ms` } as CSSProperties}
       data-skip-motion={skipMotion ? "" : undefined}
       data-path={path}
       data-drop-target={dropping ? "" : undefined}
@@ -203,7 +197,7 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
                   size="xs"
                   className="ki-stash-take relative"
                   disabled={disabled || !target.ready}
-                  aria-keyshortcuts="Meta+Alt+X"
+                  aria-keyshortcuts={ariaKeys(SHORTCUTS.stash.key)}
                   // Keeps focus, and the cursor, in the draft.
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => void onStash()}
@@ -231,7 +225,7 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
                 data-by={item.by}
                 data-kind={item.kind}
                 data-focused={expanded ? "" : undefined}
-                data-fresh={highlight === item.id ? "" : undefined}
+                data-fresh={fresh === item.id ? "" : undefined}
                 data-drop={drop?.id === item.id ? drop.after ? "after" : "before" : undefined}
                 tabIndex={0}
                 aria-label={`${item.by === "owner" ? "Your" : "Kin's"} ${item.kind === "rewrite" ? "rewrite" : item.kind === "idea" ? "idea" : "text"}`}

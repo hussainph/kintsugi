@@ -89,7 +89,7 @@
   background: var(--neutral-10);
   box-shadow: 0 0 0 var(--border-l) var(--neutral-1);
   pointer-events: none;
-  animation: ki-margin-pulse 900ms var(--ki-margin-ease) both;
+  animation: ki-margin-pulse var(--ki-stash-pulse-duration) var(--motion-large-easing) both;
 }
 .ki-margin-pulse::after {
   content: "";
@@ -97,7 +97,7 @@
   inset: 0;
   border-radius: inherit;
   background: var(--neutral-10);
-  animation: ki-margin-pulse-ring 900ms ease-out both;
+  animation: ki-margin-pulse-ring var(--ki-stash-pulse-duration) var(--motion-large-easing) both;
 }
 .ki-margin-tab > .ki-margin-pulse { top: 0; right: 0; }
 @keyframes ki-margin-pulse {
@@ -122,7 +122,7 @@
   .ki-margin[data-open] { transition: opacity 120ms linear, visibility 0s; }
   .ki-margin-toggle { transition: none; }
   .ki-margin-toggle:active { transform: none; }
-  .ki-margin-pulse { animation: ki-margin-pulse-fade 900ms linear both; }
+  .ki-margin-pulse { animation: ki-margin-pulse-fade var(--ki-stash-pulse-duration) linear both; }
   .ki-margin-pulse::after { display: none; }
 }
 @keyframes ki-margin-pulse-fade {

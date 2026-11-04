@@ -65,7 +65,7 @@
 /* KI-110: a selection dragged from the draft over the tab, and the row it
    just made. The highlight fades out within FRESH_MS (StashTab.tsx). */
 .ki-stash[data-drop-target] .ki-stash-shared { border-radius: var(--radius-s); background: var(--neutral-2); box-shadow: inset 0 0 0 var(--border-l) var(--neutral-6); }
-.ki-stash-row[data-fresh]::before { background: var(--neutral-4); animation: ki-stash-fresh 1200ms ease-out both; }
+.ki-stash-row[data-fresh]::before { background: var(--neutral-4); animation: ki-stash-fresh var(--ki-stash-fresh-duration) var(--motion-large-easing) both; }
 @keyframes ki-stash-fresh {
   0%, 35% { opacity: 1; }
   100% { opacity: 0; }
@@ -81,5 +81,5 @@
   .ki-stash-row, .ki-stash-row::before, .ki-stash .ki-stash-action, .ki-stash-actions { transition: none; }
   .ki-stash-row[data-focused] .ki-stash-toolbar { transition-delay: 0ms; }
   .ki-stash .ki-stash-action:active:not(:disabled) { transform: none; }
-  .ki-stash-row[data-fresh]::before { animation-duration: 600ms; }
+  .ki-stash-row[data-fresh]::before { animation: none; opacity: 1; }
 }

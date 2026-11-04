@@ -18,7 +18,7 @@ export type Stash = {
   items: StashItem[];
   currentPath?: string;
   onSave: (path: string, items: StashItem[]) => void;
-  /** After a stash from the draft (key, button, ⌘K or drag), with the new item's id. */
+  /** After stashing draft text or a Kin reply/rewrite, with the new item's id. */
   onStashed?: (id: string) => void;
   onPicker?: () => void;
   /** Rejected operations leave the document and undo history unchanged. */
@@ -601,7 +601,10 @@ export function stashExtensions(getConfig: () => Stash | undefined): Extension {
     keymap.of([{ key: stashShortcuts[0].key, run: stashSelection }, { key: stashShortcuts[1].key, run: openStashPicker }]),
     EditorView.domEventHandlers({
       dragstart(event, view) {
-        // Leaves CodeMirror's own text drag alone; the Stash tab reads this.
+        // A draggable widget (for example a comment's reference chip) isn't
+        // the draft selection. Leave its own payload, and CodeMirror's drag, alone.
+        const target = event.target as HTMLElement | null;
+        if (target?.draggable || target?.closest?.('[draggable="true"]')) return false;
         const data = event.dataTransfer && draftSelectionData(view.state);
         if (data) event.dataTransfer!.setData(draftSelectionMime, data);
         return false;

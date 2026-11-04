@@ -25,7 +25,13 @@ const file = () => resolve(app.vault, `.kintsugi/stash/${DOC}.md`);
 const draft = () => readFileSync(resolve(app.vault, DOC), "utf8");
 const sidecar = () => existsSync(file()) ? readFileSync(file(), "utf8") : "";
 const line = (text: string) => page.locator(".cm-line", { hasText: text });
-const shot = (name: string) => page.screenshot({ path: resolve(app.shots, `${name}.png`) });
+const shot = async (name: string) => {
+  await page.waitForFunction(() => document.querySelector(".graphical-theme")?.getAttribute("data-color-mode") === (document.documentElement.classList.contains("dark") ? "dark" : "light"));
+  // A mode change keeps the theme's control-color transition. Capture its
+  // settled appearance, without waiting away the row's separate highlight.
+  await take().evaluate(async (button) => { await Promise.all(button.getAnimations().map((animation) => animation.finished.catch(() => {}))); });
+  return page.screenshot({ path: resolve(app.shots, `${name}.png`) });
+};
 const toasts = () => page.locator("[data-sonner-toast]");
 
 before(async () => {
@@ -120,17 +126,24 @@ async function centre(locator: ReturnType<Page["locator"]>) {
 }
 
 test("⌥⌘X stashes with the margin closed: the margin stays shut and its button's dot pulses once", { timeout: 60_000 }, async () => {
-  assert.equal(await page.locator("aside.ki-margin[data-open]").count(), 0);
-  await line(KEY).click();
-  await page.keyboard.press("Meta+Alt+x");
-  await page.locator(".ki-margin-toggle .ki-margin-pulse").waitFor({ state: "attached" });
-  await page.waitForTimeout(250);
-  await page.screenshot({ path: resolve(app.shots, "06-margin-pulse-light.png"), clip: { x: 1240, y: 0, width: 200, height: 110 } });
-  await saved(KEY, "key");
-  assert.equal(await page.locator("aside.ki-margin[data-open]").count(), 0, "stashing doesn't open the margin");
-  await page.locator(".ki-margin-toggle .ki-margin-pulse").waitFor({ state: "detached", timeout: 3_000 });
-  assert.equal(await toasts().count(), 0, "no toast");
-  await undo(KEY, "key");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.waitForFunction((dark) => document.documentElement.classList.contains("dark") === dark, colorScheme === "dark");
+    assert.equal(await page.locator("aside.ki-margin[data-open]").count(), 0);
+    await line(KEY).click();
+    await page.keyboard.press("Meta+Alt+x");
+    await page.locator(".ki-margin-toggle .ki-margin-pulse").waitFor({ state: "attached" });
+    await page.getByRole("status").filter({ hasText: /^Stashed$/ }).waitFor();
+    await page.waitForTimeout(250);
+    await shot(`06-margin-pulse-${colorScheme}`);
+    await saved(KEY, "key");
+    assert.equal(await page.locator("aside.ki-margin[data-open]").count(), 0, "stashing doesn't open the margin");
+    await page.locator(".ki-margin-toggle .ki-margin-pulse").waitFor({ state: "detached", timeout: 3_000 });
+    assert.equal(await toasts().count(), 0, "no toast");
+    await undo(KEY, "key");
+  }
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
 });
 
 test("the Stash tab's button stashes the paragraph, or the selection, and lights the new row", { timeout: 90_000 }, async () => {
@@ -156,26 +169,34 @@ test("the Stash tab's button stashes the paragraph, or the selection, and lights
   const tip = page.getByRole("tooltip");
   await tip.waitFor();
   assert.equal((await tip.innerText()).trim(), "⌥⌘X");
-  await button.click();
-  await saved(BUTTON, "button");
-  const fresh = rows().filter({ hasText: BUTTON });
-  await fresh.waitFor();
-  assert.equal(await fresh.getAttribute("data-fresh"), "", "the stashed row lights up");
-  assert.equal(await page.locator(".cm-content").evaluate((element) => element.contains(document.activeElement)), true, "focus stays in the draft");
-  await page.mouse.move(0, 0);
-  await shot("03-stashed-row-light");
-  await page.emulateMedia({ colorScheme: "dark" });
-  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
-  await page.waitForTimeout(200);
-  await shot("04-stashed-row-dark");
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.waitForFunction((mode) => document.querySelector(".graphical-theme")?.getAttribute("data-color-mode") === mode, colorScheme);
+    await button.click();
+    const fresh = rows().filter({ hasText: BUTTON });
+    await fresh.waitFor();
+    assert.equal(await fresh.getAttribute("data-fresh"), "", "the stashed row lights up");
+    assert.equal(await page.locator(".cm-content").evaluate((element) => element.contains(document.activeElement)), true, "focus stays in the draft");
+    await page.mouse.move(0, 0);
+    await shot(colorScheme === "light" ? "03-stashed-row-light" : "04-stashed-row-dark");
+    await saved(BUTTON, "button");
+    await page.waitForFunction((text) => !document.querySelector(`.ki-stash-row[data-fresh]`)?.textContent?.includes(text), BUTTON, { timeout: 3_000 });
+    await undo(BUTTON, "button");
+  }
   await page.emulateMedia({ colorScheme: "light" });
   await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
-  await page.waitForFunction((text) => !document.querySelector(`.ki-stash-row[data-fresh]`)?.textContent?.includes(text), BUTTON, { timeout: 3_000 });
-  await undo(BUTTON, "button");
 
   const word = await wordAt(WORDS, "Bravo");
   await page.mouse.dblclick(word.x, word.y);
-  await stash().getByRole("button", { name: "Stash selection", exact: true }).click();
+  const selectionButton = stash().getByRole("button", { name: "Stash selection", exact: true });
+  await selectionButton.waitFor();
+  await shot("08-stash-selection-light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
+  await shot("08-stash-selection-dark");
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
+  await selectionButton.click();
   await until(() => draft().includes(WORDS.replace("Bravo", "")) && sidecar().includes("Bravo"), "the button stashes only the selection");
   await rows().filter({ hasText: /^Bravo$/ }).waitFor();
   await undo(WORDS, "selection");
@@ -236,4 +257,26 @@ test("holding ⌘ while writing lists Stash and Insert from stash, and shows the
   } finally {
     await page.keyboard.up("Meta");
   }
+});
+
+test("a past stash highlight never replays after leaving the screen or switching drafts", { timeout: 60_000 }, async () => {
+  await openStash();
+  await line(BUTTON).click();
+  await take().click();
+  await rows().filter({ hasText: BUTTON }).waitFor();
+  await page.locator(".ki-stash-row[data-fresh]").waitFor();
+  await page.getByRole("button", { name: "Feed", exact: true }).first().click();
+  await stash().waitFor({ state: "detached" });
+  await page.getByRole("status").filter({ hasText: /^Stashed$/ }).waitFor({ state: "detached" });
+  // Wait for the host's highlight lifetime to end while its panel is gone.
+  await page.waitForTimeout(1200);
+  await page.locator(`[title="${DOC}"]`).click();
+  await rows().filter({ hasText: BUTTON }).waitFor();
+  assert.equal(await page.locator(".ki-stash-row[data-fresh]").count(), 0, "returning to writing doesn't replay the highlight");
+  const other = "drafts/kintsugi-and-gold.md";
+  await page.locator(`[title="${other}"]`).click();
+  await page.locator(`[title="${other}"][data-active=true]`).waitFor();
+  await page.locator(`[title="${DOC}"]`).click();
+  await rows().filter({ hasText: BUTTON }).waitFor();
+  assert.equal(await page.locator(".ki-stash-row[data-fresh]").count(), 0, "returning to the draft doesn't replay it either");
 });

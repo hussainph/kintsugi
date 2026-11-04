@@ -185,8 +185,9 @@ never re-wraps the draft.
 - Stashing, including **Stash** on a Kin reply or a review's rewrite, never
   opens the margin and shows no toast. If the Stash tab is
   showing, the new row lights up briefly. If the margin is closed, the
-  margin button's dot pulses once; if another tab is showing, the dot is on
-  the Stash tab's header.
+  margin button's dot pulses once; if another writing tab is showing, the dot
+  is on the Stash tab's header. Away from writing it uses the margin button.
+  Screen readers hear “Stashed”.
 - Click or keyboard-focus a row to show its actions below the text. ↑/↓ move
   between rows; Enter inserts, Delete removes, and ⇧⌘J discusses it with Kin.
   ⌥⌘V opens the stash picker. Drag a row into the draft to put it there,
