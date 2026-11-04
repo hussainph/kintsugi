@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { stashForRoot, STASH_CHANGED, type StashItem } from "./api";
 import { StashSession } from "./persistence";
+import { registerStashFlush } from "@/lib/stashFlush";
 
 /**
  * Root-scoped document queues survive ordinary document switches, including
@@ -10,7 +11,7 @@ import { StashSession } from "./persistence";
  * even if it opens a document with the same vault-relative path.
  */
 export function useStash(root: string | null, path: string, readOnly = false) {
-  const scope = useMemo(() => ({ root, api: stashForRoot(root ?? ""), sessions: new Map<string, StashSession>(), readOnly: new Map<string, boolean>() }), [root]);
+  const scope = useMemo(() => ({ root, active: true, api: stashForRoot(root ?? ""), sessions: new Map<string, StashSession>(), readOnly: new Map<string, boolean>() }), [root]);
   const currentScope = useRef(scope);
   currentScope.current = scope;
   scope.readOnly.set(path, readOnly);
@@ -20,7 +21,7 @@ export function useStash(root: string | null, path: string, readOnly = false) {
     const next = new StashSession(
       path,
       scope.api,
-      () => currentScope.current === scope && !!scope.root && !!path,
+      () => currentScope.current === scope && scope.active && !!scope.root && !!path,
       () => !scope.readOnly.get(path),
       (error) => toast.error(String(error)),
     );
@@ -28,6 +29,21 @@ export function useStash(root: string | null, path: string, readOnly = false) {
     return next;
   }, [scope, path]);
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
+
+  useEffect(() => {
+    if (!root) return;
+    return registerStashFlush(root, async () => {
+      const results = await Promise.all([...scope.sessions.values()].map((queue) => queue.flush()));
+      return results.every(Boolean);
+    }, () => { scope.active = false; }, (from) => {
+      for (const [path, queue] of scope.sessions) {
+        if (path === from || path.startsWith(`${from}/`)) {
+          queue.retire();
+          scope.sessions.delete(path);
+        }
+      }
+    });
+  }, [root, scope]);
 
   useEffect(() => {
     if (!root || !path) return;

@@ -138,7 +138,7 @@ export function isStashItem(value: unknown): value is StashItem {
   return typeof item.id === "string" && !!item.id.trim() && withinChars(item.id, MAX_ID_CHARS) && !/\p{Cc}/u.test(item.id) &&
     (item.by === "owner" || item.by === "kin") && (item.kind === "text" || item.kind === "idea" || item.kind === "rewrite") &&
     typeof item.text === "string" && !!item.text.trim() && withinChars(item.text, MAX_TEXT_CHARS) &&
-    typeof item.created === "string" && !!item.created.trim() && withinChars(item.created, MAX_CREATED_BYTES) && utf8.encode(item.created).length <= MAX_CREATED_BYTES &&
+    typeof item.created === "string" && withinChars(item.created, MAX_CREATED_BYTES) && utf8.encode(item.created).length <= MAX_CREATED_BYTES &&
     (item.anchor === undefined || validAnchor(item.anchor)) && (item.kind !== "rewrite" || validAnchor(item.anchor));
 }
 

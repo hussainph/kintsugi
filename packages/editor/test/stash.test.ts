@@ -100,6 +100,16 @@ test("stash selection and insert each undo both document and stash, with redo", 
   assert.deepEqual(e.items(), []);
 });
 
+test("an empty created value accepted by Markdown storage keeps stash commands usable", () => {
+  const legacy = { ...item("legacy", "An undated note."), created: "" };
+  const e = editor("Draft.", [legacy]);
+  assert.equal(insertStashItem(e.view, legacy.id), true);
+  assert.equal(undo(e.view), true);
+  assert.deepEqual(e.items(), [legacy]);
+  assert.equal(removeStashItem(e.view, legacy.id), true);
+  assert.equal(stashSelection(e.view), true);
+});
+
 test("without a selection, stash takes the paragraph, not frontmatter, code or a blank line", () => {
   const doc = "---\ntitle: Draft\n---\n\nFirst line\nwrapped line\n\nSecond.\n\n```\ncode\n```";
   const e = editor(doc);
@@ -162,7 +172,7 @@ test("batch validation rejects duplicate IDs and malformed rewrites without part
     [item("new"), item("existing")], [item("same"), item("same")], [item("empty", "  ")],
     [{ ...item("bad"), kind: "rewrite", by: "kin" }],
     [{ ...item("bad"), anchor: { exact: "Draft", prefix: "", suffix: "", line: 0 } }],
-    [{ ...item("bad"), by: "unknown" }], [{ ...item("bad"), created: "" }], [null],
+    [{ ...item("bad"), by: "unknown" }], [{ ...item("bad"), created: null }], [null],
   ]) assert.equal(addRequestedStashItems(e.view, items as StashItem[]), false);
   assert.deepEqual(e.items(), [item("existing")]);
   const input = item("copy");

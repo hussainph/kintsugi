@@ -73,6 +73,20 @@ test("only explicit wikilinks become controls, with aliases and literal text ret
   assert.deepEqual(splitWikiLinks("No [[unfinished"), ["No [[unfinished"]);
 });
 
+test("a delayed editor echo after a navigation barrier never writes the old path", async () => {
+  const h = setup();
+  await h.session.reload();
+  const note = item("note");
+  h.session.onUpdate("drafts/a.md", [note]);
+  assert.equal(await h.session.flush(), true);
+  h.api.load = async () => { throw new Error("document was renamed"); };
+  const before = [...h.calls];
+  h.session.onSave("drafts/a.md", [note]);
+  assert.equal(await h.session.flush(), true);
+  assert.deepEqual(h.calls, before);
+  assert.deepEqual(h.errors, []);
+});
+
 test("a failed or mismatched initial load cannot overwrite an existing stash", async () => {
   const h = setup([item("old")]);
   h.api.load = async () => { throw new Error("damaged"); };
@@ -406,7 +420,7 @@ test("Ask Kin is explicit, deduplicates requests, and flushes the newest editor 
   assert.ok(h.calls.indexOf("save") < h.calls.indexOf("ask"));
 });
 
-test("editor writes wait for an explicit Kin turn and preserve its new arrivals", async () => {
+test("editor writes do not wait for an explicit Kin turn and preserve its arrivals", async () => {
   const h = setup([item("a")]);
   await h.session.reload();
   const requested = deferred<void>();
@@ -415,13 +429,14 @@ test("editor writes wait for an explicit Kin turn and preserve its new arrivals"
   const asking = h.session.ask();
   await started.promise;
   h.session.onChange([item("a"), item("local")]);
-  const saving = h.session.flush();
-  assert.deepEqual(ids(h.session.getSnapshot().items), ["a", "local"]);
-  assert.ok(!h.calls.includes("save"));
-  h.replace([item("a"), item("kin", { by: "kin", kind: "idea" })]);
+  assert.equal(await h.session.flush(), true, "a stalled model never holds the save queue");
+  assert.equal(h.session.getSnapshot().asking, true);
+  assert.deepEqual(ids(h.disk()), ["a", "local"]);
+  h.replace([...h.disk(), item("kin", { by: "kin", kind: "idea" })]);
   requested.resolve();
-  await Promise.all([asking, saving]);
-  assert.deepEqual(ids(h.disk()), ["a", "kin", "local"]);
+  assert.equal(await asking, true);
+  assert.deepEqual(ids(h.disk()), ["a", "local", "kin"]);
+  assert.deepEqual(ids(h.session.getSnapshot().items), ["a", "local", "kin"]);
 });
 
 test("a failed pending save stops Ask Kin and preserves the unsaved UI", async () => {
@@ -434,4 +449,192 @@ test("a failed pending save stops Ask Kin and preserves the unsaved UI", async (
   assert.deepEqual(ids(h.session.getSnapshot().items), ["a", "pending"]);
   assert.equal(h.session.getSnapshot().asking, false);
   assert.equal(h.errors.length, 1);
+});
+
+test("local additions keep their editor position next to surviving neighbours", () => {
+  const a = item("a"), b = item("b"), c = item("c"), x = item("x"), y = item("y"), kin = item("kin", { by: "kin" });
+  assert.deepEqual(ids(mergeEditorItems([a, b, c], [a, x, b, c], [a, b, c])), ["a", "x", "b", "c"]);
+  assert.deepEqual(ids(mergeEditorItems([a, b], [x, y, a, b], [a, b, kin])), ["x", "y", "a", "b", "kin"]);
+  // A dismissed neighbour is skipped, never revived; unseen arrivals and a
+  // shared reorder keep their disk positions.
+  assert.deepEqual(ids(mergeEditorItems([a, b, c], [a, b, x, c], [c, a, kin])), ["c", "a", "x", "kin"]);
+  assert.deepEqual(ids(mergeEditorItems([], [x], [kin])), ["kin", "x"]);
+  // Once the editor acknowledges the arrival, the new row follows the editor.
+  assert.deepEqual(ids(mergeEditorItems([kin], [x, kin], [kin])), ["x", "kin"]);
+});
+
+test("undo of an insertion restores the row at its editor position in the UI and on disk", async () => {
+  const a = item("a"), x = item("x"), b = item("b"), kin = item("kin", { by: "kin", kind: "idea" });
+  const h = setup([a, x, b]);
+  await h.session.reload();
+  h.session.onChange([a, x, b]);
+  h.session.onChange([a, b]); // Inserted into the draft.
+  assert.equal(await h.session.flush(), true);
+  assert.deepEqual(ids(h.disk()), ["a", "b"]);
+  h.replace([a, b, kin]); // Kin appends before the editor sees it.
+  await h.session.reload();
+  h.session.onChange([a, x, b]); // Undo.
+  assert.deepEqual(ids(h.session.getSnapshot().items), ["a", "x", "b", "kin"]);
+  assert.equal(await h.session.flush(), true);
+  assert.deepEqual(ids(h.disk()), ["a", "x", "b", "kin"]);
+  h.session.onChange([a, x, b, kin]); // The editor appends the arrival.
+  assert.deepEqual(ids(h.session.getSnapshot().items), ["a", "x", "b", "kin"]);
+});
+
+test("undo of a completed dismissal restores the row beside its neighbour despite a shared reorder", async () => {
+  const a = item("a"), x = item("x"), b = item("b"), kin = item("kin", { by: "kin", kind: "idea" });
+  const h = setup([a, x, b]);
+  await h.session.reload();
+  h.session.onChange([a, x, b]);
+  h.session.onChange([a, b]);
+  assert.equal(await h.session.remove("x"), true);
+  assert.deepEqual(h.session.getSnapshot().dismissedIds, ["x"]);
+  h.replace([b, a, kin]); // Reordered elsewhere, plus a Kin arrival.
+  await h.session.reload();
+  h.session.onChange([a, x, b]); // Undo of the dismissal.
+  assert.deepEqual(h.session.getSnapshot().dismissedIds, []);
+  assert.deepEqual(ids(h.session.getSnapshot().items), ["b", "a", "x", "kin"]);
+  assert.equal(await h.session.flush(), true);
+  assert.deepEqual(ids(h.disk()), ["b", "a", "x", "kin"]);
+});
+
+test("undo of a dismissal with an acknowledged Kin arrival matches the editor order", async () => {
+  const a = item("a"), x = item("x"), b = item("b"), kin = item("kin", { by: "kin", kind: "idea" });
+  const h = setup([a, x, b]);
+  await h.session.reload();
+  h.session.onChange([a, x, b]);
+  h.session.onChange([a, b]);
+  await h.session.remove("x");
+  h.replace([a, b, kin]);
+  await h.session.reload();
+  h.session.onChange([a, b, kin]);
+  h.session.onChange([a, x, b, kin]); // Undo puts x back by its old order.
+  assert.deepEqual(ids(h.session.getSnapshot().items), ["a", "x", "b", "kin"]);
+  await h.session.flush();
+  assert.deepEqual(ids(h.disk()), ["a", "x", "b", "kin"]);
+});
+
+test("after a failed dismissal and reload, a clean flush succeeds and Ask Kin runs", async () => {
+  const a = item("a");
+  const h = setup([a]);
+  await h.session.reload();
+  h.session.onChange([a]);
+  h.session.onChange([]);
+  h.api.dismiss = async () => { throw new Error("unavailable"); };
+  assert.equal(await h.session.remove("a"), false);
+  h.session.onChange([a]); // The parent restores the row into the editor.
+  const load = h.api.load;
+  h.api.load = async () => { throw new Error("offline"); };
+  assert.equal(await h.session.reload(), false);
+  h.api.load = load;
+  assert.equal(await h.session.flush(), true);
+  assert.equal(await h.session.ask("text"), true);
+  assert.ok(h.calls.includes("ask"));
+  assert.deepEqual(ids(h.disk()), ["a"]);
+});
+
+test("unsaved changes behind a failed dismissal still stop Ask Kin until they save", async () => {
+  const a = item("a"), b = item("b");
+  const h = setup([a, b]);
+  await h.session.reload();
+  h.session.onChange([a, b]);
+  h.session.onChange([b]);
+  h.api.dismiss = async () => { throw new Error("unavailable"); };
+  assert.equal(await h.session.remove("a"), false);
+  h.session.onChange([b, item("local")]);
+  const save = h.api.save;
+  h.api.save = async () => { throw new Error("disk full"); };
+  assert.equal(await h.session.flush(), false);
+  assert.equal(await h.session.ask(), false);
+  const load = h.api.load;
+  h.api.save = save;
+  h.api.load = async () => { throw new Error("offline"); };
+  assert.equal(await h.session.ask(), false);
+  assert.ok(!h.calls.includes("ask"));
+  h.api.load = load;
+  assert.equal(await h.session.ask(), true);
+  assert.deepEqual(ids(h.disk()), ["a", "b", "local"]);
+});
+
+const settle = () => new Promise((done) => setImmediate(done));
+
+test("flush can settle a clean document and save more changes while Kin is still asking", async () => {
+  const a = item("a");
+  const h = setup([a]);
+  await h.session.reload();
+  h.session.onChange([a]);
+  const requested = deferred<void>();
+  const started = deferred<void>();
+  h.api.ask = async () => { started.resolve(); return requested.promise; };
+  const asking = h.session.ask();
+  await started.promise;
+  assert.equal(await h.session.flush(), true);
+  h.session.onChange([a, item("one")]);
+  h.session.onSave("drafts/a.md", [a, item("one")]);
+  assert.equal(await h.session.flush(), true);
+  h.session.onChange([a, item("one"), item("two")]);
+  assert.equal(await h.session.flush(), true);
+  assert.equal(h.session.getSnapshot().asking, true);
+  h.replace([...h.disk(), item("kin", { by: "kin", kind: "idea" })]);
+  requested.resolve();
+  assert.equal(await asking, true);
+  assert.deepEqual(ids(h.disk()), ["a", "one", "two", "kin"]);
+});
+
+test("a renamed stash ignores an old model answer and delayed editor saves", async () => {
+  const a = item("a");
+  const h = setup([a]);
+  await h.session.reload();
+  const started = deferred<void>();
+  const answer = deferred<void>();
+  h.api.ask = async () => { started.resolve(); return answer.promise; };
+  const asking = h.session.ask();
+  await started.promise;
+  h.session.onChange([a, item("local")]);
+  assert.equal(await h.session.flush(), true);
+  h.session.retire(); // Only after the complete sidecar has moved.
+  const calls = [...h.calls];
+  h.api.load = async () => { throw new Error("old path was moved"); };
+  answer.resolve();
+  assert.equal(await asking, false);
+  h.session.onSave("drafts/a.md", [a, item("local"), item("late")]);
+  await settle();
+  assert.deepEqual(h.calls, calls);
+  assert.deepEqual(h.errors, []);
+});
+
+test("read-only anchor normalization cannot dirty or block the vault's save barrier", async () => {
+  const rewrite = item("kin", { by: "kin", kind: "rewrite", anchor: { exact: "Quote", prefix: "", suffix: "", line: 1 } });
+  const h = setup([rewrite]);
+  h.readOnly();
+  await h.session.reload();
+  h.session.onChange([{ ...rewrite, anchor: { ...rewrite.anchor!, prefix: "New context", line: 3 } }]);
+  assert.equal(await h.session.flush(), true);
+  assert.deepEqual(h.calls, ["load"]);
+  assert.deepEqual(h.disk(), [rewrite]);
+});
+
+test("flush resolves only once the newest editor revision is written", async () => {
+  const a = item("a");
+  const h = setup([a]);
+  await h.session.reload();
+  h.session.onChange([a, item("one")]);
+  const released = deferred<void>();
+  const started = deferred<void>();
+  const save = h.api.save;
+  let writes = 0;
+  h.api.save = async (path, items, base) => {
+    if (writes++ === 0) { started.resolve(); await released.promise; }
+    return save(path, items, base);
+  };
+  let done = false;
+  const flushing = h.session.flush().then((saved) => { done = true; return saved; });
+  await started.promise;
+  h.session.onChange([a, item("one"), item("two")]);
+  released.resolve();
+  await settle();
+  assert.equal(await flushing, true);
+  assert.equal(done, true);
+  assert.equal(writes, 2);
+  assert.deepEqual(ids(h.disk()), ["a", "one", "two"]);
 });

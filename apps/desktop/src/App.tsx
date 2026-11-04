@@ -48,6 +48,7 @@ import { canMove, type FolderStyle, type FolderStyles } from "@kintsugi/core/fol
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
 import { appReady } from "@/lib/smoke";
 import { Failure, Saves } from "@/lib/saves";
+import { discardStashes, flushStashes, retireStashes } from "@/lib/stashFlush";
 import { decide, removes } from "@/lib/outside";
 import { invert, question, restored, skipped, updated, type Relink, type RelinkOutcome, type RelinkPlan } from "@/lib/links";
 import { version } from "@kintsugi/core/remote";
@@ -56,6 +57,7 @@ import { Entry, flatten, Outside, parentDir, renamedPath, vault } from "@/lib/va
 
 const SAVE_DELAY = 400;
 const SAVE_TOAST = "kintsugi-save-failed";
+const STASH_FAILURE = "Couldn't save the stash. Try again.";
 const requestClip = (path: string) => window.dispatchEvent(new CustomEvent("kintsugi:open-clip", { detail: { path } }));
 
 type SaveState = "saved" | "editing" | "error";
@@ -142,6 +144,9 @@ export default function App() {
   const metaChanged = useRef(false);
   const timer = useRef<number | undefined>(undefined);
   const rootRef = useRef<string | null>(null);
+  const vaultMutation = useRef(false);
+  const [movingVaultFiles, setMovingVaultFiles] = useState(false);
+  const [writingEpoch, setWritingEpoch] = useState(0);
 
   const docs = useMemo(() => flatten(tree), [tree]);
   // The editor stays mounted (and keeps its state) behind the library and feed.
@@ -178,6 +183,11 @@ export default function App() {
   // pending, so a later save (autosave, ⌘S, Try again) retries them.
   const write = useCallback(async (): Promise<Failure[]> => {
     window.clearTimeout(timer.current);
+    if (!await flushStashes(rootRef.current)) {
+      setSave("error");
+      toast.error(STASH_FAILURE, { id: SAVE_TOAST });
+      return [{ path: docPath.current ?? "Stash", error: STASH_FAILURE }];
+    }
     if (!saves.current.size) return [];
     const result = await saves.current.flush();
     if (!result.ok) {
@@ -248,7 +258,27 @@ export default function App() {
         if (choice === "stay") return false;
         if (choice === "discard") {
           if (collisionRef.current) showCollision(null);
+          window.clearTimeout(timer.current);
           saves.current.discard();
+          // The draft was not allowed to persist a cut before its stash.
+          // Discard both buffers and reopen the disk copy, which still has
+          // those words. Invalidating the old queues also drops late echoes.
+          discardStashes(rootRef.current);
+          const path = docPath.current;
+          if (path) {
+            try {
+              const contents = await vault.read(path);
+              bases.current.set(path, contents);
+              known.current.set(path, meta(contents));
+              setDoc({ path, text: contents });
+              setText(contents);
+            } catch { setDoc(null); setText(""); }
+          }
+          // The read may yield while the old editor is still mounted.
+          // No keystroke from that discarded buffer can survive the rebuild.
+          window.clearTimeout(timer.current);
+          saves.current.discard();
+          setWritingEpoch((epoch) => epoch + 1);
           metaChanged.current = false;
           toast.dismiss(SAVE_TOAST);
           setSave("saved");
@@ -727,10 +757,16 @@ export default function App() {
   /** A rename or move: the open document, the selected folder and the links
    *  that pointed at it all follow. */
   const relocate = async (path: string, verb: string, run: () => Promise<string>) => {
-    const settled = await settleDocs(verb);
-    if (!settled) return;
+    if (vaultMutation.current) return;
+    vaultMutation.current = true;
+    setMovingVaultFiles(true);
+    setRefine(null);
+    viewRef.current?.contentDOM.blur();
     try {
+      const settled = await settleDocs(verb);
+      if (!settled) return;
       const to = await run();
+      retireStashes(rootRef.current, path);
       const moved = doc && renamedPath(doc.path, path, to);
       if (moved) {
         // Discarded changes leave the editor; the disk's copy comes back.
@@ -747,6 +783,9 @@ export default function App() {
       void offerLinks(path, to, openPath && view ? { path: openPath, text: view.state.doc.toString() } : null);
     } catch (e) {
       fail(e);
+    } finally {
+      vaultMutation.current = false;
+      setMovingVaultFiles(false);
     }
   };
 
@@ -812,12 +851,19 @@ export default function App() {
 
   const openVault = async () => {
     const picked = await pickFolder({ directory: true, title: "Open a vault" });
-    if (typeof picked !== "string") return;
-    if (!(await settle("switched vaults"))) return;
+    if (typeof picked !== "string" || vaultMutation.current) return;
+    vaultMutation.current = true;
+    setMovingVaultFiles(true);
+    setRefine(null);
+    viewRef.current?.contentDOM.blur();
     try {
+      if (!(await settle("switched vaults"))) return;
       await loadVault(await vault.open(picked));
     } catch (e) {
       fail(e);
+    } finally {
+      vaultMutation.current = false;
+      setMovingVaultFiles(false);
     }
   };
 
@@ -901,6 +947,7 @@ export default function App() {
   // App shortcuts run in the capture phase so they win over the editor's keymap.
   const shortcuts = useRef<(e: KeyboardEvent) => void>(() => {});
   shortcuts.current = (e) => {
+    if (vaultMutation.current) return;
     if (!e.metaKey || e.ctrlKey) return;
     const run = (action: () => void) => {
       e.preventDefault();
@@ -949,6 +996,7 @@ export default function App() {
 
   return (
     <SidebarProvider
+      inert={movingVaultFiles}
       open={navOpen && !folded.active}
       onOpenChange={(next) => {
         // ⌘\ or the trigger while folded: he wants it back.
@@ -1001,7 +1049,7 @@ export default function App() {
         <div inert={away} className={away ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
         {doc ? (
           <Writing
-            key={root}
+            key={`${root}:${writingEpoch}`}
             root={root}
             onOpenDoc={openDoc}
             onOpenClip={requestClip}
