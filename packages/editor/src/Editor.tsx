@@ -18,6 +18,7 @@ import { heldPassages } from "./passages";
 import { dimExtensions } from "./dim";
 import { alternativeExtensions, refreshAlternatives, type Alternatives } from "./alternatives";
 import { stashExtensions, refreshStash, type Stash } from "./stash";
+import { markExtensions, type Marks } from "./marks";
 
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
@@ -29,6 +30,8 @@ export { heldPassage, holdPassage, releasePassage, type Passage } from "./passag
 export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
 export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet, SpanLevel } from "./alternatives";
 export { addAlternatives, applyAlternative, askForAlternatives, alternativesAt, alternativesPanelModel, alternativePanelCommands, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives } from "./alternatives";
+export type { Mark as KinMark, MarkBatch, MarkKind, Marks, MarksState, Sentence } from "./marks";
+export { acceptMark, applyMarks, clearMarks, cutRange, dismissMark, focusMark, focusedMark, markCommands, marksOf, markShortcuts, onWordBoundaries, proseSentences, setMarks, textAfterCuts } from "./marks";
 export type { Stash, StashItem } from "./stash";
 export { addRequestedStashItems, addStashNote, flushStash, focusStashItem, insertStashItem, moveStashItem, openStashPicker, removeStashItem, reorderStashItems, stashCommands, stashItems, stashKinReply, stashMime, stashSelection, stashShortcuts } from "./stash";
 
@@ -56,6 +59,8 @@ type Props = {
   alternatives?: Alternatives;
   /** Text set aside and Kin's requested ideas or anchored rewrites (KI-89). */
   stash?: Stash;
+  /** Kin's gold marks, shown only when he asks (KI-90). Never saved. */
+  marks?: Marks;
   /** Added to each document's state when it is first opened, such as the
    *  phone's keyboard settings. */
   extensions?: Extension;
@@ -65,7 +70,7 @@ type Props = {
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, alternatives, stash, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
+export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, alternatives, stash, marks, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
@@ -81,6 +86,8 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
   alternativesRef.current = alternatives;
   const stashRef = useRef(stash);
   stashRef.current = stash;
+  const marksRef = useRef(marks);
+  marksRef.current = marks;
   const extensionsRef = useRef(extensions);
   extensionsRef.current = extensions;
 
@@ -109,6 +116,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         heldPassages,
         alternativeExtensions(() => alternativesRef.current && { ...alternativesRef.current, currentPath: docPath }),
         stashExtensions(() => stashRef.current && { ...stashRef.current, currentPath: docPath }),
+        markExtensions(() => marksRef.current),
         EditorView.updateListener.of((update) => {
           if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
           if (!update.docChanged || !onChangeRef.current) return;

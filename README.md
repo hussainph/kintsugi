@@ -82,6 +82,16 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | ⌥⌘X | Stash |
 | ⌥⌘V | Insert from stash |
 
+### Kin's marks
+
+| Keys | Action |
+| --- | --- |
+| ⌘' | Next mark |
+| ⇧⌘' | Previous mark |
+| ⌥↩ | Accept a mark |
+| ⌥⌘⌫ | Dismiss a mark |
+| ⌥⌘↩ | Apply the cuts |
+
 ### Formatting
 
 | Keys | Action |

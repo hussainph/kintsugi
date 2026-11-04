@@ -6,6 +6,7 @@ import { builtinKeymap, macSpecs } from "@kintsugi/editor/keymaps";
 import { formatKeymap } from "@kintsugi/editor/format";
 import { alternativeShortcuts } from "@kintsugi/editor/alternatives";
 import { stashShortcuts } from "@kintsugi/editor/stash";
+import { markShortcuts } from "@kintsugi/editor/marks";
 import { ACTIONS } from "../refine/prompts.ts";
 import { holdCommand } from "./holdCommand.ts";
 import { canonical, keysOf, matches } from "./keys.ts";
@@ -116,6 +117,11 @@ test("the alternatives keys listed are the editor's", () => {
 test("the stash keys listed are the editor's", () => {
   const listed = entries().filter((s) => s.group === "stash").map((s) => [canonical(s.key), s.label]);
   assert.deepEqual(listed, stashShortcuts.map((s) => [canonical(s.key), s.label]));
+});
+
+test("the mark keys listed are the editor's (KI-90)", () => {
+  const listed = entries().filter((s) => s.group === "marks").map((s) => [canonical(s.key), s.label]);
+  assert.deepEqual(listed, markShortcuts.map((s) => [canonical(s.key), s.label]));
 });
 
 test("CodeMirror's keys in the list are still its keys", () => {

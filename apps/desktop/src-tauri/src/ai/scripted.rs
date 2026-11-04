@@ -17,6 +17,8 @@ use super::writing::Tone;
 use serde_json::json;
 use std::time::Duration;
 
+mod marks;
+
 type Result<T> = std::result::Result<T, String>;
 
 const WORD_DELAY: Duration = Duration::from_millis(70);
@@ -1327,6 +1329,10 @@ pub fn edit(system: &str, messages: &[super::wire::Message]) -> String {
         .nth(1)
         .and_then(|rest| rest.split("</passage>").next())
         .unwrap_or_default();
+    // ⌘K's checks and trims (KI-90): marks and cuts, never new words.
+    if let Some(answer) = marks::answer(first) {
+        return answer;
+    }
     if system.contains("JSON array of up to 3 distinct strings")
         && let Some(level) = first
             .split_once("<alternatives level=\"")
