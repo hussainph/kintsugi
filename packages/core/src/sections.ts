@@ -32,6 +32,12 @@ export type FeedItem = {
   sourceSite?: string | null;
   /** A Hacker News item's discussion page; `url` is what it links to (API 7). */
   discussion?: string | null;
+  /** The author's own first paragraph, as plain text (KI-105). Cards show
+   *  it before `summary`; never Kin's words. */
+  excerpt?: string | null;
+  /** An author's own writing (an essay or personal post), never grouped
+   *  into a story or summarised (KI-105). */
+  writing?: boolean;
 };
 
 /** One sentence of Kin's story summary, and the items it came from. */
@@ -63,7 +69,10 @@ export type FeedEntry = { kind: "item"; item: FeedItem } | { kind: "story"; stor
 export type Entries = { entries: FeedEntry[]; total: number };
 
 export type FeedPage = { items: FeedItem[]; total: number };
-export type Reading = { item: FeedItem; text: string | null };
+/** News about the same thing as a piece of writing: a link, never folded
+ *  into it (KI-105). `story` is set when the news is a story to open. */
+export type Coverage = { id: number; title: string; source: string; story: number | null };
+export type Reading = { item: FeedItem; text: string | null; coverage?: Coverage[] };
 /** Which list an action happened in, for ranking. */
 export type Surface = "newest" | "picked";
 export type Place = { surface: Surface; position: number };

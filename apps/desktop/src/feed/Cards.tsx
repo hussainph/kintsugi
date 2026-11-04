@@ -4,8 +4,8 @@ import { cn } from "@kintsugi/ui/lib/utils";
 import type { Ref } from "react";
 import type { FeedItem as Item, Pick, Place, Story } from "./api";
 import { itemActions, storyActions } from "./actions";
-import { itemSource, itemTitle, sourcesLine, storyBlurb, webUrl } from "./model";
-import { ActionRow, itemIcon, ItemWhen, MediaMark, menuIcons, Picture, serif, SourceIcons, When, WhyThis, type Icon, type MenuEntry } from "./parts";
+import { itemBlurb, itemSource, itemTitle, sourcesLine, storyBlurb, webUrl } from "./model";
+import { ActionRow, itemIcon, ItemWhen, MediaMark, menuIcons, Picture, serif, SourceIcons, StorySources, When, WhyThis, type MenuEntry } from "./parts";
 import { FollowSuggestion } from "./SuggestionActions";
 
 /** An entry as the Feed shows it: an article or a story, with its pick if it is one. */
@@ -28,8 +28,9 @@ function describe(shown: Shown) {
     return {
       title: itemTitle(item),
       image: item.image,
-      text: item.summary && item.summary !== item.title ? item.summary : null,
-      icons: [itemIcon(item)] as Icon[],
+      // The author's own words (KI-105).
+      text: itemBlurb(item),
+      icons: <SourceIcons sources={[itemIcon(item)]} />,
       sources: via ? `${name} · via ${via}` : name,
       at: item.publishedAt ?? item.fetchedAt,
       lead: item,
@@ -40,7 +41,8 @@ function describe(shown: Shown) {
     title: story.title,
     image: story.image,
     text: storyBlurb(story),
-    icons: story.sources.map((s) => ({ key: s.id, title: s.title, kind: s.kind, site: s.site })),
+    // Kin's summary carries the summary mark; the lead's own text doesn't.
+    icons: <StorySources story={story} />,
     sources: sourcesLine(story.sources),
     at: story.sortAt,
     lead: story.lead,
@@ -109,7 +111,7 @@ export function Card({ ref, shown, place, open, size, wide }: CardProps) {
         {d.text && <p className={cn("text-pretty text-muted-foreground", lead ? `${serif} line-clamp-3 text-base leading-relaxed` : "line-clamp-2 text-sm leading-relaxed")}>{d.text}</p>}
         <div className="mt-0.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
           <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            <SourceIcons sources={d.icons} />
+            {d.icons}
             <span className="truncate">{d.sources}</span>
             <span aria-hidden>·</span>
             {shown.kind === "item" ? <ItemWhen item={shown.item} /> : <When at={d.at} />}
@@ -142,9 +144,7 @@ export function Row({ ref, shown, place, open, thumbnail }: { ref?: Ref<HTMLElem
       className="flex items-center gap-1 border-b border-border/60 last:border-b-0"
     >
       <button type="button" onClick={() => go(shown, open, place)} className="flex min-w-0 flex-1 items-start gap-3 py-3 text-left outline-none hover:bg-muted/40 focus-visible:bg-muted/50">
-        <span className="mt-0.5">
-          <SourceIcons sources={d.icons} />
-        </span>
+        <span className="mt-0.5 flex">{d.icons}</span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm leading-snug font-medium text-pretty">{d.title}</span>
           <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">

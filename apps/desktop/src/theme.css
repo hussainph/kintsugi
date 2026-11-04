@@ -388,3 +388,11 @@
    Kin's colour because Kin wrote it. */
 .ki-cite { display: inline-flex; margin-inline-start: 0.3em; border: 0; border-radius: var(--radius-s); padding: 0.05em 0.4em; vertical-align: 0.15em; color: var(--kin-ink); background: color-mix(in oklab, var(--kin) 16%, transparent); font-family: var(--font-data); font-size: var(--size-xxs); line-height: var(--line-xxs); white-space: nowrap; cursor: pointer; transition: background-color var(--motion-duration) var(--motion-easing); }
 .ki-cite:hover, .ki-cite:focus-visible { background: color-mix(in oklab, var(--kin) 30%, transparent); outline: none; }
+
+/* The summary mark (KI-105): Kin's summary of several sources, never an
+   author's own text. The stacked source icons sit on a pill of Kin's colour,
+   led by Kin's mark; each icon's ring takes the pill's colour. */
+.ki-summary-mark { display: inline-flex; flex-shrink: 0; align-items: center; border-radius: var(--radius-full); padding: 1.5px 2px 1.5px 1.5px; background: color-mix(in oklab, var(--kin) 26%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--kin) 55%, transparent); }
+.ki-summary-mark > * + * { margin-inline-start: -2px; }
+.ki-summary-mark [data-source-icon] { box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--kin) 60%, var(--background)); }
+.ki-summary-mark [data-kin-avatar] { position: relative; z-index: 1; border-radius: var(--radius-full); box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--kin) 60%, var(--background)); }

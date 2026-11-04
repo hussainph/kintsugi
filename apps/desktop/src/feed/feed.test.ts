@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Impression, Source } from "./api.ts";
+import { footnoteLink, groupable, itemBlurb, readerDocument, readerHref, summarised, summaryLabel } from "./model.ts";
 import { ago, catalogueStatus, citeLabel, health, Impressions, itemDate, itemSource, itemTitle, layoutFor, MAGAZINE_MIN_WIDTH, paragraphs, sourceIcon, sourceLogos, sourceName, sourcesLine, storyBlurb, storyCount, bySource, summaryNote, webUrl } from "./model.ts";
 
 const NOW = 1_800_000_000;
@@ -8,6 +9,7 @@ const source = (patch: Partial<Source> = {}): Source => ({
   id: 1, url: "https://www.quiet.example/feed.xml", kind: "feed", title: null, siteUrl: null, image: null, muted: false,
   catalogueEnabled: true, catalogueState: "queued", catalogueCount: 0, catalogueError: null,
   addedAt: NOW, lastFetchAt: null, lastSuccessAt: null, lastStatus: null, lastError: null, failures: 0, nextFetchAt: 0, items: 0,
+  grouping: false, groupingDefault: false,
   ...patch,
 });
 
@@ -118,7 +120,58 @@ test("citations name their source, and a story without a summary says why", () =
   assert.equal(summaryNote("ready"), null);
   assert.match(summaryNote("capped")!, /AI limit/);
   assert.match(summaryNote("failed")!, /first article/);
-  const lead = { summary: "The lead's own words." };
+  const lead = { summary: "The lead's own words.", excerpt: null };
   assert.equal(storyBlurb({ summary: null, lead }), "The lead's own words.");
   assert.equal(storyBlurb({ summary: { paragraphs: [[{ text: "One." }, { text: "Two." }]] }, lead }), "One. Two.");
+});
+
+test("cards show the author's own opening, and only Kin's summary carries the mark", () => {
+  assert.equal(itemBlurb({ title: "A bowl", excerpt: "I mended a bowl.", summary: "Feed summary" }), "I mended a bowl.");
+  assert.equal(itemBlurb({ title: "A bowl", excerpt: null, summary: "Feed summary" }), "Feed summary");
+  assert.equal(itemBlurb({ title: "Same", excerpt: null, summary: "Same" }), null);
+  assert.equal(storyBlurb({ summary: null, lead: { summary: "Feed", excerpt: "Opening." } }), "Opening.");
+  assert.equal(summarised({ summary: null }), false);
+  assert.equal(summarised({ summary: { paragraphs: [] } }), false);
+  assert.equal(summarised({ summary: { paragraphs: [[]] } }), true);
+  assert.equal(summaryLabel([1, 2, 3]), "Kin’s summary of 3 sources");
+  assert.equal(groupable("feed"), true);
+  assert.equal(groupable("page"), false);
+  assert.equal(groupable("author"), false);
+});
+
+test("the reader keeps an article's structure and only web links", () => {
+  const doc = readerDocument(
+    [
+      "# Mending a bowl",
+      "I spent the weekend on it.[^1]",
+      "## The lacquer",
+      "> Patience is the material.",
+      "- Sand\n- Coat\n  1. Wait",
+      "![A cracked bowl](https://x.example/bowl.png)",
+      "*The bowl after the third coat.*",
+      "```js\nmend(bowl)\n```",
+      "<script>alert(1)</script>",
+      "[^1]: Three days, between coats.",
+    ].join("\n\n"),
+    "Mending a bowl",
+  );
+  assert.deepEqual(
+    doc.blocks.map((b) => b.t),
+    ["p", "h", "quote", "list", "figure", "code"],
+  );
+  const figure = doc.blocks.find((b) => b.t === "figure");
+  assert.equal(figure?.t === "figure" && figure.caption, "The bowl after the third coat.");
+  assert.equal(doc.notes.length, 1);
+  assert.equal(doc.notes[0].id, "1");
+  assert.equal(JSON.stringify(doc).includes("script"), false, "no raw HTML");
+  // As the ingest writes a <figure>, and a footnote's marks.
+  const ingested = readerDocument("![A ledger](https://x.example/l.jpg)My ledger, the analogue version.\n\nText.[1](#fn:1)");
+  assert.deepEqual(ingested.blocks[0], { t: "figure", src: "https://x.example/l.jpg", alt: "A ledger", caption: "My ledger, the analogue version." });
+  assert.equal(footnoteLink("#fn:1", "1"), "ref");
+  assert.equal(footnoteLink("#fnref:1", "↩"), "back");
+  assert.equal(footnoteLink("https://x.example/#1", "1"), null);
+  assert.equal(readerHref("/b.png", "https://x.example/post/"), "https://x.example/b.png");
+  assert.equal(readerHref("#fn1", "https://x.example/post/"), null);
+  assert.equal(readerHref("javascript:alert(1)", null), null);
+  assert.equal(readerHref("https://x.example/", null), "https://x.example/");
 });

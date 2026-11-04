@@ -93,7 +93,7 @@ fn shares_a_name(a: &HashSet<String>, b: &HashSet<String>) -> bool {
 }
 
 /// The same link, ignoring the scheme, `www.` and a trailing slash.
-fn same_url(a: Option<&str>, b: Option<&str>) -> bool {
+pub fn same_url(a: Option<&str>, b: Option<&str>) -> bool {
     let key = |u: &str| {
         u.trim()
             .trim_start_matches("https://")
@@ -199,6 +199,39 @@ pub fn assign(pool: &[Member], fresh: &[i64], space: Space) -> Vec<Assignment> {
         };
         story.insert(item.id, key);
         out.push((item.id, key));
+    }
+    out
+}
+
+/// News about the same thing as a piece of writing (KI-105): (writing,
+/// news) pairs that would have grouped by the same rule as [`assign`], with
+/// at least one of the two in `fresh`. Writing never joins a story; the
+/// reader links to the news instead.
+pub fn related(
+    writing: &[Member],
+    news: &[Member],
+    fresh: &HashSet<i64>,
+    space: Space,
+) -> Vec<(i64, i64)> {
+    let mut out = Vec::new();
+    for w in writing {
+        let mine = names(&w.title);
+        for n in news {
+            if w.id == n.id
+                || w.source == n.source
+                || (!fresh.contains(&w.id) && !fresh.contains(&n.id))
+                || (w.published - n.published).abs() > WINDOW_SECS
+            {
+                continue;
+            }
+            let linked = same_url(w.url.as_deref(), n.url.as_deref());
+            if linked
+                || (cosine(&w.vector, &n.vector) >= space.threshold()
+                    && shares_a_name(&mine, &names(&n.title)))
+            {
+                out.push((w.id, n.id));
+            }
+        }
     }
     out
 }

@@ -1,7 +1,7 @@
 // A loopback fixture server for the Feed: a blog (with a page that links to
 // its feed), a YouTube-style Atom channel, a podcast, a JSON Feed, a broken
 // source, a page without a feed that changes on demand (KI-43), and a Google
-// Books stand-in for followed authors. Dates are relative to now so items are always fresh, and
+// Books stand-in for followed authors, three news sites, a personal blog and an HN-style feed (KI-105). Dates are relative to now so items are always fresh, and
 // artwork is generated locally: no test ever touches the live network.
 //
 //   node apps/desktop/test/feed-fixtures.ts    prints the base URL and waits
@@ -160,17 +160,69 @@ const NEWS_FEEDS: Record<string, { title: string; posts: Post[] }> = {
     ],
   },
 };
+/** Each news site's reporters (KI-105): several bylines say it's a publication, so its news groups. */
+const REPORTERS = ["Priya Raman", "Tom Okafor", "Lena Fischer", "Sam Lee"];
 function news(base: string, name: string) {
   const { title, posts } = NEWS_FEEDS[name];
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>${title}</title><link>${base}/${name}</link>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/"><channel><title>${title}</title><link>${base}/${name}</link>
 ${posts
   .map(
-    (p) => `<item><title>${escape(p.title)}</title><link>${base}/${name}/${p.slug}</link><guid>${base}/${name}/${p.slug}</guid>
-<pubDate>${rfc822(p.hours)}</pubDate><description>${escape(p.body.replace(" (mock-fail)", ""))}</description>
+    (p, i) => `<item><title>${escape(p.title)}</title><link>${base}/${name}/${p.slug}</link><guid>${base}/${name}/${p.slug}</guid>
+<dc:creator>${REPORTERS[(i + name.length) % REPORTERS.length]}</dc:creator><pubDate>${rfc822(p.hours)}</pubDate><description>${escape(p.body.replace(" (mock-fail)", ""))}</description>
 <content:encoded><![CDATA[${p.image ? `<p><img src="${base}/art/${p.image}.png"></p>` : ""}<p>${p.body}</p>]]></content:encoded></item>`,
   )
   .join("\n")}
+</channel></rss>`;
+}
+
+/**
+ * KI-105's writing: a personal blog (one author, whose name is the blog's)
+ * with an essay on the same quarter the news covers, in rich HTML, and a
+ * Hacker News style feed whose item links to that essay. The essay must
+ * never join the story, and its reader shows its structure.
+ */
+export const WRITING = {
+  blog: "Ada Lin",
+  essay: "What Lumen's Q4 2026 earnings taught me about my own numbers",
+  heading: "The record that wasn't the point",
+  caption: "My ledger, the analogue version.",
+  hn: "Hacker News: Front Page",
+};
+function personal(base: string) {
+  const essay = `<p>I read Lumen's Q4 2026 earnings the way I read my own studio's books: Lumen made $114.5 billion in revenue, up 12 percent, and I kept looking for the line nobody wants to talk about. My studio is tiny, and I still learned more from their quarter than from a year of my own spreadsheets.</p>
+<h2>${WRITING.heading}</h2>
+<p>Everyone led with the record phone sales. I kept looking at the <em>services</em> line, because that's the part of my own work I keep underpricing.<sup id="fnref:1"><a href="#fn:1">1</a></sup></p>
+<blockquote><p>Revenue is a story you tell about last quarter. Margin is the one you tell about next year.</p></blockquote>
+<p>Three things I'm changing:</p>
+<ul><li>I'm pricing repairs by the hour, not by the bowl.</li><li>I'm writing down every job I turn away.</li><li>I'm keeping a plain list of what each piece cost me.</li></ul>
+<figure><img src="${base}/art/2.png" alt="An open ledger on a workbench"><figcaption>${WRITING.caption}</figcaption></figure>
+<p>The formula I use now is one line:</p>
+<pre><code>=SUM(materials) + hours * rate</code></pre>
+<p>Read <a href="${base}/ada/pricing">my older post on pricing</a> for the long version.</p>
+<script>alert("never")</script>`;
+  const posts = [
+    { slug: "lumen", title: WRITING.essay, hours: 1, body: essay },
+    { slug: "bowl", title: "Mending a bowl, slowly", hours: 40, body: "<p>I spent my weekend mending a cracked bowl. My hands still smell of lacquer, and I liked every hour of it.</p>" },
+  ];
+  return `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>${WRITING.blog}</title><link href="${base}/ada/" rel="alternate"/><id>${base}/ada/</id>
+<updated>${iso(1)}</updated><author><name>${WRITING.blog}</name></author>
+${posts.map((p) => `<entry><title>${escape(p.title)}</title><link href="${base}/ada/${p.slug}" rel="alternate"/><id>${base}/ada/${p.slug}</id>
+<published>${iso(p.hours)}</published><updated>${iso(p.hours)}</updated><content type="html">${escape(p.body)}</content></entry>`).join("\n")}
+</feed>`;
+}
+function hn(base: string) {
+  const items = [
+    { id: 46001234, title: WRITING.essay, link: `${base}/ada/lumen`, hours: 0.5, by: "pottery_dev" },
+    { id: 46001100, title: "Show HN: A ledger for one-person studios", link: `${base}/ledger-app`, hours: 2, by: "maker" },
+    { id: 46000990, title: "Tide gauges are moving to open data", link: `${base}/tides`, hours: 3, by: "oceans" },
+    { id: 46000870, title: "A 1930s bridge carries modern trucks after a retrofit", link: `${base}/bridge`, hours: 4, by: "civil_eng" },
+  ];
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>${WRITING.hn}</title><link>https://news.ycombinator.com/</link><description>Hacker News RSS</description><generator>hnrss v2.1.1</generator>
+${items.map((i) => `<item><title><![CDATA[${i.title}]]></title><description><![CDATA[<p>Article URL: <a href="${i.link}">${i.link}</a></p><p>Comments URL: <a href="https://news.ycombinator.com/item?id=${i.id}">https://news.ycombinator.com/item?id=${i.id}</a></p><p>Points: 212</p>]]></description>
+<pubDate>${rfc822(i.hours)}</pubDate><link>${i.link}</link><dc:creator>${i.by}</dc:creator><comments>https://news.ycombinator.com/item?id=${i.id}</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=${i.id}</guid></item>`).join("\n")}
 </channel></rss>`;
 }
 
@@ -258,6 +310,10 @@ export async function startFeedFixtures(): Promise<Fixtures> {
       case "/ledger.xml":
       case "/bench.xml":
         return send("application/rss+xml", news(base, path.slice(1, -4)));
+      case "/ada.atom":
+        return send("application/atom+xml", personal(base));
+      case "/hn.xml":
+        return send("application/rss+xml", hn(base));
       case "/broken.xml":
         return send("text/plain", "down for maintenance", 503);
       default:
@@ -273,5 +329,5 @@ export async function startFeedFixtures(): Promise<Fixtures> {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const { base } = await startFeedFixtures();
-  console.log(`Feed fixtures at ${base}: /quiet/ /craft.atom /pod.xml /notes.json /workshop.xml /broken.xml /now /books/v1/volumes`);
+  console.log(`Feed fixtures at ${base}: /quiet/ /craft.atom /pod.xml /notes.json /workshop.xml /orchard.xml /ledger.xml /bench.xml /ada.atom /hn.xml /broken.xml /now /books/v1/volumes`);
 }

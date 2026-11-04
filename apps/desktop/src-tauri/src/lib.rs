@@ -187,6 +187,7 @@ fn builder() -> tauri::Builder<Runtime> {
             feed::feed_subscribe,
             feed::feed_unsubscribe,
             feed::feed_mute,
+            feed::feed_grouping,
             feed::catalogue::feed_catalogue,
             feed::catalogue::feed_follow_suggestion,
             feed::feed_refresh,

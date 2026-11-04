@@ -437,3 +437,285 @@ fn authors_bring_their_new_books() {
     });
     assert!(describe(SourceKind::Author, ingest::Error::Unavailable).contains("Open Library"));
 }
+
+// ── News or writing (KI-105) ─────────────────────────────────────────────
+
+/// 2026-11-04 00:00 UTC: the fixtures' day after.
+const FIXTURE_NOW: i64 = 1_793_750_400;
+
+/// Follows a recorded fixture: parsed by the real feed adapter, stored at a
+/// fixed time (so the test never ages), read by the classifier.
+fn follow_fixture(store: &Store, name: &str, url: &str, kind: SourceKind) -> i64 {
+    let (source, _) = store.add_source(url, kind, None, FIXTURE_NOW).unwrap();
+    let (info, items) = kintsugi_ingest::feed::parse(fixture(name).as_bytes(), url).unwrap();
+    let entries: Vec<NewItem> = items.into_iter().map(new_item).collect();
+    store
+        .insert_items(source.id, &entries, FIXTURE_NOW, true)
+        .unwrap();
+    store
+        .record_success(
+            source.id,
+            FIXTURE_NOW,
+            None,
+            Some(&info),
+            FIXTURE_NOW + 1_800,
+        )
+        .unwrap();
+    store.classify_source(source.id, FIXTURE_NOW).unwrap();
+    source.id
+}
+
+/// Clusters what's waiting as ranking's world would (hashed vectors), and
+/// keeps the decisions.
+fn cluster_fixtures(store: &Store) {
+    let mut world = kintsugi_rank::World::default();
+    let (mut visible, mut groupable, mut fresh) = (Vec::new(), Vec::new(), Vec::new());
+    for row in store.rank_rows().unwrap() {
+        let body = format!("{}\n\n{}", row.summary, row.text);
+        if row.visible {
+            visible.push(row.id);
+            if row.groupable {
+                groupable.push(row.id);
+            }
+            if !row.clustered {
+                fresh.push(row.id);
+            }
+        }
+        world.items.insert(
+            row.id,
+            kintsugi_rank::Item {
+                id: row.id,
+                source: row.source_id,
+                author: row.author,
+                topics: Vec::new(),
+                vector: kintsugi_rank::text::hashed(&row.title, &body),
+                title: row.title,
+                url: row.url,
+                media: kintsugi_rank::Media::parse(&row.media),
+                published: row.sort_at,
+                length: row.length,
+                story: row.story,
+            },
+        );
+    }
+    let (joins, related) = stories::plan(
+        &world,
+        &visible,
+        &groupable,
+        &fresh,
+        kintsugi_rank::StorySpace::Hashed,
+    );
+    store.add_coverage(&related).unwrap();
+    store.assign_stories(&fresh, &joins, FIXTURE_NOW).unwrap();
+}
+
+fn item_titled(store: &Store, title: &str) -> Item {
+    let id: i64 = store
+        .raw()
+        .query_row("SELECT id FROM items WHERE title = ?1", [title], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    store.item(id).unwrap()
+}
+
+const ESSAY: &str = "What Apple's Q4 2026 record taught me about my own numbers";
+
+fn fixture_day() -> (Store, [i64; 4]) {
+    let store = Store::memory();
+    // Hacker News first: its link to the essay is the item the essay's own
+    // feed then fills with the author's words.
+    let hn = follow_fixture(
+        &store,
+        "hn.rss.xml",
+        "https://hnrss.org/frontpage",
+        SourceKind::Hn,
+    );
+    let blog = follow_fixture(
+        &store,
+        "personal.atom.xml",
+        "https://maraito.example/feed.atom",
+        SourceKind::Feed,
+    );
+    let ledger = follow_fixture(
+        &store,
+        "news.rss.xml",
+        "https://ledger.example/feed/",
+        SourceKind::Feed,
+    );
+    let orchard = follow_fixture(
+        &store,
+        "news-orchard.rss.xml",
+        "https://orchard.example/feed/",
+        SourceKind::Feed,
+    );
+    (store, [blog, ledger, orchard, hn])
+}
+
+#[test]
+fn personal_blogs_stand_alone_and_news_sites_group() {
+    let (store, [blog, ledger, orchard, hn]) = fixture_day();
+    let source = |id| store.source(id).unwrap();
+    assert!(
+        !source(blog).grouping_default,
+        "a personal blog doesn't group"
+    );
+    assert!(source(ledger).grouping_default && source(orchard).grouping_default);
+    assert!(source(hn).grouping && source(hn).grouping_default);
+    let essay = item_titled(&store, ESSAY);
+    assert_eq!(essay.source_id, hn, "the HN link came first");
+    assert!(
+        essay.writing,
+        "a link to a personal blog, in the blog's own first person"
+    );
+    assert!(
+        !item_titled(
+            &store,
+            "Apple reports Q4 2026 earnings: $114.5 billion in revenue, up 12%"
+        )
+        .writing
+    );
+    assert!(item_titled(&store, "Mending a bowl, slowly").writing);
+    // The card shows the author's own opening, never a summary or hnrss's lines.
+    assert!(
+        essay
+            .excerpt
+            .as_deref()
+            .unwrap()
+            .starts_with("I read Apple's Q4 2026 earnings"),
+        "{:?}",
+        essay.excerpt
+    );
+    assert_eq!(
+        item_titled(&store, "Apple reports fourth quarter results").excerpt,
+        None
+    );
+    // The reader gets the author's whole post, its structure intact.
+    let text = store.content(essay.id).unwrap().unwrap();
+    for kept in [
+        "## The record that wasn't the point",
+        "> Revenue is a story",
+        "=SUM(materials)",
+    ] {
+        assert!(text.contains(kept), "{kept} in {text}");
+    }
+    assert!(!text.contains("alert("));
+
+    cluster_fixtures(&store);
+    let (entries, _) = store.entries(0, 40).unwrap();
+    let stories: Vec<&Story> = entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Story { story } => Some(story),
+            Entry::Item { .. } => None,
+        })
+        .collect();
+    assert_eq!(stories.len(), 1, "{entries:#?}");
+    let story = stories[0];
+    let in_story: Vec<i64> = story.items.iter().map(|i| i.source_id).collect();
+    assert!(
+        in_story.contains(&ledger) && in_story.contains(&orchard),
+        "{in_story:?}"
+    );
+    assert!(
+        story.items.iter().all(|i| i.id != essay.id),
+        "the essay never joins"
+    );
+    assert!(!in_story.contains(&blog));
+    // The essay stands alone, with its own title, and links to the news.
+    assert!(
+        entries
+            .iter()
+            .any(|e| matches!(e, Entry::Item { item } if item.id == essay.id))
+    );
+    let coverage = store.coverage(essay.id).unwrap();
+    assert!(
+        coverage.iter().any(|c| c.story == Some(story.id)),
+        "the news story is a link: {coverage:?}"
+    );
+    // Nothing of the essay is summarised.
+    let due = store.summaries_due().unwrap();
+    assert!(
+        due.iter()
+            .all(|job| job.articles.iter().all(|a| a.0 != essay.id))
+    );
+}
+
+#[test]
+fn the_switch_takes_a_source_out_of_its_stories_and_back() {
+    let (store, [_, _, orchard, _]) = fixture_day();
+    cluster_fixtures(&store);
+    let story = |store: &Store| {
+        store
+            .entries(0, 40)
+            .unwrap()
+            .0
+            .into_iter()
+            .find_map(|e| match e {
+                Entry::Story { story } => Some(story),
+                Entry::Item { .. } => None,
+            })
+    };
+    let before = story(&store).unwrap();
+    store
+        .set_summary(
+            before.id,
+            before.items.len(),
+            &store::Outcome::Ready {
+                title: Some("Apple's record quarter".into()),
+                summary: store::Summary {
+                    paragraphs: vec![vec![store::Sentence {
+                        text: "Apple made $114.5 billion.".into(),
+                        cites: before.items.iter().map(|i| i.id).collect(),
+                    }]],
+                },
+                model: "mock".into(),
+                cost: 0.0,
+            },
+            FIXTURE_NOW,
+        )
+        .unwrap();
+    let off = store.set_grouping(orchard, false, FIXTURE_NOW).unwrap();
+    assert!(!off.grouping);
+    // One source left: no longer a story, and Kin's summary, which read
+    // the item that left, is gone.
+    assert!(story(&store).is_none());
+    let summary: Option<String> = store
+        .raw()
+        .query_row(
+            "SELECT summary FROM stories WHERE id = ?1",
+            [before.id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(summary, None);
+    // On again: its news is placed again and joins.
+    let on = store.set_grouping(orchard, true, FIXTURE_NOW).unwrap();
+    assert!(on.grouping);
+    assert!(store.unclustered().unwrap() > 0);
+    cluster_fixtures(&store);
+    assert!(
+        story(&store)
+            .unwrap()
+            .items
+            .iter()
+            .any(|i| i.source_id == orchard)
+    );
+    // A personal blog switched on still keeps its essays whole.
+    let blog = store
+        .sources()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.title.as_deref() == Some("Mara Ito"))
+        .unwrap();
+    store.set_grouping(blog.id, true, FIXTURE_NOW).unwrap();
+    cluster_fixtures(&store);
+    let essay = item_titled(&store, ESSAY);
+    assert!(
+        story(&store)
+            .unwrap()
+            .items
+            .iter()
+            .all(|i| i.id != essay.id)
+    );
+}

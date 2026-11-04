@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hacker News through hnrss.org, as it sends it: the article as the link,
+     the discussion as comments and guid. One item links to the personal
+     essay, one to a news page nobody else in the fixtures follows. -->
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>Hacker News: Front Page</title>
+  <link>https://news.ycombinator.com/</link>
+  <description>Hacker News RSS</description>
+  <docs>https://hnrss.org/</docs>
+  <generator>hnrss v2.1.1</generator>
+  <atom:link href="https://hnrss.org/frontpage" rel="self" type="application/rss+xml"></atom:link>
+  <item>
+    <title><![CDATA[What Apple's Q4 2026 record taught me about my own numbers]]></title>
+    <description><![CDATA[
+<p>Article URL: <a href="https://maraito.example/2026/apple-q4-numbers/">https://maraito.example/2026/apple-q4-numbers/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=46001234">https://news.ycombinator.com/item?id=46001234</a></p>
+<p>Points: 212</p>
+<p># Comments: 98</p>
+]]></description>
+    <pubDate>Tue, 03 Nov 2026 22:30:00 +0000</pubDate>
+    <link>https://maraito.example/2026/apple-q4-numbers/</link>
+    <dc:creator>pottery_dev</dc:creator>
+    <comments>https://news.ycombinator.com/item?id=46001234</comments>
+    <guid isPermaLink="false">https://news.ycombinator.com/item?id=46001234</guid>
+  </item>
+  <item>
+    <title><![CDATA[Apple reports fourth quarter results]]></title>
+    <description><![CDATA[
+<p>Article URL: <a href="https://www.apple.example/newsroom/2026/11/q4-results/">https://www.apple.example/newsroom/2026/11/q4-results/</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=46001100">https://news.ycombinator.com/item?id=46001100</a></p>
+<p>Points: 340</p>
+<p># Comments: 410</p>
+]]></description>
+    <pubDate>Tue, 03 Nov 2026 22:05:00 +0000</pubDate>
+    <link>https://www.apple.example/newsroom/2026/11/q4-results/</link>
+    <dc:creator>finance_reader</dc:creator>
+    <comments>https://news.ycombinator.com/item?id=46001100</comments>
+    <guid isPermaLink="false">https://news.ycombinator.com/item?id=46001100</guid>
+  </item>
+</channel>
+</rss>

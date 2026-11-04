@@ -22,6 +22,7 @@ pub mod stories;
 pub mod synthetic;
 pub mod text;
 pub mod vector;
+pub mod writing;
 
 pub use ranker::{
     Change, Clip, DAY_MS, Effect, Event, Explained, HOUR_MS, Item, KIN_SURFACE, Media, Pick,

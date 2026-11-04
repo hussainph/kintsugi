@@ -23,7 +23,7 @@ import { after, before, test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium, type Browser, type Page } from "playwright";
 import { stopRunner, openApp } from "./headless-app.ts";
-import { BLOG_TITLES, NEWS, WORKSHOP, startFeedFixtures, type Fixtures } from "./feed-fixtures.ts";
+import { BLOG_TITLES, NEWS, WORKSHOP, WRITING, startFeedFixtures, type Fixtures } from "./feed-fixtures.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const TIMEOUT = Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000);
@@ -120,7 +120,7 @@ const item = (title: string) => newest().locator(byTitle(title));
 const pick = (title: string) => picked().locator(byTitle(title));
 /** The opened article or story page. */
 const opened = (title: string) => feedRegion().locator(byTitle(title)).filter({ has: page.getByRole("heading", { level: 1 }) });
-const back = () => feedRegion().getByRole("button", { name: /^(Feed|Story)$/ }).first();
+const back = () => feedRegion().getByRole("button", { name: /^(Feed|Story|Back)$/ }).first();
 const db = () => new DatabaseSync(resolve(config, "feed.sqlite"), { readOnly: true });
 const events = (kind: string) => db().prepare("SELECT * FROM events WHERE kind = ? ORDER BY id").all(kind) as Record<string, unknown>[];
 const invoke = <T,>(cmd: string, args: unknown = {}) =>
@@ -628,6 +628,80 @@ test("stories: grouped across sources, summarised with citations, the cap and a 
   await until(() => events("not_interested").filter((e) => JSON.parse(String(e.data ?? "{}")).story).length >= 2, () => "both articles hidden");
   await page.getByRole("button", { name: "Undo" }).first().click();
   await item(NEWS.rule).waitFor();
+});
+
+test("writing stays whole: a personal essay stands alone in one rich reader, and only Kin's summaries carry the mark", { timeout: TIMEOUT }, async () => {
+  await page.getByRole("button", { name: "Following" }).click();
+  await follow("Link", `${fixtures.base}/ada.atom`, new RegExp(`Following ${WRITING.blog}`));
+  await follow("Link", `${fixtures.base}/hn.xml`, new RegExp(`Following ${WRITING.hn}`));
+  // The switch: on for the news sites, off for the personal blog.
+  const sources = page.getByRole("list", { name: "Sources" });
+  const grouping = (name: string) => sources.getByRole("switch", { name: `Group ${name} with other coverage` });
+  await grouping(WRITING.blog).waitFor();
+  assert.equal(await grouping(WRITING.blog).getAttribute("aria-checked"), "false");
+  assert.equal(await grouping("Orchard Daily").getAttribute("aria-checked"), "true");
+  assert.equal(await grouping(WRITING.hn).getAttribute("aria-checked"), "true");
+  await sources.getByRole("listitem", { name: WRITING.blog }).scrollIntoViewIfNeeded();
+  await both("50-following-grouping");
+  await page.keyboard.press("Escape");
+
+  // The essay shares Lumen's quarter with the news, and still stands alone.
+  // Its HN link is the same article, so it's the one item.
+  const essay = item(WRITING.essay);
+  await essay.first().waitFor();
+  assert.equal(await essay.count(), 1);
+  assert.equal(await essay.getAttribute("data-story"), null);
+  const sql = db().prepare("SELECT i.writing, i.story_id FROM items i WHERE i.title = ? AND i.source_id = (SELECT id FROM sources WHERE title = ?)").get(WRITING.essay, WRITING.blog) as { writing: number; story_id: number | null };
+  assert.deepEqual({ ...sql }, { writing: 1, story_id: null });
+
+  // The summary mark: on the summarised story, never on an author's item.
+  const quarter = item(NEWS.quarter);
+  await quarter.locator("[data-summary-mark]").waitFor({ timeout: 30_000 });
+  assert.match(String(await quarter.locator("[data-summary-mark]").getAttribute("aria-label")), /^Kin’s summary of 3 sources$/);
+  assert.equal(await essay.locator("[data-summary-mark]").count(), 0);
+  assert.equal(await item(NEWS.alone[0]).locator("[data-summary-mark]").count(), 0);
+  // A story still showing its lead's own text (the failed one) has no mark.
+  assert.equal(await item(NEWS.failing).locator("[data-summary-mark]").count(), 0);
+  await both("51-summary-mark");
+
+  // One reader: headings, the quote, the list, the figure and its caption, code, a link, the footnote; no script.
+  await essay.getByRole("button").first().click();
+  const reading = page.getByRole("region", { name: `Reading ${WRITING.essay}` });
+  await reading.getByRole("heading", { name: WRITING.heading }).waitFor();
+  await reading.locator("blockquote").getByText(/Margin is the one you tell about next year/).waitFor();
+  assert.equal(await reading.locator("ul > li").count(), 3);
+  assert.equal(await reading.locator("figure figcaption").innerText(), WRITING.caption);
+  await reading.locator("pre code").getByText("=SUM(materials) + hours * rate").waitFor();
+  assert.equal(await reading.getByRole("link", { name: "my older post on pricing" }).count(), 1);
+  assert.doesNotMatch(await reading.innerText(), /alert/);
+  // "Also covered by": the HN link and the news, as links; the news opens as the story.
+  const covered = feedRegion().locator("[data-coverage]");
+  await covered.waitFor({ timeout: 30_000 });
+  assert.match(await covered.innerText(), /^Also covered by /);
+  await page.locator("[data-sonner-toast]").first().waitFor({ state: "detached", timeout: 15_000 }).catch(() => undefined);
+  await both("52-writing-reader");
+  await reading.getByRole("heading", { name: WRITING.heading }).evaluate((h) => h.scrollIntoView({ block: "start" }));
+  await both("53-writing-reader-body");
+  await covered.evaluate((c) => c.scrollIntoView({ block: "end" }));
+  await both("54-writing-also-covered");
+  // The news is a story: its link opens the story page, and Back returns.
+  await covered.getByRole("button").first().click();
+  await opened(NEWS.quarter).waitFor();
+  await back().click();
+  await reading.waitFor();
+  await back().click();
+  await item(NEWS.quarter).waitFor();
+
+  // Switching a news site off takes its articles out of the story.
+  await page.getByRole("button", { name: "Following" }).click();
+  await grouping("Bench Notes").click();
+  await sources.locator('[aria-label="Group Bench Notes with other coverage"][aria-checked="false"]').waitFor();
+  await page.keyboard.press("Escape");
+  await quarter.getByText("Orchard Daily, The Ledger").waitFor({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Following" }).click();
+  await grouping("Bench Notes").click();
+  await page.keyboard.press("Escape");
+  await quarter.getByText(/^\d articles from 3 sources$/).waitFor({ timeout: 30_000 });
 });
 
 test("the magazine below 960 px becomes For you / Newest tabs", { timeout: TIMEOUT }, async () => {

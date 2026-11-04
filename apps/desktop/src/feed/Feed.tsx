@@ -314,7 +314,8 @@ export function Feed() {
             pick={view.pick}
             note={view.note}
             place={view.place ?? { surface: "newest", position: 0 }}
-            backLabel={stack.length > 1 && stack.at(-2)?.kind === "story" ? "Story" : "Feed"}
+            backLabel={stack.length > 1 && stack.at(-2)?.kind === "story" ? "Story" : stack.length > 1 ? "Back" : "Feed"}
+            open={open}
             onBack={back}
           />
         )}

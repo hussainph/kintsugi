@@ -525,7 +525,7 @@ mod tests {
             .unwrap();
         }
         let store = Store::open(&path).unwrap();
-        assert_eq!(user_version(&store), 3);
+        assert_eq!(user_version(&store), 4);
         assert_eq!(store.unclustered().unwrap(), 1);
         assert_eq!(store.items(0, 10, None).unwrap().items[0].story_id, None);
     }
@@ -575,7 +575,7 @@ mod tests {
             .unwrap();
         }
         let store = Store::open(&path).unwrap();
-        assert_eq!(user_version(&store), 3);
+        assert_eq!(user_version(&store), 4);
         let old = store.item(2).unwrap();
         assert!(old.back_catalogue);
         assert_eq!(old.published_at, Some(years_ago), "the original date stays");

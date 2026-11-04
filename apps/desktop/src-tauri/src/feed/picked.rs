@@ -124,6 +124,8 @@ struct Candidates {
     /// Every visible item, and those clustering hasn't placed yet (KI-94).
     visible: Vec<i64>,
     unclustered: Vec<i64>,
+    /// Visible news from sources that group (KI-105): only these join stories.
+    groupable: Vec<i64>,
 }
 
 /// Everything the ranker reads, including pending metadata for local scoring.
@@ -203,6 +205,9 @@ fn world(app: &AppHandle, now: i64) -> Result<(World, Candidates, Space, u64)> {
         }
         if row.visible {
             candidates.visible.push(row.id);
+            if row.groupable {
+                candidates.groupable.push(row.id);
+            }
             if !row.clustered {
                 candidates.unclustered.push(row.id);
             }
@@ -290,6 +295,7 @@ fn ranked<T>(
         app,
         &mut world,
         &pool.visible,
+        &pool.groupable,
         &pool.unclustered,
         space == Space::Model,
     )?;

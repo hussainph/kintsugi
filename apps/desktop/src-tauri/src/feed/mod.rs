@@ -39,7 +39,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
-use store::{Due, Entry, Event, Item, NewItem, Page, Source, SourceKind, Store, Story};
+use store::{Coverage, Due, Entry, Event, Item, NewItem, Page, Source, SourceKind, Store, Story};
 use tauri::{Emitter, Manager};
 use tokio::sync::Notify;
 
@@ -253,7 +253,14 @@ async fn full_text(app: &AppHandle, item: &Item) -> Result<()> {
     let longer = fetched
         .map(|page| page.body)
         .filter(|body| body.chars().count() > content.as_deref().map_or(0, |c| c.chars().count()));
-    with(app, |s| s.set_full_text(item.id, longer.as_deref(), now()))?;
+    with(app, |s| {
+        s.set_full_text(item.id, longer.as_deref(), now())?;
+        // The whole article may read differently from its excerpt.
+        if longer.is_some() {
+            s.classify_source(item.source_id, now())?;
+        }
+        Ok(())
+    })?;
     if longer.is_some() {
         catalogue::mark_neighbours(app);
     }
@@ -468,6 +475,10 @@ async fn poll(store: &Mutex<Store>, engine: &Engine, due: &Due) -> Polled {
                     polled.source.as_ref(),
                     now + interval(due.kind),
                 )?;
+                // News or writing (KI-105), with its title and new items.
+                if added > 0 || due.first {
+                    store.classify_source(due.id, now)?;
+                }
                 Ok(added)
             }
             Err(error) => {
@@ -709,6 +720,23 @@ pub fn feed_mute(app: AppHandle, id: i64, muted: bool) -> Result<Source> {
     Ok(source)
 }
 
+/// "Group with other coverage" (KI-105): off takes the source's items out
+/// of their stories at once; on lets clustering place them again.
+#[tauri::command]
+pub fn feed_grouping(app: AppHandle, id: i64, enabled: bool) -> Result<Source> {
+    let source = with(&app, |s| s.set_grouping(id, enabled, now()))?;
+    changed(&app);
+    if enabled {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            if picked::refresh(&app).is_ok() {
+                changed(&app);
+            }
+        });
+    }
+    Ok(source)
+}
+
 /// Fetch now: one source, or every unmuted one.
 #[tauri::command]
 pub async fn feed_refresh(app: AppHandle, id: Option<i64>) -> Result<Vec<Polled>> {
@@ -931,6 +959,8 @@ fn with_data(mut event: Event, data: serde_json::Value) -> Event {
 pub struct Reading {
     pub item: Item,
     pub text: Option<String>,
+    /// For writing (KI-105): news about the same thing, as links.
+    pub coverage: Vec<Coverage>,
 }
 
 /// Opening an item in the app to read it, logged as an `open`. An excerpt
@@ -946,9 +976,15 @@ pub async fn feed_read(app: AppHandle, id: i64, place: Option<Place>) -> Result<
     })?;
     let _ = full_text(&app, &item).await;
     with(&app, |s| {
+        let item = s.item(id)?;
         Ok(Reading {
             text: source_text(s.content(id)?),
-            item: s.item(id)?,
+            coverage: if item.story_id.is_none() {
+                s.coverage(id)?
+            } else {
+                Vec::new()
+            },
+            item,
         })
     })
 }
@@ -1158,50 +1194,39 @@ pub fn feed_save(app: AppHandle, id: i64, place: Option<Place>) -> Result<Item> 
 }
 
 /// A small sample Feed for driving the phone in the Simulator against a
-/// scratch vault (`phone_dev_server`): three sources and eight items with
+/// scratch vault (`phone_dev_server`): two news sites and a personal blog, seven items with
 /// their whole text, so reading never fetches anything. Links point at
 /// `base` (the dev server itself), never the web. Headless builds only.
 #[cfg(all(test, feature = "headless"))]
 pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
     const REPAIR: &str = "Mending Workshop's 2026 study follows 240 repaired bowls across three workshops, comparing the visible repair methods used, the cost of labour and materials, how often a repair failed over the following year and whether owners kept using the bowls after the first repair; the kintsugi study also separates material costs from workshop time, so the repair prices can be compared without treating a photograph as evidence that the method worked.";
     const RSS: &str = "RSS Reader 2 adds an offline reading queue and full-text search for personal websites. The new RSS Reader stores articles on the device, keeps reading position between sessions and lets readers export their subscriptions. The release keeps the existing feed format and has no recommendation algorithm.";
-    let sources = [
+    const ESSAY: &str = "I spent a year keeping a ledger of every bowl I mended, and the numbers changed how I price my own work.\n\n## What I counted\n\nThe study counted 240 bowls. I counted 31, and mine are messier:\n\n- the hours each repair took\n- the lacquer, by the gram\n- the second coat nobody sees\n\n> A repair you can't see is a repair nobody pays for.\n\n![A cracked bowl on the workbench](https://picsum.photos/id/1080/800/500 \"The bowl that started the ledger.\")\n\nThe formula I use now is one line:\n\n```\n=SUM(materials) + hours * rate\n```\n\nRead [the workshop's own report](https://example.com/report) for their numbers.";
+    // Two news sites (several reporters each) that cover the same two
+    // stories, and a personal blog whose essay shares a name with one of
+    // them but always stands alone (KI-105).
+    let sources: [(&str, &[&str], &[(&str, &str)]); 3] = [
         (
-            "The Slow Workshop",
-            "Mara Ito",
+            "Workshop Wire",
+            &["Ana Ruiz", "Tom Okafor", "Lena Fischer"],
             &[
-                ("Mending as a design method", REPAIR),
                 (
                     "Mending Workshop 2026 measures the cost of visible repair",
                     REPAIR,
                 ),
                 (
-                    "The workbench diary",
-                    "Notes from a year of fixing things instead of replacing them.",
-                ),
-            ][..],
-        ),
-        (
-            "Quiet Web Weekly",
-            "Ana Ruiz",
-            &[
-                (
-                    "Mending Workshop 2026: 240 bowls repaired and tracked for a year",
-                    REPAIR,
+                    "RSS Reader 2 brings offline reading to personal websites",
+                    RSS,
                 ),
                 (
                     "Attention is the scarce material",
-                    "On reading slowly, and what the infinite feed costs a writer.",
-                ),
-                (
-                    "RSS Reader 2 brings offline reading to personal websites",
-                    RSS,
+                    "Publishers say readers spend less time per article than a year ago.",
                 ),
             ][..],
         ),
         (
             "Night Shift",
-            "Dr. Lee",
+            &["Dr. Lee", "Sam Ode", "Priya Raman"],
             &[
                 (
                     "Mending Workshop 2026 reports a year of repair results",
@@ -1213,11 +1238,25 @@ pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
                 ),
             ][..],
         ),
+        (
+            "Mara Ito",
+            &["Mara Ito"],
+            &[
+                (
+                    "What Mending Workshop 2026 taught me about my own prices",
+                    ESSAY,
+                ),
+                (
+                    "The workbench diary",
+                    "I keep notes from a year of fixing things instead of replacing them. My rule: if I fix it twice, I write it down.",
+                ),
+            ][..],
+        ),
     ];
     let now = now();
     let mut added = 0;
     with(app, |s| {
-        for (n, (title, author, items)) in sources.iter().enumerate() {
+        for (n, (title, authors, items)) in sources.iter().enumerate() {
             let (source, _) = s.add_source(
                 &format!("{base}/sample/feed-{n}.xml"),
                 SourceKind::Feed,
@@ -1227,19 +1266,24 @@ pub(crate) fn seed_sample(app: &AppHandle, base: &str) -> Result<usize> {
             let entries: Vec<NewItem> = items
                 .iter()
                 .enumerate()
-                .map(|(i, (title, summary))| NewItem {
+                .map(|(i, (title, text))| NewItem {
                     guid: format!("sample-{n}-{i}"),
                     url: Some(format!("{base}/sample/{n}/{i}")),
                     title: Some((*title).into()),
-                    author: Some((*author).into()),
-                    summary: Some((*summary).into()),
-                    content: Some(format!("{summary}\n\n{}", format!("{summary} ").repeat(5))),
+                    author: Some(authors[i % authors.len()].into()),
+                    summary: text.split("\n\n").next().map(Into::into),
+                    content: Some(if text.contains('\n') {
+                        (*text).to_string()
+                    } else {
+                        format!("{text}\n\n{}", format!("{text} ").repeat(5))
+                    }),
                     image: None,
                     media: "article",
                     published_at: Some(now - (n as i64 * 3 + i as i64) * 3_600),
                 })
                 .collect();
             added += s.insert_items(source.id, &entries, now, true)?;
+            s.classify_source(source.id, now)?;
         }
         Ok(())
     })?;
