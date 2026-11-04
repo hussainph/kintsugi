@@ -395,6 +395,8 @@ async function alternativeShot(name: string, colorScheme: "light" | "dark") {
   await page.emulateMedia({ colorScheme });
   await page.waitForFunction((dark) => document.documentElement.classList.contains("dark") === dark, colorScheme === "dark");
   await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  // The root class changes before the shared theme's colour transitions finish.
+  await page.waitForTimeout(400);
   await shot(`${name}-${colorScheme}`);
 }
 
