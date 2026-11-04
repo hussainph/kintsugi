@@ -51,7 +51,8 @@ async function cut(text: string) {
   });
   await line(text).click();
   await page.keyboard.press("Meta+Alt+x");
-  await stashRows().filter({ hasText: text }).waitFor();
+  // Stashing doesn't open the margin (KI-110); the Stash tab stays mounted.
+  await stashRows().filter({ hasText: text }).waitFor({ state: "attached" });
 }
 async function rename() {
   await row(DOC).focus();

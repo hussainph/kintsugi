@@ -62,7 +62,7 @@ async function openStash() {
 test("stash and insert share undo with the draft, and notes stay outside it", { timeout: 90_000 }, async () => {
   await line(CUT).click();
   await page.keyboard.press("Meta+Alt+x");
-  await stash().waitFor({ state: "visible" });
+  await openStash();
   await rows().filter({ hasText: CUT }).waitFor();
   await until(() => !draft().includes(CUT) && existsSync(file()) && readFileSync(file(), "utf8").includes(CUT), "stash saves outside draft");
   await page.locator(".cm-content").focus();

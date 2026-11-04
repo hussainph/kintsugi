@@ -248,7 +248,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
       try { openAlternatives(view); } finally { cursorOpening.current = false; }
     });
   }), [editor.viewRef]);
-  const extensions = useMemo(() => [editor.extensions ?? [], followVersions], [editor.extensions, followVersions]);
+  const extensions = useMemo(() => [editor.extensions ?? [], followVersions, stash.extension], [editor.extensions, followVersions, stash.extension]);
   useEffect(() => {
     const view = editor.viewRef.current;
     if (!view) return;

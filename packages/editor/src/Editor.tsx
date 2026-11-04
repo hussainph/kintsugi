@@ -36,7 +36,7 @@ export { acceptMark, applyMarks, clearMarks, cutRange, dismissMark, focusMark, f
 export type { CardSpec } from "./card";
 export { inlineCard, paragraphEnd, revealRange } from "./card";
 export type { Stash, StashItem } from "./stash";
-export { addRequestedStashItems, addStashNote, flushStash, focusStashItem, insertStashItem, moveStashItem, openStashPicker, removeStashItem, reorderStashItems, stashCommands, stashItems, stashKinReply, stashMime, stashRewrite, stashSelection, stashShortcuts } from "./stash";
+export { addRequestedStashItems, addStashNote, flushStash, focusStashItem, insertStashItem, moveStashItem, openStashPicker, removeStashItem, reorderStashItems, stashCommands, stashItems, stashKinReply, draftSelectionMime, stashDropped, stashMime, stashRange, stashRewrite, stashSelection, stashShortcuts, stashTargetAt } from "./stash";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */

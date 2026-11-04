@@ -77,6 +77,43 @@
 .ki-margin-toggle:active { transform: translateY(var(--motion-press-distance)); }
 .ki-margin-toggle:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
 
+/* A stash out of sight pulses one dot (KI-110), on the margin button or on
+   the Stash tab's header. It lives PULSE_MS (state.ts), then unmounts. */
+.ki-margin-pulse {
+  position: absolute;
+  top: var(--space-xxs);
+  right: var(--space-xxs);
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--neutral-10);
+  box-shadow: 0 0 0 var(--border-l) var(--neutral-1);
+  pointer-events: none;
+  animation: ki-margin-pulse 900ms var(--ki-margin-ease) both;
+}
+.ki-margin-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--neutral-10);
+  animation: ki-margin-pulse-ring 900ms ease-out both;
+}
+.ki-margin-tab > .ki-margin-pulse { top: 0; right: 0; }
+@keyframes ki-margin-pulse {
+  0% { opacity: 0; transform: scale(0.4); }
+  20% { opacity: 1; transform: scale(1.2); }
+  40% { transform: scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+@keyframes ki-margin-pulse-ring {
+  0%, 15% { opacity: 0.5; transform: scale(1); }
+  70%, 100% { opacity: 0; transform: scale(3); }
+}
+/* A draft selection over the Stash tab's header. */
+.ki-margin-tab[data-drop] { background: var(--neutral-3); color: var(--neutral-10); }
+
 /* Today's chat in the Kin tab; KI-104 replaces it. */
 .ki-kin-tab { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 
@@ -85,4 +122,11 @@
   .ki-margin[data-open] { transition: opacity 120ms linear, visibility 0s; }
   .ki-margin-toggle { transition: none; }
   .ki-margin-toggle:active { transform: none; }
+  .ki-margin-pulse { animation: ki-margin-pulse-fade 900ms linear both; }
+  .ki-margin-pulse::after { display: none; }
+}
+@keyframes ki-margin-pulse-fade {
+  0% { opacity: 0; }
+  20%, 75% { opacity: 1; }
+  100% { opacity: 0; }
 }

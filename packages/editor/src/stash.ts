@@ -18,7 +18,8 @@ export type Stash = {
   items: StashItem[];
   currentPath?: string;
   onSave: (path: string, items: StashItem[]) => void;
-  onOpen?: () => void;
+  /** After a stash from the draft (key, button, ⌘K or drag), with the new item's id. */
+  onStashed?: (id: string) => void;
   onPicker?: () => void;
   /** Rejected operations leave the document and undo history unchanged. */
   onError?: (message: string) => void;
@@ -29,6 +30,8 @@ export type Stash = {
 };
 
 export const stashMime = "application/x-kintsugi-stash";
+/** A selection dragged out of the draft (KI-110): its path, span and words. */
+export const draftSelectionMime = "application/x-kintsugi-draft-selection";
 export const stashShortcuts = [
   { key: "Mod-Alt-x", label: "Stash" },
   { key: "Mod-Alt-v", label: "Insert from stash" },
@@ -290,29 +293,68 @@ export const stashToSave = stashItems;
 let counter = 0;
 const newId = () => `s-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}-${counter++}`;
 
+/** What ⌥⌘X would stash now: the selection, else the cursor's paragraph.
+ * Null in a read-only or unloaded stash, or on a blank paragraph. */
+export function stashTargetAt(state: EditorState): { from: number; to: number; selection: boolean } | null {
+  if (!writable(state)) return null;
+  const selection = state.selection.main;
+  const range = selection.empty ? paragraphRange(state) : selection;
+  if (!range || !state.sliceDoc(range.from, range.to).trim()) return null;
+  return { from: range.from, to: range.to, selection: !selection.empty };
+}
+
 /** Moves the selection, else its paragraph, out of the draft. Both halves
  * belong to one isolated undo step. Blank paragraphs and read-only views refuse. */
 export function stashSelection(view: EditorView): boolean {
+  const selection = view.state.selection.main;
+  const range = selection.empty ? paragraphRange(view.state) : selection;
+  return !!range && stashRange(view, range.from, range.to);
+}
+
+/** Moves one span out of the draft, as stashSelection does: ⌘K's passage
+ * and a dragged selection name theirs. */
+export function stashRange(view: EditorView, from: number, to: number): boolean {
   const state = view.state;
   const field = writable(state);
   if (!field) return false;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to > state.doc.length || from >= to) return false;
   if (field.items.length >= MAX_ITEMS) return reject(state, fullMessage);
-  const selection = state.selection.main;
-  const range = selection.empty ? paragraphRange(state) : selection;
-  if (!range) return false;
-  const text = state.sliceDoc(range.from, range.to);
+  const text = state.sliceDoc(from, to);
   if (!text.trim()) return false;
-  const item: StashItem = { id: newId(), by: "owner", kind: "text", text, created: new Date().toISOString(), anchor: stashAnchorAt(state.doc.toString(), range.from, range.to) };
+  const item: StashItem = { id: newId(), by: "owner", kind: "text", text, created: new Date().toISOString(), anchor: stashAnchorAt(state.doc.toString(), from, to) };
   const error = boundsError([...stashItems(state), item]);
   if (error) return reject(state, error);
   view.dispatch({
-    changes: { from: range.from, to: range.to },
-    selection: EditorSelection.cursor(range.from),
+    changes: { from, to },
+    selection: EditorSelection.cursor(from),
     effects: mutate.of({ put: [{ item, range: null }] }),
     annotations: isolateHistory.of("full"), userEvent: "delete.stash", scrollIntoView: true,
   });
-  configAt(view.state)?.onOpen?.();
+  configAt(view.state)?.onStashed?.(item.id);
   return true;
+}
+
+/** The drag payload a draft selection carries, or null when it can't be stashed. */
+export function draftSelectionData(state: EditorState): string | null {
+  const field = writable(state);
+  const { from, to, empty } = state.selection.main;
+  if (!field || empty) return null;
+  return JSON.stringify({ path: field.path, from, to, text: state.sliceDoc(from, to) });
+}
+
+/** Stashes a selection dropped on the Stash tab, if it still reads as it did
+ * when the drag began. Another document's drag, or changed words, do nothing. */
+export function stashDropped(view: EditorView, data: string): boolean {
+  try {
+    const payload: unknown = JSON.parse(data);
+    if (!payload || typeof payload !== "object") return false;
+    const { path, from, to, text } = payload as Record<string, unknown>;
+    if (path !== read(view.state)?.path || typeof from !== "number" || typeof to !== "number" || typeof text !== "string") return false;
+    if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to > view.state.doc.length || view.state.sliceDoc(from, to) !== text) return false;
+    return stashRange(view, from, to);
+  } catch {
+    return false;
+  }
 }
 
 /** Explicit Ask Kin / Stash-on-reply entry point. No autonomous producer or
@@ -552,6 +594,12 @@ export function stashExtensions(getConfig: () => Stash | undefined): Extension {
     })))),
     keymap.of([{ key: stashShortcuts[0].key, run: stashSelection }, { key: stashShortcuts[1].key, run: openStashPicker }]),
     EditorView.domEventHandlers({
+      dragstart(event, view) {
+        // Leaves CodeMirror's own text drag alone; the Stash tab reads this.
+        const data = event.dataTransfer && draftSelectionData(view.state);
+        if (data) event.dataTransfer!.setData(draftSelectionMime, data);
+        return false;
+      },
       dragover(event) {
         if (!event.dataTransfer?.types.includes(stashMime)) return false;
         event.preventDefault();
@@ -583,6 +631,7 @@ export function stashExtensions(getConfig: () => Stash | undefined): Extension {
 export function stashCommands(view: EditorView) {
   return {
     stashSelection: () => stashSelection(view),
+    stashRange: (from: number, to: number) => stashRange(view, from, to),
     stashItems: () => stashItems(view.state),
     addRequestedStashItems: (items: readonly StashItem[]) => addRequestedStashItems(view, items),
     addStashNote: (text: string) => addStashNote(view, text),

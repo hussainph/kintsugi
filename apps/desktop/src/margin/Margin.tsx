@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { draftSelectionMime, stashDropped } from "@kintsugi/editor/stash";
 import { Tabs } from "@kintsugi/ui/graphical";
 import { PanelRight } from "@kintsugi/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
@@ -8,7 +9,7 @@ import { KinTab } from "@/kin/KinTab";
 import { onDiscuss, onOpenKin, onOpenThread, openKin } from "@/lib/chat";
 import { keysOf, matches } from "@/lib/keys";
 import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
-import { hideMargin, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, visibleTab, type MarginTab, type MarginWhere } from "./state";
+import { hideMargin, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, useStashPulse, visibleTab, type MarginTab, type MarginWhere } from "./state";
 import type { MarginWriting } from "./Stash";
 import "./margin.css";
 
@@ -30,6 +31,10 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
   const tabs = tabsFor(where);
   const value = margin.tab ?? (tabs.includes(margin.chosen) ? margin.chosen : "kin");
   const aside = useRef<HTMLElement>(null);
+  const pulse = useStashPulse();
+  // A selection dragged from the draft onto the Stash tab's header (KI-110).
+  const [dropOnTab, setDropOnTab] = useState(false);
+  const draftDrag = (e: DragEvent) => !!writing && e.dataTransfer.types.includes(draftSelectionMime);
 
   // Anything that opens Kin opens the margin on it.
   useEffect(() => {
@@ -83,6 +88,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
               onClick={() => (margin.open ? close() : toggleMargin())}
             >
               <PanelRight />
+              {pulse?.at === "margin" && <span key={pulse.n} className="ki-margin-pulse" data-testid="margin-pulse" aria-hidden />}
               <ShortcutHint id="margin" side="below" />
             </button>
           </TooltipTrigger>
@@ -109,8 +115,31 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
           <div className="ki-margin-head" data-tauri-drag-region>
             <Tabs.List aria-label="Margin tabs" className="ki-margin-list">
               {TABS.filter((t) => tabs.includes(t.tab)).map(({ tab, label }) => (
-                <Tabs.Tab key={tab} value={tab} className="ki-margin-tab">
+                <Tabs.Tab
+                  key={tab}
+                  value={tab}
+                  className="ki-margin-tab"
+                  data-tab={tab}
+                  data-drop={tab === "stash" && dropOnTab ? "" : undefined}
+                  {...(tab === "stash" && {
+                    onDragOver: (e: DragEvent) => {
+                      if (!draftDrag(e)) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      setDropOnTab(true);
+                    },
+                    onDragLeave: () => setDropOnTab(false),
+                    onDrop: (e: DragEvent) => {
+                      setDropOnTab(false);
+                      const view = writing?.viewRef.current;
+                      if (!draftDrag(e) || !view) return;
+                      e.preventDefault();
+                      stashDropped(view, e.dataTransfer.getData(draftSelectionMime));
+                    },
+                  })}
+                >
                   {label}
+                  {tab === "stash" && pulse?.at === "tab" && <span key={pulse.n} className="ki-margin-pulse" data-testid="stash-tab-pulse" aria-hidden />}
                   <ShortcutHint id={TAB_KEYS[tab]} side="below" />
                 </Tabs.Tab>
               ))}

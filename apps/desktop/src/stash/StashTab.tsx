@@ -1,9 +1,13 @@
-import { useId, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { draftSelectionMime } from "@kintsugi/editor/stash";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { ArrowDown, MessageCircle, Plus, Trash2, X } from "@kintsugi/ui/icons";
 import { toast } from "sonner";
+import { ShortcutHint } from "@/components/Shortcuts";
+import { keysOf } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
 import { KinAvatar } from "../kin/Avatar";
 import { openLink } from "../kin/links";
 import type { StashItem } from "./api";
@@ -11,6 +15,8 @@ import { splitWikiLinks } from "./model";
 import "./stash.css";
 
 export const STASH_DRAG_TYPE = "application/x-kintsugi-stash";
+/** How long a fresh row stays highlighted; `stash.css` fades within it. */
+export const FRESH_MS = 1200;
 
 type Action = void | Promise<unknown>;
 export type StashTabProps = {
@@ -21,6 +27,14 @@ export type StashTabProps = {
   asking?: boolean;
   error?: string;
   versions?: ReactNode;
+  /** What ⌥⌘X would take now (KI-110): the selection, else the paragraph.
+   *  `ready` is false when there's nothing there to stash. */
+  target?: { selection: boolean; ready: boolean };
+  /** The row just stashed, to highlight once. */
+  fresh?: string | null;
+  onStash?: () => Action;
+  /** A selection dragged from the draft, with its payload. */
+  onStashDrop?: (data: string) => void;
   onInsert: (item: StashItem) => Action;
   onFocus?: (item: StashItem | null) => void;
   onRemove: (item: StashItem) => Action;
@@ -57,7 +71,7 @@ export function StashTab(props: StashTabProps) {
   return <StashPanel key={props.path} {...props} />;
 }
 
-function StashPanel({ path, items, readOnly = false, loading = false, asking = false, error, versions, onInsert, onFocus, onRemove, onMove, onAdd, onAsk, onDiscuss, onRetry, onDrag }: StashTabProps) {
+function StashPanel({ path, items, readOnly = false, loading = false, asking = false, error, versions, target = { selection: false, ready: false }, fresh = null, onStash, onStashDrop, onInsert, onFocus, onRemove, onMove, onAdd, onAsk, onDiscuss, onRetry, onDrag }: StashTabProps) {
   const helpId = useId();
   const headingId = useId();
   const [focused, setFocused] = useState<string | null>(null);
@@ -69,6 +83,21 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
   const rows = useRef(new Map<string, HTMLLIElement>());
   const dragging = useRef<string | null>(null);
   const disabled = readOnly || loading || !path;
+  const [dropping, setDropping] = useState(false);
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const draftDrag = (event: DragEvent) => !disabled && !!onStashDrop && event.dataTransfer.types.includes(draftSelectionMime);
+
+  // A fresh stash lights its row once, when the row arrives.
+  useEffect(() => {
+    if (!fresh) return;
+    setHighlight(fresh);
+    const timer = setTimeout(() => setHighlight((current) => current === fresh ? null : current), FRESH_MS);
+    return () => clearTimeout(timer);
+  }, [fresh]);
+  const shown = highlight !== null && items.some((item) => item.id === highlight);
+  useEffect(() => {
+    if (shown) rows.current.get(highlight!)?.scrollIntoView({ block: "nearest" });
+  }, [shown, highlight]);
 
   const focusRow = (id: string) => rows.current.get(id)?.focus({ preventScroll: true });
   const focusItem = (item: StashItem) => {
@@ -139,7 +168,25 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
   };
 
   return (
-    <div className="ki-stash" data-skip-motion={skipMotion ? "" : undefined} data-path={path}>
+    <div
+      className="ki-stash"
+      data-skip-motion={skipMotion ? "" : undefined}
+      data-path={path}
+      data-drop-target={dropping ? "" : undefined}
+      onDragOver={(event) => {
+        if (!draftDrag(event)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDropping(true);
+      }}
+      onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false); }}
+      onDrop={(event) => {
+        setDropping(false);
+        if (!draftDrag(event)) return;
+        event.preventDefault();
+        onStashDrop!(event.dataTransfer.getData(draftSelectionMime));
+      }}
+    >
       {versions}
       <section className="ki-stash-shared" aria-labelledby={headingId}>
         <div className="ki-stash-heading">
@@ -148,6 +195,26 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
             <KinAvatar className="ki-stash-ask-avatar" />
             {asking ? "Asking Kin…" : "Ask Kin"}
           </Button>
+          {onStash && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="xs"
+                  className="ki-stash-take relative"
+                  disabled={disabled || !target.ready}
+                  aria-keyshortcuts="Meta+Alt+X"
+                  // Keeps focus, and the cursor, in the draft.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => void onStash()}
+                >
+                  {target.selection ? "Stash selection" : "Stash paragraph"}
+                  <ShortcutHint id="stash" side="below" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{keysOf(SHORTCUTS.stash.key)}</TooltipContent>
+            </Tooltip>
+          )}
         </div>
         {error && <div className="ki-stash-error" role="alert"><span>{error}</span>{onRetry && <Button type="button" variant="ghost" size="xs" onClick={() => void onRetry()} disabled={loading}>Retry</Button>}</div>}
         <p id={helpId} className="sr-only">Reorder with Option and arrow keys.</p>
@@ -164,6 +231,7 @@ function StashPanel({ path, items, readOnly = false, loading = false, asking = f
                 data-by={item.by}
                 data-kind={item.kind}
                 data-focused={expanded ? "" : undefined}
+                data-fresh={highlight === item.id ? "" : undefined}
                 data-drop={drop?.id === item.id ? drop.after ? "after" : "before" : undefined}
                 tabIndex={0}
                 aria-label={`${item.by === "owner" ? "Your" : "Kin's"} ${item.kind === "rewrite" ? "rewrite" : item.kind === "idea" ? "idea" : "text"}`}

@@ -125,3 +125,44 @@ export function useSlot(tab: MarginTab): HTMLElement | null {
     () => slots.get(tab) ?? null,
   );
 }
+
+// --- A stash out of sight (KI-110) ------------------------------------------
+// After stashing with the Stash tab hidden, a dot pulses once: on the margin
+// button while the margin is closed, else on the Stash tab's header. No toast.
+
+export type StashPulse = { at: "margin" | "tab"; n: number } | null;
+let pulse: StashPulse = null;
+let pulseTimer: ReturnType<typeof setTimeout> | undefined;
+const pulseListeners = new Set<() => void>();
+const pulsed = () => pulseListeners.forEach((listener) => listener());
+
+/** The dot's whole life; `margin.css` animates within it. */
+export const PULSE_MS = 900;
+
+/** Where a fresh stash shows: "row" when the Stash tab is showing (its row
+ *  highlights), otherwise it pulses a dot and says where. */
+export function noticeStash(): "row" | "margin" | "tab" {
+  const tab = visibleTab();
+  if (tab === "stash") return "row";
+  const at = tab ? "tab" : "margin";
+  pulse = { at, n: (pulse?.n ?? 0) + 1 };
+  clearTimeout(pulseTimer);
+  pulseTimer = setTimeout(() => {
+    pulse = null;
+    pulsed();
+  }, PULSE_MS);
+  pulsed();
+  return at;
+}
+
+export const stashPulse = () => pulse;
+
+export function useStashPulse(): StashPulse {
+  return useSyncExternalStore(
+    (listener) => {
+      pulseListeners.add(listener);
+      return () => pulseListeners.delete(listener);
+    },
+    () => pulse,
+  );
+}
