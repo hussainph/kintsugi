@@ -127,7 +127,7 @@ type Field = {
   /** Removed here; the host's copy is stale until it saves. */
   removed: ReadonlySet<string>;
   panel: Panel | null;
-  /** Keep cycling the span just swapped until the writer moves or edits. */
+  /** Keep cycling the span just swapped or clicked by its dots, until the writer moves or edits. */
   cycleId: string | null;
   request: number | null;
   askError: string | null;
@@ -305,7 +305,8 @@ function makeField(getConfig: () => Alternatives | undefined) {
       if (value.switcher && !tr.effects.some((effect) => effect.is(showSwitcher))) {
         const typed = tr.docChanged && !tr.isUserEvent("input.alternative");
         const live = value.sets.get(value.switcher);
-        const moved = (tr.selection || tr.docChanged) && !tr.isUserEvent("select.pointer") && activeSet(tr.state, tr.state.selection.main, value)?.id !== value.switcher;
+        const stepped = tr.isUserEvent("input.alternative") && tr.effects.some((effect) => effect.is(cycleSet) && effect.value === value.switcher);
+        const moved = !stepped && (tr.selection || tr.docChanged) && !tr.isUserEvent("select.pointer") && activeSet(tr.state, tr.state.selection.main, value)?.id !== value.switcher;
         if (typed || !live?.range || tr.state.readOnly || moved) value = { ...value, switcher: null };
       }
       if (value.panel) {
@@ -528,13 +529,15 @@ export function closeAlternatives(view: ViewLike): boolean {
   return true;
 }
 
-/** Shows the next (1) or previous (-1) version of the panel's set, or of the
- *  set at the selection or cursor. */
+/** Shows the next (1) or previous (-1) version of the panel's set, else the
+ *  last explicitly chosen set, else the set at the selection or cursor. */
 export function cycleAlternative(view: ViewLike, direction: 1 | -1): boolean {
   const field = read(view.state);
   if (!field || view.state.readOnly) return false;
   const panel = field.panel;
   const recent = field.cycleId ? field.sets.get(field.cycleId) : null;
+  // A new cursor position clears cycleId, so even while a pointer click
+  // holds the old card still, the keys immediately follow the new cursor.
   const live = panel ? target(view.state, field, panel).live : recent?.range ? recent : activeSet(view.state, view.state.selection.main, field);
   return !!live && stepAlternative(view, live.id, direction);
 }
@@ -595,16 +598,21 @@ export function applyAlternative(view: ViewLike, spec: { from: number; to: numbe
   return true;
 }
 
-/** Ask on the panel's span, or open it on the selection/cursor first.
- *  A held passage prevents an answer from landing on text edited while waiting. */
+/** The ask shortcut: an explicit selection takes priority over an open
+ *  panel; otherwise ask on the panel or the cursor's span. A held passage
+ *  prevents an answer from landing on text edited while waiting. */
 export function askForAlternatives(view: ViewLike): boolean {
+  return askAlternatives(view, "shortcut");
+}
+
+function askAlternatives(view: ViewLike, source: "shortcut" | "panel"): boolean {
   const config = configFor(view.state.facet(askFacet));
   let field = read(view.state);
   if (!field || !config?.ask || view.state.readOnly) return false;
   if (field.request !== null) return true;
   // Asked with a selection, Kin answers for what's selected, not a set it overlaps.
   const selection = view.state.selection.main;
-  if (!selection.empty && !onSelection(view.state, field)) {
+  if (source === "shortcut" && !selection.empty && !onSelection(view.state, field)) {
     const level = levelOf(view.state, selection);
     const range = { from: selection.from, to: selection.to };
     const live = exactSet(view.state, range, field);
@@ -705,9 +713,15 @@ export function alternativePanelCommands(view: ViewLike & { focus: () => void })
       const highlight = live ? live.entries.findIndex((e) => e.id === live.current) : 0;
       view.dispatch({ effects: setPanel.of({ ...panel, exact: false, level, setId: live?.id ?? null, highlight }) });
     },
-    askKin: () => { askForAlternatives(view); },
+    askKin: () => { askAlternatives(view, "panel"); },
     cycle: (direction: 1 | -1) => { cycleAlternative(view, direction); },
-    close: () => { closeAlternatives(view); refocus(); },
+    close: () => {
+      closeAlternatives(view);
+      refocus();
+      // The external panel's Escape never reaches the editor's observer.
+      // Dispatch after focusing, cancelling that focus change's rest too.
+      view.dispatch({ effects: showSwitcher.of(null) });
+    },
   };
 }
 
@@ -798,7 +812,12 @@ class Count extends WidgetType {
       const live = read(view.state)?.sets.get(this.id);
       if (!live?.range) return;
       view.dispatch({ selection: EditorSelection.cursor(live.range.to) });
-      view.dispatch({ effects: showSwitcher.of(view.state.readOnly ? null : live.id) });
+      const panel = read(view.state)?.panel;
+      view.dispatch({ effects: [
+        showSwitcher.of(view.state.readOnly ? null : live.id),
+        cycleSet.of(live.id),
+        ...(panel ? [setPanel.of({ ...panel, pos: live.range.to, phrase: null, homes: {}, exact: false, level: live.level, setId: live.id, highlight: Math.max(0, live.entries.findIndex((entry) => entry.id === live.current)) })] : []),
+      ] });
       view.focus();
     });
     return dom;
@@ -912,16 +931,22 @@ function switcherCard(field: StateField<Field>, getConfig: () => Alternatives | 
 const rest = ViewPlugin.fromClass(class {
   timer: ReturnType<typeof setTimeout> | undefined;
   pointer = false;
+  alive = true;
   readonly view: EditorView;
   readonly up = () => {
     if (!this.pointer) return;
     this.pointer = false;
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => settleSwitcher(this.view), SWITCHER_CLICK);
+    if (this.view.hasFocus) this.timer = setTimeout(() => { if (this.view.hasFocus) settleSwitcher(this.view); }, SWITCHER_CLICK);
+  };
+  readonly blur = () => {
+    this.pointer = false;
+    clearTimeout(this.timer);
   };
   constructor(view: EditorView) {
     this.view = view;
     view.dom.ownerDocument.addEventListener("mouseup", this.up, true);
+    view.dom.ownerDocument.defaultView?.addEventListener("blur", this.blur);
   }
   down(event: MouseEvent) {
     if (event.button !== 0 || (event.target as Element | null)?.closest?.(".cm-step-card, .cm-alt-count, .cm-alt-gutter")) return;
@@ -931,18 +956,33 @@ const rest = ViewPlugin.fromClass(class {
   update(update: ViewUpdate) {
     // Shown or hidden on purpose (Escape, a click on the dots): no pending rest brings it back.
     if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(showSwitcher)))) { clearTimeout(this.timer); return; }
-    if (!update.docChanged && !update.selectionSet) return;
+    if (!this.view.hasFocus) { clearTimeout(this.timer); return; }
+    if (!update.docChanged && !update.selectionSet && !update.focusChanged) return;
     clearTimeout(this.timer);
     const live = update.state.readOnly ? null : activeSet(update.state, update.state.selection.main);
     if (!live || read(update.state)?.switcher === live.id || this.pointer) return;
-    this.timer = setTimeout(() => { if (!this.pointer) showVersionSwitcher(this.view); }, SWITCHER_REST);
+    this.timer = setTimeout(() => { if (!this.pointer && this.view.hasFocus) showVersionSwitcher(this.view); }, SWITCHER_REST);
   }
   destroy() {
+    this.alive = false;
     clearTimeout(this.timer);
     this.view.dom.ownerDocument.removeEventListener("mouseup", this.up, true);
+    this.view.dom.ownerDocument.defaultView?.removeEventListener("blur", this.blur);
   }
 }, {
   eventHandlers: { mousedown(event) { this.down(event); } },
+  // Observe Escape even if another keymap consumes it. A pending rest isn't
+  // visible state yet, and must not bring the card back after dismissal.
+  eventObservers: { keydown(event) {
+    if (event.key !== "Escape") return;
+    clearTimeout(this.timer);
+    // Other Escape handlers can collapse a selection or return focus from
+    // the list, scheduling another rest. Cancel after those have finished.
+    queueMicrotask(() => {
+      clearTimeout(this.timer);
+      if (this.alive) hideVersionSwitcher(this.view);
+    });
+  } },
 });
 
 /** The document's sets as they'd be stored now. */

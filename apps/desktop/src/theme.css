@@ -162,10 +162,6 @@
 .ki-step-card-step, .ki-step-card-actions { display: flex; align-items: center; gap: 0; }
 .ki-step-card-count { min-width: 3.5em; text-align: center; color: var(--neutral-8); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ki-step-card-actions { margin-inline-start: auto; }
-.ki-step-card-actions:empty { display: none; }
-button.ki-step-card-count { padding: var(--space-xxs) var(--space-xs); border: 0; border-radius: var(--radius-s); background: none; font: inherit; cursor: pointer; }
-button.ki-step-card-count:focus-visible { outline: var(--border-l) solid var(--neutral-7); outline-offset: 1px; }
-@media (hover: hover) and (pointer: fine) { button.ki-step-card-count:hover { background: var(--neutral-3); color: var(--neutral-10); } }
 /* A span's versions (KI-111): only ‹ 1 of N ›, under the span's end. */
 .ki-step-card[data-kind=versions] { padding: var(--space-xxs); }
 @keyframes ki-step-card-in { from { opacity: 0; } }

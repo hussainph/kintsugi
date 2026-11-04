@@ -31,7 +31,7 @@ export type StepCardProps = {
   /** One plain line: Kin's reason. */
   note?: string;
   /** The icon buttons, in order, after ‹ 1 of N ›. */
-  actions: readonly StepCardAction[];
+  actions?: readonly StepCardAction[];
   /** The group's accessible name. */
   label?: string;
   /** `data-kind` on the card, for styles and tests. */
@@ -75,9 +75,9 @@ export function StepCard({ index, total, onStep, stepKeys, count, text, note, ac
             {count ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button type="button" className="ki-step-card-count" data-card-count onClick={count.onClick}>
+                  <Button type="button" variant="ghost" size="xs" className="ki-step-card-count" aria-label={`${count.label}, ${index} of ${total}`} data-card-count onClick={count.onClick}>
                     {index} of {total}
-                  </button>
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent>
                   {count.label}
@@ -92,11 +92,11 @@ export function StepCard({ index, total, onStep, stepKeys, count, text, note, ac
             <Action action={{ id: "next", label: "Next", icon: ChevronRight, shortcut: stepKeys?.next ?? "nextMark", onClick: () => onStep(1) }} />
           </span>
         )}
-        <span className="ki-step-card-actions">
+        {!!actions?.length && <span className="ki-step-card-actions">
           {actions.map((action) => (
             <Action key={action.id} action={action} />
           ))}
-        </span>
+        </span>}
       </div>
     </div>
   );

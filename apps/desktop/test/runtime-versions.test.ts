@@ -3,8 +3,8 @@
 // headless Chromium. No model is involved.
 //
 // Versions you can find: the cursor, not an exact selection, finds a span's
-// versions. Clicking in a span shows the `‹ 1 of N ›` card under its end at
-// once; arrowing into one shows it once the cursor rests; typing hides it.
+// versions. Clicking in a span shows the `‹ 1 of N ›` card under its end
+// once clicks settle; arrowing into one shows it once the cursor rests; typing hides it.
 // ‹ › and ⌥⌘[ / ⌥⌘] swap in place; the count opens the list in the Stash
 // tab, and so does ⌘K's "Versions (3)". Nested spans: the innermost wins and
 // the others are tabs. A partial selection finds the set it overlaps. Light
@@ -39,6 +39,7 @@ const SETS = [
   set("phrase", "phrase", "along an old line", [["down an old seam", "owner"]]),
   set("word", "word", "old", [["ancient", "owner"], ["faint", "kin"]]),
   set("paragraph", "paragraph", "Kilns teach patience, and patience teaches repair.", [["Kilns teach patience.", "kin"]]),
+  set("ending", "phrase", "patience teaches repair.", [["repair teaches patience.", "owner"]]),
   set("flowed", "sentence", FLOWED, [["Gold makes the crack the part you look at.", "owner"]]),
   set("seam", "word", "seam", [["join", "kin"]]),
 ];
@@ -126,7 +127,7 @@ async function click(text: string, offset = 1, on = page) {
   await on.mouse.click(point.x + 1, point.y);
 }
 
-test("clicking in a span shows ‹ 1 of 3 › at once, under the span's end; Escape hides it", { timeout: 60_000 }, async () => {
+test("clicking in a span shows ‹ 1 of 3 › after clicks settle, under the span's end; Escape hides it", { timeout: 60_000 }, async () => {
   await click("old");
   // A click shows it once no second click follows.
   await card().waitFor({ timeout: 1000 });
@@ -140,6 +141,32 @@ test("clicking in a span shows ‹ 1 of 3 › at once, under the span's end; Esc
   await shot("01-card-light");
   await page.keyboard.press("Escape");
   await card().waitFor({ state: "detached" });
+});
+
+test("Escape cancels a card before it appears, after either a click or a key", { timeout: 60_000 }, async () => {
+  await click("old");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  assert.equal(await card().count(), 0, "a pending click must not bring the card back");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  assert.equal(await card().count(), 0, "a pending keyboard rest must not bring it back");
+  await click("along", 1);
+  for (let i = 0; i < 10; i++) await page.keyboard.press("Shift+ArrowRight");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(500);
+  assert.equal(await card().count(), 0, "collapsing a selection with Escape must not restart the rest");
+});
+
+test("a pending rest does not show a card after focus leaves the editor", { timeout: 60_000 }, async () => {
+  await click("old");
+  await page.locator("[data-sidebar=sidebar]").getByRole("button", { name: /^Feed/ }).focus();
+  await page.waitForTimeout(500);
+  assert.equal(await card().count(), 0);
+  await click("old");
+  await card().waitFor();
+  await page.keyboard.press("Escape");
 });
 
 test("‹ › and ⌥⌘] / ⌥⌘[ swap in place; only the showing version is in the file", { timeout: 60_000 }, async () => {
@@ -231,7 +258,7 @@ test("nested spans: the innermost wins, the others are tabs with their counts", 
 
 test("the count opens the list in the Stash tab", { timeout: 60_000 }, async () => {
   await click("old");
-  await card().waitFor();
+  await cardOf("word").waitFor();
   await count().click();
   await field().waitFor();
   assert.equal(await selectedTab().getAttribute("aria-label"), "Word, 3 versions");
@@ -264,6 +291,12 @@ test("a paragraph's dots in the gutter put the cursor there and show its card", 
   await page.locator(".cm-line", { hasText: "Kilns teach" }).locator(".cm-alt-gutter").click();
   await card().waitFor({ timeout: 1000 });
   assert.equal(await count().textContent(), "1 of 2");
+  // The nested selection ends at the same position. The keys must step the
+  // paragraph shown by the card, not the innermost set touching the cursor.
+  await page.keyboard.press("Meta+Alt+BracketRight");
+  await until(async () => !(await editorText()).includes("and patience teaches") && (await editorText()).includes("Kilns teach patience."), "the keys swap the paragraph, not its nested selection");
+  await page.keyboard.press("Meta+Alt+BracketLeft");
+  await shows("Kilns teach patience, and patience teaches repair.");
   await card().locator('[data-card-action="next"]').click();
   await until(async () => !(await editorText()).includes("and patience teaches") && (await editorText()).includes("Kilns teach patience."), "Kin's shorter paragraph shows");
   await card().locator('[data-card-action="previous"]').click();
@@ -275,17 +308,18 @@ test("a card never moves the text between the clicks of a double-click", { timeo
   await click("old");
   await card().waitFor();
   // Under the card: the second paragraph. Double-click a word there.
-  const before = await at("repair", 2);
+  const before = await at("teach", 2);
   await page.mouse.move(before.x, before.y);
   await page.mouse.down();
   await page.mouse.up();
-  const between = await at("repair", 2);
+  const between = await at("teach", 2);
   assert.equal(between.y, before.y, "nothing moved after the first click");
   await page.mouse.down({ clickCount: 2 });
   await page.mouse.up({ clickCount: 2 });
-  assert.equal(await page.evaluate(() => window.getSelection()?.toString()), "repair");
-  // Once clicks settle, the card moves to the set the cursor is in: the paragraph's.
-  await until(async () => (await count().textContent()) === "1 of 2", "the paragraph's card");
+  assert.equal(await page.evaluate(() => window.getSelection()?.toString()), "teach");
+  // Once clicks settle, the card moves to the paragraph, not its nested ending.
+  await cardOf("paragraph").waitFor();
+  assert.equal(await count().textContent(), "1 of 2");
 });
 
 test("in a flowed paragraph: the cursor finds a sentence across a soft break, and a word on its next source line", { timeout: 60_000 }, async () => {
@@ -321,7 +355,7 @@ test("in a flowed paragraph: the cursor finds a sentence across a soft break, an
 test("dark mode", { timeout: 60_000 }, async () => {
   await page.emulateMedia({ colorScheme: "dark" });
   await click("old");
-  await card().waitFor();
+  await cardOf("word").waitFor();
   await page.waitForTimeout(300);
   await shot("03-card-dark");
   await page.keyboard.press("Meta+Alt+KeyA");
