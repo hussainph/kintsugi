@@ -3,6 +3,7 @@ import type { EditorView } from "@codemirror/view";
 import { alternativePanelCommands, type alternativesPanelModel } from "@kintsugi/editor/alternatives";
 import { Button } from "@kintsugi/ui/components/button";
 import { KinAvatar } from "@/kin/Avatar";
+import { matches } from "@/lib/keys";
 import "./versions.css";
 
 type Model = ReturnType<typeof alternativesPanelModel>;
@@ -15,7 +16,18 @@ export function Versions({ model, viewRef, onAsk }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const actions = () => viewRef.current && alternativePanelCommands(viewRef.current);
   const hasSpan = model?.entries.some((entry) => entry.text.trim());
-  return <section className={model ? "ki-versions cm-alt-panel" : "ki-versions"} aria-label="Versions">
+  return <section className={model ? "ki-versions cm-alt-panel" : "ki-versions"} aria-label="Versions" onKeyDown={(event) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing) return;
+    const command = actions();
+    if (!command) return;
+    const key = event.nativeEvent;
+    let run: (() => void) | undefined;
+    if (matches(key, "Mod-Alt-]")) run = () => command.cycle(1);
+    else if (matches(key, "Mod-Alt-[")) run = () => command.cycle(-1);
+    else if (matches(key, "Mod-Shift-Alt-a")) run = command.askKin;
+    else if (matches(key, "Mod-Alt-a") || event.key === "Escape") run = command.close;
+    if (run) { event.preventDefault(); event.stopPropagation(); run(); }
+  }}>
     <div className="ki-versions-heading"><h2>Versions</h2><div role="tablist" aria-label="Version span">
       {([model?.levels.includes("phrase") ? "phrase" : "word", "sentence", "paragraph"] as const).map((level) => <button key={level} type="button" role="tab" aria-selected={model?.level === level} disabled={!model?.levels.includes(level)} onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.level(level)}>{names[level]}</button>)}
     </div></div>
@@ -33,9 +45,6 @@ export function Versions({ model, viewRef, onAsk }: Props) {
           if (level) { event.preventDefault(); command.level(level); }
         }
         else if (event.key === "Backspace" && !text) { event.preventDefault(); command.remove(model.highlight); }
-        else if (event.altKey && event.metaKey && event.code === "KeyA") { event.preventDefault(); if (event.shiftKey) command.askKin(); else command.close(); }
-        else if (event.key === "Escape") { event.preventDefault(); command.close(); }
-        else if (event.altKey && event.metaKey && (event.code === "BracketLeft" || event.code === "BracketRight")) { event.preventDefault(); command.cycle(event.code === "BracketRight" ? 1 : -1); }
       }} />
       <Button variant="ghost" size="xs" disabled={model.readOnly || !model.canAsk || model.asking} onClick={onAsk}>{model.asking ? "Thinking…" : "Ask Kin"}</Button>
     </div>{model.askError && <p role="alert" className="ki-error">{model.askError}</p>}</>}
