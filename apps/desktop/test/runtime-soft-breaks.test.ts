@@ -12,7 +12,18 @@ import { openApp, startApp, type App } from "./headless-app.ts";
 const DRAFT = "drafts/kintsugi-and-gold.md";
 const FLOW = "drafts/flow-reference.md";
 const NOTE = "notes/soft-breaks.md";
-const TEXT = "First source line\nsecond line.\n\nA hard break  \nstays here.\n\n```\ncode first\ncode second\n```\n";
+/** Greedy hard wrap at a fixed width, as tools wrap notes. */
+const wrap = (text: string, width: number) => text.split(" ").reduce<string[]>((lines, word) => {
+  const last = lines.at(-1);
+  if (last !== undefined && last.length + 1 + word.length <= width) lines[lines.length - 1] = `${last} ${word}`;
+  else lines.push(word);
+  return lines;
+}, []).join("\n");
+const PROSE = "The first time I saw a kintsugi bowl I thought the gold was decoration. It is not. The gold is a decision: this break is part of the object now, and we are not going to pretend otherwise. That is the whole point of the repair.";
+const WRAPPED = wrap(PROSE, 75);
+const POEM = "Roses are red,\nViolets are blue,\nSugar is sweet,\nAnd so are you.";
+const ADDRESS = "Hussain Phalasiya\n12 Harbour Street\nAmman 11118\nJordan";
+const TEXT = `${WRAPPED}\n\n${POEM}\n\n${ADDRESS}\n\nA hard break  \nstays here.\n\n\`\`\`\ncode first\ncode second\n\`\`\`\n`;
 let app: App;
 let browser: Browser;
 let page: Page;
@@ -49,6 +60,15 @@ async function openDoc(path: string) {
 }
 const prose = () => page.locator(".cm-line", { hasText: "The first time I saw a kintsugi bowl" });
 const shot = (name: string) => page.screenshot({ path: resolve(app.shots, `${name}.png`) });
+/** Light and dark, back to light. */
+async function shots(name: string) {
+  for (const scheme of ["light", "dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: scheme });
+    await settle();
+    if (scheme === "dark") await shot(`${name}-dark`);
+  }
+  await shot(`${name}-light`);
+}
 const disk = (path: string) => readFileSync(resolve(app.vault, path), "utf8");
 
 /** Character positions, including widget spaces, relative to the column.
@@ -99,6 +119,7 @@ test("source wraps read like flowing prose, unchanged by margin or theme", { tim
         else await page.getByRole("complementary", { name: "Margin" }).getByRole("tab", { name }).click();
         await settle();
         assert.deepEqual(await boxes(), before, `${width}, ${scheme}, ${name}: no rewrap`);
+        assert.equal(await strandedSpaces(), 0, `${width}, ${scheme}, ${name}: no line starts with a soft-break space`);
         if (name === "References") await shot(`${width}-${scheme}-margin`);
       }
       await page.keyboard.press("Meta+Alt+Backslash");
@@ -117,31 +138,95 @@ test("source wraps read like flowing prose, unchanged by margin or theme", { tim
   assert.equal(disk(DRAFT), original, "reading and toggling UI never rewrites the file");
 });
 
-test("cursor, copy, editing and undo retain source line endings", { timeout: 60_000 }, async () => {
+test("a 75-character note flows; typed short lines stay; Enter shows a new line at once", { timeout: 60_000 }, async () => {
   await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "light" });
   await openDoc(NOTE);
-  const first = page.locator(".cm-line", { hasText: "First source line" });
-  assert.equal(await first.textContent(), "First source line second line.");
-  assert.equal(await page.locator(".cm-line", { hasText: "A hard break" }).textContent(), "A hard break  ");
-  assert.equal(await page.locator(".cm-line", { hasText: "code first" }).textContent(), "code first");
-  assert.equal(await page.locator(".cm-line", { hasText: "code second" }).textContent(), "code second");
-  await first.click();
+  const line = (text: string) => page.locator(".cm-line", { hasText: text });
+  assert.ok(WRAPPED.split("\n").length >= 3 && WRAPPED.split("\n").slice(0, -1).every((l) => l.length >= 60 && l.length <= 75));
+  assert.equal(await line("The first time").textContent(), PROSE, "the hard-wrapped note reads as one paragraph");
+  for (const text of [...POEM.split("\n"), ...ADDRESS.split("\n")]) assert.equal(await line(text).textContent(), text, `"${text}" keeps its own line`);
+  assert.equal(await strandedSpaces(), 0, "a break at the measure hangs at the line end, never starts a line");
+  assert.equal(await line("A hard break").textContent(), "A hard break  ");
+  assert.equal(await line("code first").textContent(), "code first");
+  await shots("note");
+
+  await line("The first time").click();
   await page.keyboard.press("Meta+a");
   assert.equal(await copiedSelection(), TEXT, "copy keeps the underlying Markdown, including soft newlines");
-  await page.keyboard.press("ArrowLeft"); // start of the selected document
-  for (let i = 0; i < "First source line\n".length; i++) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowLeft"); // start of the document
+  const at = PROSE.indexOf("decision:") + "decision:".length;
+  for (let i = 0; i < at; i++) await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("Enter");
+  // Synchronously, before any save or reparse settles: his line is there.
+  assert.equal(await line("The first time").textContent(), PROSE.slice(0, at), "the new line shows at once");
+  // Enter drops the space at the break, as it does anywhere in the editor.
+  assert.equal(await line("this break is part").textContent(), PROSE.slice(at + 1), "the rest holds still while he types");
+  await untilSaved(TEXT.slice(0, at) + "\n" + TEXT.slice(at + 1));
+  await page.keyboard.type("So ");
+  await untilSaved(TEXT.slice(0, at) + "\nSo " + TEXT.slice(at + 1));
+  assert.equal(await line("So this break").textContent(), "So " + PROSE.slice(at + 1));
+  await shots("enter");
+
+  // Leaving the paragraph never collapses the line he broke.
+  await line("Violets are blue").click();
+  await settle();
+  assert.equal(await line("The first time").textContent(), PROSE.slice(0, at));
+  assert.ok((await line("So this break").textContent())!.startsWith("So this break"));
+  for (let i = 0; i < 4 && disk(NOTE) !== TEXT; i++) {
+    await page.keyboard.press("Meta+z");
+    await page.waitForTimeout(400);
+  }
+  await untilSaved(TEXT);
+  await line("Violets are blue").click();
+  await settle();
+  assert.equal(await line("The first time").textContent(), PROSE, "undone, the note flows again");
+});
+
+test("cursor, copy, editing and undo retain source line endings", { timeout: 60_000 }, async () => {
+  await openDoc(NOTE);
+  const first = page.locator(".cm-line", { hasText: "The first time" });
+  await first.click();
+  await page.keyboard.press("Meta+a");
+  await page.keyboard.press("ArrowLeft");
+  const soft = WRAPPED.indexOf("\n") + 1; // just after the first soft newline
+  for (let i = 0; i < soft; i++) await page.keyboard.press("ArrowRight");
   await page.keyboard.type("Changed ");
-  await page.waitForFunction(() => document.querySelector(".cm-content")?.textContent?.includes("Changed second"));
-  await untilSaved(TEXT.replace("\nsecond", "\nChanged second"));
+  await untilSaved(TEXT.slice(0, soft) + "Changed " + TEXT.slice(soft));
+  assert.ok((await first.textContent())!.includes(" Changed "), "typed across the flowing break, in place");
   await page.keyboard.press("Meta+z");
   await untilSaved(TEXT);
   await page.keyboard.press("Enter"); // a second source newline splits the paragraph
-  await untilSaved(TEXT.replace("\nsecond", "\n\nsecond"));
-  assert.equal(await first.textContent(), "First source line");
+  await untilSaved(TEXT.slice(0, soft) + "\n" + TEXT.slice(soft));
+  assert.equal(await first.textContent(), WRAPPED.split("\n")[0]);
   await page.keyboard.press("Meta+z");
   await untilSaved(TEXT);
-  assert.equal(await first.textContent(), "First source line second line.");
+  await page.locator(".cm-line", { hasText: "Violets are blue" }).click();
+  await settle();
+  assert.equal(await first.textContent(), PROSE);
 });
+
+/** Soft-break spaces that wrapped alone to the start of the next row. */
+async function strandedSpaces() {
+  return page.locator(".cm-content").evaluate((root) => {
+    let stranded = 0;
+    for (const line of root.querySelectorAll(".cm-line")) {
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      let previous: number | null = null;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        for (let i = 0; i < (node.textContent?.length ?? 0); i++) {
+          const range = document.createRange();
+          range.setStart(node, i);
+          range.setEnd(node, i + 1);
+          const top = Math.round(range.getBoundingClientRect().top);
+          if (node.parentElement?.classList.contains("cm-soft-break") && previous !== null && top > previous) stranded++;
+          previous = top;
+        }
+      }
+    }
+    return stranded;
+  });
+}
 
 async function copiedSelection() {
   return page.locator(".cm-content").evaluate((el) => {
