@@ -52,7 +52,7 @@ struct Add {
 struct Proposal {
     kind: Kind,
     text: String,
-    anchor: Option<super::comments::Anchor>,
+    anchor: Option<super::threads::Quote>,
 }
 
 impl Access {
@@ -164,7 +164,7 @@ impl Access {
 /// The model writes a prefix and suffix too, and saves don't scan them.
 /// Keep each only when it is the draft's own text right next to the
 /// quote; otherwise drop it. The editor re-derives both from the draft.
-fn draft_context(draft: &str, mut anchor: super::comments::Anchor) -> super::comments::Anchor {
+fn draft_context(draft: &str, mut anchor: super::threads::Quote) -> super::threads::Quote {
     if !draft.contains(&format!("{}{}", anchor.prefix, anchor.exact)) {
         anchor.prefix.clear();
     }
@@ -293,7 +293,7 @@ pub async fn stash_ask(
         today: chrono::Local::now().format("%Y-%m-%d").to_string(),
         remember: false,
         history: vec![],
-        recap: None,
+        about: None,
     };
     let cancel = Cancel::default();
     let harness = Harness {
@@ -608,7 +608,7 @@ mod tests {
             today: "2026-11-04".into(),
             remember: false,
             history: vec![],
-            recap: None,
+            about: None,
         };
         let result = super::super::agent::tests::block_on(agent::run(
             &super::super::scripted::Scripted::default(),
