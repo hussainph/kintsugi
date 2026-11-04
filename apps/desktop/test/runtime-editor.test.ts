@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { after, before, test } from "node:test";
-import { chromium, type Browser, type Page, type Request, type Route } from "playwright";
+import { chromium, type Browser, type Locator, type Page, type Request, type Route } from "playwright";
 import { startApp, type App, openApp } from "./headless-app.ts";
 
 const DOC = "drafts/gold-seams.md";
@@ -307,10 +307,13 @@ const savedAlternatives = (): AlternativesFile => JSON.parse(readFileSync(altern
 const alternativeSet = (original: string) => savedAlternatives().sets.find((s) => s.entries.some((e) => e.by === "owner" && e.text === original));
 const currentAlternative = (set: AlternativeSet) => set.entries.find((e) => e.id === set.current);
 const altPanel = () => page.locator(".cm-alt-panel");
+/** A span tab's label without its count of versions (KI-111). */
+const withoutCount = (text: string) => text.replace(/\d+$/, "");
+const tabLabel = async (tab: Locator) => withoutCount((await tab.textContent()) ?? "");
 const kinOptions = () => altPanel().locator('.cm-alt-option[data-by="kin"]');
 const altText = () => page.locator(".cm-content").evaluate((el) => {
   const copy = el.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll(".cm-alt-count, .cm-alt-gutter").forEach((node) => node.remove());
+  copy.querySelectorAll(".cm-alt-count, .cm-alt-gutter, .cm-step-card").forEach((node) => node.remove());
   return copy.innerText;
 });
 
@@ -346,7 +349,7 @@ async function alternativeCursor(text: string, select = false) {
   const at = await page.locator(".cm-content").evaluate((content, target) => {
     const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      if (node.parentElement?.closest(".cm-alt-count, .cm-alt-gutter")) continue;
+      if (node.parentElement?.closest(".cm-alt-count, .cm-alt-gutter, .cm-step-card")) continue;
       const i = node.textContent!.indexOf(target);
       if (i === -1) continue;
       const range = document.createRange();
@@ -513,8 +516,8 @@ test("explicit word, sentence and paragraph asks work with automatic suggestions
     await alternativeCursor("good");
     await page.keyboard.press("Meta+Alt+KeyA");
     await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).waitFor();
-    assert.deepEqual(await altPanel().getByRole("tab").allTextContents(), ["Word", "Sentence", "Paragraph"]);
-    assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), "Word");
+    assert.deepEqual((await altPanel().getByRole("tab").allTextContents()).map(withoutCount), ["Word", "Sentence", "Paragraph"]);
+    assert.equal(await tabLabel(altPanel().getByRole("tab", { selected: true })), "Word");
     assert.equal(await kinOptions().count(), 0);
     // The fresh app's automatic suggestions stay off. Merely opening the
     // panel doesn't ask; the explicit shortcut and button still do.
@@ -530,7 +533,7 @@ test("explicit word, sentence and paragraph asks work with automatic suggestions
     const originals = { word: "good", sentence: ASK.split(". ")[0] + ".", paragraph: ASK };
     for (const [level, tab] of [["sentence", "Sentence"], ["paragraph", "Paragraph"]] as const) {
       await altPanel().getByRole("tab", { name: tab, exact: true }).click();
-      assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), tab);
+      assert.equal(await tabLabel(altPanel().getByRole("tab", { selected: true })), tab);
       assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"] .cm-alt-option-text').textContent(), originals[level]);
       await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).click();
       const thinking = altPanel().getByRole("button", { name: "Thinking…", exact: true });
@@ -579,7 +582,7 @@ test("⇧⌥⌘A on a selected phrase asks for that selection without applying (
   await alternativeCursor("in order to", true);
   await page.keyboard.press("Meta+Shift+Alt+KeyA");
   await completedAlternatives();
-  assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), "Selection");
+  assert.equal(await tabLabel(altPanel().getByRole("tab", { selected: true })), "Selection");
   assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"] .cm-alt-option-text').textContent(), "in order to");
   await alternativeUntil(() => (alternativeSet("in order to")?.entries.length ?? 0) > 1, "the selection's alternatives are persisted");
   const set = alternativeSet("in order to")!;
@@ -682,7 +685,7 @@ test("a smaller word selected inside a word's phrase version gets its own altern
   await alternativeCursor("good", true);
   await page.keyboard.press("Meta+Shift+Alt+KeyA");
   await completedAlternatives();
-  assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), "Word");
+  assert.equal(await tabLabel(altPanel().getByRole("tab", { selected: true })), "Word");
   assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"] .cm-alt-option-text').textContent(), "good", "the selected word, not the containing phrase");
   await alternativeUntil(() => savedAlternatives().sets.some((s) => s.id !== outer.id && s.anchor.exact === "good"), "the smaller exact range gets its own set");
   const smaller = savedAlternatives().sets.find((s) => s.id !== outer.id && s.anchor.exact === "good")!;

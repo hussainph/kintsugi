@@ -1,6 +1,6 @@
 import { isolateHistory } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
-import { alternativePanelCommands, alternativesPanelModel, closeAlternatives, openAlternatives, type Alternatives } from "@kintsugi/editor/alternatives";
+import { alternativePanelCommands, alternativesPanelModel, closeAlternatives, openAlternatives, type Alternatives, type VersionCard as VersionCardModel, type VersionCardActions } from "@kintsugi/editor/alternatives";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
@@ -23,6 +23,7 @@ import { registerReviewer, showReview, startReview, stopReview, useReviewing, us
 import { useComments } from "@/comments/useComments";
 import { useAlternatives } from "@/alternatives/useAlternatives";
 import { Versions } from "@/alternatives/Versions";
+import { VersionCard } from "@/alternatives/VersionCard";
 import { useWritingStash } from "@/stash/WritingStash";
 import { hideMargin, marginState, showMargin, useMargin, visibleTab } from "@/margin/state";
 import { registerInsert, type Found } from "@/lib/insert";
@@ -233,9 +234,16 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     showStash();
     if (!cursorOpening.current) requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".ki-versions input")?.focus());
   }, [showStash]);
+  // The cursor's span's `‹ 2 of 3 ›` (KI-111), drawn into the editor's block like the mark card.
+  const [versionCard, setVersionCard] = useState<{ dom: HTMLElement; card: VersionCardModel; actions: VersionCardActions } | null>(null);
+  useLayoutEffect(() => { if (versionCard) editor.viewRef.current?.requestMeasure(); }, [versionCard, editor.viewRef]);
   const versionHost = useMemo<Alternatives>(() => ({
     ...(alternatives ?? { path: "", sets: [], onSave: () => {} }),
     externalPanel: true, onPanelOpen, onPanelClose, onPanelChange: setVersionModel,
+    renderCard: (dom, next, actions) => {
+      setVersionCard({ dom, card: next, actions });
+      return () => setVersionCard((now) => (now?.dom === dom ? null : now));
+    },
   }), [alternatives, onPanelOpen, onPanelClose]);
   // A blank paragraph has no version target. Once the cursor reaches words,
   // start following it without stealing focus back from the draft.
@@ -294,6 +302,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
       {trim && editor.viewRef.current && <TrimBar view={editor.viewRef.current} count={trim} />}
       {reviewing && !trim && <ReviewBar onStop={() => stopReview(editor.path)} />}
       {card && createPortal(<MarkCard card={card.card} actions={card.actions} />, card.dom)}
+      {versionCard && createPortal(<VersionCard card={versionCard.card} actions={versionCard.actions} />, versionCard.dom)}
       {onRefine && <SelectionMenu viewRef={editor.viewRef} path={editor.path} onRefine={onRefine} />}
       <MarginPortal tab="stash">{stash.content(<Versions model={versionModel} viewRef={editor.viewRef} onAsk={() => { const view = editor.viewRef.current; if (view) alternativePanelCommands(view).askKin(); }} />)}</MarginPortal>
       <MarginPortal tab="references">

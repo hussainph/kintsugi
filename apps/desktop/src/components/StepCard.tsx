@@ -24,6 +24,8 @@ export type StepCardProps = {
   onStep: (by: 1 | -1) => void;
   /** The keys ‹ and › show in their tooltips. Default: Kin's marks, ⇧⌘' and ⌘'. */
   stepKeys?: { previous?: ShortcutId; next?: ShortcutId };
+  /** Makes `1 of N` a button (KI-111: the full list of versions). */
+  count?: { label: string; shortcut?: ShortcutId; onClick: () => void };
   /** Words in his draft's type with a rule in Kin's accent: a rewrite, a version. */
   text?: string;
   /** One plain line: Kin's reason. */
@@ -57,11 +59,11 @@ function Action({ action }: { action: StepCardAction }) {
  * The `‹ 1 of N ›` card (KI-109): a small card that steps through a list
  * and acts on the item it shows. It knows nothing about what the items are:
  * Kin's marks pass their reason, a rewrite's words and accept, dismiss,
- * discuss and stash (`src/refine/MarkCard.tsx`); KI-111 can pass a span's
- * versions. The editor places it (`inlineCard` in @kintsugi/editor/card),
+ * discuss and stash (`src/refine/MarkCard.tsx`); a span's versions pass
+ * only ‹ › and a count that opens their list (`src/alternatives/VersionCard.tsx`). The editor places it (`inlineCard` in @kintsugi/editor/card),
  * under the anchor's paragraph, so it never covers the line it's about.
  */
-export function StepCard({ index, total, onStep, stepKeys, text, note, actions, label, kind }: StepCardProps) {
+export function StepCard({ index, total, onStep, stepKeys, count, text, note, actions, label, kind }: StepCardProps) {
   return (
     <div className="ki-step-card" role="group" aria-label={label} data-kind={kind}>
       {text !== undefined && <p className="ki-step-card-text">{text}</p>}
@@ -70,9 +72,23 @@ export function StepCard({ index, total, onStep, stepKeys, text, note, actions, 
         {total > 1 && (
           <span className="ki-step-card-step">
             <Action action={{ id: "previous", label: "Previous", icon: ChevronLeft, shortcut: stepKeys?.previous ?? "previousMark", onClick: () => onStep(-1) }} />
-            <span className="ki-step-card-count" data-card-count>
-              {index} of {total}
-            </span>
+            {count ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button type="button" className="ki-step-card-count" data-card-count onClick={count.onClick}>
+                    {index} of {total}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {count.label}
+                  {count.shortcut && <span aria-hidden> {keysOf(SHORTCUTS[count.shortcut].key)}</span>}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="ki-step-card-count" data-card-count>
+                {index} of {total}
+              </span>
+            )}
             <Action action={{ id: "next", label: "Next", icon: ChevronRight, shortcut: stepKeys?.next ?? "nextMark", onClick: () => onStep(1) }} />
           </span>
         )}
