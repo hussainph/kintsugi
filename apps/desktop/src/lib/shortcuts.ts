@@ -26,6 +26,7 @@ export type Scope = "app" | "writing" | "editor" | "refine" | "sidebar" | "setti
 
 export const GROUPS = {
   app: { title: "App", scope: "app" },
+  margin: { title: "Margin", scope: "writing" },
   document: { title: "Document", scope: "writing" },
   kin: { title: "Kin", scope: "writing" },
   alternatives: { title: "Alternatives", scope: "editor" },
@@ -63,12 +64,20 @@ export const SHORTCUTS = {
   feed: { key: "Mod-Shift-f", label: "Feed", where: "anywhere", group: "app" },
   inspiration: { key: "Mod-Shift-i", label: "Inspiration", where: "anywhere", group: "app" },
   ideas: { key: "Mod-Shift-e", label: "Ideas", where: "anywhere", group: "app" },
-  kin: { key: "Mod-j", label: "Kin", where: "anywhere", group: "app" },
   sidebar: { key: `Mod-${SIDEBAR_KEYBOARD_SHORTCUT}`, label: "Sidebar", where: "anywhere", group: "app" },
   settings: { key: "Mod-,", label: "Settings", where: "anywhere", group: "app" },
   openVault: { key: "Mod-Shift-o", label: "Open another vault", where: "anywhere", group: "app" },
   // The Mac's Help shortcut.
   shortcuts: { key: "Mod-Shift-/", label: "Keyboard shortcuts", where: "anywhere", group: "app" },
+
+  // The right margin (KI-103): one key per tab, each showing its tab or
+  // closing the margin when it's already showing. Away from the editor the
+  // margin holds Kin alone.
+  kin: { key: "Mod-j", label: "Kin", where: "anywhere", group: "margin", scope: "app" },
+  referencesTab: { key: "Mod-Shift-r", label: "References", where: "writing", group: "margin" },
+  stashTab: { key: "Mod-Shift-s", label: "Stash", where: "writing", group: "margin" },
+  // ⌘\ is the sidebar on the left; this is the margin on the right.
+  margin: { key: "Mod-Alt-\\", label: "Margin", where: "anywhere", group: "margin", scope: "app" },
 
   save: { key: "Mod-s", label: "Save", where: "writing", group: "document" },
   status: { key: "Mod-Shift-d", label: "Toggle status", where: "writing", group: "document" },
@@ -180,6 +189,7 @@ export const OVERRIDES: Record<string, string> = {
   "Mod-u": "Underline replaces CodeMirror's undo selection",
   "Shift-Mod-k": "The developer panel replaces CodeMirror's delete line",
   "Mod-a": "The app menu's Select all and CodeMirror's are the same",
+  "Alt-Mod-\\": "The margin replaces CodeMirror's indent selection, which prose doesn't use",
 };
 
 export type Entry = Shortcut & { id?: string };

@@ -262,7 +262,7 @@ test("like, note, save into Inspiration, not interested", { timeout: TIMEOUT }, 
   // Discuss opens Kin's chat with the item attached as a context chip.
   await open("Episode 12: Mending");
   await opened("Episode 12: Mending").getByRole("button", { name: "Discuss" }).click();
-  await page.getByRole("dialog", { name: "Kin" }).getByText("Episode 12: Mending").first().waitFor();
+  await page.getByRole("region", { name: "Kin" }).getByText("Episode 12: Mending").first().waitFor();
   await shot("06b-discuss");
   await page.keyboard.press("Escape");
   await back().click();
@@ -394,7 +394,7 @@ test("Picked for you: ranked locally, with the (?) card and corrections", { time
 });
 
 test("Kin reads a feed item and uses the ranking tools; its picks are logged apart", { timeout: TIMEOUT }, async () => {
-  const kin = page.getByRole("dialog", { name: "Kin" });
+  const kin = page.getByRole("region", { name: "Kin" });
   const replies = kin.locator('[data-role="kin"]');
   const id = await item(WORKSHOP[4].title).getAttribute("data-feed-item");
   await open(WORKSHOP[4].title);

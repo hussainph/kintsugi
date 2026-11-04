@@ -4,8 +4,7 @@ import { toast } from "sonner";
 import { chat, type ChatEvent, type Entry, type Job, jobs, onDiscuss, onOpenKin, onScreenChanged, type Page, screenChips, type Topic } from "@/lib/chat";
 import { type Chip, chipKey, mergeChips, throttle } from "@/lib/chips";
 import type { WebCall } from "@/lib/web";
-import { matches } from "@/lib/keys";
-import { SHORTCUTS } from "@/lib/shortcuts";
+import { hideMargin, showMargin, useMargin } from "@/margin/state";
 
 const EMPTY: Page = { entries: [], threads: [], pending: [], running: null };
 export const ACTIVE: Job["status"][] = ["queued", "running", "waiting"];
@@ -18,12 +17,12 @@ export type Live = { turn: string; text: string; steps: LiveStep[]; web: WebCall
 
 /**
  * Kin's one chat, as state: the conversation shown (a view of the open
- * vault's log), the turn under way, helpers, what's on screen as chips, the
- * draft, and whether it's showing. Any placement (the floating pane today,
- * a sidebar later) renders it.
+ * vault's log), the turn under way, helpers, what's on screen as chips and
+ * the draft. It shows in the margin's Kin tab (KI-103): `open` is whether
+ * that tab is showing, and `show`/`hide` open and close the margin on it.
  */
 export function useKinChat() {
-  const [open, setOpen] = useState(false);
+  const open = useMargin().showing("kin");
   const [view, setView] = useState<string | null>(null);
   /** What a message sent now would be about (names a thread not yet started). */
   const [topic, setTopic] = useState<Topic | null>(null);
@@ -143,7 +142,7 @@ export function useKinChat() {
           // Model picks are per vault too.
           setVaultSeq((n) => n + 1);
           // The new vault's thread for what's on screen, else everything.
-          if (openRef.current) showRef.current();
+          if (openRef.current) appeared.current();
           else setView(null);
           return void reload();
       }
@@ -156,22 +155,33 @@ export function useKinChat() {
 
   const focus = () => requestAnimationFrame(() => input.current?.focus());
 
-  const show = useCallback(() => {
+  // However the tab comes into view (⌘J, the avatar, a tab, ⌥⌘\), it
+  // shows the thread for what's on screen. Read through a ref, so only the
+  // tab appearing runs it.
+  const appeared = useRef<() => void>(() => {});
+  appeared.current = () => {
     const now = readScreen();
-    setOpen(true);
     setUnread(false);
     void follow(mergeChips(pinned, now, removed));
+  };
+  useEffect(() => {
+    if (open) appeared.current();
+    else {
+      // Hiding ends what Discuss brought in; next time starts from the
+      // screen. The conversation stays, and so does Kin's turn.
+      setPinned([]);
+      setRemoved(new Set());
+    }
+  }, [open]);
+
+  /** ⌘J, the avatar, openKin(): the Kin tab, ready to type in. */
+  const show = useCallback(() => {
+    showMargin("kin");
     focus();
-  }, [readScreen, follow, pinned, removed]);
+  }, []);
   showRef.current = show;
 
-  /** Hiding ends what Discuss brought in; next time starts from the screen.
-   *  The conversation stays, and so does Kin's turn. */
-  const hide = useCallback(() => {
-    setOpen(false);
-    setPinned([]);
-    setRemoved(new Set());
-  }, []);
+  const hide = useCallback(() => hideMargin(), []);
 
   /** Sends `text` with `with_` (what's attached now, by default). */
   const sendText = useCallback(
@@ -189,17 +199,9 @@ export function useKinChat() {
     [reload],
   );
 
-  // ⌘J, the avatar, openKin() and discuss() all open the one chat.
+  // openKin() and discuss() open the one chat (⌘J and the avatar call
+  // openKin(); the margin owns the key).
   useEffect(() => {
-    const key = (e: KeyboardEvent) => {
-      if (matches(e, SHORTCUTS.kin.key)) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (openRef.current) hide();
-        else showRef.current();
-      }
-    };
-    window.addEventListener("keydown", key, true);
     const offOpen = onOpenKin(() => showRef.current());
     const offDiscuss = onDiscuss(({ chips: brought, text, send: sendNow }) => {
       setPinned((old) => mergeChips(brought, old, new Set()));
@@ -215,17 +217,16 @@ export function useKinChat() {
           if (!ok) setDraft(text);
         });
       } else if (text) setDraft(text);
-      setOpen(true);
+      showMargin("kin");
       setUnread(false);
       void follow(attached);
       focus();
     });
     return () => {
-      window.removeEventListener("keydown", key, true);
       offOpen();
       offDiscuss();
     };
-  }, [readScreen, follow, hide, sendText]);
+  }, [readScreen, follow, sendText]);
 
   // While open, follow the screen: another document brings its own thread;
   // a new selection becomes a chip.

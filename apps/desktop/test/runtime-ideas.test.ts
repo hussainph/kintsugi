@@ -188,10 +188,10 @@ test("Discuss opens Kin with the idea as a chip", { timeout: 60_000 }, async () 
   const first = rows().first();
   await first.locator("button[aria-expanded]").first().click();
   await first.getByRole("button", { name: "Discuss with Kin" }).click();
-  const panel = page.getByRole("dialog", { name: "Kin" });
+  const panel = page.getByRole("region", { name: "Kin" });
   await panel.locator('[data-chip^="idea:idea-"]').waitFor();
   await shot("05-discuss");
-  await panel.getByRole("button", { name: "Hide Kin" }).first().click();
+  await page.getByRole("button", { name: "Margin", pressed: true }).click();
 });
 
 test("Adopt makes an empty draft with the idea beside it and in frontmatter", { timeout: 60_000 }, async () => {

@@ -106,6 +106,8 @@ let bridge: HeadlessBridge;
 let ui: Ui;
 let warnings: unknown[][];
 
+let fullscreen = false;
+
 function setup(overrides: { fetch?: typeof backend.fetch; readyTimeoutMs?: number } = {}) {
   backend = fakeBackend();
   ui = { prompts: [], promptAnswer: null, confirmAnswer: true, alerts: [], opened: [] };
@@ -124,6 +126,7 @@ function setup(overrides: { fetch?: typeof backend.fetch; readyTimeoutMs?: numbe
       open: (...a) => void ui.opened.push(a),
       clientId: "client-1",
       readyTimeoutMs: overrides.readyTimeoutMs,
+      fullscreen: () => fullscreen,
       log: { warn: (...a: unknown[]) => void warnings.push(a), error: (...a: unknown[]) => void warnings.push(a) },
     },
   );
@@ -443,6 +446,15 @@ describe("native UI stays in the tab", () => {
     await getCurrentWindow().setTheme("dark");
     await getCurrentWindow().setTheme(null);
     assert.equal(backend.calls.length, 0, "no native theme commands reach the backend");
+  });
+
+  test("full screen is answered in the tab, from the simulated state", async () => {
+    fullscreen = false;
+    assert.equal(await getCurrentWindow().isFullscreen(), false);
+    fullscreen = true;
+    assert.equal(await getCurrentWindow().isFullscreen(), true);
+    fullscreen = false;
+    assert.equal(backend.calls.length, 0, "never asks the backend's MockRuntime");
   });
 
   test("convertFileSrc points at the bridge's asset route", () => {

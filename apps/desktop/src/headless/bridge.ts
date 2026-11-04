@@ -103,6 +103,8 @@ export type BridgeDeps = {
   random?: () => number;
   /** How long an invoke waits for the event stream before failing. */
   readyTimeoutMs?: number;
+  /** Whether to report macOS full screen (simulated; a tab has none). */
+  fullscreen?: () => boolean;
   log?: Pick<Console, "warn" | "error">;
 };
 
@@ -353,6 +355,9 @@ export function createHeadlessBridge(config: HeadlessConfig, deps: BridgeDeps) {
       case "plugin:window|start_dragging":
         // No window to drag in a browser tab (`data-tauri-drag-region`).
         return { value: null };
+      case "plugin:window|is_fullscreen":
+        // A tab has no macOS full screen; runtime tests simulate it.
+        return { value: deps.fullscreen?.() ?? false };
       case "plugin:window|set_theme":
         // The frontend owns the tab's colours. Never change a native app's
         // appearance from the headless transport.

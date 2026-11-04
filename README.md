@@ -28,11 +28,19 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | ⇧⌘F | Feed |
 | ⇧⌘I | Inspiration |
 | ⇧⌘E | Ideas |
-| ⌘J | Kin |
 | `⌘\` | Sidebar |
 | ⌘, | Settings |
 | ⇧⌘O | Open another vault |
 | `⇧⌘/` | Keyboard shortcuts |
+
+### Margin
+
+| Keys | Action |
+| --- | --- |
+| ⌘J | Kin |
+| ⇧⌘R | References |
+| ⇧⌘S | Stash |
+| `⌥⌘\` | Margin |
 
 ### Document
 

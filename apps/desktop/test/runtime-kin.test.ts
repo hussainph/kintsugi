@@ -98,7 +98,7 @@ after(async () => {
   await stopRunner(runner, () => output);
 });
 
-const panel = () => page.getByRole("dialog", { name: "Kin" });
+const panel = () => page.getByRole("region", { name: "Kin" });
 const header = () => panel().locator("[data-thread]");
 const box = () => panel().getByRole("textbox", { name: "Message Kin" });
 const mine = (text: string) => panel().locator('[data-role="owner"]').getByText(text, { exact: true });
@@ -189,7 +189,7 @@ test("Kin searches the web (scripted) and shows its sources with their actions",
 });
 
 test("Discuss on a clip opens the chat with the clip; returning to the draft resumes its thread", { timeout: 120_000 }, async () => {
-  await panel().getByRole("button", { name: "Hide Kin" }).first().click();
+  await page.getByRole("button", { name: "Margin", pressed: true }).click();
   await page.keyboard.press("Meta+Shift+i");
   await page.locator(`[data-clip-path="${CLIP}"]`).click();
   await page.getByRole("button", { name: "Discuss" }).click();
@@ -203,7 +203,7 @@ test("Discuss on a clip opens the chat with the clip; returning to the draft res
 
   // Back to the draft: the chat follows to the draft's thread, and once
   // he's idle Kin writes its running summary.
-  await panel().getByRole("button", { name: "Hide Kin" }).first().click();
+  await page.getByRole("button", { name: "Margin", pressed: true }).click();
   await openDoc(DRAFT);
   await page.getByRole("button", { name: "Ask Kin" }).click();
   await header().getByText("About Kintsugi and gold").waitFor();
@@ -220,7 +220,7 @@ test("Discuss on a clip opens the chat with the clip; returning to the draft res
 });
 
 test("helper jobs run in the background and report back quietly", { timeout: 60_000 }, async () => {
-  await panel().getByRole("button", { name: "Hide Kin" }).first().click();
+  await page.getByRole("button", { name: "Margin", pressed: true }).click();
   const job = await page.evaluate(() =>
     (window as unknown as { __TAURI_INTERNALS__: { invoke: (cmd: string, args: unknown) => Promise<{ id: string }> } })
       .__TAURI_INTERNALS__.invoke("kin_job_create", { job: { kind: "feed-ranking", task: "triage", brief: "Rank recent clips about repair." } }),

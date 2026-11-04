@@ -45,7 +45,7 @@ export function IdeasBeside({ path, text, onOpenDoc }: { path: string; text: str
   return (
     // Left of the reference margin's toggle (right: 18px, top: 38px in
     // references.css), on the same line, so neither covers the other.
-    <div className={cn("absolute top-[38px] right-14 z-10 flex max-h-[calc(100%-6rem)] w-80 flex-col items-end", seam)}>
+    <div className={cn("absolute top-[calc(var(--ki-titlebar)-2px)] right-14 z-10 flex max-h-[calc(100%-6rem)] w-80 flex-col items-end", seam)}>
       <button
         type="button"
         aria-expanded={open}
