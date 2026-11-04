@@ -161,7 +161,7 @@ test("⌘K keeps its edits and adds Kin's actions: supporting clips", { timeout:
   await line("The repair is visible").click();
   await page.keyboard.press("Meta+k");
   for (const name of ["Tighten", "plain-words", "Find supporting clips", "Who disagrees?", "Discuss this paragraph"]) {
-    await refine().getByRole("option", { name: new RegExp(name.replace("?", "\\?")) }).waitFor();
+    await refine().getByRole("option", { name: new RegExp(`^${name.replace("?", "\\?")}(?! more)`) }).waitFor();
   }
   await shot("06-cmdk-actions");
   await refine().getByRole("option", { name: /Find supporting clips/ }).click();
@@ -245,7 +245,7 @@ test("an outside edit above the passage while ⌘K is open doesn't move the rewr
   assert.equal(OTHER.length, SAME.length);
   await line(SAME).first().click();
   await page.keyboard.press("Meta+k");
-  await refine().getByRole("option", { name: /Tighten/ }).click();
+  await refine().getByRole("option", { name: /^Tighten(?! more)/ }).click();
   await refine().locator("del", { hasText: "really" }).waitFor({ timeout: 15_000 });
   // The paragraph above is cut elsewhere while the diff is open, so the old
   // offsets now hold the same words one paragraph too low.
@@ -423,7 +423,7 @@ test("⌘K acceptance keeps the owner and Kin versions; ⌥⌘[ swaps back (KI-8
   const before = alternativeDisk();
   await alternativeCursor(ACCEPT);
   await page.keyboard.press("Meta+k");
-  await refine().getByRole("option", { name: /Tighten/ }).click();
+  await refine().getByRole("option", { name: /^Tighten(?! more)/ }).click();
   const replacement = await completedRewrite();
   assert.notEqual(replacement, ACCEPT);
   assert.equal(alternativeDisk(), before, "the completed rewrite still waits for acceptance");
@@ -456,7 +456,7 @@ test("⇧Enter keeps only the selected completed rewrite without applying it (KI
   const editorBefore = await altText();
   await alternativeCursor(KEEP);
   await page.keyboard.press("Meta+k");
-  await refine().getByRole("option", { name: /Tighten/ }).click();
+  await refine().getByRole("option", { name: /^Tighten(?! more)/ }).click();
   const first = await completedRewrite();
   await page.keyboard.press("Meta+r");
   await refine().getByText("2 / 2", { exact: true }).waitFor();

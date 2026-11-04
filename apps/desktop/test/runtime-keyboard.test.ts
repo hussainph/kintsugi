@@ -171,7 +171,7 @@ test("⌥⌘T tightens the paragraph without ⌘K's list; ↩ accepts", { timeou
 test("⌘K's and the / menu's rows show their keys", { timeout: 60_000 }, async () => {
   await line("Keep the seam").click();
   await page.keyboard.press("Meta+k");
-  const tighten = refine().getByRole("option", { name: /Tighten/ });
+  const tighten = refine().getByRole("option", { name: /^Tighten(?! more)/ });
   await tighten.waitFor();
   assert.equal((await tighten.locator("[data-slot=command-shortcut]").textContent())?.trim(), "⌥⌘T");
   await shot("05-cmdk-keys");

@@ -166,7 +166,7 @@ const transitions: { name: string; run: () => Promise<void> }[] = [
   } })),
   { name: "cancelled Refine", run: async () => {
     await page.keyboard.press("Meta+k");
-    await refine().getByRole("option", { name: /Tighten/ }).waitFor();
+    await refine().getByRole("option", { name: /^Tighten(?! more)/ }).waitFor();
     await escape(refine());
   } },
   { name: "cancelled direct edit", run: async () => {
@@ -182,7 +182,7 @@ test("⌘K still opens on the same selection after another surface closes", { ti
   assert.ok(editor);
   await select();
   await page.keyboard.press("Meta+k");
-  await refine().getByRole("option", { name: /Tighten/ }).waitFor();
+  await refine().getByRole("option", { name: /^Tighten(?! more)/ }).waitFor();
   await escape(refine());
   for (const selected of [true, false]) {
     for (const transition of transitions) {
@@ -194,7 +194,7 @@ test("⌘K still opens on the same selection after another surface closes", { ti
         assert.ok(await editor.evaluate((el) => el.isConnected), "the draft was not reopened");
         // Deliberately no click/focus/openDoc here: test the state left behind.
         await page.keyboard.press("Meta+k");
-        await refine().getByRole("option", { name: /Tighten/ }).waitFor();
+        await refine().getByRole("option", { name: /^Tighten(?! more)/ }).waitFor();
         await escape(refine());
       });
     }
@@ -212,7 +212,7 @@ test("⌘K and direct edits remain on screen after scrolling away and closing th
     await escape(palette);
     await page.keyboard.press(key);
     if (label) await refine().getByText(label, { exact: true }).waitFor();
-    else await refine().getByRole("option", { name: /Tighten/ }).waitFor();
+    else await refine().getByRole("option", { name: /^Tighten(?! more)/ }).waitFor();
     // Visibility alone passes for a popup wholly outside the viewport.
     await page.screenshot({ path: resolve(app.shots, `${SCHEME}-scrolled-${label ?? "refine"}.png`), animations: "disabled" });
     const bounds = await refine().boundingBox();
@@ -233,7 +233,7 @@ test("Refine reveals the end of a selection taller than the editor", { timeout: 
   await palette.waitFor();
   await escape(palette);
   await page.keyboard.press("Meta+k");
-  await refine().getByRole("option", { name: /Tighten/ }).waitFor();
+  await refine().getByRole("option", { name: /^Tighten(?! more)/ }).waitFor();
   await page.screenshot({ path: resolve(app.shots, `${SCHEME}-long-selection.png`), animations: "disabled" });
   const bounds = await refine().boundingBox();
   assert.ok(bounds && bounds.y >= 0 && bounds.y + bounds.height <= page.viewportSize()!.height + 1, `Refine is on screen: ${JSON.stringify(bounds)}`);
