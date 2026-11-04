@@ -323,10 +323,10 @@ async function closeAltPanel() {
   await altPanel().waitFor({ state: "detached" });
 }
 
-async function openAlternativeDoc() {
-  // A tooltip is removed on CodeMirror's next measure, after Escape returns.
-  // Don't let a previous panel intercept the next passage's pointer selection.
-  if (await altPanel().count()) await closeAltPanel();
+async function openAlternativeDoc(keepMargin = false) {
+  // Most tests start with versions closed before invoking its toggle key.
+  // The pending-request test instead preserves the margin across documents.
+  if (!keepMargin && await altPanel().count()) await closeAltPanel();
   await page.locator(`[title="${ALTERNATIVES}"]`).click();
   await page.locator(`[title="${ALTERNATIVES}"][data-active="true"]`).waitFor();
   // Counts can split the first sentence's text after alternatives are added.
@@ -630,7 +630,7 @@ test("switching documents drops a pending answer and permits a new ask on return
     await line("The repair is").waitFor();
     await page.getByRole("tabpanel", { name: "Stash", exact: true }).waitFor();
     assert.equal(await kinOptions().count(), 0, "the margin follows the new draft, not the pending span");
-    await openAlternativeDoc();
+    await openAlternativeDoc(true);
     // Restoring the cached EditorState clears its abandoned pending flag.
     await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).waitFor();
     assert.equal(await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).isEnabled(), true);
@@ -655,7 +655,7 @@ test("switching documents drops a pending answer and permits a new ask on return
     await closeAltPanel();
   } finally {
     release();
-    await page.unroute("**/invoke", holdFirstAsk);
+    await page.unrouteAll({ behavior: "wait" });
     requests.stop();
   }
 });
