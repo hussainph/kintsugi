@@ -29,7 +29,8 @@ export const GROUPS = {
   margin: { title: "Margin", scope: "writing" },
   document: { title: "Document", scope: "writing" },
   kin: { title: "Kin", scope: "writing" },
-  alternatives: { title: "Alternatives", scope: "editor" },
+  alternatives: { title: "Versions", scope: "editor" },
+  stash: { title: "Stash", scope: "editor" },
   formatting: { title: "Formatting", scope: "editor" },
   text: { title: "Text", scope: "editor" },
   review: { title: "Reviewing an edit", scope: "refine" },
@@ -134,14 +135,12 @@ export const SHORTCUTS = {
 
   // The editor's alternatives keymap (`alternativeShortcuts` in
   // @kintsugi/editor/alternatives); a test keeps the two the same.
-  alternatives: { key: "Mod-Alt-a", label: "Alternatives", group: "alternatives" },
-  nextAlternative: { key: "Mod-Alt-]", label: "Next alternative", group: "alternatives" },
-  previousAlternative: { key: "Mod-Alt-[", label: "Previous alternative", group: "alternatives" },
-  kinAlternatives: { key: "Mod-Shift-Alt-a", label: "Kin's alternatives", group: "alternatives" },
-
-  // Reserved for the tickets that add them (Write_On's alternative control).
-  stash: { key: "Mod-Alt-x", label: "Stash", scope: "editor", soon: "KI-89" },
-  unstash: { key: "Mod-Alt-v", label: "Put back from stash", scope: "editor", soon: "KI-89" },
+  alternatives: { key: "Mod-Alt-a", label: "Versions", group: "alternatives" },
+  nextAlternative: { key: "Mod-Alt-]", label: "Next version", group: "alternatives" },
+  previousAlternative: { key: "Mod-Alt-[", label: "Previous version", group: "alternatives" },
+  kinAlternatives: { key: "Mod-Shift-Alt-a", label: "Kin's versions", group: "alternatives" },
+  stash: { key: "Mod-Alt-x", label: "Stash", group: "stash" },
+  unstash: { key: "Mod-Alt-v", label: "Insert from stash", group: "stash" },
 } as const satisfies Record<string, Shortcut>;
 
 export type ShortcutId = keyof typeof SHORTCUTS;

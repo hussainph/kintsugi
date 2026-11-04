@@ -1,0 +1,3 @@
+.ki-stash-picker { max-width: min(520px, calc(100vw - var(--space-l) * 2)); }
+.ki-stash-picker-list { display: flex; flex-direction: column; max-height: 55vh; overflow-y: auto; gap: var(--space-xxs); }
+.ki-stash-picker-list > button { justify-content: flex-start; height: auto; white-space: pre-wrap; text-align: left; overflow-wrap: anywhere; font-family: var(--font-editorial); font-weight: var(--weight-editorial-regular); font-size: var(--size-m); line-height: var(--line-m); padding: var(--space-xs); }

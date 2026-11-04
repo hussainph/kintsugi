@@ -66,14 +66,21 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | ⌥⌘S | Synonyms |
 | ⇧F10 | Selection menu |
 
-### Alternatives
+### Versions
 
 | Keys | Action |
 | --- | --- |
-| ⌥⌘A | Alternatives |
-| `⌥⌘]` | Next alternative |
-| `⌥⌘[` | Previous alternative |
-| ⌥⇧⌘A | Kin's alternatives |
+| ⌥⌘A | Versions |
+| `⌥⌘]` | Next version |
+| `⌥⌘[` | Previous version |
+| ⌥⇧⌘A | Kin's versions |
+
+### Stash
+
+| Keys | Action |
+| --- | --- |
+| ⌥⌘X | Stash |
+| ⌥⌘V | Insert from stash |
 
 ### Formatting
 

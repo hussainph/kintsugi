@@ -158,7 +158,7 @@ never re-wraps a line.
   Escape inside the margin closes it and puts focus back in the draft.
 - **Kin** is the chat (`docs/kin.md`). **References** lists what the draft links
   to, what's related to the cursor's paragraph, and what links here.
-  **Stash** is empty for now; KI-89 fills it.
+  **Stash** holds the cursor's versions and the draft's set-aside items.
 - **Away from the editor** (Feed, a story, Ideas, Inspiration, Settings) the
   same margin holds Kin alone, over the page. A writing tab waits until he's
   back in the draft.
@@ -169,6 +169,33 @@ never re-wraps a line.
   in macOS full screen. The sidebar header, the margin's tabs and the pages'
   top padding move up with it.
 
+## Stash
+
+The Stash tab holds set-aside prose, notes and Kin's suggestions for the open
+draft. Versions of the cursor's span sit above the list. Opening the margin
+never re-wraps the draft.
+
+- ⌥⌘X moves the selection, else the paragraph, into the stash. **Add a note**
+  keeps a note without putting it in the draft.
+- Click or keyboard-focus a row to show its actions below the text. ↑/↓ move
+  between rows; Enter inserts, Delete removes, and ⇧⌘J discusses it with Kin.
+  ⌥⌘V opens the stash picker. Drag a row into the draft to put it there,
+  or reorder the list by dragging or with ⌥↑/⌥↓ on a focused row.
+- A rewrite replaces only the words it is anchored to. If they have changed
+  or gone, it stays in the stash. Other items insert at the cursor.
+  Stashing and inserting each take one undo step; undo restores the item too.
+- Kin's mark distinguishes its items. Rewrites show the original words
+  struck above the replacement. **Ask Kin** reads the draft, its stash and
+  the vault, and adds up to five items. **Stash** under a Kin reply saves it
+  here. Neither changes the draft.
+- Kin never adds anything unasked. Only **Ask Kin** and **Stash** on a reply
+  add Kin's items. The stash has no suggestions setting or background job.
+
+Stash files are plain Markdown at `.kintsugi/stash/<document path>.md`, with
+items separated by `---` and metadata comments for authors and anchors.
+They move with document and folder renames. They never enter the document,
+search results, publishing or exports.
+
 ## Alternatives
 
 Keep more than one version of a word, a selection, a sentence or a paragraph
@@ -177,22 +204,24 @@ version that's showing, so the file stays plain for Obsidian and publishing.
 
 **On the Mac**
 
-- ⌥⌘A opens the alternatives for the selection, or for the cursor's word.
-  ←/→ switch between word (or selection), sentence and paragraph. Type a new
-  version and press Enter to add it; it shows in place. ↑/↓ and Enter pick
-  one, ⌫ removes the highlighted one, Escape closes.
+- ⌥⌘A opens the Stash tab in the right margin, with the cursor's versions
+  above the stash. Word (or Selection), Sentence and Paragraph choose the span.
+  In the version field, ←/→ switch spans, ↑/↓ and Enter pick a version,
+  ⌫ removes it, and Escape closes. Type into **Add a version** and press Enter
+  to add and show it.
 - ⌥⌘] and ⌥⌘[ show the next and previous version without opening anything.
   Each swap is its own undo step.
 - Accepting a ⌘K edit keeps the original one ⌥⌘[ away. ⇧↩ keeps the
   highlighted version without applying it. Both keep Kin's version marked
   with its icon.
-- Ask Kin in the panel, or press ⌥⇧⌘A, for synonyms, sentence rewordings or
+- Ask Kin in the versions section, or press ⌥⇧⌘A, for synonyms, sentence rewordings or
   paragraph versions. One request adds up to three choices without changing
   the draft. Explicit asks work with suggestions off and use the edit model
   and cost cap. No alternatives are fetched in the background.
-- A word, selection or sentence with alternatives has a dotted underline and
-  a small count; a paragraph has the count in the left margin. Click a count
-  to open its alternatives.
+- A word, selection or sentence with versions has an ink dotted underline
+  and position dots under its end. A paragraph has dots in the left gutter.
+  The filled dot is the showing version. Click the dots to open its versions.
+  These marks stay visible with Kin's suggestions off.
 - The version showing is always one of the set. Typing inside it edits that
   version; replacing the whole span (a paste, an undo) keeps the new text as
   another version. One version left means no alternatives, and the set goes.

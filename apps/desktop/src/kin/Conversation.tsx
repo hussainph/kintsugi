@@ -1,6 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Bookmark, Brain, Check, Clock, Coins, Copy, FileText, Hourglass, Lightbulb, Loader2, MessageCircle, Pilcrow, Rss, Unplug, AlertCircle, X } from "@kintsugi/ui/icons";
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   ChainOfThought,
@@ -38,6 +38,7 @@ import { Button } from "@kintsugi/ui/components/button";
 import { type Entry, type Job, jobs } from "@/lib/chat";
 import { type Chip, chipKey, chipTitle, snippet } from "@/lib/chips";
 import { openSettings } from "@/lib/kin";
+import { onStashTarget, stashReply, stashTarget } from "@/lib/stash";
 import { KinAvatar } from "./Avatar";
 import { parseEdit } from "./edits";
 import { EditProposal } from "./EditProposal";
@@ -134,6 +135,7 @@ function Steps({ entry }: { entry: Entry }) {
 
 function ReplyActions({ entry, latest }: { entry: Entry; latest: boolean }) {
   const { copied, copy } = useCopy();
+  const target = useSyncExternalStore(onStashTarget, stashTarget, () => null);
   const meta = [modelShort(entry.model), cost(entry.usd)].filter(Boolean).join(" · ");
   return (
     <MessageActions pinned={latest}>
@@ -142,6 +144,7 @@ function ReplyActions({ entry, latest }: { entry: Entry; latest: boolean }) {
           {copied ? <Check /> : <Copy />}
         </MessageAction>
       )}
+      {!entry.error && !entry.interrupted && target && <MessageAction label="Stash" onClick={() => { if (stashReply(entry.text)) toast("Added to stash"); else toast.error("Couldn’t add to stash"); }}><Bookmark /></MessageAction>}
       {meta && <span className="ki-message-meta" data-model={entry.model}>{meta}</span>}
     </MessageActions>
   );

@@ -241,6 +241,11 @@ Writing works fully on both the Mac and the phone.
   to disk, so files stay Obsidian-compatible. ⌘K's AI edits on a selection
   stay, alongside non-prose actions like "find supporting clips", "who
   disagrees?" and "Discuss this paragraph".
+- **The stash:** one list beside each draft holds his set-aside text and
+  notes alongside Kin's rewrites and requested ideas. His versions sit above
+  it in the Stash tab. Kin adds nothing unasked: only **Ask Kin** on the stash
+  and **Stash** on a reply put its items here. Nothing reaches the draft
+  without his insert.
 - **Organizing:** drafts can be tagged and organized (folders on disk, tags
   in frontmatter), and filtered on both devices.
 
@@ -294,6 +299,7 @@ rather use it. Outside agents never add to Inspiration.
   .kintsugi/
     agent/          Kin's memory: USER.md, NOTES.md, skills/
     comments/       Kin's comment threads on documents (KI-38; see docs/kin.md)
+    stash/          set-aside text, notes and Kin's suggestions, outside the draft
     kin/            Kin's conversation in this vault: the log and thread summaries
     folders.json    each folder's colour and icon (KI-75), by folder path
   …                 drafts, notes and posts, in folders, anywhere else
@@ -307,7 +313,8 @@ directory, not the vault.
 - **Writing comes first.** Every feature serves turning inspiration into
   finished pieces.
 - **Kin helps; it doesn't ghostwrite.** It finds, connects, questions and
-  suggests. Prose is Hussain's, apart from edits he explicitly asks for.
+  suggests. Prose is Hussain's. Kin's rewrites may wait in the shared stash;
+  they reach the draft only when he inserts one.
 - **Hussain curates.** Only Hussain puts things in Inspiration and
   Writing.
 - **Plain files, local first.** One folder on disk is the source of truth.

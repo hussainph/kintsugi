@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { builtinKeymap, macSpecs } from "@kintsugi/editor/keymaps";
 import { formatKeymap } from "@kintsugi/editor/format";
 import { alternativeShortcuts } from "@kintsugi/editor/alternatives";
+import { stashShortcuts } from "@kintsugi/editor/stash";
 import { ACTIONS } from "../refine/prompts.ts";
 import { holdCommand } from "./holdCommand.ts";
 import { canonical, keysOf, matches } from "./keys.ts";
@@ -110,6 +111,11 @@ test("⌘/ is Dim's alone: CodeMirror's comment toggles are out of the keymap", 
 test("the alternatives keys listed are the editor's", () => {
   const listed = entries().filter((s) => s.group === "alternatives").map((s) => [canonical(s.key), s.label]);
   assert.deepEqual(listed, alternativeShortcuts.map((s) => [canonical(s.key), s.label]));
+});
+
+test("the stash keys listed are the editor's", () => {
+  const listed = entries().filter((s) => s.group === "stash").map((s) => [canonical(s.key), s.label]);
+  assert.deepEqual(listed, stashShortcuts.map((s) => [canonical(s.key), s.label]));
 });
 
 test("CodeMirror's keys in the list are still its keys", () => {
