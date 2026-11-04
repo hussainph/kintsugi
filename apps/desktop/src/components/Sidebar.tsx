@@ -101,10 +101,11 @@ export function Sidebar(props: Props) {
 
   return (
     <SidebarRoot collapsible="icon" inert={props.inert}>
-      {/* Room for the traffic lights; the whole strip drags the window. In the
-          rail they take the strip, so the trigger sits under them. */}
+      {/* Room for the traffic lights (--ki-titlebar; none in full screen); the
+          whole strip drags the window. In the rail they take the strip, so
+          the trigger sits under them. */}
       <SidebarHeader
-        className="h-10 flex-row items-center justify-end group-data-[collapsible=icon]:h-auto group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pt-10"
+        className="min-h-(--ki-titlebar) flex-row items-center justify-end group-data-[collapsible=icon]:min-h-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:pt-(--ki-titlebar)"
         data-tauri-drag-region
       >
         <ShortcutHint id="sidebar" className="mr-(--space-xxs)" />

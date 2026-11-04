@@ -24,7 +24,10 @@ import { Refine } from "@/refine/Refine";
 import { ACTIONS, type Action } from "@/refine/prompts";
 import { fits } from "@/refine/direct";
 import { Library, type LibraryHandle } from "@/inspiration/Library";
-import { KinChat } from "@/kin/Chat";
+import { Margin } from "@/margin/Margin";
+import { marginCoversText, useMarginFold } from "@/margin/fold";
+import { setMarginWhere, useMargin } from "@/margin/state";
+import { useWindowChrome } from "@/lib/chrome";
 import { onOpenLink, resolveTarget } from "@/kin/links";
 import { KinDev } from "@/kin/KinDev";
 import { editorChips } from "@/kin/screen";
@@ -108,6 +111,17 @@ export default function App() {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   // Expanded or collapsed to icons; kept across restarts (KI-56).
   const [navOpen, setNavOpen] = useSidebarOpen();
+  // The document bar's height: the margin stops above it.
+  const [barHeight, setBarHeight] = useState(0);
+  const barObserver = useRef<ResizeObserver | null>(null);
+  const measureBar = useCallback((element: HTMLDivElement | null) => {
+    barObserver.current?.disconnect();
+    barObserver.current = null;
+    if (!element) return setBarHeight(0);
+    const observer = new ResizeObserver(() => setBarHeight(element.getBoundingClientRect().height));
+    observer.observe(element);
+    barObserver.current = observer;
+  }, []);
 
   const viewRef = useRef<EditorView | null>(null);
   const libraryRef = useRef<LibraryHandle>(null);
@@ -132,6 +146,15 @@ export default function App() {
   const docs = useMemo(() => flatten(tree), [tree]);
   // The editor stays mounted (and keeps its state) behind the library and feed.
   const away = libraryOpen || feedOpen || !!ideasOpen;
+  const writing = !!doc && !away && !settingsAt;
+  useEffect(() => setMarginWhere(writing ? "writing" : "away"), [writing]);
+  const margin = useMargin();
+  // Full screen or windowed: the room kept for the traffic lights.
+  useWindowChrome();
+  // Below about 1320 px the margin doesn't fit beside the draft with the
+  // sidebar open, so opening it folds the sidebar to icons, and closing it
+  // brings the sidebar back. Never saved: the sidebar is still his choice.
+  const folded = useMarginFold(margin.open, () => writing && navOpen && marginCoversText(viewRef.current), [writing]);
 
   const fail = useCallback((e: unknown) => {
     toast.error(String(e));
@@ -925,7 +948,14 @@ export default function App() {
   const vaultName = root?.split("/").filter(Boolean).pop() ?? "";
 
   return (
-    <SidebarProvider open={navOpen} onOpenChange={setNavOpen}>
+    <SidebarProvider
+      open={navOpen && !folded.active}
+      onOpenChange={(next) => {
+        // ⌘\ or the trigger while folded: he wants it back.
+        if (folded.active && next) folded.release();
+        setNavOpen(next);
+      }}
+    >
       <Sidebar
         tree={tree}
         vaultName={vaultName}
@@ -954,7 +984,7 @@ export default function App() {
         onTagFilter={setTagFilter}
       />
       <SidebarInset className="relative h-svh min-w-0" inert={!!settingsAt}>
-        <div className="absolute inset-x-0 top-0 z-10 h-8" data-tauri-drag-region />
+        <div className="absolute inset-x-0 top-0 z-10 h-(--ki-titlebar)" data-tauri-drag-region />
         {libraryOpen && <Library ref={libraryRef} key={root} openClip={openClip} renderUsedIn={(clip) => <UsedIn root={root} path={clip.path} onOpen={openDoc} />} />}
         {feedOpen && <Feed />}
         {ideasOpen && (
@@ -995,6 +1025,7 @@ export default function App() {
         )}
         </div>
         {doc && !away && (
+          <div ref={measureBar} className="shrink-0">
           <DocumentBar
             mirror={mirror}
             tags={docTags}
@@ -1008,6 +1039,7 @@ export default function App() {
             save={save}
             onShortcuts={() => setCheatsheet(true)}
           />
+          </div>
         )}
       </SidebarInset>
       {refine && viewRef.current && doc && (
@@ -1045,7 +1077,7 @@ export default function App() {
       )}
       <AboutYou />
       <KinDev />
-      <KinChat />
+      <Margin where={writing ? "writing" : "away"} bottom={writing ? barHeight : 0} writing={writing && doc ? { viewRef, path: doc.path } : null} />
       <Toaster position="bottom-center" />
     </SidebarProvider>
   );

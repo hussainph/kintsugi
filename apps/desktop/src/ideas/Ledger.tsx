@@ -50,7 +50,7 @@ export function Ledger({ model, onOpenDoc, filterTitle }: { model: IdeasModel; o
   const { today, earlier } = model.groups;
   const live = today.filter((i) => !i.dismissed).length;
   return (
-    <div className="mx-auto max-w-[680px] px-5 pt-14 pb-16 md:px-6">
+    <div className="mx-auto max-w-[680px] px-5 pt-[calc(3.5rem-var(--ki-titlebar-lift))] pb-16 md:px-6">
       <header className="mb-8 space-y-2">
         <h1 className="ki-title">{model.filter ? "Ideas for this draft" : "Ideas"}</h1>
         {model.filter ? (

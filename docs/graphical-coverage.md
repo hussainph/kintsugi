@@ -139,7 +139,7 @@ Sonner or native behavior.
 | Sidebar, tree, tag filter | Converted |
 | Palette | Converted |
 | Inspiration library, clip cards, capture, clip detail | Converted |
-| Writing, reference margin, Used in | Converted |
+| Writing, the margin (Kin, References, Stash), Used in | Converted |
 | Refine | Converted |
 | Phone dialog, headless dialogs | Converted |
 | Feed, sources, picked | Themed through the semantic aliases; type sizes moved onto the theme scale; page title uses `ki-title` |

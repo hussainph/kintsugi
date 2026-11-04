@@ -302,7 +302,7 @@ export function Feed() {
 
   return (
     <section ref={section} className="relative flex h-full min-h-0 flex-col" aria-label="Feed" data-layout={layout}>
-      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-7 pt-14 pb-10 lg:px-10">
+      <div ref={scroller} className="min-h-0 flex-1 overflow-y-auto px-7 pt-[calc(3.5rem-var(--ki-titlebar-lift))] pb-10 lg:px-10">
         {view?.kind === "story" && (
           <StoryPage key={`s${view.id}`} id={view.id} initial={view.story} pick={view.pick} place={view.place ?? { surface: "newest", position: 0 }} open={open} onBack={back} />
         )}

@@ -189,12 +189,12 @@ test("threads are rows in Kin's one conversation log, about the document", { tim
   assert.ok(entries[0].chips.some((c: { kind: string; lines?: number[] }) => c.kind === "paragraph" && c.lines), "his message carries the paragraph");
   // The chat shows them in the document's thread, marked as comments.
   await page.getByRole("button", { name: "Ask Kin" }).click();
-  const chat = page.getByRole("dialog", { name: "Kin" });
+  const chat = page.getByRole("region", { name: "Kin" });
   await chat.waitFor();
   await chat.locator("[data-comment-tag]").first().waitFor();
   await chat.locator('[data-role="kin"][data-comment]').first().waitFor();
   await shot("07-in-the-log");
-  await chat.getByRole("button", { name: "Hide Kin" }).first().click();
+  await page.getByRole("button", { name: "Margin", pressed: true }).click();
 });
 
 test("⌘K › Kin, review this draft leaves comments on paragraphs", { timeout: 90_000 }, async () => {
@@ -215,8 +215,8 @@ test("⌘K › Kin, review this draft leaves comments on paragraphs", { timeout:
 
 test("at phone width the thread popover fits the screen", { timeout: 60_000 }, async () => {
   await page.setViewportSize({ width: 390, height: 780 });
-  // The desktop's reference margin, left open from the wide window, isn't part of the phone.
-  const margin = page.getByRole("button", { name: "Hide reference margin" });
+  // The desktop's margin, if left open from the wide window, isn't part of the phone.
+  const margin = page.getByRole("button", { name: "Margin", pressed: true });
   if (await margin.isVisible()) await margin.click();
   await markerOn("A new opening paragraph.").click();
   await popover().waitFor();

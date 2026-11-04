@@ -35,6 +35,9 @@ if (import.meta.env.DEV && shouldInstallHeadlessBridge(import.meta.env, window))
       open: (url, target, features) => window.open(url, target, features),
       clientId: crypto.randomUUID(),
       random: () => crypto.getRandomValues(new Uint32Array(1))[0] / 0x1_0000_0000,
+      // Runtime tests set `data-headless-fullscreen="true"` on <html>, then
+      // fire `resize`, as entering full screen does.
+      fullscreen: () => document.documentElement.dataset.headlessFullscreen === "true",
     });
     installHeadlessBridge(window as unknown as Record<string, unknown>, bridge);
     window.addEventListener("pagehide", () => bridge.close());

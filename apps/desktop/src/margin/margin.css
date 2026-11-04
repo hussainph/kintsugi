@@ -1,0 +1,87 @@
+/* The right margin (KI-103). Fixed to the window's right edge, over the
+   empty gutter beside the draft (see the column in references.css) or over
+   the page away from the editor. Above Settings (z 30), below dialogs. */
+.graphical-theme {
+  --ki-margin-width: 360px;
+  /* Between the draft's last letter and the margin's edge. */
+  --ki-margin-gap: var(--space-l);
+  --ki-margin-ease: cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.ki-margin {
+  position: fixed;
+  z-index: 35;
+  top: 0;
+  right: 0;
+  display: flex;
+  width: min(var(--ki-margin-width), 100vw);
+  flex-direction: column;
+  color: var(--neutral-10);
+  background: var(--neutral-1);
+  box-shadow: inset var(--border-s) 0 0 var(--neutral-4);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(var(--space-l));
+  transition: transform 240ms var(--ki-margin-ease), opacity 200ms ease-out, visibility 0s linear 240ms;
+}
+.ki-margin[data-open] {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: transform 240ms var(--ki-margin-ease), opacity 200ms ease-out, visibility 0s;
+}
+
+.ki-margin-tabs { display: flex; flex: 1; min-height: 0; flex-direction: column; gap: 0; }
+/* Leaves the top right to the margin button, which stays put open or closed. */
+.ki-margin-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: calc(var(--ki-titlebar) - var(--space-xxs)) calc(var(--space-m) + var(--space-xl) + var(--space-xs)) var(--space-xs) var(--space-m);
+}
+.ki-margin-tab { position: relative; }
+.ki-margin-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; padding: 0; }
+.ki-margin-panel[hidden] { display: none; }
+.ki-margin-scroll, .ki-margin-panel[data-tab="stash"] {
+  overflow-y: auto;
+  padding: var(--space-s) var(--space-m) var(--space-xxl);
+  scrollbar-color: var(--neutral-4) transparent;
+  scrollbar-width: thin;
+}
+.ki-margin-empty {
+  font-family: var(--font-ui);
+  font-weight: var(--weight-ui-regular);
+  font-size: var(--size-xs);
+  line-height: var(--line-xs);
+  letter-spacing: var(--letter-spacing-xs);
+  color: var(--neutral-7);
+}
+
+.ki-margin-toggle {
+  position: fixed;
+  z-index: 36;
+  right: var(--space-m);
+  top: var(--ki-titlebar);
+  display: grid;
+  place-items: center;
+  padding: var(--space-xs);
+  border: 0;
+  border-radius: var(--radius-s);
+  color: var(--neutral-7);
+  background: var(--color-none);
+  transition: color var(--motion-duration) var(--motion-easing), background-color var(--motion-duration) var(--motion-easing), transform var(--motion-duration) var(--motion-easing);
+}
+.ki-margin-toggle > svg { width: var(--size-m); height: var(--size-m); }
+.ki-margin-toggle:hover, .ki-margin-toggle[aria-pressed="true"] { color: var(--neutral-10); background: var(--neutral-3); }
+.ki-margin-toggle:active { transform: translateY(var(--motion-press-distance)); }
+.ki-margin-toggle:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
+
+/* Today's chat in the Kin tab; KI-104 replaces it. */
+.ki-kin-tab { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ki-margin, .ki-margin[data-open] { transform: none; transition: opacity 120ms linear, visibility 0s linear 120ms; }
+  .ki-margin[data-open] { transition: opacity 120ms linear, visibility 0s; }
+  .ki-margin-toggle { transition: none; }
+  .ki-margin-toggle:active { transform: none; }
+}

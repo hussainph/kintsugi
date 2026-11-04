@@ -684,7 +684,8 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
 `ai/jobs.rs` (helpers); webview: `src/kin/Chat.tsx`, `src/lib/chat.ts`.
 
 - **One avatar, one chat.** A placeholder avatar (KI-23/KI-41 design the
-  real one) sits bottom-right on every screen; it and ⌘J open the chat.
+  real one) sits bottom-right on every screen; it and ⌘J open the chat in
+  the margin's Kin tab (KI-103, `docs/writing.md`).
   Screens say what they show through `useScreenContext` (the editor: the
   selection, then the document; an open clip), and the chat attaches it as
   removable chips. `discuss(chip)` from `src/lib/chat.ts` opens the chat with
@@ -767,12 +768,12 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
 
 Code: `packages/ui/src/components/ai/` (`@kintsugi/ui/ai`), the chat
 components; `src/kin/useKinChat.ts` (the chat's state), `Conversation.tsx`
-(the log, helpers and composer) and `Chat.tsx` (the floating pane and the
-avatar). The components follow the structure of Vercel's AI Elements
+(the log, helpers and composer) and `Chat.tsx` (the Kin tab and the
+avatar). The margin (`src/margin/`) holds the tab. The components follow the structure of Vercel's AI Elements
 (Conversation, Message, Response, PromptInput, ChainOfThought, Suggestion,
 CodeBlock, Shimmer), rebuilt on the Graphical theme and Base UI parts.
 They know nothing about Kin and nothing about where they're placed, so the
-pane, a sidebar (KI-63) or a comment thread can use them.
+margin or a comment thread can use them.
 
 - **The log** follows new words while he's at the bottom, stays put when
   he's scrolled up to read, and shows a button back to the latest. Opening
@@ -805,13 +806,14 @@ pane, a sidebar (KI-63) or a comment thread can use them.
 - **An empty thread** shows one line and, with something on screen, a few
   asks to send in one click ("Who disagrees?", "Find a clip").
 - **Helpers** at work sit above the composer, each with a way to stop it.
-- **Hide.** The pane's minus button and ⌘J hide it; the conversation and
-  Kin's turn carry on, and the avatar's dot says when Kin replied.
+- **Hide.** ⌘J, the avatar, Escape and the margin button close it; the
+  conversation and Kin's turn carry on, and the avatar's dot says when Kin
+  replied.
 - **Motion** is small and has a reduced-motion fallback: messages he sends
   and helper reports settle in from just below, a step fades in as it
   starts and its spinner turns into a check, "Thinking" shimmers, the caret
-  pulses, and the button back to the latest fades in. Opening the pane
-  isn't animated (⌘J opens it many times a day).
+  pulses, and the button back to the latest fades in. The margin slides in
+  over 240 ms, and only fades under reduced motion.
 
 ## Ideas (KI-39)
 

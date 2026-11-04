@@ -1,11 +1,11 @@
-import { Check, ChevronDown, Minus } from "@kintsugi/ui/icons";
+import { Check, ChevronDown } from "@kintsugi/ui/icons";
 import { Menu } from "@kintsugi/ui/graphical";
-import { Button } from "@kintsugi/ui/components/button";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { snippet } from "@/lib/chips";
 import { KinAvatar } from "./Avatar";
 import { KinComposer, KinHelpers, KinLog, KinSummary } from "./Conversation";
-import { useKinChat, type KinChatState } from "./useKinChat";
+import { type KinChatState } from "./useKinChat";
+import { openKin } from "@/lib/chat";
 import { keysOf } from "@/lib/keys";
 import { SHORTCUTS } from "@/lib/shortcuts";
 import { ShortcutHint } from "@/components/Shortcuts";
@@ -47,63 +47,47 @@ function ThreadMenu({ chat }: { chat: KinChatState }) {
   );
 }
 
-/**
- * Kin everywhere: one avatar on every screen, opening one chat. Whatever is
- * on screen comes along as removable chips; the conversation shown is the
- * thread for what's on screen (a view of the open vault's log), resumable
- * later. ⌘J shows and hides it; `discuss()` opens it with an item attached.
- *
- * The pane is a shell: the log, helpers and composer are their own
- * components (`Conversation.tsx`) over `useKinChat`, so a sidebar can hold
- * the same chat (KI-63).
- */
-export function KinChat() {
-  const chat = useKinChat();
-  const { open, show, hide, talking, unread, helpers } = chat;
+/** The avatar, bottom right on every screen: opens and hides the margin's
+ *  Kin tab. Its dot says Kin answered while the tab was hidden (gold) or a
+ *  helper is working (grey). */
+export function KinLauncher({ chat, hidden }: { chat: KinChatState; hidden?: boolean }) {
+  const { open, talking, unread, helpers } = chat;
   const busy = helpers.some((j) => j.status === "running");
+  if (hidden) return null;
   return (
-    <>
-      <button
-        type="button"
-        aria-label={open ? "Hide Kin" : "Ask Kin"}
-        title={`Kin (${keysOf(SHORTCUTS.kin.key)})`}
-        aria-expanded={open}
-        onClick={() => (open ? hide() : show())}
-        className="ki-kin-launcher"
-      >
-        <KinAvatar talking={talking} />
-        <ShortcutHint id="kin" side="above" />
-        {(unread || busy) && <span aria-hidden data-kin-unread={unread || undefined} className={cn("ki-kin-launcher-dot", !unread && "ki-kin-launcher-dot-busy")} />}
-      </button>
+    <button
+      type="button"
+      aria-label={open ? "Hide Kin" : "Ask Kin"}
+      title={`Kin (${keysOf(SHORTCUTS.kin.key)})`}
+      aria-expanded={open}
+      onClick={() => (open ? chat.hide() : openKin())}
+      className="ki-kin-launcher"
+    >
+      <KinAvatar talking={talking} />
+      <ShortcutHint id="kin" side="above" />
+      {(unread || busy) && <span aria-hidden data-kin-unread={unread || undefined} className={cn("ki-kin-launcher-dot", !unread && "ki-kin-launcher-dot-busy")} />}
+    </button>
+  );
+}
 
-      {open && (
-        <section
-          role="dialog"
-          aria-label="Kin"
-          onKeyDown={(e) => {
-            // A menu's Esc (in a portal, outside this panel) closes only the menu.
-            if (e.key === "Escape" && e.currentTarget.contains(e.target as Node)) {
-              e.stopPropagation();
-              hide();
-            }
-          }}
-          className="ki-kin-pane"
-        >
-          <header className="ki-kin-header">
-            <KinAvatar className="ki-kin-header-avatar" talking={talking} />
-            <ThreadMenu chat={chat} />
-            <Button variant="ghost" size="icon-sm" aria-label="Hide Kin" title={`Hide (${keysOf(SHORTCUTS.kin.key)})`} onClick={hide}>
-              <Minus />
-            </Button>
-          </header>
-          <KinSummary chat={chat} />
-          <KinLog chat={chat} />
-          <div className="ki-kin-footer">
-            <KinHelpers helpers={helpers} />
-            <KinComposer chat={chat} onManage={hide} />
-          </div>
-        </section>
-      )}
-    </>
+/**
+ * Today's chat in the margin's Kin tab (KI-103): which conversation, its
+ * summary, the log, helpers and the composer. Whatever is on screen comes
+ * along as removable chips. "Kin as small threads" (KI-104) replaces this.
+ */
+export function KinChatTab({ chat }: { chat: KinChatState }) {
+  return (
+    <section className="ki-kin-tab" aria-label="Kin">
+      <div className="ki-kin-header">
+        <KinAvatar className="ki-kin-header-avatar" talking={chat.talking} />
+        <ThreadMenu chat={chat} />
+      </div>
+      <KinSummary chat={chat} />
+      <KinLog chat={chat} />
+      <div className="ki-kin-footer">
+        <KinHelpers helpers={chat.helpers} />
+        <KinComposer chat={chat} onManage={chat.hide} />
+      </div>
+    </section>
   );
 }

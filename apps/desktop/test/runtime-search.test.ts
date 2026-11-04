@@ -42,7 +42,7 @@ test("the Library's first search finds clips by a word's stem", { timeout: 60_00
 
 test("Kin's first search finds the note by its words", { timeout: 60_000 }, async () => {
   await page.keyboard.press("Meta+j");
-  const panel = page.getByRole("dialog", { name: "Kin" });
+  const panel = page.getByRole("region", { name: "Kin" });
   const box = panel.getByRole("textbox", { name: "Message Kin" });
   await box.fill("repair");
   await box.press("Enter");

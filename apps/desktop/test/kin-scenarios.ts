@@ -78,7 +78,7 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
   const page = await browser.newPage({ viewport: { width: 1280, height: 820 }, colorScheme: mode, deviceScaleFactor: 2 });
   const dir = resolve(app.shots, mode);
   mkdirSync(dir, { recursive: true });
-  const panel = () => page.getByRole("dialog", { name: "Kin" });
+  const panel = () => page.getByRole("region", { name: "Kin" });
   const box = () => panel().getByRole("textbox", { name: "Message Kin" });
   const kinReplies = () => panel().locator('[data-role="kin"]');
   let n = 0;

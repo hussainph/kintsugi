@@ -136,6 +136,39 @@ but it never applies one; only the writer edits `tags`.
 - Each document shows its tags faintly under its title. Tags are edited on
   the Mac (or in the frontmatter); the phone keeps whatever is there.
 
+## The page and the margin
+
+The draft keeps a fixed measure (KI-103). Its line length and left edge depend
+only on the window's width and the text size, so opening or closing anything
+never re-wraps a line.
+
+- **The column** is centred when the margin fits beside it. Otherwise it moves
+  left just enough for the margin to fit, and never closer to the sidebar than
+  its own padding (`references/references.css`).
+- **The margin** is one 360 px panel on the right with three tabs: Kin,
+  References and Stash. It slides in over the empty gutter in 240 ms, with no
+  line moving. Under reduced motion it fades instead.
+- **Narrow windows.** When the margin wouldn't fit beside the draft with the
+  sidebar open (below about 1350 px at the default text size), opening it
+  folds the sidebar to icons. Closing it brings the sidebar back. If the
+  window is too narrow even then, the margin covers the page's right edge,
+  and the text still doesn't re-wrap.
+- **Keys.** ⌥⌘\ opens and closes the margin. ⌘J, ⇧⌘R and ⇧⌘S open Kin,
+  References and Stash, or close the margin when that tab is already showing.
+  Escape inside the margin closes it and puts focus back in the draft.
+- **Kin** is the chat (`docs/kin.md`). **References** lists what the draft links
+  to, what's related to the cursor's paragraph, and what links here.
+  **Stash** is empty for now; KI-89 fills it.
+- **Away from the editor** (Feed, a story, Ideas, Inspiration, Settings) the
+  same margin holds Kin alone, over the page. A writing tab waits until he's
+  back in the draft.
+- Open or closed, and which tab, is kept across documents, screens and
+  restarts.
+- **Full screen.** The strip kept for the traffic lights (`--ki-titlebar` in
+  `theme.css`, set from Tauri's full-screen state by `lib/chrome.ts`) closes
+  in macOS full screen. The sidebar header, the margin's tabs and the pages'
+  top padding move up with it.
+
 ## Alternatives
 
 Keep more than one version of a word, a selection, a sentence or a paragraph

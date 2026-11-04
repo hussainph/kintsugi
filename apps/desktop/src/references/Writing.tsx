@@ -1,7 +1,6 @@
 import { isolateHistory } from "@codemirror/commands";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { PanelRight } from "@kintsugi/ui/icons";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { toast } from "sonner";
 import type { Clip } from "@kintsugi/core/clips";
@@ -19,6 +18,7 @@ import { ideasForDraft } from "@/ideas/api";
 import { type Action } from "@/refine/prompts";
 import { skillAction } from "@/refine/kin";
 import { SelectionMenu } from "@/refine/SelectionMenu";
+import { MarginPortal } from "@/margin/Portal";
 import { UsedIn } from "./UsedIn";
 import { useReferenceIndex } from "./useReferenceIndex";
 import { useReferenceSearch } from "./useReferenceSearch";
@@ -35,7 +35,9 @@ const name = (path: string) => path.replace(/^.*\//, "").replace(/\.mdx?$/, "");
 const documentFirst = (a: ReferenceSource, b: ReferenceSource) => Number(a.kind === "clip") - Number(b.kind === "clip");
 
 /** Editor-only integration: the library can replace this view without losing
- * the shared index. The margin never produces or changes the writer's words. */
+ * the shared index. The references render into the margin's References tab
+ * (KI-103); open or closed is the margin's, never the cursor's. They never
+ * produce or change the writer's words. */
 export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Props) {
   const index = useReferenceIndex(root);
   const activePath = useRef(editor.path);
@@ -45,9 +47,6 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   const [paragraph, setParagraph] = useState("");
   const [related, setRelated] = useState<ReferenceSource[]>([]);
   const [clip, setClip] = useState<ReferenceSource | null>(null);
-  // Open or closed is his choice, kept across paragraphs, documents and
-  // restarts. What the cursor is on never opens or closes it (KI-56).
-  const [margin, setMargin] = useState(readMargin);
   const rawSources = useMemo<ReferenceSource[]>(() => [
     ...index.documents.map((document) => ({
       kind: "document" as const, path: document.path, title: document.title || name(document.path), status: document.status,
@@ -192,32 +191,19 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     <div className="reference-writing">
       <Editor {...editor} references={options} commands={commands} comments={comments} alternatives={alternatives} />
       {onRefine && <SelectionMenu viewRef={editor.viewRef} path={editor.path} onRefine={onRefine} />}
-      <Tooltip><TooltipTrigger asChild><button className="reference-toggle" aria-label={margin ? "Hide reference margin" : "Show reference margin"} aria-pressed={margin} onClick={() => {
-        const next = !margin; setMargin(next); saveMargin(next);
-      }}><PanelRight className="size-[var(--size-m)]" /></button></TooltipTrigger><TooltipContent>Reference margin</TooltipContent></Tooltip>
-      {margin && <aside className="reference-margin" aria-label="Reference margin">
-        {marginEmpty && <p className="reference-empty">Nothing related to this paragraph.</p>}
-        <MarginSection title="Referenced here" sources={referenced} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
-        {unresolved.map((target) => <Tooltip key={target}><TooltipTrigger asChild><p className="reference-missing">{target}<span>not found</span></p></TooltipTrigger><TooltipContent>No matching document or clip</TooltipContent></Tooltip>)}
-        <MarginSection title="Along this paragraph" sources={related.map((item) => byPath.get(item.path) ?? item)} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
-        <MarginSection title="Links here" sources={backlinks} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
-      </aside>}
-      {index.error && <button className="reference-error" onClick={index.refresh}>References unavailable · Retry</button>}
+      <MarginPortal tab="references">
+        <div className="reference-margin">
+          {index.error && <button className="reference-error" onClick={index.refresh}>References unavailable · Retry</button>}
+          {marginEmpty && !index.error && <p className="ki-margin-empty">Nothing related to this paragraph.</p>}
+          <MarginSection title="Referenced here" sources={referenced} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
+          {unresolved.map((target) => <Tooltip key={target}><TooltipTrigger asChild><p className="reference-missing">{target}<span>not found</span></p></TooltipTrigger><TooltipContent>No matching document or clip</TooltipContent></Tooltip>)}
+          <MarginSection title="Along this paragraph" sources={related.map((item) => byPath.get(item.path) ?? item)} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
+          <MarginSection title="Links here" sources={backlinks} all={sources} root={root} onOpen={open} onInsert={insert} onQuote={quote} />
+        </div>
+      </MarginPortal>
       {clip && <ClipCard key={`${root}:${clip.path}`} root={root} source={clip} onClose={() => setClip(null)} onQuote={() => quote(clip)} onReference={() => { setClip(null); insert(linkFor(clip, sources)); }} onOpenDoc={onOpenDoc} />}
     </div>
   );
-}
-
-const MARGIN_KEY = "kintsugi:margin";
-/** Saved choice first; with none yet, open when the window is wide enough. */
-function readMargin(): boolean {
-  try {
-    const saved = localStorage.getItem(MARGIN_KEY);
-    return saved ? saved === "visible" : window.matchMedia("(min-width: 1001px)").matches;
-  } catch { return window.innerWidth > 1000; }
-}
-function saveMargin(open: boolean) {
-  try { localStorage.setItem(MARGIN_KEY, open ? "visible" : "hidden"); } catch { /* A convenience only. */ }
 }
 
 const ACTIONS = [

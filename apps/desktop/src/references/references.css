@@ -6,35 +6,26 @@
   min-width: 0;
 }
 .reference-writing > :first-child { min-width: 0; }
-.reference-writing .cm-scroller, .reference-margin { scrollbar-color: var(--neutral-4) transparent; scrollbar-width: thin; }
-.reference-toggle {
-  position: absolute;
-  z-index: 11;
-  right: var(--space-m);
-  top: calc(var(--space-xl) + var(--space-xs));
-  padding: var(--space-xs);
-  border: 0;
-  border-radius: var(--radius-s);
-  color: var(--neutral-7);
-  background: var(--color-none);
-  transition: color var(--motion-duration) var(--motion-easing), background-color var(--motion-duration) var(--motion-easing), transform var(--motion-duration) var(--motion-easing);
+.reference-writing .cm-scroller { scrollbar-color: var(--neutral-4) transparent; scrollbar-width: thin; }
+/* A fixed measure (KI-103). The column is centred when the margin fits
+   beside it, else moved left just enough for it to fit, and never closer to
+   the sidebar than its own padding. Where it sits depends on the window
+   and the text size, never on what's open, so the margin slides over empty
+   gutter and no line moves. When even that can't fit, the margin overlays
+   the page (and opening it folds the sidebar to icons first; App.tsx). */
+.reference-writing .cm-editor .cm-content {
+  --ki-column: calc(var(--editor-measure) + 2 * var(--space-xxl));
+  --ki-margin-room: calc(var(--ki-margin-width) + var(--ki-margin-gap) - var(--space-xxl));
+  flex: 0 0 auto;
+  width: min(100%, var(--ki-column));
+  max-width: none;
+  margin-left: max(0px, min((100% - var(--ki-column)) / 2, 100% - var(--ki-column) - var(--ki-margin-room)));
+  margin-right: 0;
+  /* The editor's top padding, less what full screen gives back. */
+  padding-top: calc(var(--space-xxl) + var(--space-l) - var(--ki-titlebar-lift));
 }
-.reference-toggle:hover, .reference-toggle[aria-pressed="true"] { color: var(--neutral-10); background: var(--neutral-3); }
-.reference-toggle:active { transform: translateY(var(--motion-press-distance)); }
-.reference-toggle:focus-visible, .reference-card button:focus-visible, .reference-error:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
-.reference-margin {
-  width: 224px;
-  flex-shrink: 0;
-  overflow-y: auto;
-  padding: calc(2 * var(--space-xxl)) var(--space-m) calc(2 * var(--space-xxl)) var(--space-s);
-  font-family: var(--font-ui);
-  color: var(--neutral-7);
-  font-weight: var(--weight-ui-regular);
-  font-size: var(--size-xs);
-  line-height: var(--line-xs);
-  letter-spacing: var(--letter-spacing-xs);
-  text-wrap: pretty;
-}
+.reference-margin { font-family: var(--font-ui); color: var(--neutral-7); font-weight: var(--weight-ui-regular); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); text-wrap: pretty; }
+.reference-card button:focus-visible, .reference-error:focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
 .reference-section { margin-bottom: var(--space-xl); }
 .reference-section h2 { font-family: var(--font-ui); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); font-weight: var(--weight-ui-medium); margin-bottom: var(--space-s); color: var(--neutral-10); }
 .reference-card { margin: 0 0 var(--space-m); }
@@ -52,16 +43,12 @@
 .reference-card-actions button:hover { color: var(--neutral-10); text-decoration: underline; text-underline-offset: var(--space-xxs); }
 .reference-missing { font-family: var(--font-ui); font-weight: var(--weight-ui-regular); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); margin-bottom: var(--space-s); overflow-wrap: anywhere; }
 .reference-missing span { display: block; color: var(--neutral-6); font-size: var(--size-xxs); line-height: var(--line-xxs); letter-spacing: var(--letter-spacing-xxs); }
-.reference-error { position: absolute; bottom: var(--space-xl); right: var(--space-m); font-family: var(--font-ui); font-weight: var(--weight-ui-regular); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); color: var(--error); border-radius: var(--radius-xs); }
+.reference-error { display: block; margin-bottom: var(--space-m); font-family: var(--font-ui); font-weight: var(--weight-ui-regular); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); color: var(--error); border-radius: var(--radius-xs); }
 .reference-error:hover { text-decoration: underline; text-underline-offset: var(--space-xxs); }
-@media (max-width: 1000px) {
-  .reference-margin { position: absolute; right: 0; top: 75px; bottom: 0; padding-top: var(--space-m); border: 0; background: var(--neutral-1); box-shadow: inset var(--border-s) 0 0 var(--neutral-4), var(--shadow-m); z-index: 9; }
-}
 @media (hover: none) { .reference-card-actions { opacity: 1; } }
 /* Kin's comment threads (KI-38): the placeholder avatar inside the editor's DOM. */
 .comment-kin-avatar { width: 14px; height: 14px; flex-shrink: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .reference-toggle, .reference-card-actions { transition: none; }
-  .reference-toggle:active { transform: none; }
+  .reference-card-actions { transition: none; }
 }

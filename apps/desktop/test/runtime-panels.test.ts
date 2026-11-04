@@ -2,9 +2,9 @@
 // Rust command registry on Tauri MockRuntime, and the real React app) driven
 // by headless Chromium, in a fresh scratch vault and config.
 //
-// The reference margin is his choice: moving the cursor between paragraphs
-// never opens or closes it, and it stays as he left it across documents and
-// reloads. The left sidebar collapses to an icon rail (⌘\ or its trigger) and
+// The margin (KI-103; references in its References tab) is his choice:
+// moving the cursor between paragraphs never opens or closes it, and it
+// stays as he left it across documents and reloads. The left sidebar collapses to an icon rail (⌘\ or its trigger) and
 // stays collapsed after a reload; its footer is one row. Screenshots go to
 // .headless/<run>/shots/.
 import assert from "node:assert/strict";
@@ -40,9 +40,16 @@ after(async () => {
 const shot = (name: string) => page.screenshot({ path: resolve(app.shots, `${name}.png`) });
 const sidebar = () => page.locator("[data-slot=sidebar]").first();
 const nav = () => page.locator("[data-sidebar=sidebar]").first();
-const margin = () => page.getByRole("complementary", { name: "Reference margin" });
+const margin = () => page.getByRole("complementary", { name: "Margin" });
+const references = () => margin().getByRole("tabpanel", { name: "References" });
+const isOpen = async () => (await page.locator("aside.ki-margin").getAttribute("data-open")) !== null;
+/** The draft's line boxes on screen: where every line starts, sits and ends. */
+const lineBoxes = () => page.evaluate(() => [...document.querySelectorAll(".cm-content .cm-line")].flatMap((line) => {
+  const range = document.createRange();
+  range.selectNodeContents(line);
+  return [...range.getClientRects()].map((r) => `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)}`);
+}));
 const line = (text: string) => page.locator(".cm-line", { hasText: text });
-const editorWidth = async () => (await page.locator(".cm-editor").boundingBox())!.width;
 
 async function openDoc(title: string) {
   await nav().getByRole("button", { name: new RegExp(`^${title}`) }).click();
@@ -55,54 +62,55 @@ async function cursorIn(text: string) {
   await page.waitForTimeout(600);
 }
 
-test("the margin stays open, then closed, as the cursor moves between paragraphs", { timeout: 120_000 }, async () => {
+test("the References tab stays open, then closed, as the cursor moves between paragraphs", { timeout: 120_000 }, async () => {
   await openDoc("Friction");
   await cursorIn("kintsugi makes the repair");
-  await margin().getByRole("heading", { name: "Along this paragraph" }).waitFor();
-  const width = await editorWidth();
+  await page.keyboard.press("Meta+Shift+r");
+  await references().getByRole("heading", { name: "Along this paragraph" }).waitFor();
+  const lines = await lineBoxes();
   await shot("01-margin-related");
 
   // A paragraph with nothing related: the margin stays, with one line.
   await cursorIn("Zzq blorp");
-  assert.ok(await margin().isVisible(), "the margin is still open");
-  await margin().getByText("Nothing related to this paragraph").waitFor();
-  assert.equal(await editorWidth(), width, "the editor keeps its width");
-  // Typing in it doesn't move anything either.
+  assert.ok(await isOpen(), "the margin is still open");
+  await references().getByText("Nothing related to this paragraph").waitFor();
+  assert.deepEqual(await lineBoxes(), lines, "no line moved");
+  // Typing in it doesn't open or close anything either.
   await page.keyboard.type(" qwv");
   await page.waitForTimeout(400);
-  assert.ok(await margin().isVisible());
-  assert.equal(await editorWidth(), width);
+  assert.ok(await isOpen());
   await shot("02-margin-empty");
 
   await cursorIn("kintsugi makes the repair");
-  assert.ok(await margin().isVisible());
+  assert.ok(await isOpen());
 
   // Closed by him, it stays closed wherever the cursor goes.
-  await page.getByRole("button", { name: "Hide reference margin" }).click();
-  await margin().waitFor({ state: "detached" });
-  const closed = await editorWidth();
+  await page.getByRole("button", { name: "Margin", exact: true }).click();
+  await page.waitForTimeout(400);
   for (const text of ["Zzq blorp", "kintsugi makes the repair", "Zzq blorp"]) {
     await cursorIn(text);
-    assert.equal(await margin().count(), 0, `closed in "${text}"`);
-    assert.equal(await editorWidth(), closed);
+    assert.equal(await isOpen(), false, `closed in "${text}"`);
   }
 
   // Across documents and a reload.
   await openDoc("Repair is a kind of attention");
   await page.waitForTimeout(400);
-  assert.equal(await margin().count(), 0, "still closed in another document");
+  assert.equal(await isOpen(), false, "still closed in another document");
   await page.reload();
   await openDoc("Friction");
   await cursorIn("kintsugi makes the repair");
-  assert.equal(await margin().count(), 0, "still closed after a reload");
+  assert.equal(await isOpen(), false, "still closed after a reload");
 
-  // And open again the same way.
-  await page.getByRole("button", { name: "Show reference margin" }).click();
-  await margin().waitFor();
+  // And open again the same way, on the same tab.
+  await page.getByRole("button", { name: "Margin", exact: true }).click();
+  await references().getByRole("heading", { name: "Along this paragraph" }).waitFor();
   await page.reload();
   await openDoc("Friction");
   await cursorIn("Zzq blorp");
-  await margin().waitFor();
+  await references().getByText("Nothing related to this paragraph").waitFor();
+  // Closed again for the tests after this one.
+  await page.keyboard.press("Meta+Shift+r");
+  await page.waitForTimeout(400);
 });
 
 test("the sidebar collapses to an icon rail and stays collapsed", { timeout: 120_000 }, async () => {

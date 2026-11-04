@@ -49,7 +49,7 @@ const shot = async (name: string) => {
 };
 const settings = () => page.getByRole("region", { name: "Settings" });
 const section = (name: string) => settings().getByRole("navigation", { name: "Settings sections" }).getByRole("button", { name });
-const panel = () => page.getByRole("dialog", { name: "Kin" });
+const panel = () => page.getByRole("region", { name: "Kin" });
 const menu = () => page.getByRole("menu");
 
 async function openDoc(path: string) {
