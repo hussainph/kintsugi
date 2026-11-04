@@ -21,7 +21,10 @@ const DOC = "drafts/bowls.md";
 const BODY = [
   "The bowl broke along an old line. I mended it with lacquer and patience.",
   "Kilns teach patience, and patience teaches repair.",
+  // Hard-wrapped by a tool: it flows as one paragraph (KI-108).
+  "Gold fills the crack, and the crack becomes the most looked-at part\nof the bowl. Nobody hides the mend here; the seam is the point of it.\nThat is why it lasts.",
 ].join("\n\n");
+const FLOWED = "Gold fills the crack, and the crack becomes the most looked-at part\nof the bowl.";
 const FILE = `---\ntitle: "Bowls"\nstatus: draft\n---\n\n${BODY}\n`;
 const TIMEOUT = Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000);
 const created = "2026-11-01T10:00:00.000Z";
@@ -36,6 +39,8 @@ const SETS = [
   set("phrase", "phrase", "along an old line", [["down an old seam", "owner"]]),
   set("word", "word", "old", [["ancient", "owner"], ["faint", "kin"]]),
   set("paragraph", "paragraph", "Kilns teach patience, and patience teaches repair.", [["Kilns teach patience.", "kin"]]),
+  set("flowed", "sentence", FLOWED, [["Gold makes the crack the part you look at.", "owner"]]),
+  set("seam", "word", "seam", [["join", "kin"]]),
 ];
 
 let app: App;
@@ -73,6 +78,8 @@ const shot = (name: string) => page.screenshot({ path: resolve(app.shots, `${nam
 const disk = () => readFileSync(resolve(app.vault, DOC), "utf8");
 const card = (on = page) => on.locator(".cm-alt-card .ki-step-card");
 const count = () => card().locator("[data-card-count]");
+/** The card of one stored set. */
+const cardOf = (id: string) => page.locator(`.cm-alt-card[data-versions="${id}"] .ki-step-card`);
 const versions = () => page.locator(".ki-versions");
 const field = () => versions().getByRole("textbox", { name: "Add a version" });
 const options = () => versions().getByRole("option");
@@ -279,6 +286,36 @@ test("a card never moves the text between the clicks of a double-click", { timeo
   assert.equal(await page.evaluate(() => window.getSelection()?.toString()), "repair");
   // Once clicks settle, the card moves to the set the cursor is in: the paragraph's.
   await until(async () => (await count().textContent()) === "1 of 2", "the paragraph's card");
+});
+
+test("in a flowed paragraph: the cursor finds a sentence across a soft break, and a word on its next source line", { timeout: 60_000 }, async () => {
+  const flowed = page.locator(".cm-line", { hasText: "Gold fills the crack" });
+  assert.ok(await flowed.locator(".cm-soft-break").count() > 0, "the paragraph flows");
+  // The sentence crosses the first soft break; click its second source line.
+  await click("of the bowl", 2);
+  await cardOf("flowed").waitFor();
+  assert.equal(await count().textContent(), "1 of 2");
+  const box = (await card().boundingBox())!;
+  const end = await at("of the bowl.", 12);
+  assert.ok(Math.abs(box.x - end.x) <= 2, `card at ${box.x}, the sentence ends at ${end.x}`);
+  assert.ok(box.y > (await at("That is why", 0)).y, "under the whole flowed paragraph");
+  await card().locator('[data-card-action="next"]').click();
+  await shows("Gold makes the crack the part you look at. Nobody hides");
+  await page.keyboard.press("Meta+Alt+BracketLeft");
+  await shows("most looked-at part");
+  // A word on the next source line, reached with the keyboard.
+  await click("seam", 0);
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(500);
+  assert.equal(await cardOf("seam").count(), 0, "off the word");
+  await page.keyboard.press("ArrowRight");
+  await cardOf("seam").waitFor({ timeout: 1000 });
+  assert.equal(await count().textContent(), "1 of 2");
+  await page.keyboard.press("Meta+Alt+BracketRight");
+  await shows("the join is the point");
+  await page.keyboard.press("Meta+Alt+BracketLeft");
+  await shows("the seam is the point");
+  await until(() => disk() === FILE, "back as it was, its source lines kept");
 });
 
 test("dark mode", { timeout: 60_000 }, async () => {
