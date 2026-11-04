@@ -13,6 +13,7 @@ use super::ModelRef;
 use super::agent::Model;
 use super::chat::{COMMENT_NOTE, REVIEW_BRIEF, SUMMARIZER};
 use super::wire::{Exchange, Item, Reply, ToolCall, Usage};
+use super::writing::Tone;
 use serde_json::json;
 use std::time::Duration;
 
@@ -227,8 +228,10 @@ fn points(items: &[Item]) -> String {
 /// paragraph per article (up to four, so long summaries get tested), each
 /// sentence citing it; plus a sentence with no citation and one citing an
 /// article that isn't there, which the Feed must drop. "mock-fail" in an
-/// article makes it answer with no JSON at all.
-pub(crate) fn story_summary(prompt: &str) -> String {
+/// article makes it answer with no JSON at all. Its lead sentences follow
+/// the tone in `system` (KI-102).
+pub(crate) fn story_summary(system: &str, prompt: &str) -> String {
+    let tone = Tone::in_prompt(system).unwrap_or_default();
     let articles: Vec<(String, String, String, String)> = prompt
         .split("<article id=\"")
         .skip(1)
@@ -260,7 +263,7 @@ pub(crate) fn story_summary(prompt: &str) -> String {
         .take(4)
         .map(|(id, source, title, first)| {
             let mut sentences =
-                vec![json!({ "text": format!("{source} reports: {title}."), "cite": [id] })];
+                vec![json!({ "text": story_lead(tone, source, title), "cite": [id] })];
             if !first.is_empty() {
                 sentences.push(json!({ "text": format!("{first}."), "cite": [id] }));
             }
@@ -272,6 +275,17 @@ pub(crate) fn story_summary(prompt: &str) -> String {
         { "text": "This one cites an article that isn't there.", "cite": ["A99"] }
     ]));
     json!({ "title": articles[0].2, "paragraphs": paragraphs }).to_string()
+}
+
+/// A story's first sentence about one article, in a tone.
+fn story_lead(tone: Tone, source: &str, title: &str) -> String {
+    let title = title.trim_end_matches(['.', '!', '?']);
+    match tone {
+        Tone::Plain => format!("{source} reports: {title}."),
+        Tone::Editorial => format!("{title}, {source} reports."),
+        Tone::Casual => format!("I read it in {source} first: {title}."),
+        Tone::Dry => format!("{source}: {title}."),
+    }
 }
 
 fn reply(text: String, calls: Vec<ToolCall>) -> Reply {
@@ -306,7 +320,7 @@ impl Model for Scripted {
             return Err("nothing to answer".into());
         };
         if ex.system.starts_with(crate::feed::STORY_SUMMARIZER) {
-            let text = story_summary(question);
+            let text = story_summary(ex.system, question);
             on_text(&text);
             return Ok(reply(text, vec![]));
         }
@@ -635,7 +649,7 @@ mod comments {
                 })
                 .unwrap_or_else(|| " I found nothing to compare it with.".into());
             format!(
-                "Mock note: you asked “{said}”. This paragraph leans on one example.{link} (Headless mock model; nothing was sent to a provider.)"
+                "Mock note: you asked “{said}”. This paragraph leans on one example, so the whole claim rests on a single case.{link} (Headless mock model; nothing was sent to a provider.)"
             )
         };
         for word in text.split_inclusive(' ') {
@@ -650,6 +664,7 @@ mod comments {
 mod ideas {
     use super::super::ideas::brief::CURRENT;
     use super::super::wire::{Item, ToolCall};
+    use super::super::writing::Tone;
     use serde_json::{Value, json};
 
     fn call(n: usize, name: &str, arguments: Value) -> ToolCall {
@@ -779,7 +794,76 @@ mod ideas {
         )
     }
 
+    // The mock's words for an idea, in each tone (KI-102).
+
+    fn connection_title(tone: Tone, a: &Read, b: &Read) -> String {
+        let (a, b) = (&a.title, &b.title);
+        match tone {
+            Tone::Plain => format!("{a} and {b} ask the same question"),
+            Tone::Editorial => format!("{a} sets up what {b} answers"),
+            Tone::Casual => format!("I think {a} and {b} are one question"),
+            Tone::Dry => format!("{a} and {b} overlap"),
+        }
+    }
+
+    fn connection_hunch(tone: Tone, a: &Read, b: &Read) -> String {
+        let (a, b) = (&a.title, &b.title);
+        match tone {
+            Tone::Plain => {
+                format!("There may be one piece here that {a} sets up [1] and {b} answers [2].")
+            }
+            Tone::Editorial => format!(
+                "{a} poses the question [1] and {b} answers it [2]. Read together, they make a single post."
+            ),
+            Tone::Casual => format!(
+                "{a} sets something up [1] that {b} gets round to answering [2]. I'd put them in one post."
+            ),
+            Tone::Dry => format!("{a} asks [1]. {b} answers [2]."),
+        }
+    }
+
+    fn gap_title(tone: Tone, b: &Read) -> String {
+        let b = &b.title;
+        match tone {
+            Tone::Plain => format!(
+                "You keep returning to {} without writing it down",
+                b.to_lowercase()
+            ),
+            Tone::Editorial => format!("{b} keeps coming up, and there's no post on it"),
+            Tone::Casual => format!(
+                "You keep circling {} and haven't written it up",
+                b.to_lowercase()
+            ),
+            Tone::Dry => format!("{b} has no post yet"),
+        }
+    }
+
+    fn gap_hunch(tone: Tone, b: &Read) -> String {
+        let b = &b.title;
+        match tone {
+            Tone::Plain => format!("A short post could say plainly what {b} only hints at [2]."),
+            Tone::Editorial => {
+                format!("{b} hints at an argument [2] that no post of yours makes yet.")
+            }
+            Tone::Casual => {
+                format!("You hint at this in {b} [2]. A short post could say it straight.")
+            }
+            Tone::Dry => format!("{b} hints at it [2]. Nothing published says it."),
+        }
+    }
+
+    fn snippet(tone: Tone, a: &Read, b: &Read, query: &str) -> String {
+        let (a, b) = (&a.title, &b.title);
+        match tone {
+            Tone::Plain => format!("{a} and {b} came up together when I searched for “{query}”."),
+            Tone::Editorial => format!("A search for “{query}” turned up {a} beside {b}."),
+            Tone::Casual => format!("I searched for “{query}” and got {a} and {b} back together."),
+            Tone::Dry => format!("Both came up for “{query}”."),
+        }
+    }
+
     fn batch(brief: &str, query: &str, reads: &[Read]) -> String {
+        let tone = Tone::in_prompt(brief).unwrap_or_default();
         let about = after(brief, "every idea is about one document: ")
             .map(|a| a.trim_end_matches('.').to_string());
         let mut ideas = Vec::new();
@@ -793,30 +877,17 @@ mod ideas {
             let (kind, title, hunch) = if n == 0 {
                 (
                     "connection",
-                    format!("{} and {} ask the same question", a.title, b.title),
-                    format!(
-                        "There may be one piece here that {} sets up [1] and {} answers [2].",
-                        a.title, b.title
-                    ),
+                    connection_title(tone, a, b),
+                    connection_hunch(tone, a, b),
                 )
             } else {
-                (
-                    "gap",
-                    format!(
-                        "You keep returning to {} without writing it down",
-                        b.title.to_lowercase()
-                    ),
-                    format!(
-                        "A short post could say plainly what {} only hints at [2].",
-                        b.title
-                    ),
-                )
+                ("gap", gap_title(tone, b), gap_hunch(tone, b))
             };
             ideas.push(json!({
                 "kind": kind,
                 "title": title,
                 "draftTitle": if n == 0 { format!("What {} answers", b.title) } else { b.title.clone() },
-                "snippet": format!("{} and {} came up together when I searched for “{query}”.", a.title, b.title),
+                "snippet": snippet(tone, a, b, query),
                 "observed": [format!("{} and {} both turned up for “{query}” [1][2].", a.path, b.path), format!("Neither links to the other.")],
                 "hunch": hunch,
                 "quotes": [{ "source": a.path, "text": a.sentences[0] }, { "source": b.path, "text": b.sentences.get(1).unwrap_or(&b.sentences[0]) }],
@@ -1522,5 +1593,237 @@ mod scenario_tests {
         assert!(failed.unwrap_err().contains("500"));
         let (_, stalled) = run(vault.path(), "Timeout on purpose", vec![]);
         assert!(stalled.unwrap_err().contains("stopped responding"));
+    }
+}
+
+/// KI-102: what the mock writes passes the slop lint, in every tone, and
+/// is the output frozen in `writing/corpus/kin/` (the corpus `pnpm test`
+/// lints). `KINTSUGI_RECORD_WRITING=1` records it again.
+#[cfg(test)]
+mod writing_tests {
+    use super::super::Task;
+    use super::super::agent::tests::block_on;
+    use super::super::agent::{self, Cancel, Harness, Limits, Turn};
+    use super::super::chat::{COMMENT_NOTE, REVIEW_BRIEF, SUMMARIZER};
+    use super::super::cost::Meter;
+    use super::super::ideas::store::Store;
+    use super::super::ideas::{self, VaultSources, brief};
+    use super::super::jobs::{Job, Trace};
+    use super::super::prompt::{Chip, Memory};
+    use super::super::tools::Tools;
+    use super::super::wire::{Exchange, Message, Role};
+    use super::super::writing::{
+        Tone,
+        lint::{Sample, freeze},
+    };
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    fn vault() -> tempfile::TempDir {
+        let vault = tempfile::tempdir().unwrap();
+        for (rel, text) in [
+            (
+                "posts/on-craft.mdx",
+                "---\ntitle: \"On craft and repair\"\n---\n\n# On craft\n\nA repair is not a cover-up. It is a record of care.\nThe practice of repair is unglamorous and slow.\n",
+            ),
+            (
+                "notes/repair.md",
+                "---\ntitle: Repair is a kind of attention\n---\n\nThe more interesting repair makes the history legible. The patch is not hidden.\nWe tend to think of repair as restoration of the old.\n",
+            ),
+            (
+                "inspiration/golden-joinery.md",
+                "---\ntitle: Golden joinery\nsite: Britannica\n---\n\n> The repair is not hidden. It is given a color of its own.\nKintsugi repair uses lacquer dusted with powdered gold.\n",
+            ),
+            (
+                "drafts/bowl.md",
+                "# The bowl\n\nThe bowl broke along an old line.\n\nI glued it on a Sunday and it held for a year.\n\nThen it broke again, somewhere new.\n",
+            ),
+        ] {
+            let path = vault.path().join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        }
+        vault
+    }
+
+    /// One turn through the real loop, tools and all.
+    fn turn(vault: &Path, task: Task, question: String, chips: Vec<Chip>) -> (String, Trace) {
+        let outputs = tempfile::tempdir().unwrap();
+        let meter = Meter::open(None);
+        let tools = Tools::new(vault, outputs.path().into(), "job-1").unwrap();
+        let memory = Memory::default();
+        let cancel = Cancel::default();
+        let harness = Harness {
+            tools: &tools,
+            meter: &meter,
+            memory: &memory,
+            cancel: &cancel,
+            limits: Limits::default(),
+        };
+        let turn = Turn {
+            task,
+            background: task == Task::Ideas,
+            question,
+            chips,
+            today: "2026-11-04".into(),
+            remember: true,
+            history: vec![],
+            recap: None,
+        };
+        let mut trace = Trace::default();
+        let summary = block_on(agent::run(
+            &Scripted::default(),
+            &harness,
+            &turn,
+            &mut |e| {
+                if let agent::KinEvent::ToolCall {
+                    name, arguments, ..
+                } = &e
+                {
+                    trace.call(name, arguments);
+                }
+            },
+        ))
+        .unwrap();
+        (summary.text, trace)
+    }
+
+    fn sample(kind: &str, tone: Option<Tone>, text: String) -> Sample {
+        Sample {
+            from: "mock".into(),
+            kind: kind.into(),
+            tone: tone.map(|t| t.id().into()),
+            text,
+        }
+    }
+
+    /// The ideas the mock offers in each tone, as their cards read: title,
+    /// snippet, hunch and what Kin observed.
+    #[test]
+    fn mock_ideas() {
+        let vault = vault();
+        let mut samples = Vec::new();
+        let mut seen = Vec::new();
+        for tone in Tone::ALL {
+            let text = brief::batch(
+                &brief::Ask {
+                    count: 5,
+                    tone,
+                    ..Default::default()
+                },
+                &[],
+                &[],
+                &[],
+            );
+            let (reply, trace) = turn(vault.path(), Task::Ideas, text, vec![]);
+            let mut store = Store::open(None);
+            let job: Job = serde_json::from_value(json!({ "id": "job-1", "kind": "ideas", "task": "ideas", "brief": "b", "status": "running", "created": "2026-11-04T09:00:00+00:00" })).unwrap();
+            let sources = VaultSources {
+                root: vault.path(),
+                feed: None,
+            };
+            let now = chrono::DateTime::parse_from_rfc3339("2026-11-04T09:00:00+00:00").unwrap();
+            ideas::finish_batch(&mut store, &sources, &[], &job, &reply, &trace, now).unwrap();
+            let listed = store.list(now);
+            assert_eq!(listed.len(), 2, "{tone:?}");
+            for idea in listed {
+                let c = &idea.idea.content;
+                seen.push(c.hunch.clone());
+                let mut lines = vec![c.title.clone(), c.snippet.clone(), c.hunch.clone()];
+                lines.extend(c.observed.iter().cloned());
+                samples.push(sample("idea", Some(tone), lines.join("\n")));
+            }
+        }
+        // Each tone reads differently.
+        seen.sort();
+        seen.dedup();
+        assert_eq!(seen.len(), 8, "{seen:?}");
+        freeze("mock-ideas.json", samples);
+    }
+
+    /// The chat's prose: an answer, a margin note, a review, the running
+    /// summary and an edit.
+    #[test]
+    fn mock_chat() {
+        let vault = vault();
+        let mut samples = Vec::new();
+        let (answer, _) = turn(
+            vault.path(),
+            Task::Chat,
+            "What did I write about repair?".into(),
+            vec![],
+        );
+        samples.push(sample("chat", None, answer));
+
+        let chip = Chip {
+            kind: "paragraph".into(),
+            path: "drafts/bowl.md".into(),
+            label: Some("I glued it on a Sunday".into()),
+            lines: Some([5, 5]),
+        };
+        let note = format!(
+            "Is this too neat?\n\n{COMMENT_NOTE} of drafts/bowl.md, line 5: the paragraph chip below. Reply the way a reviewer does.)"
+        );
+        let (note, _) = turn(vault.path(), Task::Chat, note, vec![chip]);
+        samples.push(sample("comment", None, note));
+
+        let review = format!(
+            "{REVIEW_BRIEF}: drafts/bowl.md (\"The bowl\"). Read it first.\n\nParagraphs:\n¶1 The bowl broke along an old line.\n¶2 I glued it on a Sunday and it held for a year.\n¶3 Then it broke again, somewhere new."
+        );
+        let doc = Chip {
+            kind: "doc".into(),
+            path: "drafts/bowl.md".into(),
+            label: None,
+            lines: None,
+        };
+        let (review, _) = turn(vault.path(), Task::Chat, review, vec![doc]);
+        let notes: serde_json::Value = serde_json::from_str(
+            review
+                .split("<comments>")
+                .nth(1)
+                .unwrap()
+                .split("</comments>")
+                .next()
+                .unwrap(),
+        )
+        .unwrap();
+        let notes: Vec<&str> = notes
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|n| n["comment"].as_str())
+            .collect();
+        assert_eq!(notes.len(), 2);
+        samples.push(sample("review", None, notes.join("\n")));
+
+        let system = format!("{SUMMARIZER}. Write the new running summary.");
+        let items = [Item::User("Hussain: What did I write about repair?\nKin: Two notes.\nHussain: Which one is older?".into())];
+        let exchange = Exchange {
+            model: "kin-headless-mock",
+            system: &system,
+            tools: &[],
+            items: &items,
+            max_tokens: None,
+            temperature: None,
+            stop: None,
+            reasoning: None,
+            cache_key: None,
+        };
+        let recap = block_on(Scripted::default().send(&exchange, &mut |_| {})).unwrap();
+        samples.push(sample("recap", None, recap.text));
+
+        let passage = "I really just wanted the bowl to hold. It held for a year, which is longer than the shop said it would.";
+        let edit = super::edit(
+            "You are a careful editor helping a writer revise their own prose.",
+            &[Message {
+                role: Role::User,
+                content: format!(
+                    "<context_before></context_before>\n<passage>{passage}</passage>\n<context_after></context_after>\n\nTighten this passage."
+                ),
+            }],
+        );
+        samples.push(sample("edit", None, edit));
+        freeze("mock-chat.json", samples);
     }
 }

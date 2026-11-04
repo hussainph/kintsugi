@@ -137,7 +137,9 @@ pub fn prompt(input: &Input) -> (String, String) {
          note (the writer's own thought, no source), document (a PDF, paper or report), book, \
          podcast (a podcast episode). \
          Keep current_kind unless the content \
-         clearly shows it is wrong."
+         clearly shows it is wrong.\n\n\
+         The title and summary follow these writing rules:\n{}",
+        crate::ai::writing::rules()
     );
 
     let mut clip = Map::new();
@@ -529,6 +531,7 @@ mod tests {
         let (system, user) = prompt(&input);
         assert!(system.contains("untrusted data"));
         assert!(system.contains("a short human title"));
+        assert!(system.ends_with(crate::ai::writing::rules()));
 
         let start = user.find('{').unwrap();
         let end = user.rfind('}').unwrap();

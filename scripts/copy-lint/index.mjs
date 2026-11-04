@@ -39,6 +39,7 @@ export const IGNORE = [
   [/\.d\.ts$/, 'type declarations'],
   [/^apps\/desktop\/src-tauri\/src\/(?:.*\/)?tests?(?:\.rs|\/)/, 'Rust tests'],
   [/^apps\/desktop\/src-tauri\/src\/phone\/dev\.rs$/, 'test-only dev server (`#[cfg(all(test, feature = "headless"))] mod dev`)'],
+  [/^apps\/desktop\/src-tauri\/src\/ai\/writing\/lint\.rs$/, 'test-only slop lint (`#[cfg(test)] pub mod lint`): its patterns are the tells'],
   [/^docs\/voice\.md$/, 'the voice rules quote the banned examples on purpose'],
 ];
 

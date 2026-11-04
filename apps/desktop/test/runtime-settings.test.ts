@@ -186,11 +186,20 @@ test("the pickers offer a short list; a model turned on in Settings and a defaul
   await defaults.getByRole("button", { name: "Edits model: Qwen3.7 Plus" }).waitFor();
   await until(() => json(resolve(app.config, "kin/settings.json")), (s) => !s?.models?.edit, "Automatic clears the edit default");
 
+  // Kin's tone for summaries and ideas (KI-102): Plain until he picks another.
+  const tone = () => settings().getByTestId("kin-tone").getByRole("combobox");
+  assert.match((await tone().textContent()) ?? "", /Plain/);
+  await tone().click();
+  await page.getByRole("option", { name: "Casual" }).click();
+  await until(() => json(resolve(app.config, "kin/settings.json")), (s) => s?.tone === "casual", "the tone reaches kin/settings.json");
+  await page.getByRole("option").first().waitFor({ state: "detached" });
+
   // Kept when Settings opens again.
   await page.keyboard.press("Escape");
   await settings().waitFor({ state: "detached" });
   await page.keyboard.press("Meta+,");
   await settings().getByTestId("default-models").getByRole("button", { name: "Chat model: MiniMax-M3" }).waitFor();
+  assert.match((await tone().textContent()) ?? "", /Casual/);
   assert.equal(await settings().getByTestId("default-models").getByRole("slider", { name: "Chat effort" }).getAttribute("aria-valuetext"), "High");
   await page.keyboard.press("Escape");
   await settings().waitFor({ state: "detached" });

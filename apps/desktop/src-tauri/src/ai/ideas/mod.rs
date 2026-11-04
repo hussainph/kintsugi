@@ -414,6 +414,10 @@ fn feed_signals(app: &AppHandle) -> Vec<brief::FeedSignal> {
 /// Starts a batch: the daily one, or ideas on demand.
 fn generate(app: &AppHandle, ask: brief::Ask) -> Result<Job> {
     let now = now();
+    let ask = brief::Ask {
+        tone: super::writing::tone(),
+        ..ask
+    };
     let text = with(app, |store, root| {
         if let Some(about) = &ask.about
             && (VaultSources { root, feed: None }).get(about).is_none()
@@ -562,6 +566,7 @@ pub fn ideas_generate(
             focus,
             about: about.filter(|a| !a.trim().is_empty()),
             count: 3,
+            ..Default::default()
         },
     )?;
     view(&app)
@@ -604,7 +609,7 @@ pub fn ideas_refine(app: AppHandle, id: String, ask: String) -> Result<View> {
     let job = engine(&app)?.create_job(NewJob {
         kind: REFINE.into(),
         task: Some(Task::Ideas.id().into()),
-        brief: brief::refine(&idea, &ask),
+        brief: brief::refine(&idea, &ask, super::writing::tone()),
         topic: idea.content.about.first().cloned(),
     })?;
     act(&app, |s, _| s.set_refining(&id, Some(job.id)).map(drop))

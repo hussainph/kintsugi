@@ -1,0 +1,27 @@
+[
+  {
+    "from": "mock",
+    "kind": "chat",
+    "text": "You said: “What did I write about repair?”. I looked with search {\"query\":\"repair\"}. This thread has 0 earlier exchange(s). This reply comes from the headless mock model, so nothing was sent to a provider. It returned: <data tool=\"search\"> [ {\"id\":\"posts/on-craft.mdx\",\"kind\":\"writing\",\"title\":\"On craft and repair\",\"snippet\":\"# On craft A repair is not a cover-up. It is a recor"
+  },
+  {
+    "from": "mock",
+    "kind": "comment",
+    "text": "Mock note: you asked “Is this too neat?”. This paragraph leans on one example, so the whole claim rests on a single case. I found nothing to compare it with. (Headless mock model; nothing was sent to a provider.)"
+  },
+  {
+    "from": "mock",
+    "kind": "review",
+    "text": "Mock review: the opening makes a claim without a source. What's it resting on?\nMock review: ¶3 ends without saying what it costs. Is that the point?"
+  },
+  {
+    "from": "mock",
+    "kind": "recap",
+    "text": "Mock summary: Hussain asked 2 thing(s); most recently “Which one is older?”."
+  },
+  {
+    "from": "mock",
+    "kind": "edit",
+    "text": "I wanted the bowl to hold. It held for a year, which is longer than the shop said it would."
+  }
+]

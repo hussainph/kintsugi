@@ -597,6 +597,7 @@ fn summaries_are_made_while_idle_and_used_to_resume() {
     let seen = f.script.seen();
     let request = seen.last().unwrap();
     assert!(request.system.starts_with(SUMMARIZER));
+    assert!(request.system.ends_with(crate::ai::writing::rules()));
     assert_eq!(request.tools, 0);
     let Item::User(prompt) = &request.items[0] else {
         panic!()

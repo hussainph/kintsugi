@@ -88,6 +88,9 @@ pub struct Settings {
     /// Models of the default set he turned off.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub disabled: Vec<ModelRef>,
+    /// The tone Kin writes summaries and Ideas in (KI-102).
+    #[serde(default, skip_serializing_if = "super::writing::Tone::is_plain")]
+    pub tone: super::writing::Tone,
 }
 
 /// One priced call, as written to the ledger.

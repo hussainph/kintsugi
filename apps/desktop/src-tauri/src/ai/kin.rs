@@ -315,6 +315,8 @@ pub struct SettingsView {
     pub tasks: Vec<TaskModels>,
     /// The models the pickers offer (KI-77), every task's default included.
     pub enabled: Vec<ModelRef>,
+    /// The tone summaries and Ideas are written in (KI-102).
+    pub tone: super::writing::Tone,
 }
 
 fn view(settings: &Settings) -> Result<SettingsView> {
@@ -332,6 +334,7 @@ fn view(settings: &Settings) -> Result<SettingsView> {
         cap_usd: settings.monthly_cap_usd,
         tasks,
         enabled: enabled_models(&statuses, settings),
+        tone: settings.tone,
     })
 }
 
@@ -400,6 +403,16 @@ pub fn kin_set_effort(task: String, effort: Option<String>) -> Result<SettingsVi
             s.efforts.remove(task.id());
         }
     })?;
+    view(&settings)
+}
+
+/// Sets the tone Kin writes Feed summaries and Ideas in (KI-102):
+/// `plain`, `editorial`, `casual` or `dry`. What's written already stays.
+#[tauri::command]
+pub fn kin_set_tone(tone: String) -> Result<SettingsView> {
+    let tone =
+        super::writing::Tone::from_id(&tone).ok_or_else(|| format!("unknown tone {tone}"))?;
+    let settings = meter().update_settings(|s| s.tone = tone)?;
     view(&settings)
 }
 
