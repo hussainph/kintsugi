@@ -164,6 +164,16 @@ test("a cut that takes a sentence's first words capitalises the next one", () =>
   assert.equal(view.state.doc.toString(), doc, "one undo");
 });
 
+test("the capital doesn't take away a mark on the next words", () => {
+  const doc = "Old. I think it was broken once.";
+  const view = editor(doc);
+  setMarks(view, batch("review", doc), [cutOf(doc, "I think"), at(doc, "it was broken", "flag", "Which break?")]);
+  assert.ok(acceptMark(view, "I think"));
+  assert.equal(view.state.doc.toString(), "Old. It was broken once.");
+  const left = marksOf(view.state).marks;
+  assert.deepEqual(left.map((m) => view.state.sliceDoc(m.range.from, m.range.to)), ["It was broken"]);
+});
+
 test("capitals only where the cut started a sentence with one", () => {
   const capitalOf = (text: string, words: string) => {
     const at = text.indexOf(words);

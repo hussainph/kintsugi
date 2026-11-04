@@ -32,6 +32,8 @@ export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet,
 export { addAlternatives, applyAlternative, askForAlternatives, alternativesAt, alternativesPanelModel, alternativePanelCommands, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives } from "./alternatives";
 export type { Mark as KinMark, MarkBatch, MarkCard, MarkCardActions, MarkKind, Marks, MarksState, Sentence } from "./marks";
 export { acceptMark, applyMarks, clearMarks, cutRange, dismissMark, focusMark, focusedMark, markCard, markCommands, marksOf, markShortcuts, onWordBoundaries, proseSentences, recapitalise, setMarks, textAfterCuts } from "./marks";
+export type { CardSpec } from "./card";
+export { inlineCard, paragraphEnd, revealRange } from "./card";
 export type { Stash, StashItem } from "./stash";
 export { addRequestedStashItems, addStashNote, flushStash, focusStashItem, insertStashItem, moveStashItem, openStashPicker, removeStashItem, reorderStashItems, stashCommands, stashItems, stashKinReply, stashMime, stashRewrite, stashSelection, stashShortcuts } from "./stash";
 
