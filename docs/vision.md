@@ -190,7 +190,7 @@ What Kin does at each stage of a piece:
 | Spark | Notices. Offers a few sparks a day from his writing and saves |
 | I want to write about this | Stays out of the way. The idea is his line, with nothing attached |
 | Research and test it | Gathers what he already has when asked, his own writing first. Asks what a sharp reader would ask, and finds who disagrees |
-| Write and revise | Reads. Comments and questions. With suggestions turned on, it may put rewrites in the stash; nothing else goes there unasked. Edits only when asked |
+| Write and revise | Reads, comments and questions. Edits only when asked. Puts nothing in the stash unless he asks |
 | Publish or keep | Checks links and quotes. Moves nothing by itself |
 
 ### Present everywhere
@@ -302,10 +302,9 @@ draft argues the opposite of what you published in March."
   prose; or added to a draft he's started), Discuss with Kin, Refine,
   Dismiss (a signal). Unused ideas of Kin's fade after about a week.
 - Inside a draft, "ideas for this draft" opens Ideas filtered to that
-  document. Kin never puts an idea in a draft's stash on its own: ideas
-  reach the stash only when he asks, through Ask Kin on the stash or by
-  stashing one of Kin's replies (KI-89). The only things Kin adds unasked
-  are rewrites, and only while suggestions are on.
+  document. Kin never adds anything to a draft's stash on its own.
+  Everything in it is there because he asked: Ask Kin on the stash, or
+  stashing one of Kin's replies (KI-89).
 
 ## Writing
 
