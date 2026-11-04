@@ -124,7 +124,9 @@ test("picker and drag consume an item, and undo puts it back", { timeout: 60_000
   await picker.waitFor();
   await picker.getByRole("button", { name: "Check the kiln dates." }).click();
   await until(() => draft().includes("Check the kiln dates."), "picker inserts at cursor");
+  assert.equal(await page.locator(".cm-content").evaluate((element) => document.activeElement === element), true, "the picker returns focus to the draft");
   await page.keyboard.press("Meta+z");
+  await until(() => !draft().includes("Check the kiln dates."), "undo restores the picked item and draft");
   await rows().filter({ hasText: "Check the kiln dates." }).waitFor();
   await rows().filter({ hasText: "Check the kiln dates." }).dragTo(line(ORIGINAL));
   await until(() => draft().includes("Check the kiln dates."), "drag inserts at drop");

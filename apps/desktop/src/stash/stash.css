@@ -33,7 +33,7 @@
 .ki-stash-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; margin: 0; padding: var(--space-xxs); list-style: none; }
 .ki-stash-row { position: relative; display: grid; grid-template-columns: var(--ki-stash-mark) minmax(0, 1fr); column-gap: var(--ki-stash-mark-gap); padding-block: var(--space-m); outline: none; box-shadow: inset 0 calc(-1 * var(--border-s)) 0 var(--neutral-4); transition: background-color var(--motion-duration) var(--motion-easing); }
 .ki-stash-row::before { content: ""; position: absolute; inset: 0; border-radius: var(--radius-s); background: var(--neutral-3-transparent); opacity: 0; pointer-events: none; transition: opacity var(--motion-duration) var(--motion-easing); }
-.ki-stash-row[data-focused]::before { opacity: 1; }
+.ki-stash-row[data-focused]::before { opacity: 1; background: var(--neutral-3); }
 .ki-stash-row:focus-visible { outline: 2px solid var(--neutral-8); outline-offset: calc(-1 * var(--border-l)); border-radius: var(--radius-xs); }
 .ki-stash-mark { position: relative; display: flex; align-items: flex-start; justify-content: center; padding-top: var(--space-xxs); color: var(--neutral-6); }
 .ki-stash-mark > svg { display: block; width: var(--ki-stash-mark); height: var(--ki-stash-mark); flex-shrink: 0; }
