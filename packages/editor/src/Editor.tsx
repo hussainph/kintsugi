@@ -9,6 +9,7 @@ import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view
 import { RefObject, useEffect, useRef } from "react";
 import { frontmatter } from "@kintsugi/core/frontmatter";
 import { frontmatterLines, highlight, spacingLines, theme } from "./theme";
+import { softBreaks } from "./soft-breaks";
 import { formatKeymap, underlines } from "./format";
 import { builtinKeymap } from "./keymaps";
 import { commandExtensions, refreshCommands, type Commands } from "./commands";
@@ -105,6 +106,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         syntaxHighlighting(highlight),
         frontmatterLines,
         spacingLines,
+        softBreaks,
         underlines,
         dimExtensions(docPath),
         theme,
