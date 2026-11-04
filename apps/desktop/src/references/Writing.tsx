@@ -3,19 +3,23 @@ import { EditorView } from "@codemirror/view";
 import { alternativePanelCommands, alternativesPanelModel, closeAlternatives, openAlternatives, type Alternatives } from "@kintsugi/editor/alternatives";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { Clip } from "@kintsugi/core/clips";
 import { attributedQuote, linkFor, type ReferenceSource } from "@kintsugi/core/references";
-import { Editor, textAfterCuts, type CommandSkill, type Commands, type KinAnchor, type Marks } from "@kintsugi/editor/Editor";
+import { Editor, stashRewrite, textAfterCuts, type CommandSkill, type Commands, type KinAnchor, type MarkCard as Card, type MarkCardActions, type Marks } from "@kintsugi/editor/Editor";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
-import { beginComment, passageAnchor, reviewDraft } from "@/comments/api";
-import { discuss } from "@/lib/chat";
+import { beginComment, passageAnchor } from "@/comments/api";
+import { discuss, openThread, threads } from "@/lib/chat";
 import { passageChips } from "@/kin/screen";
 import { words } from "@/refine/marks";
-import { TrimBar, type TrimCount } from "@/refine/TrimBar";
+import { ReviewBar, TrimBar, type TrimCount } from "@/refine/TrimBar";
+import { MarkCard } from "@/refine/MarkCard";
+import { discussNote } from "@/refine/review";
+import { registerReviewer, showReview, startReview, stopReview, useReviewing, useReviewVersion } from "@/refine/reviews";
 import { useComments } from "@/comments/useComments";
 import { useAlternatives } from "@/alternatives/useAlternatives";
 import { Versions } from "@/alternatives/Versions";
@@ -166,20 +170,56 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     if (view) beginComment(view, anchor.from, anchor.to, "mention");
   }, [editor.viewRef]);
   const comments = useComments(editor.path, editor.viewRef, sources, open);
-  // Kin's gold marks (KI-90). A trim's preview shows its word counts.
+  // Kin's gold marks (KI-90). A trim's preview shows its word counts; the
+  // focused mark's card (KI-109) renders here, into the block the editor
+  // puts under its paragraph.
   const [trim, setTrim] = useState<TrimCount | null>(null);
+  const [card, setCard] = useState<{ dom: HTMLElement; card: Card; actions: MarkCardActions } | null>(null);
   const marks = useMemo<Marks>(() => ({
     onChange: (value, state) => {
       const scope = value.batch?.kind === "trim" ? value.batch.scope : null;
       setTrim(scope && { before: words(state.sliceDoc(scope.from, scope.to)).length, after: words(textAfterCuts(state, scope)).length });
     },
+    // A thread on the paragraph that opens with the suggestion as Kin's note.
     onDiscuss: (mark) => {
       const view = editor.viewRef.current;
       if (!view) return;
+      const path = activePath.current;
       const { from, to } = mark.range;
-      discuss(passageChips(view, activePath.current, from, to), undefined, { anchor: passageAnchor(view, activePath.current, from, to) });
+      const anchor = passageAnchor(view, path, from, to);
+      if (!anchor?.quote) {
+        discuss(passageChips(view, path, from, to), undefined, { anchor });
+        return;
+      }
+      threads.reviewDiscuss(path, anchor.quote, discussNote(mark, view.state.sliceDoc(from, to)))
+        .then((thread) => openThread(thread.id))
+        .catch((error) => toast.error(String(error)));
+    },
+    onStash: (mark) => {
+      const view = editor.viewRef.current;
+      const stashed = !!view && mark.text !== undefined && !!stashRewrite(view, mark.range, mark.text);
+      if (stashed) toast("Added to stash");
+      else toast.error("Couldn’t add to stash");
+      return stashed;
+    },
+    renderCard: (dom, next, actions) => {
+      setCard({ dom, card: next, actions });
+      return () => setCard((now) => (now?.dom === dom ? null : now));
     },
   }), [editor.viewRef]);
+  // The card's height is known once React has drawn it.
+  useLayoutEffect(() => { if (card) editor.viewRef.current?.requestMeasure(); }, [card, editor.viewRef]);
+  // A review he asked for (KI-109) shows once its document is the one open.
+  const reviewing = useReviewing(editor.path);
+  const reviewVersion = useReviewVersion();
+  useEffect(() => {
+    const view = editor.viewRef.current;
+    if (view) showReview(view, editor.path);
+  }, [reviewVersion, editor.path, editor.viewRef]);
+  useEffect(() => registerReviewer(editor.path, (kind) => {
+    const view = editor.viewRef.current;
+    if (view && activePath.current === editor.path) void startReview(view, editor.path, kind);
+  }), [editor.path, editor.viewRef]);
   const alternatives = useAlternatives(editor.path);
   const margin = useMargin();
   const [versionModel, setVersionModel] = useState<ReturnType<typeof alternativesPanelModel>>(null);
@@ -237,7 +277,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     onAction: (action) => {
       if (action.id === "ideas") ideasForDraft(activePath.current);
       const view = editor.viewRef.current;
-      if (action.id === "review" && view) reviewDraft(view, activePath.current);
+      if (action.id === "review" && view) void startReview(view, activePath.current, "draft");
     },
     onSkill: (skill, range) => {
       if (!range) { toast("Write or select something for the skill to work on."); return; }
@@ -252,6 +292,8 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     <div className="reference-writing">
       <Editor {...editor} references={options} commands={commands} comments={comments} alternatives={versionHost} stash={stash.config} marks={marks} extensions={extensions} />
       {trim && editor.viewRef.current && <TrimBar view={editor.viewRef.current} count={trim} />}
+      {reviewing && !trim && <ReviewBar onStop={() => stopReview(editor.path)} />}
+      {card && createPortal(<MarkCard card={card.card} actions={card.actions} />, card.dom)}
       {onRefine && <SelectionMenu viewRef={editor.viewRef} path={editor.path} onRefine={onRefine} />}
       <MarginPortal tab="stash">{stash.content(<Versions model={versionModel} viewRef={editor.viewRef} onAsk={() => { const view = editor.viewRef.current; if (view) alternativePanelCommands(view).askKin(); }} />)}</MarginPortal>
       <MarginPortal tab="references">
@@ -271,7 +313,7 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
 
 const ACTIONS = [
   { id: "ideas", label: "Ideas for this draft", description: "Open Ideas filtered to this document" },
-  { id: "review", label: "Kin, review this draft", description: "Kin reads it and leaves comments on paragraphs" },
+  { id: "review", label: "Review this draft", description: "Kin marks what to cut, rewrite or look at" },
 ];
 
 const stopWords = new Set("a about after again all also an and any are as at be because been before being between both but by can could did do does doing down during each few for from further had has have having he her here hers herself him himself his how i if in into is it its itself just me more most my myself no nor not now of off on once only or other our ours ourselves out over own same she should so some such than that the their theirs them themselves then there these they this those through to too under until up very was we were what when where which while who whom why will with would you your yours yourself yourselves".split(" "));

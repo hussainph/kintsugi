@@ -9,7 +9,7 @@ import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@kintsugi/ui/components/popover";
 import { Cancelled, Message, stream } from "@/lib/ai";
 import { ask as askKin, openThread } from "@/lib/chat";
-import { beginComment, passageAnchor, reviewDraft } from "@/comments/api";
+import { beginComment, passageAnchor } from "@/comments/api";
 import { memory, type Skill } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
 import { keysOf, matches } from "@/lib/keys";
@@ -19,6 +19,8 @@ import { passageChips } from "@/kin/screen";
 import { Action, ACTIONS, ask, choices, clean } from "./prompts";
 import { editKey } from "./direct";
 import { askCheck, askTrim, type Check, CHECKS, parseCheck, parseTrim, sentencesFor, type Trim, TRIMS } from "./marks";
+import { REVIEWS } from "./review";
+import { startReview } from "./reviews";
 import { type Found, KIN_ACTIONS, type KinAction, skillAction, supportingClips, WHO_DISAGREES } from "./kin";
 
 type Props = {
@@ -205,10 +207,6 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
       onClose();
       return beginComment(view, at.from, at.to, "discuss");
     }
-    if (a.id === "review") {
-      onClose();
-      return reviewDraft(view, path);
-    }
     if (a.id === "disagrees") {
       const at = here();
       if (!at) return;
@@ -371,6 +369,17 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                   ))}
                 </CommandGroup>
               )}
+              {/* Asked suggestions (KI-109): Kin marks the draft, and the card steps through them. */}
+              <CommandGroup heading="Review">
+                {REVIEWS.map((r) => (
+                  <CommandItem key={r.id} value={r.label} onSelect={() => {
+                    onClose();
+                    void startReview(view, path, r.id);
+                  }}>
+                    {r.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
               <CommandGroup heading="Check">
                 {CHECKS.map((c) => (
                   <CommandItem key={c.id} value={c.label} onSelect={() => void mark(c)}>

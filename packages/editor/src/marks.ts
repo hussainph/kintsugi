@@ -1,6 +1,6 @@
 import { isolateHistory } from "@codemirror/commands";
 import { EditorSelection, Prec, StateEffect, StateField, type ChangeSpec, type EditorState, type Extension, type Transaction } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, keymap, showTooltip, type DecorationSet, type Tooltip, type ViewUpdate } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { splitFrontmatter } from "@kintsugi/core/frontmatter";
 import { paragraphs, type Range } from "./anchors.ts";
 import { isWordChar, sentencesIn } from "./spans.ts";
@@ -13,10 +13,15 @@ import { isWordChar, sentencesIn } from "./spans.ts";
  * never part of the text: nothing is saved, and they don't move a line.
  *
  * The model is a list of `{ id, range, kind, reason }` with one focused mark,
- * and four operations a host or KI-109's card drives: `focusMark`,
- * `acceptMark`, `dismissMark` and `applyMarks`. A mark goes on Escape (all of
- * them), on the first edit inside it, or once it's accepted or dismissed;
- * when the last one goes, the batch is done.
+ * and four operations the card drives: `focusMark`, `acceptMark`,
+ * `dismissMark` and `applyMarks`. A mark goes on Escape (all of them), on the
+ * first edit inside it, or once it's accepted or dismissed; when the last one
+ * goes, the batch is done.
+ *
+ * The focused mark has a card (KI-109): a block under its paragraph, so it
+ * never covers a line, with the reason, a rewrite's words, ‹ 1 of N › and
+ * what can be done with it. A host may draw it (`renderCard`); without one
+ * the editor draws a plain one.
  */
 
 export type MarkKind = "cut" | "flag" | "rewrite";
@@ -49,20 +54,49 @@ export type MarksState = {
   focused: string | null;
 };
 
+/** What the focused mark's card shows. */
+export type MarkCard = {
+  mark: Mark;
+  /** From 1, among the marks left. */
+  index: number;
+  total: number;
+  batch: MarkBatch | null;
+  readOnly: boolean;
+  /** What the card offers: discuss and stash only when the host handles them. */
+  can: { accept: boolean; discuss: boolean; stash: boolean };
+};
+
+/** The card's buttons. Each acts on the mark the card was drawn for. */
+export type MarkCardActions = {
+  accept: () => void;
+  dismiss: () => void;
+  discuss: () => void;
+  stash: () => void;
+  step: (by: 1 | -1) => void;
+};
+
 export type Marks = {
   /** Every change to the marks, and the open document's marks when it opens. */
   onChange?: (marks: MarksState, state: EditorState) => void;
-  /** "Discuss" on a focused flag: a paragraph thread about it (KI-104). */
+  /** "Discuss" on the focused mark: a paragraph thread about it (KI-104). */
   onDiscuss?: (mark: Mark) => void;
+  /** "Stash" on a focused rewrite: keeps its words for later. True when it
+   *  was stashed; the mark then goes. */
+  onStash?: (mark: Mark) => boolean;
+  /** Draws the focused mark's card into `dom` and returns a cleanup (the
+   *  desktop's React card). Without it the editor draws a plain one. */
+  renderCard?: (dom: HTMLElement, card: MarkCard, actions: MarkCardActions) => () => void;
 };
 
-/** The key specs, for the host's shortcut list. KI-109's card keeps them. */
+/** The key specs, for the host's shortcut list (KI-90, KI-109). */
 export const markShortcuts = [
   { key: "Mod-'", label: "Next mark" },
   { key: "Mod-Shift-'", label: "Previous mark" },
   { key: "Alt-Enter", label: "Accept a mark" },
   { key: "Mod-Alt-Backspace", label: "Dismiss a mark" },
+  { key: "Mod-Shift-j", label: "Discuss a mark" },
   { key: "Mod-Alt-Enter", label: "Apply the cuts" },
+  { key: "Escape", label: "Close all marks" },
 ] as const;
 
 const EMPTY: MarksState = { batch: null, marks: [], focused: null };
@@ -72,6 +106,8 @@ const putMarks = StateEffect.define<{ batch: MarkBatch; marks: readonly Mark[]; 
 const focusEffect = StateEffect.define<string | null>();
 const removeEffect = StateEffect.define<readonly string[]>();
 const clearEffect = StateEffect.define<null>();
+/** Scrolls a mark into view on the card's eased curve. */
+const revealEffect = StateEffect.define<string>();
 
 const byPosition = (a: Mark, b: Mark) => a.range.from - b.range.from || a.range.to - b.range.to;
 
@@ -158,7 +194,7 @@ export function setMarks(view: Target, batch: MarkBatch, marks: readonly Mark[],
   }
   const first = options.focus === "first" ? kept[0] : null;
   view.dispatch({
-    effects: [putMarks.of({ batch, marks: kept, focused: first?.id ?? null }), ...(first ? [EditorView.scrollIntoView(first.range.from, { y: "center" })] : [])],
+    effects: [putMarks.of({ batch, marks: kept, focused: first?.id ?? null }), ...(first ? [revealEffect.of(first.id)] : [])],
   });
   return kept.length;
 }
@@ -187,7 +223,7 @@ export function focusMark(view: Target, which: string | 1 | -1): boolean {
   }
   if (!mark) return false;
   view.dispatch({
-    effects: [focusEffect.of(mark.id), EditorView.scrollIntoView(mark.range.from, { y: "nearest", yMargin: 80 })],
+    effects: [focusEffect.of(mark.id), revealEffect.of(mark.id)],
     selection: EditorSelection.cursor(mark.range.from),
   });
   return true;
@@ -208,6 +244,31 @@ function changeOf(mark: Mark): ChangeSpec | null {
   return null;
 }
 
+/** Where a sentence starts: the line's start (past a list, quote or
+ *  heading marker), or after a sentence's closing punctuation. */
+function sentenceStarts(text: string, pos: number): boolean {
+  // An opening quote or bracket before the words belongs to the sentence.
+  const line = text.slice(text.lastIndexOf("\n", pos - 1) + 1, pos).replace(/[“"‘'(\[]+$/u, "").replace(/[ \t]+$/, "");
+  if (!line.trim() || /^\s*(?:[-*+]|\d+[.)]|>|#{1,6})(?:\s+(?:>|\[[ xX]\]))*$/.test(line)) return true;
+  return /[.!?…]["”’')\]]*$/.test(line);
+}
+
+/**
+ * A cut that takes a sentence's first words leaves the next word starting
+ * it: that word gets a capital ("old. I think it was" → "old. It was").
+ * Only when the cut began with one and the word is plain lowercase, so
+ * "iPhone" and a lowercase opening stay as he wrote them. `to` is where the
+ * text after the cut starts.
+ */
+export function recapitalise(text: string, from: number, to: number): { from: number; to: number; insert: string } | null {
+  const first = /\p{L}/u.exec(text.slice(from, to))?.[0];
+  if (!first || first === first.toLowerCase() || !sentenceStarts(text, from)) return null;
+  const word = /^[\p{L}\p{N}'’-]+/u.exec(text.slice(to))?.[0];
+  if (!word || word[0] === word[0].toUpperCase() || word !== word.toLowerCase()) return null;
+  const head = String.fromCodePoint(word.codePointAt(0)!);
+  return { from: to, to: to + head.length, insert: head.toUpperCase() };
+}
+
 /** Accepts a mark (the focused one by default): a cut goes, a rewrite goes
  *  in, a flag is done. One undo step. The next mark is focused. */
 export function acceptMark(view: Target, id?: string): boolean {
@@ -217,9 +278,11 @@ export function acceptMark(view: Target, id?: string): boolean {
   const change = changeOf(mark);
   if (change && view.state.readOnly) return false;
   const next = value.focused === mark.id ? after(value.marks, new Set([mark.id])) : value.focused;
+  const capital = mark.kind === "cut" ? recapitalise(view.state.doc.toString(), mark.range.from, mark.range.to) : null;
+  const changes = change ? (capital ? [change, capital] : change) : null;
   view.dispatch({
-    ...(change ? { changes: change, annotations: isolateHistory.of("full"), userEvent: mark.kind === "cut" ? "delete.mark" : "input.mark" } : {}),
-    effects: [removeEffect.of([mark.id]), ...(next ? [focusEffect.of(next)] : [])],
+    ...(changes ? { changes, annotations: isolateHistory.of("full"), userEvent: mark.kind === "cut" ? "delete.mark" : "input.mark" } : {}),
+    effects: [removeEffect.of([mark.id]), ...(next ? [focusEffect.of(next), ...(next !== value.focused ? [revealEffect.of(next)] : [])] : [])],
   });
   return true;
 }
@@ -231,7 +294,7 @@ export function dismissMark(view: Target, id?: string): boolean {
   const mark = value.marks.find((m) => m.id === (id ?? value.focused));
   if (!mark) return false;
   const next = value.focused === mark.id ? after(value.marks, new Set([mark.id])) : value.focused;
-  view.dispatch({ effects: [removeEffect.of([mark.id]), ...(next ? [focusEffect.of(next)] : [])] });
+  view.dispatch({ effects: [removeEffect.of([mark.id]), ...(next ? [focusEffect.of(next), ...(next !== value.focused ? [revealEffect.of(next)] : [])] : [])] });
   return true;
 }
 
@@ -240,15 +303,30 @@ export function dismissMark(view: Target, id?: string): boolean {
 export function applyMarks(view: Target, kinds: readonly MarkKind[] = ["cut", "rewrite"]): boolean {
   const { marks } = marksOf(view.state);
   if (!marks.length || view.state.readOnly) return false;
-  const changes: ChangeSpec[] = [];
+  const changes: { from: number; to: number; insert?: string }[] = [];
+  const applied: Mark[] = [];
   let end = -1;
   for (const mark of marks) {
     if (!kinds.includes(mark.kind) || mark.range.from < end) continue;
-    const change = changeOf(mark);
+    const change = changeOf(mark) as { from: number; to: number; insert?: string } | null;
     if (!change) continue;
     changes.push(change);
+    applied.push(mark);
     end = mark.range.to;
   }
+  // A run of cuts that touch ("I think " then "just ") closes up as one: the
+  // word after the run takes the capital, unless a rewrite starts there.
+  const text = view.state.doc.toString();
+  for (let i = 0; i < applied.length; i++) {
+    if (applied[i].kind !== "cut") continue;
+    let j = i;
+    while (applied[j + 1]?.kind === "cut" && applied[j + 1].range.from <= applied[j].range.to) j++;
+    const to = applied[j].range.to;
+    const capital = applied[j + 1] && applied[j + 1].range.from <= to ? null : recapitalise(text, applied[i].range.from, to);
+    if (capital) changes.push(capital);
+    i = j;
+  }
+  changes.sort((a, b) => a.from - b.from || a.to - b.to);
   view.dispatch({
     ...(changes.length ? { changes, annotations: isolateHistory.of("full"), userEvent: "delete.marks" } : {}),
     effects: clearEffect.of(null),
@@ -347,69 +425,244 @@ function decorations(value: MarksState): DecorationSet {
   if (!value.marks.length) return Decoration.none;
   return Decoration.set(value.marks.map((mark) => Decoration.mark({
     class: `cm-kin-mark cm-kin-${mark.kind}${mark.id === value.focused ? " cm-kin-focused" : ""}`,
-    attributes: { "data-kin-mark": mark.id, ...(mark.reason ? { title: mark.reason } : {}) },
+    attributes: { "data-kin-mark": mark.id, ...(mark.reason && mark.id !== value.focused ? { title: mark.reason } : {}) },
   }).range(mark.range.from, mark.range.to)), true);
 }
 
-function button(label: string, run: () => void, primary = false): HTMLButtonElement {
+/** The end of the paragraph `pos` is in: the card goes under it. */
+export function paragraphEnd(state: EditorState, pos: number): number {
+  const doc = state.doc;
+  let line = doc.lineAt(Math.max(0, Math.min(pos, doc.length)));
+  while (line.number < doc.lines) {
+    const next = doc.line(line.number + 1);
+    if (!next.text.trim() || fence.test(next.text)) break;
+    line = next;
+  }
+  return line.to;
+}
+
+/** The card for the focused mark, or null. */
+export function markCard(state: EditorState, config?: Marks): MarkCard | null {
+  const value = marksOf(state);
+  const at = value.marks.findIndex((m) => m.id === value.focused);
+  if (at === -1) return null;
+  const mark = value.marks[at];
+  const writes = mark.kind !== "flag";
+  return {
+    mark, index: at + 1, total: value.marks.length, batch: value.batch, readOnly: state.readOnly,
+    can: {
+      accept: !writes || !state.readOnly,
+      discuss: !!config?.onDiscuss,
+      stash: mark.kind === "rewrite" && mark.text !== undefined && !!config?.onStash && !state.readOnly,
+    },
+  };
+}
+
+function discussMark(view: Target, id: string | null, config: Marks | undefined): boolean {
+  const mark = marksOf(view.state).marks.find((m) => m.id === (id ?? marksOf(view.state).focused));
+  if (!mark || !config?.onDiscuss) return false;
+  config.onDiscuss(mark);
+  return true;
+}
+
+function stashMark(view: Target, id: string, config: Marks | undefined): boolean {
+  const mark = marksOf(view.state).marks.find((m) => m.id === id);
+  if (!mark || mark.kind !== "rewrite" || mark.text === undefined || view.state.readOnly || !config?.onStash?.(mark)) return false;
+  return dismissMark(view, id);
+}
+
+const cleanups = new WeakMap<HTMLElement, () => void>();
+
+const sameCard = (a: MarkCard, b: MarkCard) =>
+  a.mark.id === b.mark.id && a.index === b.index && a.total === b.total && a.readOnly === b.readOnly && a.mark.kind === b.mark.kind &&
+  a.mark.reason === b.mark.reason && a.mark.text === b.mark.text && a.can.accept === b.can.accept && a.can.discuss === b.can.discuss &&
+  a.can.stash === b.can.stash && a.batch?.id === b.batch?.id;
+
+/** A block under the paragraph: it pushes the lines below down and never
+ *  covers or re-wraps one. */
+class CardWidget extends WidgetType {
+  readonly card: MarkCard;
+  readonly getConfig: () => Marks | undefined;
+  constructor(card: MarkCard, getConfig: () => Marks | undefined) {
+    super();
+    this.card = card;
+    this.getConfig = getConfig;
+  }
+  eq(other: CardWidget) {
+    return sameCard(this.card, other.card);
+  }
+  toDOM(view: EditorView) {
+    const dom = document.createElement("div");
+    dom.className = "cm-kin-card";
+    dom.contentEditable = "false";
+    dom.dataset.kinMark = this.card.mark.id;
+    dom.dataset.kind = this.card.mark.kind;
+    // Keep the editor's focus and selection.
+    dom.addEventListener("mousedown", (event) => event.preventDefault());
+    const id = this.card.mark.id;
+    const actions: MarkCardActions = {
+      accept: () => { acceptMark(view, id); },
+      dismiss: () => { dismissMark(view, id); },
+      discuss: () => { discussMark(view, id, this.getConfig()); },
+      stash: () => { stashMark(view, id, this.getConfig()); },
+      step: (by) => { focusMark(view, by); },
+    };
+    const render = this.getConfig()?.renderCard;
+    cleanups.set(dom, render ? render(dom, this.card, actions) : plainCard(dom, this.card, actions));
+    return dom;
+  }
+  destroy(dom: HTMLElement) {
+    cleanups.get(dom)?.();
+    cleanups.delete(dom);
+  }
+  ignoreEvent() {
+    return true;
+  }
+  get estimatedHeight() {
+    return 64;
+  }
+}
+
+function button(label: string, run: () => void, className = "cm-kin-card-button"): HTMLButtonElement {
   const dom = document.createElement("button");
   dom.type = "button";
-  dom.className = primary ? "cm-kin-card-button cm-kin-card-primary" : "cm-kin-card-button";
+  dom.className = className;
   dom.textContent = label;
-  // Keep the editor's focus and selection.
-  dom.addEventListener("mousedown", (event) => event.preventDefault());
   dom.addEventListener("click", run);
   return dom;
 }
 
-/** The focused mark's reason and what can be done with it. KI-109's
- *  `‹ 1 of N ›` card replaces this. */
-function card(getConfig: () => Marks | undefined): Extension {
-  let cached: (Tooltip & { id: string }) | null = null;
-  return showTooltip.compute([marksField], (state) => {
-    const mark = focusedMark(state);
-    if (!mark) return (cached = null);
-    if (cached?.id === mark.id && cached.pos === mark.range.from) return cached;
-    cached = {
-      id: mark.id,
-      pos: mark.range.from,
-      above: false,
-      create: (view) => {
-        const dom = document.createElement("div");
-        dom.className = "cm-kin-card";
-        dom.dataset.kinMark = mark.id;
-        if (mark.kind === "rewrite" && mark.text !== undefined) {
-          const text = document.createElement("p");
-          text.className = "cm-kin-card-text";
-          text.textContent = mark.text;
-          dom.append(text);
-        }
-        if (mark.reason) {
-          const reason = document.createElement("p");
-          reason.className = "cm-kin-card-reason";
-          reason.textContent = mark.reason;
-          dom.append(reason);
-        }
-        const row = document.createElement("div");
-        row.className = "cm-kin-card-actions";
-        const discuss = getConfig()?.onDiscuss;
-        if (mark.kind === "flag" && discuss) row.append(button("Discuss", () => { const now = focusedMark(view.state); if (now) discuss(now); }));
-        if (mark.kind === "cut") {
-          row.append(button("Keep", () => dismissMark(view, mark.id)));
-          if (!view.state.readOnly) row.append(button("Cut", () => acceptMark(view, mark.id), true));
-        } else if (mark.kind === "rewrite") {
-          row.append(button("Dismiss", () => dismissMark(view, mark.id)));
-          if (!view.state.readOnly) row.append(button("Accept", () => acceptMark(view, mark.id), true));
-        } else {
-          row.append(button("Dismiss", () => dismissMark(view, mark.id)));
-        }
-        dom.append(row);
-        return { dom };
-      },
-    };
-    return cached;
+/** The card without a host renderer (the phone's editor): words for buttons. */
+function plainCard(dom: HTMLElement, card: MarkCard, actions: MarkCardActions): () => void {
+  const body = document.createElement("div");
+  body.className = "cm-kin-card-body";
+  const { mark } = card;
+  if (mark.kind === "rewrite" && mark.text !== undefined) {
+    const text = document.createElement("p");
+    text.className = "cm-kin-card-text";
+    text.textContent = mark.text;
+    body.append(text);
+  }
+  if (mark.reason) {
+    const reason = document.createElement("p");
+    reason.className = "cm-kin-card-reason";
+    reason.textContent = mark.reason;
+    body.append(reason);
+  }
+  const row = document.createElement("div");
+  row.className = "cm-kin-card-actions";
+  if (card.total > 1) {
+    const count = document.createElement("span");
+    count.className = "cm-kin-card-count";
+    count.append(button("‹", () => actions.step(-1)), `${card.index} of ${card.total}`, button("›", () => actions.step(1)));
+    row.append(count);
+  }
+  if (card.can.discuss) row.append(button("Discuss", actions.discuss));
+  if (card.can.stash) row.append(button("Stash", actions.stash));
+  row.append(button(mark.kind === "cut" ? "Keep" : "Dismiss", actions.dismiss));
+  if (card.can.accept) row.append(button(mark.kind === "cut" ? "Cut" : mark.kind === "rewrite" ? "Accept" : "Done", actions.accept, "cm-kin-card-button cm-kin-card-primary"));
+  body.append(row);
+  dom.append(body);
+  return () => body.remove();
+}
+
+function cards(getConfig: () => Marks | undefined): Extension {
+  return EditorView.decorations.compute([marksField, "doc"], (state) => {
+    const card = markCard(state, getConfig());
+    if (!card) return Decoration.none;
+    const at = paragraphEnd(state, card.mark.range.to);
+    return Decoration.set([Decoration.widget({ widget: new CardWidget(card, getConfig), block: true, side: 1 }).range(at)]);
   });
 }
+
+// --- Stepping ----------------------------------------------------------------
+
+/** cubic-bezier(x1, y1, x2, y2) as a function of time, 0–1. */
+function bezier(x1: number, y1: number, x2: number, y2: number) {
+  const curve = (t: number, p1: number, p2: number) => ((1 - 3 * p2 + 3 * p1) * t + (3 * p2 - 6 * p1)) * t * t + 3 * p1 * t;
+  const slope = (t: number, p1: number, p2: number) => 3 * (1 - 3 * p2 + 3 * p1) * t * t + 2 * (3 * p2 - 6 * p1) * t + 3 * p1;
+  return (x: number) => {
+    let t = x;
+    for (let i = 0; i < 8; i++) {
+      const dx = curve(t, x1, x2) - x;
+      const d = slope(t, x1, x2);
+      if (Math.abs(dx) < 1e-5 || Math.abs(d) < 1e-6) break;
+      t -= dx / d;
+    }
+    return curve(Math.max(0, Math.min(1, t)), y1, y2);
+  };
+}
+
+/** The app's panel curve (KI-96's motion notes). */
+const ease = bezier(0.25, 1, 0.5, 1);
+const glides = new WeakMap<Element, number>();
+
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/** Scrolls `el` to `to` in 240–320 ms, longer for longer hops. More than a
+ *  window away it first jumps to one window short, so the glide stays short
+ *  and still shows the direction. Under reduced motion it jumps. */
+function glide(el: HTMLElement, to: number) {
+  cancelAnimationFrame(glides.get(el) ?? 0);
+  glides.delete(el);
+  let from = el.scrollTop;
+  const page = el.clientHeight || 1;
+  if (reducedMotion() || Math.abs(to - from) < 2) {
+    el.scrollTop = to;
+    return;
+  }
+  if (Math.abs(to - from) > page) {
+    from = to - Math.sign(to - from) * page;
+    el.scrollTop = from;
+  }
+  const ms = 240 + 80 * Math.min(1, Math.abs(to - from) / page);
+  const start = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - start) / ms);
+    el.scrollTop = from + (to - from) * ease(t);
+    if (t < 1) glides.set(el, requestAnimationFrame(step));
+    else glides.delete(el);
+  };
+  glides.set(el, requestAnimationFrame(step));
+}
+
+function scrollParent(view: EditorView): HTMLElement {
+  for (let el: HTMLElement | null = view.scrollDOM; el; el = el.parentElement) {
+    if (el === document.scrollingElement || el === document.body) break;
+    const overflow = getComputedStyle(el).overflowY;
+    if ((overflow === "auto" || overflow === "scroll") && el.scrollHeight > el.clientHeight + 1) return el;
+  }
+  return (document.scrollingElement as HTMLElement | null) ?? view.scrollDOM;
+}
+
+/** Brings a mark a third of the way down the window, unless it and its card
+ *  are already comfortably in view. */
+function reveal(view: EditorView, id: string) {
+  view.requestMeasure({
+    key: reveal,
+    read(view) {
+      const mark = marksOf(view.state).marks.find((m) => m.id === id);
+      if (!mark) return null;
+      const scroller = scrollParent(view);
+      const whole = scroller === document.scrollingElement;
+      const box = whole ? { top: 0, height: window.innerHeight } : scroller.getBoundingClientRect();
+      const y = (view.coordsAtPos(mark.range.from)?.top ?? view.documentTop + view.lineBlockAt(mark.range.from).top) - box.top;
+      const end = view.documentTop + view.lineBlockAt(paragraphEnd(view.state, mark.range.to)).bottom - box.top + 72;
+      if (y >= box.height * 0.12 && end <= box.height - 16) return null;
+      const max = scroller.scrollHeight - scroller.clientHeight;
+      return { scroller, to: Math.max(0, Math.min(max, scroller.scrollTop + y - box.height / 3)) };
+    },
+    write(result) {
+      if (result) glide(result.scroller, result.to);
+    },
+  });
+}
+
+const revealer = ViewPlugin.fromClass(class {
+  update(update: ViewUpdate) {
+    for (const tr of update.transactions) for (const effect of tr.effects) if (effect.is(revealEffect)) reveal(update.view, effect.value);
+  }
+});
 
 const theme = EditorView.theme({
   // Text decorations and a background only: a mark never moves a line (KI-103).
@@ -423,23 +676,35 @@ const theme = EditorView.theme({
   },
   ".cm-kin-cut *": { color: "inherit" },
   ".cm-kin-rewrite": {
-    textDecorationLine: "underline", textDecorationStyle: "dotted", textDecorationColor: "var(--kin, #c8963e)",
-    textDecorationThickness: "1.5px", textUnderlineOffset: "0.22em",
+    textDecorationLine: "underline", textDecorationColor: "var(--kin, #c8963e)", textDecorationThickness: "1.5px",
+    textUnderlineOffset: "0.22em", textDecorationSkipInk: "none",
   },
-  ".cm-kin-focused": { backgroundColor: "color-mix(in oklab, var(--kin, #c8963e) 18%, transparent)", borderRadius: "2px" },
+  // The words flash once as the card steps to them: a gold wash fading over 450 ms.
+  ".cm-kin-focused": {
+    backgroundColor: "color-mix(in oklab, var(--kin, #c8963e) 18%, transparent)", borderRadius: "2px",
+    animation: "cm-kin-flash 450ms ease-out",
+  },
+  "@keyframes cm-kin-flash": { from: { backgroundColor: "color-mix(in oklab, var(--kin, #c8963e) 48%, transparent)" } },
   "@media (hover: hover) and (pointer: fine)": {
     ".cm-kin-cut:hover": { backgroundColor: "color-mix(in oklab, var(--kin, #c8963e) 12%, transparent)" },
   },
-  ".cm-tooltip.cm-kin-card": {
-    maxWidth: "min(26rem, calc(100vw - 32px))", padding: "var(--space-xs, 6px) var(--space-s, 10px)",
-    border: "none", borderRadius: "var(--radius-m, 8px)", background: "var(--popover, var(--background))", color: "var(--popover-foreground, inherit)",
-    boxShadow: "inset 0 0 0 1px var(--neutral-4, rgba(0,0,0,.1)), 0 6px 24px -8px rgba(0,0,0,.25)",
+  // Padding, not margins: the editor measures a block's height without them.
+  // The sides match a line's, so the card starts at the text's left edge.
+  ".cm-kin-card": {
+    padding: "var(--space-xxs, 4px) calc(var(--editor-gutter, 0px) + 2px) var(--space-s, 12px) calc(var(--editor-gutter, 0px) + 6px)",
+    cursor: "default", userSelect: "none",
     fontFamily: "var(--font-ui, var(--font-sans))", fontSize: "var(--size-xs, 13px)", lineHeight: "var(--line-xs, 18px)",
-    marginTop: "6px",
   },
-  ".cm-kin-card-reason, .cm-kin-card-text": { margin: "0 0 var(--space-xs, 6px)", textWrap: "pretty", boxShadow: "inset 2px 0 0 var(--kin, #c8963e)", paddingLeft: "var(--space-xs, 8px)" },
-  ".cm-kin-card-text": { fontFamily: "var(--font-editorial, inherit)" },
-  ".cm-kin-card-actions": { display: "flex", justifyContent: "flex-end", gap: "var(--space-xxs, 4px)" },
+  ".cm-kin-card-body": {
+    width: "fit-content", maxWidth: "min(30rem, 100%)", padding: "var(--space-xs, 6px) var(--space-xs, 6px) var(--space-xxs, 4px) var(--space-s, 10px)",
+    borderRadius: "var(--radius-m, 8px)", background: "var(--popover, var(--background))", color: "var(--popover-foreground, inherit)",
+    boxShadow: "inset 0 0 0 1px var(--neutral-4, rgba(0,0,0,.1)), 0 6px 24px -12px rgba(0,0,0,.25)",
+  },
+  ".cm-kin-card-reason, .cm-kin-card-text": { margin: "0 0 var(--space-xxs, 4px)", textWrap: "pretty" },
+  ".cm-kin-card-reason": { color: "var(--neutral-8, inherit)" },
+  ".cm-kin-card-text": { fontFamily: "var(--font-editorial, inherit)", boxShadow: "inset 2px 0 0 var(--kin, #c8963e)", paddingLeft: "var(--space-xs, 8px)" },
+  ".cm-kin-card-actions, .cm-kin-card-count": { display: "flex", alignItems: "center", gap: "var(--space-xxs, 4px)" },
+  ".cm-kin-card-count": { marginRight: "auto", color: "var(--neutral-8, inherit)", fontVariantNumeric: "tabular-nums" },
   ".cm-kin-card-button": {
     border: "none", borderRadius: "var(--radius-s, 6px)", padding: "2px var(--space-xs, 8px)", minHeight: "24px",
     background: "transparent", color: "var(--neutral-9, inherit)", font: "inherit", cursor: "pointer",
@@ -462,26 +727,29 @@ export function markExtensions(getConfig: () => Marks | undefined): Extension {
       if (before !== now) getConfig()?.onChange?.(now, update.state);
     }
   });
+  const [next, previous, accept, dismiss, discuss, apply, escape] = markShortcuts;
   const keys = keymap.of([
-    { key: markShortcuts[0].key, run: (view) => focusMark(view, 1) },
-    { key: markShortcuts[1].key, run: (view) => focusMark(view, -1) },
-    { key: markShortcuts[2].key, run: (view) => acceptMark(view) },
-    { key: markShortcuts[3].key, run: (view) => dismissMark(view) },
-    { key: markShortcuts[4].key, run: (view) => marksOf(view.state).batch?.kind === "trim" && applyMarks(view) },
+    { key: next.key, run: (view) => focusMark(view, 1) },
+    { key: previous.key, run: (view) => focusMark(view, -1) },
+    { key: accept.key, run: (view) => acceptMark(view) },
+    { key: dismiss.key, run: (view) => dismissMark(view) },
+    { key: discuss.key, run: (view) => discussMark(view, null, getConfig()) },
+    { key: apply.key, run: (view) => marksOf(view.state).batch?.kind === "trim" && applyMarks(view) },
   ]);
   // Escape takes the marks away before it collapses a selection; with no
   // marks it falls through.
-  const escape = Prec.high(keymap.of([{ key: "Escape", run: clearMarks }]));
+  const close = Prec.high(keymap.of([{ key: escape.key, run: clearMarks }]));
   const clicks = EditorView.domEventHandlers({
     mousedown(event, view) {
       if (event.button !== 0 || event.metaKey || event.shiftKey || event.altKey || event.ctrlKey) return false;
       const element = (event.target as HTMLElement | null)?.closest?.("[data-kin-mark]");
       const id = element?.getAttribute("data-kin-mark");
-      if (!id || element?.closest(".cm-tooltip")) return false;
-      const mark = marksOf(view.state).marks.find((m) => m.id === id);
+      if (!id || element?.closest(".cm-kin-card, .cm-tooltip")) return false;
+      const value = marksOf(view.state);
+      const mark = value.marks.find((m) => m.id === id);
       if (!mark) return false;
-      // Clicking a struck word keeps it.
-      if (mark.kind === "cut") {
+      // Clicking a trim's struck word keeps it.
+      if (mark.kind === "cut" && value.batch?.kind === "trim") {
         event.preventDefault();
         dismissMark(view, id);
         return true;
@@ -490,10 +758,10 @@ export function markExtensions(getConfig: () => Marks | undefined): Extension {
       return false;
     },
   });
-  return [marksField, notify, keys, escape, clicks, card(getConfig), theme];
+  return [marksField, notify, keys, close, clicks, cards(getConfig), revealer, theme];
 }
 
-/** Used by React hosts and KI-109's card; every method reads the view's current state. */
+/** Used by React hosts and the card; every method reads the view's current state. */
 export function markCommands(view: EditorView) {
   return {
     state: () => marksOf(view.state),

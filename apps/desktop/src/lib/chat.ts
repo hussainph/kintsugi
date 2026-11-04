@@ -103,6 +103,10 @@ export type Job = {
   attempts: number;
 };
 
+/** Mirrors `review::Suggestion`: one of a review's suggestions on a numbered
+ *  sentence, before the editor checks it against the text. */
+export type Suggestion = { sentence: number; kind: "cut" | "rewrite" | "flag"; quote?: string; text?: string; reason: string };
+
 export type NewJob = { kind: string; brief: string; task?: "chat" | "ideas" | "triage"; about?: string; thread?: string };
 
 /** Mirrors `chat::ChatEvent`, on the `kin:chat` app event. */
@@ -114,7 +118,8 @@ export type ChatEvent =
   | { type: "turn"; turn: string; thread: string; event: KinEvent }
   | { type: "turnEnded"; turn: string; thread: string }
   | { type: "reviewStarted"; turn: string; path: string }
-  | { type: "reviewEnded"; turn: string; path: string }
+  /** A finished review's suggestions (KI-109), or why there are none. */
+  | { type: "reviewEnded"; turn: string; path: string; suggestions?: Suggestion[]; error?: string; stopped?: boolean }
   | { type: "job"; job: Job }
   /** Another vault was opened: its threads are the ones now. */
   | { type: "switched" };
@@ -133,8 +138,12 @@ export const threads = {
   again: (thread: string) => invoke<Entry | null>("kin_thread_again", { thread }),
   update: (id: string, change: { title?: string; status?: Thread["status"] }) => invoke<Thread>("kin_thread_update", { id, ...change }),
   moved: (path: string, moves: { id: string; anchor: Quote; orphaned: boolean }[]) => invoke<void>("kin_thread_moved", { path, moves }),
-  review: (path: string, paragraphs: { anchor: Quote; lines: [number, number] }[], chips: Chip[]) => invoke<Thread>("kin_review", { path, paragraphs, chips }),
+  /** "Review this draft" (KI-109): the turn's id; its suggestions arrive in `reviewEnded`. */
+  review: (path: string, sentences: { n: number; text: string }[], scope: string | null, chips: Chip[]) =>
+    invoke<string>("kin_review", { path, sentences, scope, chips }),
   reviewStop: (path: string) => invoke<void>("kin_review_stop", { path }),
+  /** Discuss on a suggestion: a paragraph thread that opens with Kin's note. */
+  reviewDiscuss: (path: string, quote: Quote, note: string) => invoke<Thread>("kin_review_discuss", { path, quote, note }),
 };
 
 /** Helper jobs: background work as its own agent, reporting back in a

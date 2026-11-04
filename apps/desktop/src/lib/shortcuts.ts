@@ -143,14 +143,16 @@ export const SHORTCUTS = {
   stash: { key: "Mod-Alt-x", label: "Stash", group: "stash" },
   unstash: { key: "Mod-Alt-v", label: "Insert from stash", group: "stash" },
 
-  // Kin's marks from ⌘K's checks and trims (KI-90): the editor's keymap
-  // (`markShortcuts` in @kintsugi/editor/marks); a test keeps the two the
-  // same. KI-109's card steps through marks with the same keys.
+  // Kin's marks from ⌘K's checks and trims (KI-90) and reviews (KI-109),
+  // stepped through on the card: the editor's keymap (`markShortcuts` in
+  // @kintsugi/editor/marks); a test keeps the two the same.
   nextMark: { key: "Mod-'", label: "Next mark", group: "marks" },
   previousMark: { key: "Mod-Shift-'", label: "Previous mark", group: "marks" },
   acceptMark: { key: "Alt-Enter", label: "Accept a mark", group: "marks" },
   dismissMark: { key: "Mod-Alt-Backspace", label: "Dismiss a mark", group: "marks" },
+  discussMark: { key: "Mod-Shift-j", label: "Discuss a mark", group: "marks" },
   applyCuts: { key: "Mod-Alt-Enter", label: "Apply the cuts", group: "marks" },
+  closeMarks: { key: "Escape", label: "Close all marks", group: "marks" },
 } as const satisfies Record<string, Shortcut>;
 
 export type ShortcutId = keyof typeof SHORTCUTS;
@@ -199,6 +201,7 @@ export const OVERRIDES: Record<string, string> = {
   "Shift-Mod-k": "The developer panel replaces CodeMirror's delete line",
   "Mod-a": "The app menu's Select all and CodeMirror's are the same",
   "Alt-Mod-\\": "The margin replaces CodeMirror's indent selection, which prose doesn't use",
+  Escape: "Kin's marks close first; with none showing, CodeMirror's Escape runs",
 };
 
 export type Entry = Shortcut & { id?: string };

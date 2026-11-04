@@ -1117,7 +1117,7 @@ fn a_finished_job_goes_through_its_owner_with_a_footprint() {
 
 mod paragraphs {
     use super::*;
-    use crate::ai::chat::review::Paragraph;
+    use crate::ai::chat::review::Sentence;
     use crate::ai::threads::Quote;
 
     fn pencil() -> Quote {
@@ -1307,38 +1307,32 @@ mod paragraphs {
     }
 
     #[test]
-    fn a_review_starts_threads_on_the_paragraphs_it_names() {
-        let review = "<comments>[{\"paragraph\": 2, \"comment\": \"What does it cost?\"}, {\"paragraph\": 7, \"comment\": \"nope\"}]</comments>";
+    fn a_review_answers_with_suggestions_and_stores_none() {
+        let review = "<suggestions>[{\"sentence\": 1, \"kind\": \"rewrite\", \"quote\": \"tool\", \"text\": \"way\", \"reason\": \"Plainer.\"}, \
+                      {\"sentence\": 7, \"kind\": \"cut\"}]</suggestions>";
         let f = fixture(
             vec![answer(review), answer("It costs time.")],
             Duration::ZERO,
         );
-        let p = |exact: &str, line| Paragraph {
-            anchor: Quote {
-                exact: exact.into(),
-                line,
-                ..Quote::default()
-            },
-            lines: [line, line],
+        let s = |n, text: &str| Sentence {
+            n,
+            text: text.into(),
         };
-        let own = f
+        let turn = f
             .engine
             .review(
                 "drafts/tools.mdx",
                 vec![
-                    p("A pencil is a tool for thinking.", 6),
-                    p("A second paragraph.", 8),
+                    s(1, "A pencil is a tool for thinking."),
+                    s(2, "A second one."),
                 ],
+                Some("the section “Tools”".into()),
                 vec![doc("drafts/tools.mdx", "Tools that shape thinking")],
             )
             .unwrap();
-        assert_eq!(
-            (own.title.as_str(), own.origin.as_str()),
-            ("Review", "review")
-        );
         assert!(
             f.engine
-                .review("drafts/tools.mdx", vec![p("x", 1)], vec![])
+                .review("drafts/tools.mdx", vec![s(1, "x")], None, vec![])
                 .is_err(),
             "one review at a time"
         );
@@ -1347,65 +1341,85 @@ mod paragraphs {
                 .iter()
                 .any(|e| matches!(e, ChatEvent::ReviewEnded { .. }))
         });
-        let threads = f
-            .engine
-            .list(&Filter {
-                about: Some("drafts/tools.mdx".into()),
-                ..Filter::default()
+        let ended = f
+            .events()
+            .into_iter()
+            .find_map(|e| match e {
+                ChatEvent::ReviewEnded {
+                    turn: t,
+                    path,
+                    suggestions,
+                    error,
+                    stopped,
+                } => Some((t, path, suggestions, error, stopped)),
+                _ => None,
             })
-            .threads;
-        assert_eq!(threads.len(), 2, "the review's own thread and one note");
-        let note = threads
-            .iter()
-            .find(|t| t.meta.anchor.as_ref().unwrap().kind == "paragraph")
             .unwrap();
-        assert_eq!(note.meta.origin, "review");
-        assert_eq!(note.meta.title, "What does it cost?");
         assert_eq!(
-            note.meta
-                .anchor
-                .as_ref()
-                .unwrap()
-                .quote
-                .as_ref()
-                .unwrap()
-                .exact,
-            "A second paragraph."
+            (ended.0.as_str(), ended.1.as_str()),
+            (turn.as_str(), "drafts/tools.mdx")
         );
-        let entries = f.thread(&note.meta.id);
+        let found = ended.2.unwrap();
+        assert_eq!(found.len(), 1, "the sentence that isn't there is dropped");
         assert_eq!(
-            (entries[0].role, entries[0].text.as_str(), entries[0].review),
-            (Role::Kin, "What does it cost?", true)
+            (
+                found[0].kind.as_str(),
+                found[0].quote.as_deref(),
+                found[0].text.as_deref()
+            ),
+            ("rewrite", Some("tool"), Some("way"))
         );
-        let summary = f.thread(&own.id);
-        assert_eq!(summary[0].text, threads::REVIEW_REQUEST);
+        assert_eq!((ended.3, ended.4), (None, false));
         assert!(
-            summary[1]
-                .text
-                .starts_with("I left 1 comment on Tools that shape thinking"),
-            "{}",
-            summary[1].text
+            f.engine
+                .list(&Filter {
+                    about: Some("drafts/tools.mdx".into()),
+                    ..Filter::default()
+                })
+                .threads
+                .is_empty(),
+            "a review stores no thread"
         );
-        assert!(last_user(&f.script.seen()[0]).starts_with(REVIEW_BRIEF));
+        let asked = last_user(&f.script.seen()[0]);
+        assert!(asked.starts_with(REVIEW_BRIEF));
+        assert!(asked.contains("the section “Tools” only"));
+        assert!(asked.contains("[1] A pencil is a tool for thinking.\n[2] A second one."));
         assert!(
             f.script.seen()[0]
                 .system
                 .contains(crate::ai::writing::rules())
         );
-        assert!(f.engine.review("drafts/tools.mdx", vec![], vec![]).is_err());
-        // He replies to the note: Kin sees its note as the thread so far.
-        f.reply(&note.meta.id, "Time, mostly?");
-        f.wait_replies(3);
+        assert!(
+            f.engine
+                .review("drafts/tools.mdx", vec![], None, vec![])
+                .is_err()
+        );
+
+        // Discuss on it: a paragraph thread that opens with Kin's note.
+        let note = f
+            .engine
+            .review_discuss("drafts/tools.mdx", pencil(), "“tool” → “way”. Plainer.")
+            .unwrap();
+        assert_eq!(note.origin, "review");
+        assert_eq!(note.anchor.as_ref().unwrap().kind, "paragraph");
+        let entries = f.thread(&note.id);
+        assert_eq!(
+            (entries[0].role, entries[0].text.as_str(), entries[0].review),
+            (Role::Kin, "“tool” → “way”. Plainer.", true)
+        );
+        assert!(
+            f.engine
+                .review_discuss("drafts/tools.mdx", pencil(), " ")
+                .is_err()
+        );
+        // He replies: Kin sees its note as the thread so far.
+        f.reply(&note.id, "Why way?");
+        f.wait_replies(2);
         let seen = f.script.seen();
         let items = &seen.last().unwrap().items;
         assert!(
-            matches!(&items[1], Item::Assistant { text, .. } if text == "What does it cost?"),
+            matches!(&items[1], Item::Assistant { text, .. } if text == "“tool” → “way”. Plainer."),
             "{items:?}"
-        );
-        assert_eq!(
-            f.engine.thread(&note.meta.id).unwrap().thread.title,
-            "What does it cost?",
-            "a review note keeps its title"
         );
     }
 }

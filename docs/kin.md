@@ -530,9 +530,9 @@ the first result, then answers. `test/runtime-kin.test.ts` drives it.
 2. **The thread** (KI-104): its latest answered exchanges (at most 12), then
    the new message. Only appended to within a turn. Interrupted and failed
    replies stay in the thread but are never sent back to the model. A note
-   Kin started the thread with (a review's) is sent as the reply to "Kin,
-   review this draft"; a helper's report as the reply to "(A helper reported
-   back.)".
+   Kin started the thread with (Discuss on a review's suggestion, or an old
+   review's note) is sent as the reply to "Kin, review this draft"; a
+   helper's report as the reply to "(A helper reported back.)".
 3. **Dynamic context**, at the end of the user message: the date, on-screen
    chips as paths to read on demand (a selected paragraph carries its line
    range), then "This thread is about …": the document, clip, Feed item or
@@ -799,11 +799,13 @@ Discuss on a Feed story, a clip or an idea, ⌘K's "Discuss" and quick asks.
 | `kin_thread_typing({ thread })`, `kin_thread_stop({ thread })`, `kin_thread_again({ thread })` | Typing, Stop, Ask again |
 | `kin_thread_update({ id, title?, status? })` | Rename (an empty title goes back to the first message's) or resolve / reopen |
 | `kin_thread_moved({ path, moves })` | Paragraph anchors the editor re-resolved |
-| `kin_review({ path, paragraphs, chips })`, `kin_review_stop({ path })` | "Kin, review this draft" |
+| `kin_review({ path, sentences, scope?, chips })`, `kin_review_stop({ path })` | "Review this draft" (KI-109): the turn's id; the suggestions come in `reviewEnded` |
+| `kin_review_discuss({ path, quote, note })` | Discuss on a suggestion: a paragraph thread opening with Kin's note |
 
 Events, on `kin:chat`: `entry`, `thread` (started or changed), `threads`
 (many changed), `turnStarted` / `turn` / `turnEnded` (each with its
-thread), `reviewStarted` / `reviewEnded`, `job` and `switched`.
+thread), `reviewStarted` / `reviewEnded` (with `suggestions`, `error` or
+`stopped`), `job` and `switched`.
 
 ### Moving old conversations in (KI-104)
 
@@ -859,7 +861,8 @@ Shimmer), rebuilt on the Graphical theme and Base UI parts.
 - **The list.** In the editor: the draft's threads, newest first. Paragraph
   threads show the passage they're about. With none, one line and a few
   asks to send in one click. While Kin reviews the draft, a line says so,
-  with Stop. Away from the editor (Feed, a story, Ideas, Inspiration,
+  with Stop; otherwise *Review this draft* and *Review this section* sit at
+  the top (KI-109). Away from the editor (Feed, a story, Ideas, Inspiration,
   Settings): threads about what's on screen first, then recent ones. Each
   row shows the title, what it's about, its last message, when, a spinner
   while Kin answers and a dot for an unseen reply. "New thread" and "All
@@ -1045,8 +1048,9 @@ Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `refere
   (a quick ask: sends that question in a new thread about the paragraph
   without opening Kin, via `ask()`; a "Kin replied" chip under the paragraph
   opens it), *Discuss this paragraph* (opens a new thread's composer about
-  it in the Kin tab, unsent), *Kin, review this draft* and *Ideas for this
-  draft* (`ideasForDraft(path)`).
+  it in the Kin tab, unsent) and *Ideas for this draft*
+  (`ideasForDraft(path)`). Its *Review* group has *Review this draft* and
+  *Review this section* (below).
   In a read-only mirror (KI-9) only the actions that write nothing are
   offered, and a supporting clip can only be opened.
 - **Checks (KI-90).** ⌘K's *Check* group runs one check on the selection,
@@ -1080,11 +1084,15 @@ Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `refere
   there's no suggestions setting and no background check. Marks go on
   Escape (all of them), on the first edit inside one (that one), and as each
   is accepted or dismissed; when the last goes, the batch is done. ⌘' and
-  ⇧⌘' step to the next and previous mark (wrapping) and show its reason
-  under it; ⌥↵ accepts it (a cut goes, a flag is done) and ⌥⌘⌫ dismisses
-  it (a cut's words stay). *Discuss* on a flag opens a new thread about its
-  paragraph in the Kin tab, with the marked words attached (KI-104).
-  The model, for KI-109's `‹ 1 of N ›` card and any later set of marks:
+  ⇧⌘' step to the next and previous mark (wrapping) and open its card
+  (below); ⌥↵ accepts it (a cut goes, a rewrite goes in, a flag is done),
+  ⌥⌘⌫ dismisses it (a cut's words stay), ⇧⌘J discusses it and Escape
+  closes them all. A cut that takes a sentence's first words gives the next
+  word a capital ("old. I think it was" → "old. It was"), when the cut
+  began with one and the word is plain lowercase; a run of touching cuts
+  counts as one, and Apply does the same for each run. The capital is part
+  of the same undo step.
+  The model, for the card and any later set of marks:
 
   ```ts
   type Mark = { id: string; range: { from: number; to: number }; kind: "cut" | "flag" | "rewrite";
@@ -1099,8 +1107,54 @@ Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `refere
 
   `markCommands(view)` bundles them; the `Editor`'s `marks` prop takes
   `onChange(marks, state)` (each change, and the document's marks when it
-  opens) and `onDiscuss(mark)`. Accepting a rewrite replaces its range with
-  `text`. The keys are `markShortcuts`, listed in `src/lib/shortcuts.ts`.
+  opens), `onDiscuss(mark)`, `onStash(mark)` and `renderCard(dom, card,
+  actions)`. Accepting a rewrite replaces its range with `text`. The keys
+  are `markShortcuts`, listed in `src/lib/shortcuts.ts`.
+- **The card (KI-109).** The focused mark has a small card in a block
+  widget under its paragraph, so it never covers a line, and only pushes
+  the lines below down; no line re-wraps. It shows Kin's one-line reason
+  (a rewrite's new words first, with a rule in Kin's accent), `‹ 1 of N ›` (N is the
+  marks left) and icon buttons: accept (✓; "Cut", "Accept" or "Done" by
+  kind), dismiss (✕), discuss (only with a host) and stash (rewrites only).
+  The desktop draws it with `src/refine/MarkCard.tsx` through a React
+  portal; without `renderCard` the editor draws a plain one with words for
+  buttons. Stepping scrolls the mark a third of the way down the window in
+  240 to 320 ms on the panel curve, cubic-bezier(0.25, 1, 0.5, 1), only
+  when it or its card is out of comfortable view; more than a window away
+  it first jumps to one window short. Under reduced motion it jumps. The
+  words flash once, a wash of Kin's accent fading over 450 ms (also under reduced
+  motion). Clicking a mark focuses it, except a trim's struck word, which
+  is kept. Checks, trims and reviews all use it.
+- **Reviews (KI-109).** *Review this draft* and *Review this section* (⌘K's
+  *Review* group, the Kin tab, the `/` menu's Kin actions) ask Kin for
+  suggestions. A section is the selection, else the heading the cursor is
+  under down to the next heading of its level or above (before any heading:
+  the opening). The webview numbers the scope's sentences as checks do
+  (`src/refine/review.ts`) and `kin_review` runs one turn with Kin's tools
+  (it reads the draft and may search his writing and clips), the chat's
+  writing rules in its prompt, and a brief (`ai/chat/review.rs`) that asks
+  for at most twelve suggestions, most useful first, keeping his voice in
+  rewrites: `<suggestions>[{"sentence": 2, "kind": "cut" | "rewrite" |
+  "flag", "quote": "…", "text": "…", "reason": "…"}]</suggestions>`. Rust
+  keeps the well-formed entries (a known sentence; a rewrite with words; a
+  flag with a reason) and sends them in `reviewEnded`; the webview checks
+  each against the text (`parseReview`: the quote must be in the sentence,
+  a cut on word boundaries, a rewrite different from the words, no
+  overlaps) and shows the rest as marks: cuts struck through and rewrites
+  and flags underlined, in Kin's accent, the first one focused. A rewrite's
+  words show only on the card. *Discuss* starts a paragraph thread that
+  opens with the suggestion as Kin's note (`kin_review_discuss`) and opens
+  it in the Kin tab; the mark stays. *Stash* on a rewrite keeps its words
+  in the stash as Kin's rewrite of that span (`stashRewrite`) and the mark
+  goes. While Kin reads, a bar at the foot of the page says so, with Stop.
+  Nothing is stored: no thread for the review itself, no marks in the file
+  or a sidecar. A review in progress, and its marks, belong to the
+  document for the session (`src/refine/reviews.ts`): switching documents,
+  tabs or margins keeps them, and an answer for a document that isn't
+  showing lands when it opens again (its sentences found again if he edited
+  meanwhile). Reloading or reopening the app shows none. This replaces
+  KI-38's review that left up to five comment threads. The phone doesn't
+  have reviews yet (a follow-up).
 - **Keys of their own (KI-85).** Tighten ⌥⌘T, Rephrase ⌥⌘R, Simplify ⌥⌘P,
   Fix grammar and spelling ⌥⌘F and Synonyms ⌥⌘S run on the selection (else
   the paragraph) without ⌘K's list, and land in the same review: a diff to
@@ -1137,14 +1191,10 @@ and answers like any thread, in the Kin tab.
   open a new thread's composer about the paragraph in the Kin tab
   (`startComment`, which calls the host's `onStart`); the paragraph lights
   up while he writes. Nothing is saved until he sends. Right-click › *Ask
-  Kin* does the same with the selected passage attached. *Kin, review this
-  draft* (⌘K, or the `/` menu's Kin actions) is one turn that reads the
-  document and starts up to five threads on the paragraphs that most need a
-  note, each opening with Kin's note, plus a review thread about the
-  document holding the request and Kin's summary ("I left 2 comments on …").
-  Kin's reply comes back as `<comments>[{"paragraph": n, "comment": …}]</comments>`
-  against a numbered list of the body's paragraphs; anything else is a
-  failed review and starts no threads.
+  Kin* does the same with the selected passage attached. *Discuss* on one
+  of a review's suggestions (KI-109) starts a paragraph thread that opens
+  with the suggestion as Kin's note. Reviews no longer leave threads: their
+  suggestions are marks (see In the editor).
 - **The gutter mark.** Each paragraph with open threads has a marker in the
   right margin of the draft (a count when there are several). It opens the
   newest of them in the Kin tab (`openThread`), and the thread open there
@@ -1177,9 +1227,14 @@ and answers like any thread, in the Kin tab.
   `src/comments/useComments.ts`.
 - **Headless.** With `KINTSUGI_HEADLESS_KIN=mock` the scripted model answers
   paragraph threads (searches the paragraph's longest word, replies naming
-  the first hit as a `[[link]]`) and reviews (comments on the first and last
-  paragraphs). `test/runtime-threads.test.ts` drives it in headless
-  Chromium, starting from a vault with an old log and comment thread.
+  the first hit as a `[[link]]`) and reviews (`scripted/marks.rs`: after
+  reading the draft, a flag on the first sentence nothing else touches,
+  cuts of hedges and filler, rewrites of a few stiff words, and one quote
+  the draft doesn't have, which must be dropped).
+  `test/runtime-threads.test.ts` drives the threads in headless Chromium,
+  starting from a vault with an old log and comment thread;
+  `test/runtime-review.test.ts` drives reviews: asking, stepping, accepting
+  each kind, dismissing, discussing, stashing, Escape, undo and switching.
 
 ## On the phone (KI-42)
 

@@ -7,7 +7,8 @@
 // character; ⌘' / ⇧⌘' step, ⌥↵ and ⌥⌘⌫ accept and dismiss, an edit inside a
 // mark and Escape take marks away. A trim strikes words in gold with the
 // word count before and after; clicking a struck word keeps it; Apply cuts
-// is one undo step and only ever removes words. Light and dark screenshots
+// is one undo step and only ever removes words (a cut that starts a
+// sentence capitalises the next word). Light and dark screenshots
 // go to .headless/<run>/shots/.
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -213,7 +214,7 @@ test("a trim strikes words in gold, keeps a clicked word, and applies as one und
 
   await bar().getByRole("button", { name: /Apply cuts/ }).click();
   await bar().waitFor({ state: "detached" });
-  const applied = "The bowl is very old. it was broken once, and then, years later, mended with gold.\n\nWe utilize gold because it shows the break. Repair is a attention.";
+  const applied = "The bowl is very old. It was broken once, and then, years later, mended with gold.\n\nWe utilize gold because it shows the break. Repair is a attention.";
   await until(() => disk().includes(applied), `the cuts land; the file is:\n${disk()}`);
   assert.equal(await page.locator(".cm-kin-mark").count(), 0);
   await focusEditor();

@@ -3,8 +3,8 @@ import { test } from "node:test";
 import { history, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, type TransactionSpec } from "@codemirror/state";
 import {
-  acceptMark, applyMarks, clearMarks, cutRange, dismissMark, focusMark, focusedMark, markExtensions, marksOf, onWordBoundaries,
-  proseSentences, setMarks, textAfterCuts, type Mark, type MarkBatch,
+  acceptMark, applyMarks, clearMarks, cutRange, dismissMark, focusMark, focusedMark, markCard, markExtensions, marksOf, onWordBoundaries,
+  paragraphEnd, proseSentences, recapitalise, setMarks, textAfterCuts, type Mark, type MarkBatch, type Marks,
 } from "../src/marks.ts";
 
 function editor(doc: string) {
@@ -138,4 +138,85 @@ test("a cut closes up the words around it", () => {
   assert.equal(cut("It was, really, fine.", "really,"), "It was, fine.");
   assert.ok(onWordBoundaries("unhappy days", { from: 0, to: 7 }));
   assert.ok(!onWordBoundaries("unhappy days", { from: 0, to: 2 }), "a cut inside a word makes a new word");
+});
+
+// --- KI-109 ------------------------------------------------------------------
+
+const cutOf = (doc: string, words: string): Mark => {
+  const from = doc.indexOf(words);
+  assert.notEqual(from, -1, words);
+  return { id: words, range: cutRange(doc, { from, to: from + words.length }), kind: "cut", reason: "" };
+};
+
+test("a cut that takes a sentence's first words capitalises the next one", () => {
+  const doc = "The bowl is old. I think it was broken once. Basically it works.";
+  const view = editor(doc);
+  setMarks(view, batch("review", doc), [cutOf(doc, "I think"), cutOf(doc, "Basically")]);
+  assert.ok(acceptMark(view, "I think"));
+  assert.equal(view.state.doc.toString(), "The bowl is old. It was broken once. Basically it works.");
+  view.state = undoOnce(view.state);
+  assert.equal(view.state.doc.toString(), doc, "the capital undoes with the cut");
+  // Applied in bulk (a trim's Apply), the same.
+  setMarks(view, batch("trim", doc), [cutOf(doc, "I think"), cutOf(doc, "Basically")]);
+  assert.ok(applyMarks(view));
+  assert.equal(view.state.doc.toString(), "The bowl is old. It was broken once. It works.");
+  view.state = undoOnce(view.state);
+  assert.equal(view.state.doc.toString(), doc, "one undo");
+});
+
+test("capitals only where the cut started a sentence with one", () => {
+  const capitalOf = (text: string, words: string) => {
+    const at = text.indexOf(words);
+    const range = cutRange(text, { from: at, to: at + words.length });
+    const change = recapitalise(text, range.from, range.to);
+    const cut = text.slice(0, range.from) + text.slice(range.to);
+    if (!change) return cut;
+    const shift = range.to - range.from;
+    return cut.slice(0, change.from - shift) + change.insert + cut.slice(change.to - shift);
+  };
+  assert.equal(capitalOf("Old. I think it was.", "I think"), "Old. It was.");
+  assert.equal(capitalOf("I think it was.", "I think"), "It was.", "at the start of the text");
+  assert.equal(capitalOf("- Really it was.", "Really"), "- It was.", "after a list marker");
+  assert.equal(capitalOf("Old. “I think it was.”", "I think"), "Old. “It was.”");
+  assert.equal(capitalOf("Old, and I think it was.", "I think"), "Old, and it was.", "mid-sentence: no change");
+  assert.equal(capitalOf("Old. i think it was.", "i think"), "Old. it was.", "his lowercase stays");
+  assert.equal(capitalOf("Old. Honestly iPhones work.", "Honestly"), "Old. iPhones work.", "mixed case stays");
+  assert.equal(capitalOf("Old. Really, Gold works.", "Really,"), "Old. Gold works.");
+});
+
+test("cuts that touch close up as one run before the capital", () => {
+  const doc = "Old. I think just it was.";
+  const view = editor(doc);
+  setMarks(view, batch("trim", doc), [cutOf(doc, "I think"), cutOf(doc, "just")]);
+  assert.ok(applyMarks(view));
+  assert.equal(view.state.doc.toString(), "Old. It was.");
+});
+
+test("a review's rewrite goes in as one undo step; the card counts what's left", () => {
+  const doc = "We utilize gold.\n\nIt shows the break.\nAnd the line.\n\nLast one.";
+  const view = editor(doc);
+  const rewrite: Mark = { ...at(doc, "utilize", "rewrite", "Plainer."), text: "use" };
+  setMarks(view, batch("review", doc), [rewrite, at(doc, "the break", "flag", "Which break?"), at(doc, "Last one.", "cut", "")], { focus: "first" });
+  const config: Marks = { onDiscuss: () => {}, onStash: () => true };
+  const card = markCard(view.state, config)!;
+  assert.equal(card.mark.id, "utilize");
+  assert.deepEqual([card.index, card.total], [1, 3]);
+  assert.deepEqual(card.can, { accept: true, discuss: true, stash: true });
+  assert.equal(markCard(view.state)!.can.discuss, false, "no host, no Discuss");
+  focusMark(view, 1);
+  const flag = markCard(view.state, config)!;
+  assert.deepEqual([flag.mark.id, flag.index, flag.can.stash], ["the break", 2, false]);
+  focusMark(view, -1);
+  assert.ok(acceptMark(view));
+  assert.equal(view.state.doc.toString(), doc.replace("utilize", "use"));
+  assert.deepEqual([markCard(view.state, config)!.index, markCard(view.state, config)!.total], [1, 2]);
+  view.state = undoOnce(view.state);
+  assert.equal(view.state.doc.toString(), doc);
+});
+
+test("the card goes under the paragraph, after its last line", () => {
+  const doc = "We utilize gold.\n\nIt shows the break.\nAnd the line.\n\nLast one.";
+  const state = EditorState.create({ doc });
+  assert.equal(paragraphEnd(state, doc.indexOf("shows")), doc.indexOf("And the line.") + "And the line.".length);
+  assert.equal(paragraphEnd(state, doc.indexOf("Last")), doc.length);
 });

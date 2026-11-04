@@ -141,7 +141,7 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 
 /** The quote's first place in the sentence that an earlier, identical
  *  quote hasn't taken ("very, very"), in document positions. */
-function locate(doc: string, sentence: Sentence, quote: string, taken: { from: number; to: number }[]) {
+export function locate(doc: string, sentence: Sentence, quote: string, taken: { from: number; to: number }[]) {
   const exact = quote.trim();
   if (!exact) return null;
   const text = doc.slice(sentence.from, sentence.to);

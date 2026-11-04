@@ -1,10 +1,12 @@
-import { ArrowLeft, Check, Loader2, MessagesSquare, Plus, RotateCcw, Search } from "@kintsugi/ui/icons";
+import { ArrowLeft, Check, Loader2, MessagesSquare, Plus, RotateCcw, Search, Sparkles } from "@kintsugi/ui/icons";
 import { Button } from "@kintsugi/ui/components/button";
 import { Input } from "@kintsugi/ui/components/input";
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { toast } from "sonner";
 import { threads as api, type Anchor, type Thread } from "@/lib/chat";
 import { snippet } from "@/lib/chips";
+import { REVIEWS } from "@/refine/review";
+import { requestReview } from "@/refine/reviews";
 import { KinComposer, KinHelpers, KinLog, KinSuggestions } from "./Conversation";
 import { openLink } from "./links";
 import {
@@ -115,13 +117,24 @@ function ListView({ s, onManage }: { s: KinState; onManage: () => void }) {
         </Button>
       </div>
       <div className="ki-kin-list" aria-label="Threads">
-        {reviewing && (
+        {reviewing ? (
           <p className="ki-kin-reviewing" data-reviewing>
             <Loader2 aria-hidden /> Kin is reviewing this draft
             <Button variant="ghost" size="xs" onClick={() => void api.reviewStop(about.path).catch((e) => toast.error(String(e)))}>
               Stop
             </Button>
           </p>
+        ) : inDraft && (
+          // Asked suggestions (KI-109): Kin marks the draft, and the card under each steps through them.
+          <div className="ki-kin-review" role="group" aria-label="Review">
+            {REVIEWS.map((r) => (
+              <Button key={r.id} variant="ghost" size="sm" data-review={r.id} onClick={() => {
+                if (!requestReview(about.path, r.id)) toast("Open the draft to review it.");
+              }}>
+                <Sparkles /> {r.label}
+              </Button>
+            ))}
+          </div>
         )}
         {inDraft ? (
           mine.length ? (

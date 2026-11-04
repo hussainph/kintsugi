@@ -1,8 +1,7 @@
 import type { EditorView } from "@codemirror/view";
-import { paragraphAnchor, reviewParagraphs, startComment } from "@kintsugi/editor/Editor";
+import { paragraphAnchor, startComment } from "@kintsugi/editor/Editor";
 import { toast } from "sonner";
-import { type Anchor, openKin, threads } from "@/lib/chat";
-import { docChip } from "@/kin/screen";
+import type { Anchor } from "@/lib/chat";
 
 /**
  * Kin's threads on paragraphs (KI-38, threads since KI-104). A thread
@@ -34,16 +33,4 @@ export function beginComment(view: EditorView, from: number, to: number, how: "m
 export function passageAnchor(view: EditorView, path: string, from: number, to: number): Anchor | null {
   const found = paragraphAnchor(view.state, from, to);
   return found ? { kind: "paragraph", path, quote: found.anchor } : null;
-}
-
-/** "Kin, review this draft": Kin reads it and starts threads on the
- *  paragraphs that need a note. The Kin tab shows it working. */
-export function reviewDraft(view: EditorView, path: string) {
-  const paragraphs = reviewParagraphs(view.state);
-  if (!paragraphs.length) {
-    toast("Write a paragraph or two first, then ask for a review.");
-    return;
-  }
-  openKin("list");
-  threads.review(path, paragraphs, [docChip(view, path)]).catch((error) => toast.error(String(error)));
 }

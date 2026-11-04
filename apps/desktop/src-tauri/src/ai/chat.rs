@@ -173,7 +173,8 @@ pub enum ChatEvent {
         turn: String,
         thread: String,
     },
-    /// Kin started or finished reviewing a document.
+    /// Kin started or finished reviewing a document (KI-109). A finished
+    /// review carries its suggestions, or an error, or that it was stopped.
     ReviewStarted {
         turn: String,
         path: String,
@@ -181,6 +182,12 @@ pub enum ChatEvent {
     ReviewEnded {
         turn: String,
         path: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        suggestions: Option<Vec<review::Suggestion>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        stopped: bool,
     },
     Job {
         job: Job,
