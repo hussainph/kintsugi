@@ -1086,6 +1086,12 @@ an article and are summarised again, and new or refined ideas. What's
 already written stays; nothing is regenerated, so changing the menu never
 spends money on its own.
 
+The headless mock follows the tone too, so each one can be seen at $0:
+`pnpm --filter @kintsugi/desktop exec node test/writing-tones.ts` picks each
+tone in turn, asks for ideas, follows the news fixture feeds and saves the
+setting, an idea and a story per tone to `.headless/ki102-tones/`
+(screenshots in `docs/screenshots/ki-102/`).
+
 ### The rules
 
 One block, in every prompt that writes prose: the chat's fixed prefix (so
