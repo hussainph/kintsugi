@@ -59,7 +59,7 @@ const shot = (name: string) => page.screenshot({ path: resolve(app.shots, `${nam
 const disk = () => readFileSync(resolve(app.vault, DOC), "utf8");
 const line = (text: string) => page.locator(".cm-line", { hasText: text });
 const refine = () => page.locator("[data-slot=popover-content]");
-const card = () => page.locator(".ki-mark-card");
+const card = () => page.locator(".ki-step-card");
 const count = () => card().locator("[data-card-count]");
 const action = (name: string) => card().locator(`[data-card-action="${name}"]`);
 const focused = () => page.locator(".cm-kin-focused");
@@ -165,7 +165,7 @@ test("‹ 1 of N › steps by keyboard and mouse", { timeout: 60_000 }, async ()
   await action("next").click();
   await action("next").click();
   await focused().filter({ hasText: "utilize" }).waitFor();
-  await card().locator(".ki-mark-card-text", { hasText: /^use$/ }).waitFor();
+  await card().locator(".ki-step-card-text", { hasText: /^use$/ }).waitFor();
   await page.mouse.move(1, 1);
   await shot("03-rewrite-light");
   await page.emulateMedia({ colorScheme: "dark" });
@@ -203,7 +203,12 @@ test("Discuss opens a paragraph thread that starts with Kin's suggestion", { tim
   await pane().waitFor();
   await pane().locator('[data-role="kin"]').getByText("I’d cut “kind of”. A hedge; it's firmer without it.").waitFor();
   await pane().locator(".ki-kin-about-passage", { hasText: "We utilize gold" }).waitFor();
+  await page.mouse.move(1, 1);
   await shot("05-discuss-light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForTimeout(300);
+  await shot("05-discuss-dark");
+  await page.emulateMedia({ colorScheme: "light" });
   assert.equal(await card().count(), 1, "the suggestion stays to decide on");
   await page.keyboard.press("Meta+j");
   await pane().waitFor({ state: "detached" });
@@ -268,7 +273,12 @@ test("the Kin tab asks for a review too", { timeout: 60_000 }, async () => {
   assert.deepEqual(await marked(), EXPECTED);
   await pane().locator("[data-reviewing]").waitFor({ state: "detached" });
   await pane().locator('[data-review="section"]').waitFor();
+  await page.mouse.move(1, 1);
   await shot("06-kin-tab-light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForTimeout(300);
+  await shot("06-kin-tab-dark");
+  await page.emulateMedia({ colorScheme: "light" });
   await page.keyboard.press("Meta+j");
   await pane().waitFor({ state: "detached" });
   await focusEditor();
@@ -287,7 +297,7 @@ test("a video of stepping through a review", { timeout: 90_000 }, async () => {
   await tab.keyboard.press("Meta+k");
   await tab.waitForTimeout(500);
   await tab.locator("[data-slot=popover-content]").getByRole("option", { name: "Review this draft" }).click();
-  await tab.locator(".ki-mark-card").waitFor({ timeout: 20_000 });
+  await tab.locator(".ki-step-card").waitFor({ timeout: 20_000 });
   for (let i = 0; i < 5; i++) {
     await tab.waitForTimeout(900);
     await tab.keyboard.press("Meta+Quote");

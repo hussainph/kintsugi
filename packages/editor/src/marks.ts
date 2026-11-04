@@ -1,9 +1,12 @@
 import { isolateHistory } from "@codemirror/commands";
-import { EditorSelection, Prec, StateEffect, StateField, type ChangeSpec, type EditorState, type Extension, type Transaction } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, WidgetType, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
+import { Annotation, EditorSelection, Prec, StateEffect, StateField, type ChangeSpec, type EditorState, type Extension, type Transaction } from "@codemirror/state";
+import { Decoration, EditorView, ViewPlugin, keymap, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import { splitFrontmatter } from "@kintsugi/core/frontmatter";
 import { paragraphs, type Range } from "./anchors.ts";
 import { isWordChar, sentencesIn } from "./spans.ts";
+import { inlineCard, revealRange } from "./card.ts";
+
+export { paragraphEnd } from "./card.ts";
 
 /**
  * Kin's marks (KI-90): ranges of the draft Kin points at when he asks, drawn
@@ -106,6 +109,8 @@ const putMarks = StateEffect.define<{ batch: MarkBatch; marks: readonly Mark[]; 
 const focusEffect = StateEffect.define<string | null>();
 const removeEffect = StateEffect.define<readonly string[]>();
 const clearEffect = StateEffect.define<null>();
+/** A capital a cut gave the next word: not an edit inside another mark. */
+const casing = Annotation.define<{ from: number; to: number }>();
 /** Scrolls a mark into view on the card's eased curve. */
 const revealEffect = StateEffect.define<string>();
 
@@ -115,13 +120,21 @@ const byPosition = (a: Mark, b: Mark) => a.range.from - b.range.from || a.range.
 function mapMarks(value: MarksState, tr: Transaction): MarksState {
   if (!tr.docChanged || !value.marks.length) return value;
   const touched = new Set<string>();
-  tr.changes.iterChangedRanges((fromA, toA) => {
+  const capital = tr.annotation(casing);
+  const touch = (fromA: number, toA: number) => {
     for (const mark of value.marks) if (fromA < mark.range.to && toA > mark.range.from) touched.add(mark.id);
+  };
+  tr.changes.iterChangedRanges((fromA, toA) => {
+    // Adjacent changes come merged: leave the capital out of them.
+    if (capital && fromA <= capital.from && capital.to <= toA) {
+      if (fromA < capital.from) touch(fromA, capital.from);
+      if (capital.to < toA) touch(capital.to, toA);
+    } else touch(fromA, toA);
   });
   const marks: Mark[] = [];
   for (const mark of value.marks) {
     if (touched.has(mark.id)) continue;
-    const from = tr.changes.mapPos(mark.range.from, 1);
+    const from = tr.changes.mapPos(mark.range.from, capital?.from === mark.range.from ? -1 : 1);
     const to = tr.changes.mapPos(mark.range.to, -1);
     if (to > from) marks.push({ ...mark, range: { from, to } });
   }
@@ -281,7 +294,7 @@ export function acceptMark(view: Target, id?: string): boolean {
   const capital = mark.kind === "cut" ? recapitalise(view.state.doc.toString(), mark.range.from, mark.range.to) : null;
   const changes = change ? (capital ? [change, capital] : change) : null;
   view.dispatch({
-    ...(changes ? { changes, annotations: isolateHistory.of("full"), userEvent: mark.kind === "cut" ? "delete.mark" : "input.mark" } : {}),
+    ...(changes ? { changes, annotations: [isolateHistory.of("full"), ...(capital ? [casing.of(capital)] : [])], userEvent: mark.kind === "cut" ? "delete.mark" : "input.mark" } : {}),
     effects: [removeEffect.of([mark.id]), ...(next ? [focusEffect.of(next), ...(next !== value.focused ? [revealEffect.of(next)] : [])] : [])],
   });
   return true;
@@ -429,18 +442,6 @@ function decorations(value: MarksState): DecorationSet {
   }).range(mark.range.from, mark.range.to)), true);
 }
 
-/** The end of the paragraph `pos` is in: the card goes under it. */
-export function paragraphEnd(state: EditorState, pos: number): number {
-  const doc = state.doc;
-  let line = doc.lineAt(Math.max(0, Math.min(pos, doc.length)));
-  while (line.number < doc.lines) {
-    const next = doc.line(line.number + 1);
-    if (!next.text.trim() || fence.test(next.text)) break;
-    line = next;
-  }
-  return line.to;
-}
-
 /** The card for the focused mark, or null. */
 export function markCard(state: EditorState, config?: Marks): MarkCard | null {
   const value = marksOf(state);
@@ -469,58 +470,6 @@ function stashMark(view: Target, id: string, config: Marks | undefined): boolean
   const mark = marksOf(view.state).marks.find((m) => m.id === id);
   if (!mark || mark.kind !== "rewrite" || mark.text === undefined || view.state.readOnly || !config?.onStash?.(mark)) return false;
   return dismissMark(view, id);
-}
-
-const cleanups = new WeakMap<HTMLElement, () => void>();
-
-const sameCard = (a: MarkCard, b: MarkCard) =>
-  a.mark.id === b.mark.id && a.index === b.index && a.total === b.total && a.readOnly === b.readOnly && a.mark.kind === b.mark.kind &&
-  a.mark.reason === b.mark.reason && a.mark.text === b.mark.text && a.can.accept === b.can.accept && a.can.discuss === b.can.discuss &&
-  a.can.stash === b.can.stash && a.batch?.id === b.batch?.id;
-
-/** A block under the paragraph: it pushes the lines below down and never
- *  covers or re-wraps one. */
-class CardWidget extends WidgetType {
-  readonly card: MarkCard;
-  readonly getConfig: () => Marks | undefined;
-  constructor(card: MarkCard, getConfig: () => Marks | undefined) {
-    super();
-    this.card = card;
-    this.getConfig = getConfig;
-  }
-  eq(other: CardWidget) {
-    return sameCard(this.card, other.card);
-  }
-  toDOM(view: EditorView) {
-    const dom = document.createElement("div");
-    dom.className = "cm-kin-card";
-    dom.contentEditable = "false";
-    dom.dataset.kinMark = this.card.mark.id;
-    dom.dataset.kind = this.card.mark.kind;
-    // Keep the editor's focus and selection.
-    dom.addEventListener("mousedown", (event) => event.preventDefault());
-    const id = this.card.mark.id;
-    const actions: MarkCardActions = {
-      accept: () => { acceptMark(view, id); },
-      dismiss: () => { dismissMark(view, id); },
-      discuss: () => { discussMark(view, id, this.getConfig()); },
-      stash: () => { stashMark(view, id, this.getConfig()); },
-      step: (by) => { focusMark(view, by); },
-    };
-    const render = this.getConfig()?.renderCard;
-    cleanups.set(dom, render ? render(dom, this.card, actions) : plainCard(dom, this.card, actions));
-    return dom;
-  }
-  destroy(dom: HTMLElement) {
-    cleanups.get(dom)?.();
-    cleanups.delete(dom);
-  }
-  ignoreEvent() {
-    return true;
-  }
-  get estimatedHeight() {
-    return 64;
-  }
 }
 
 function button(label: string, run: () => void, className = "cm-kin-card-button"): HTMLButtonElement {
@@ -566,101 +515,42 @@ function plainCard(dom: HTMLElement, card: MarkCard, actions: MarkCardActions): 
   return () => body.remove();
 }
 
+/** Identity for the card: it redraws only when one of these changes. */
+const cardKey = (c: MarkCard) =>
+  JSON.stringify([c.mark.id, c.index, c.total, c.readOnly, c.mark.kind, c.mark.reason, c.mark.text, c.can, c.batch?.id]);
+
 function cards(getConfig: () => Marks | undefined): Extension {
-  return EditorView.decorations.compute([marksField, "doc"], (state) => {
+  return inlineCard((state) => {
     const card = markCard(state, getConfig());
-    if (!card) return Decoration.none;
-    const at = paragraphEnd(state, card.mark.range.to);
-    return Decoration.set([Decoration.widget({ widget: new CardWidget(card, getConfig), block: true, side: 1 }).range(at)]);
-  });
-}
-
-// --- Stepping ----------------------------------------------------------------
-
-/** cubic-bezier(x1, y1, x2, y2) as a function of time, 0–1. */
-function bezier(x1: number, y1: number, x2: number, y2: number) {
-  const curve = (t: number, p1: number, p2: number) => ((1 - 3 * p2 + 3 * p1) * t + (3 * p2 - 6 * p1)) * t * t + 3 * p1 * t;
-  const slope = (t: number, p1: number, p2: number) => 3 * (1 - 3 * p2 + 3 * p1) * t * t + 2 * (3 * p2 - 6 * p1) * t + 3 * p1;
-  return (x: number) => {
-    let t = x;
-    for (let i = 0; i < 8; i++) {
-      const dx = curve(t, x1, x2) - x;
-      const d = slope(t, x1, x2);
-      if (Math.abs(dx) < 1e-5 || Math.abs(d) < 1e-6) break;
-      t -= dx / d;
-    }
-    return curve(Math.max(0, Math.min(1, t)), y1, y2);
-  };
-}
-
-/** The app's panel curve (KI-96's motion notes). */
-const ease = bezier(0.25, 1, 0.5, 1);
-const glides = new WeakMap<Element, number>();
-
-const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/** Scrolls `el` to `to` in 240–320 ms, longer for longer hops. More than a
- *  window away it first jumps to one window short, so the glide stays short
- *  and still shows the direction. Under reduced motion it jumps. */
-function glide(el: HTMLElement, to: number) {
-  cancelAnimationFrame(glides.get(el) ?? 0);
-  glides.delete(el);
-  let from = el.scrollTop;
-  const page = el.clientHeight || 1;
-  if (reducedMotion() || Math.abs(to - from) < 2) {
-    el.scrollTop = to;
-    return;
-  }
-  if (Math.abs(to - from) > page) {
-    from = to - Math.sign(to - from) * page;
-    el.scrollTop = from;
-  }
-  const ms = 240 + 80 * Math.min(1, Math.abs(to - from) / page);
-  const start = performance.now();
-  const step = (now: number) => {
-    const t = Math.min(1, (now - start) / ms);
-    el.scrollTop = from + (to - from) * ease(t);
-    if (t < 1) glides.set(el, requestAnimationFrame(step));
-    else glides.delete(el);
-  };
-  glides.set(el, requestAnimationFrame(step));
-}
-
-function scrollParent(view: EditorView): HTMLElement {
-  for (let el: HTMLElement | null = view.scrollDOM; el; el = el.parentElement) {
-    if (el === document.scrollingElement || el === document.body) break;
-    const overflow = getComputedStyle(el).overflowY;
-    if ((overflow === "auto" || overflow === "scroll") && el.scrollHeight > el.clientHeight + 1) return el;
-  }
-  return (document.scrollingElement as HTMLElement | null) ?? view.scrollDOM;
-}
-
-/** Brings a mark a third of the way down the window, unless it and its card
- *  are already comfortably in view. */
-function reveal(view: EditorView, id: string) {
-  view.requestMeasure({
-    key: reveal,
-    read(view) {
-      const mark = marksOf(view.state).marks.find((m) => m.id === id);
-      if (!mark) return null;
-      const scroller = scrollParent(view);
-      const whole = scroller === document.scrollingElement;
-      const box = whole ? { top: 0, height: window.innerHeight } : scroller.getBoundingClientRect();
-      const y = (view.coordsAtPos(mark.range.from)?.top ?? view.documentTop + view.lineBlockAt(mark.range.from).top) - box.top;
-      const end = view.documentTop + view.lineBlockAt(paragraphEnd(view.state, mark.range.to)).bottom - box.top + 72;
-      if (y >= box.height * 0.12 && end <= box.height - 16) return null;
-      const max = scroller.scrollHeight - scroller.clientHeight;
-      return { scroller, to: Math.max(0, Math.min(max, scroller.scrollTop + y - box.height / 3)) };
-    },
-    write(result) {
-      if (result) glide(result.scroller, result.to);
-    },
-  });
+    if (!card) return null;
+    const id = card.mark.id;
+    return {
+      key: cardKey(card),
+      anchor: card.mark.range,
+      className: "cm-kin-card",
+      data: { kinMark: id, kind: card.mark.kind },
+      render: (dom, view) => {
+        const actions: MarkCardActions = {
+          accept: () => { acceptMark(view, id); },
+          dismiss: () => { dismissMark(view, id); },
+          discuss: () => { discussMark(view, id, getConfig()); },
+          stash: () => { stashMark(view, id, getConfig()); },
+          step: (by) => { focusMark(view, by); },
+        };
+        const render = getConfig()?.renderCard;
+        return render ? render(dom, card, actions) : plainCard(dom, card, actions);
+      },
+    };
+  }, [marksField, "doc"]);
 }
 
 const revealer = ViewPlugin.fromClass(class {
   update(update: ViewUpdate) {
-    for (const tr of update.transactions) for (const effect of tr.effects) if (effect.is(revealEffect)) reveal(update.view, effect.value);
+    for (const tr of update.transactions) for (const effect of tr.effects) {
+      if (!effect.is(revealEffect)) continue;
+      const mark = marksOf(update.state).marks.find((m) => m.id === effect.value);
+      if (mark) revealRange(update.view, mark.range);
+    }
   }
 });
 
@@ -687,13 +577,6 @@ const theme = EditorView.theme({
   "@keyframes cm-kin-flash": { from: { backgroundColor: "color-mix(in oklab, var(--kin, #c8963e) 48%, transparent)" } },
   "@media (hover: hover) and (pointer: fine)": {
     ".cm-kin-cut:hover": { backgroundColor: "color-mix(in oklab, var(--kin, #c8963e) 12%, transparent)" },
-  },
-  // Padding, not margins: the editor measures a block's height without them.
-  // The sides match a line's, so the card starts at the text's left edge.
-  ".cm-kin-card": {
-    padding: "var(--space-xxs, 4px) calc(var(--editor-gutter, 0px) + 2px) var(--space-s, 12px) calc(var(--editor-gutter, 0px) + 6px)",
-    cursor: "default", userSelect: "none",
-    fontFamily: "var(--font-ui, var(--font-sans))", fontSize: "var(--size-xs, 13px)", lineHeight: "var(--line-xs, 18px)",
   },
   ".cm-kin-card-body": {
     width: "fit-content", maxWidth: "min(30rem, 100%)", padding: "var(--space-xs, 6px) var(--space-xs, 6px) var(--space-xxs, 4px) var(--space-s, 10px)",

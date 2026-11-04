@@ -1113,18 +1113,36 @@ Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `refere
 - **The card (KI-109).** The focused mark has a small card in a block
   widget under its paragraph, so it never covers a line, and only pushes
   the lines below down; no line re-wraps. It shows Kin's one-line reason
-  (a rewrite's new words first, with a rule in Kin's accent), `‹ 1 of N ›` (N is the
-  marks left) and icon buttons: accept (✓; "Cut", "Accept" or "Done" by
-  kind), dismiss (✕), discuss (only with a host) and stash (rewrites only).
-  The desktop draws it with `src/refine/MarkCard.tsx` through a React
-  portal; without `renderCard` the editor draws a plain one with words for
-  buttons. Stepping scrolls the mark a third of the way down the window in
-  240 to 320 ms on the panel curve, cubic-bezier(0.25, 1, 0.5, 1), only
-  when it or its card is out of comfortable view; more than a window away
-  it first jumps to one window short. Under reduced motion it jumps. The
-  words flash once, a wash of Kin's accent fading over 450 ms (also under reduced
-  motion). Clicking a mark focuses it, except a trim's struck word, which
-  is kept. Checks, trims and reviews all use it.
+  (a rewrite's new words first, with a rule in Kin's accent), `‹ 1 of N ›`
+  (N is the marks left) and icon buttons: accept (✓; "Cut", "Accept" or
+  "Done" by kind), dismiss (✕), discuss (only with a host) and stash
+  (rewrites only). Without `renderCard` the editor draws a plain one with
+  words for buttons. Stepping scrolls the mark a third of the way down the
+  window in 240 to 320 ms on the panel curve, cubic-bezier(0.25, 1, 0.5,
+  1), only when it or its card is out of comfortable view; more than a
+  window away it first jumps to one window short. Under reduced motion it
+  jumps. The words flash once, a wash of Kin's accent fading over 450 ms
+  (also under reduced motion). Clicking a mark focuses it, except a trim's
+  struck word, which is kept. Checks, trims and reviews all use it.
+- **The card is reusable** (for KI-111's version switcher, or any list to
+  step through). Two parts, neither knowing about marks:
+  - *Where it goes*, `packages/editor/src/card.ts`: `inlineCard(compute,
+    deps)` is an extension that shows the card `compute(state)` returns, or
+    none, recomputed when `deps` (state fields, `"doc"`, `"selection"`)
+    change. A `CardSpec` is `{ key, anchor, render, className?, data?,
+    estimatedHeight? }`: `anchor` is the range it's about (it goes under the
+    paragraph `anchor.to` is in, `paragraphEnd`), `render(dom, view)` draws
+    into the block and returns a cleanup, and the same `key` keeps the
+    drawn card. `revealRange(view, range)` is the stepping scroll above.
+  - *What it shows*, `src/components/StepCard.tsx`: `StepCard` with
+    `index` and `total` (from 1; ‹ › hide with one), `onStep(by)`,
+    `stepKeys?` (the shortcut ids ‹ and › show; Kin's marks' by default),
+    `text?` (words in the draft's type with the accent rule), `note?` (one
+    line), `actions` (`{ id, label, icon, shortcut?, onClick }`, in order
+    after the count; `data-card-action={id}`), `label?` and `kind?`
+    (`data-kind`). `src/refine/MarkCard.tsx` maps a mark onto it. The
+    desktop portals it into the block from `Writing.tsx`, then asks the
+    editor to measure.
 - **Reviews (KI-109).** *Review this draft* and *Review this section* (⌘K's
   *Review* group, the Kin tab, the `/` menu's Kin actions) ask Kin for
   suggestions. A section is the selection, else the heading the cursor is
