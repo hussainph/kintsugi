@@ -16,11 +16,6 @@
   },
   {
     "from": "mock",
-    "kind": "recap",
-    "text": "Mock summary: Hussain asked 2 thing(s); most recently “Which one is older?”."
-  },
-  {
-    "from": "mock",
     "kind": "edit",
     "text": "I wanted the bowl to hold. It held for a year, which is longer than the shop said it would."
   }

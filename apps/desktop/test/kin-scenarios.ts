@@ -238,9 +238,14 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
       await apply.click();
       await page.waitForTimeout(500);
       await shot("edit-applied", true);
+      // Undo it, so the draft in later shots is the seeded one.
+      await kinReplies().last().getByRole("button", { name: "Undo" }).click();
+      await page.locator(".cm-line", { hasText: "this break is part of the object now" }).first().waitFor();
     }
   });
 
+  // A deliberate mock failure ("Fail…"), in the same thread as "Tighten this",
+  // so that thread's last message in the list is "Kin couldn't answer".
   await scenario("error", async () => {
     await ask("Fail on purpose");
     await page.waitForTimeout(300);
@@ -327,8 +332,13 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
     await page.locator(".cm-line", { hasText: "That sentence belongs in" }).click();
     await page.keyboard.press("Meta+k");
     await page.locator("[data-slot=popover-content]").getByRole("option", { name: /Who disagrees/ }).click();
-    await page.locator('.cm-comment-ask[data-state="replied"]').waitFor({ timeout: 45_000 });
+    const chip = page.locator('.cm-comment-ask[data-state="replied"]');
+    await chip.waitFor({ timeout: 45_000 });
     await page.waitForTimeout(400);
+    // Scrolled into view, clear of the document bar.
+    const box = await chip.boundingBox();
+    const bar = await page.locator(".ki-document-bar").first().boundingBox().catch(() => null);
+    if (!box || box.y < 0 || box.y + box.height > (bar?.y ?? 820)) throw new Error(`the chip is out of view: ${JSON.stringify({ box, bar })}`);
     await shot("quick-ask-replied", true);
     await page.locator(".cm-comment-ask").click();
     await panel().locator('[data-role="kin"]').first().waitFor({ timeout: 30_000 });

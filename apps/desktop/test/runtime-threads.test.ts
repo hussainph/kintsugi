@@ -218,6 +218,10 @@ test("a quick ask leaves a Kin replied chip under the paragraph", { timeout: 90_
   await chip.waitFor({ timeout: 30_000 });
   assert.equal(await pane().count(), 0, "Kin stays out of the way");
   await page.locator('.cm-comment-ask[data-state="replied"]').waitFor({ timeout: 30_000 });
+  // In view, and clear of the document bar.
+  const box = (await chip.boundingBox())!;
+  const bar = (await page.locator(".ki-document-bar").boundingBox())!;
+  assert.ok(box.y >= 0 && box.y + box.height <= bar.y, JSON.stringify({ box, bar }));
   await shot("07-kin-replied-chip");
   await chip.click();
   await pane().waitFor();

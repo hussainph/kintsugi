@@ -1225,8 +1225,8 @@ setting, an idea and a story per tone to `.headless/ki102-tones/`
 ### The rules
 
 One block, in every prompt that writes prose: the chat's fixed prefix (so
-also comments, reviews and Ideas, which run through it), the story
-summariser, clip enrichment's summary and the running summary. The editor's
+every thread's turns, paragraph threads, reviews, helpers and Ideas, which
+run through it), the story summariser and clip enrichment's summary. The editor's
 edits (⌘K, alternatives and `/` skills) read the same file
 (`src/refine/prompts.ts`) and are told never to introduce any of it into
 his passage, and to keep what the passage already uses.
@@ -1270,8 +1270,7 @@ inside the budget too, so a regression shows in the score before it fails.
 
 - `kin/`: recorded Kin output, which must pass and keep its mean score above
   a baseline. Today it holds the headless mock's output (stories and ideas
-  in every tone, a chat answer, a margin note, a review, the running summary
-  and an edit). The headless tests (`--features headless`) lint the mock's
+  in every tone, a chat answer, a margin note, a review and an edit). The headless tests (`--features headless`) lint the mock's
   live output and fail if it no longer matches what's frozen; record it again
   with `KINTSUGI_RECORD_WRITING=1`. To add real output, run
   `cargo test -p kintsugi live_writing -- --ignored --nocapture` with a

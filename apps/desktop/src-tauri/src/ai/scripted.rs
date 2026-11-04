@@ -1702,7 +1702,7 @@ mod writing_tests {
     use super::super::Task;
     use super::super::agent::tests::block_on;
     use super::super::agent::{self, Cancel, Harness, Limits, Turn};
-    use super::super::chat::{COMMENT_NOTE, REVIEW_BRIEF, SUMMARIZER};
+    use super::super::chat::{COMMENT_NOTE, REVIEW_BRIEF};
     use super::super::cost::Meter;
     use super::super::ideas::store::Store;
     use super::super::ideas::{self, VaultSources, brief};
@@ -1767,7 +1767,7 @@ mod writing_tests {
             today: "2026-11-04".into(),
             remember: true,
             history: vec![],
-            recap: None,
+            about: None,
         };
         let mut trace = Trace::default();
         let summary = block_on(agent::run(
@@ -1840,8 +1840,8 @@ mod writing_tests {
         freeze("mock-ideas.json", samples);
     }
 
-    /// The chat's prose: an answer, a margin note, a review, the running
-    /// summary and an edit.
+    /// The chat's prose: an answer, a margin note, a review and an edit.
+    /// (Threads keep no running summary since KI-104.)
     #[test]
     fn mock_chat() {
         let vault = vault();
@@ -1894,22 +1894,6 @@ mod writing_tests {
             .collect();
         assert_eq!(notes.len(), 2);
         samples.push(sample("review", None, notes.join("\n")));
-
-        let system = format!("{SUMMARIZER}. Write the new running summary.");
-        let items = [Item::User("Hussain: What did I write about repair?\nKin: Two notes.\nHussain: Which one is older?".into())];
-        let exchange = Exchange {
-            model: "kin-headless-mock",
-            system: &system,
-            tools: &[],
-            items: &items,
-            max_tokens: None,
-            temperature: None,
-            stop: None,
-            reasoning: None,
-            cache_key: None,
-        };
-        let recap = block_on(Scripted::default().send(&exchange, &mut |_| {})).unwrap();
-        samples.push(sample("recap", None, recap.text));
 
         let passage = "I really just wanted the bowl to hold. It held for a year, which is longer than the shop said it would.";
         let edit = super::edit(

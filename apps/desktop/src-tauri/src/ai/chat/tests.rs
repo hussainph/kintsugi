@@ -385,6 +385,7 @@ fn a_burst_of_messages_in_a_thread_is_one_turn() {
     assert!(f.engine.thread(&thread).unwrap().pending.is_empty());
     // The prefix carries the memory snapshot and the fixed tool list.
     assert!(seen[0].system.contains("- Likes short essays."));
+    assert!(seen[0].system.contains(crate::ai::writing::rules()));
     assert_eq!(seen[0].tools, crate::ai::tools::specs().len());
     let started: Vec<_> = f
         .events()
@@ -836,6 +837,7 @@ fn helper_jobs_report_in_their_own_thread_or_the_one_that_asked() {
     assert_eq!(steps, [(1, vec!["search".to_string()]), (2, vec![])]);
     // Its own context: the brief and the memory snapshot, nothing else.
     let seen = f.script.seen();
+    assert!(seen[0].system.contains(crate::ai::writing::rules()));
     assert!(
         seen[0].system.contains("Likes short essays.")
             && seen[0].system.contains("Drafts live in drafts/.")
@@ -1185,6 +1187,8 @@ mod paragraphs {
             message.starts_with("Is this too obvious?\n\n(You're replying in a comment thread"),
             "{message}"
         );
+        // KI-102's never-do rules reach every thread turn, comments included.
+        assert!(seen[0].system.contains(crate::ai::writing::rules()));
         assert!(
             message.contains("- paragraph drafts/tools.mdx lines 6-6"),
             "{message}"
@@ -1383,6 +1387,11 @@ mod paragraphs {
             summary[1].text
         );
         assert!(last_user(&f.script.seen()[0]).starts_with(REVIEW_BRIEF));
+        assert!(
+            f.script.seen()[0]
+                .system
+                .contains(crate::ai::writing::rules())
+        );
         assert!(f.engine.review("drafts/tools.mdx", vec![], vec![]).is_err());
         // He replies to the note: Kin sees its note as the thread so far.
         f.reply(&note.meta.id, "Time, mostly?");
