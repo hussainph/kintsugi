@@ -87,17 +87,27 @@ async function rects() {
   });
 }
 
-const half = (n: number) => Math.round(n * 2) / 2;
-
-/** Where every line box sits, to the half pixel. */
+/** Raw coordinates: rounding each glyph first turns a 1/64 px text-run
+ *  rounding difference into an apparent half-pixel move. Stash's version
+ *  mark can split a text run without moving or re-wrapping the paragraph. */
 async function lineBoxes() {
-  return (await rects()).map(([x, y, w]) => `${half(x)},${half(y)},${half(w)}`);
+  return (await rects()).map(([x, y, w]) => `${x},${y},${w}`);
+}
+
+function sameBoxes(actual: string[], expected: string[], message = "no line moved") {
+  assert.equal(actual.length, expected.length, message);
+  for (let i = 0; i < actual.length; i++) {
+    const a = actual[i].split(",").map(Number);
+    const b = expected[i].split(",").map(Number);
+    assert.equal(a[1], b[1], `${message}: character ${i} stays on its row`);
+    assert.ok(Math.abs(a[0] - b[0]) < 1 / 16 && Math.abs(a[2] - b[2]) < 1 / 16, `${message}: character ${i}: ${actual[i]} vs ${expected[i]}`);
+  }
 }
 
 /** The same, relative to the column's left edge: where each line wraps. */
 async function wraps() {
   const left = await page.evaluate(() => document.querySelector(".cm-content")!.getBoundingClientRect().left);
-  return (await rects()).map(([x, y, w]) => `${Math.round(x - left)},${half(y)},${Math.round(w)}`);
+  return (await rects()).map(([x, y, w]) => `${x - left},${y},${w}`);
 }
 
 async function textRight() {
@@ -139,7 +149,7 @@ test("opening the margin never moves or re-wraps a line, at 1440, 1360 and 1280"
   assert.equal(await isOpen(), false, "closed to start");
   let before = await lineBoxes();
   assert.ok(before.length > 10, `enough lines to compare (${before.length})`);
-  await everyTab("1440", async () => assert.deepEqual(await lineBoxes(), before, "1440: no line moved"), false);
+  await everyTab("1440", async () => sameBoxes(await lineBoxes(), before, "1440: no line moved"), false);
 
   // KI-107: just above the folding threshold. Reading the content box
   // instead of the line's text area would fold the sidebar too early.
@@ -154,7 +164,7 @@ test("opening the margin never moves or re-wraps a line, at 1440, 1360 and 1280"
   await page.locator("[data-slot=sidebar][data-state=collapsed]").waitFor();
   await settle();
   before = await lineBoxes();
-  await everyTab("1280-rail", async () => assert.deepEqual(await lineBoxes(), before, "1280, rail: no line moved"), true);
+  await everyTab("1280-rail", async () => sameBoxes(await lineBoxes(), before, "1280, rail: no line moved"), true);
   await page.keyboard.press("Meta+Backslash");
   await page.locator("[data-slot=sidebar][data-state=expanded]").waitFor();
   await settle();
@@ -168,7 +178,7 @@ test("opening the margin never moves or re-wraps a line, at 1440, 1360 and 1280"
   await page.keyboard.press("Meta+Shift+r");
   await settle();
   assert.equal(await sidebar().getAttribute("data-state"), "collapsed", "folded to icons");
-  assert.deepEqual(await wraps(), shape, "1280: the column slid; no line re-wrapped");
+  sameBoxes(await wraps(), shape, "1280: the column slid; no line re-wrapped");
   const shifts = new Set((await lineBoxes()).map((box, i) => Math.round(Number(box.split(",")[0]) - Number(before[i].split(",")[0]))));
   assert.equal(shifts.size, 1, `one shift for every line (${[...shifts]})`);
   assert.ok((await margin().boundingBox())!.x >= (await textRight()), "the margin clears the text");
@@ -176,7 +186,7 @@ test("opening the margin never moves or re-wraps a line, at 1440, 1360 and 1280"
   await page.keyboard.press("Meta+Shift+r");
   await settle();
   assert.equal(await sidebar().getAttribute("data-state"), "expanded", "closing it gives the sidebar back");
-  assert.deepEqual(await lineBoxes(), before);
+  sameBoxes(await lineBoxes(), before);
 
   // Narrower than the margin can ever fit beside: it covers the page's
   // right edge, and still no line re-wraps.
@@ -185,7 +195,7 @@ test("opening the margin never moves or re-wraps a line, at 1440, 1360 and 1280"
   const narrow = await wraps();
   await marginButton().click();
   await settle();
-  assert.deepEqual(await wraps(), narrow, "overlaid, not re-wrapped");
+  sameBoxes(await wraps(), narrow, "overlaid, not re-wrapped");
   await shot("03-800-overlay");
   await marginButton().click();
   await settle();
