@@ -251,11 +251,26 @@ pub fn changed(app: &AppHandle, path: &str) {
     let _ = app.emit("stash:changed", serde_json::json!({ "path": path }));
 }
 
+/// Bind a queued frontend operation to the vault it originated in. Use
+/// the returned snapshot throughout the operation, even if another vault
+/// opens while it waits for the edit lock. No expected-path IO is needed.
+pub fn check_expected_root(root: PathBuf, expected_root: Option<&str>) -> Result<PathBuf> {
+    if expected_root.is_some_and(|expected| root.as_path() != Path::new(expected)) {
+        return Err("The vault changed. Reopen the document.".into());
+    }
+    Ok(root)
+}
+
 // --- Tauri ---------------------------------------------------------------
 
 #[tauri::command]
-pub fn stash_load(vault: State<Vault>, path: String) -> Result<StashFile> {
-    load(&vault.root()?, &path)
+pub fn stash_load(
+    vault: State<Vault>,
+    path: String,
+    expected_root: Option<String>,
+) -> Result<StashFile> {
+    let root = check_expected_root(vault.root()?, expected_root.as_deref())?;
+    load(&root, &path)
 }
 
 #[tauri::command]
@@ -264,13 +279,21 @@ pub fn stash_save(
     path: String,
     items: Vec<StashItem>,
     base: Option<Vec<StashItem>>,
+    expected_root: Option<String>,
 ) -> Result<()> {
-    save_if_unchanged(&vault.root()?, &path, items, base)
+    let root = check_expected_root(vault.root()?, expected_root.as_deref())?;
+    save_if_unchanged(&root, &path, items, base)
 }
 
 #[tauri::command]
-pub fn stash_dismiss(app: AppHandle, vault: State<Vault>, path: String, id: String) -> Result<()> {
-    let root = vault.root()?;
+pub fn stash_dismiss(
+    app: AppHandle,
+    vault: State<Vault>,
+    path: String,
+    id: String,
+    expected_root: Option<String>,
+) -> Result<()> {
+    let root = check_expected_root(vault.root()?, expected_root.as_deref())?;
     if let Some(item) = dismiss(&root, &path, &id)? {
         if item.by == Author::Kin {
             crate::ai::stash::dismissed(&app, &root, &path, &item);
@@ -293,6 +316,65 @@ mod tests {
             created: "2026-11-04T10:00:00Z".into(),
             anchor: None,
         }
+    }
+
+    #[test]
+    fn queued_operations_reject_a_different_vault_without_touching_either_root() {
+        let old = tempfile::tempdir().unwrap();
+        let current = tempfile::tempdir().unwrap();
+        let doc = "a.md";
+        for (root, text) in [(old.path(), "Old vault"), (current.path(), "Current vault")] {
+            fs::write(root.join(doc), text).unwrap();
+            save(root, doc, vec![item("same-id", text)]).unwrap();
+        }
+        let snapshots: Vec<_> = [old.path(), current.path()]
+            .into_iter()
+            .map(|root| {
+                (
+                    root.to_path_buf(),
+                    fs::read(root.join(doc)).unwrap(),
+                    fs::read(file_path(root, doc).unwrap()).unwrap(),
+                )
+            })
+            .collect();
+        let expected = old.path().to_str().unwrap();
+        for operation in ["load", "save", "dismiss"] {
+            let called = std::cell::Cell::new(false);
+            let result =
+                check_expected_root(current.path().into(), Some(expected)).and_then(|root| {
+                    called.set(true);
+                    match operation {
+                        "load" => load(&root, doc).map(|_| ()),
+                        "save" => save_if_unchanged(
+                            &root,
+                            doc,
+                            vec![item("queued", "Old queued edit")],
+                            None,
+                        ),
+                        "dismiss" => dismiss(&root, doc, "same-id").map(|_| ()),
+                        _ => unreachable!(),
+                    }
+                });
+            assert_eq!(
+                result.unwrap_err(),
+                "The vault changed. Reopen the document."
+            );
+            assert!(!called.get(), "{operation} ran before the vault check");
+        }
+        for (root, draft, stash) in snapshots {
+            assert_eq!(fs::read(root.join(doc)).unwrap(), draft);
+            assert_eq!(fs::read(file_path(&root, doc).unwrap()).unwrap(), stash);
+        }
+        // Optional guards preserve the older command contract, and a
+        // matching expected root returns the same captured path.
+        assert_eq!(
+            check_expected_root(current.path().into(), None).unwrap(),
+            current.path()
+        );
+        assert_eq!(
+            check_expected_root(old.path().into(), Some(expected)).unwrap(),
+            old.path()
+        );
     }
 
     #[test]
