@@ -190,6 +190,9 @@ test("sentence and paragraph: ←/→ switch, ⌫ removes, a mark in the gutter"
   await field().press("Escape");
   await line("The bowl broke").locator(".cm-alt-gutter").waitFor();
   assert.equal(await line("The bowl broke").locator(".cm-alt-gutter .cm-alt-dot").count(), 2);
+  // The cursor rests in the paragraph's versions: their card shows (KI-111).
+  // Wait for it, so no later click lands as it pushes the lines down.
+  await page.locator(".cm-alt-card .ki-step-card").waitFor();
   await shot("03-markers-light");
 
   await until(() => stored().sets.length === 3, "a word, a sentence and a paragraph");
@@ -204,7 +207,7 @@ test("alternatives survive edits around them and a reload", { timeout: 90_000 },
   await line("The bowl broke").click({ position: { x: 5, y: 8 } });
   await page.keyboard.press("Home");
   await page.keyboard.type("A new opening.\n\n");
-  await until(() => disk().includes("A new opening.\n\nThe bowl broke"), "the edits are saved");
+  await until(() => disk().includes("A new opening.\n\nThe bowl broke") && disk().includes("teaches repair. Every time."), "the edits are saved where they were typed");
   await page.waitForTimeout(1200);
 
   await page.reload();

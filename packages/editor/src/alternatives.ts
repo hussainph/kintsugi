@@ -929,8 +929,9 @@ const rest = ViewPlugin.fromClass(class {
     clearTimeout(this.timer);
   }
   update(update: ViewUpdate) {
+    // Shown or hidden on purpose (Escape, a click on the dots): no pending rest brings it back.
+    if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(showSwitcher)))) { clearTimeout(this.timer); return; }
     if (!update.docChanged && !update.selectionSet) return;
-    if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(showSwitcher)))) return;
     clearTimeout(this.timer);
     const live = update.state.readOnly ? null : activeSet(update.state, update.state.selection.main);
     if (!live || read(update.state)?.switcher === live.id || this.pointer) return;
