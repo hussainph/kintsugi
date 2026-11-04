@@ -63,17 +63,24 @@ async function isOpen() {
   return (await page.locator("aside.ki-margin").getAttribute("data-open")) !== null;
 }
 
-/** Every line box of the draft on screen, as the browser laid it out: one
- *  rect per wrapped line (left, top, width), unrounded. */
+/** Visible character boxes, independent of decoration-created DOM spans.
+ * Opening versions can split one text node without moving any words. */
 async function rects() {
   return page.evaluate(() => {
     const out: number[][] = [];
     for (const line of document.querySelectorAll(".cm-content .cm-line")) {
-      const range = document.createRange();
-      range.selectNodeContents(line);
-      for (const r of range.getClientRects()) {
-        if (r.bottom < 0 || r.top > window.innerHeight || r.width === 0) continue;
-        out.push([r.left, r.top, r.width]);
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.parentElement?.closest(".cm-alt-count, .cm-alt-gutter")) continue;
+        for (let i = 0; i < (node.textContent?.length ?? 0); i++) {
+          const range = document.createRange();
+          range.setStart(node, i);
+          range.setEnd(node, i + 1);
+          for (const r of range.getClientRects()) {
+            if (r.bottom < 0 || r.top > window.innerHeight || r.width === 0) continue;
+            out.push([r.left, r.top, r.width]);
+          }
+        }
       }
     }
     return out;

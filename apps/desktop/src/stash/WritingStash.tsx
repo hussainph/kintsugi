@@ -73,7 +73,7 @@ export function useWritingStash({ root, path, viewRef, readOnly = false, show }:
       onDiscuss={(item) => discuss([{ kind: "doc", path, label: path.replace(/^.*\//, "").replace(/\.mdx?$/, "") }], item.text)}
       onRetry={store.reload}
     />
-    <Dialog open={picker} onOpenChange={setPicker}><DialogContent className="ki-stash-picker" aria-describedby={undefined}><DialogTitle>Insert from stash</DialogTitle>
+    <Dialog open={picker} onOpenChange={setPicker}><DialogContent className="ki-stash-picker" aria-describedby={undefined} onCloseAutoFocus={(event) => { event.preventDefault(); viewRef.current?.focus(); }}><DialogTitle>Insert from stash</DialogTitle>
       {items.length ? <div className="ki-stash-picker-list">{items.map((item) => <Button variant="ghost" key={item.id} onClick={() => insert(item)}>{snippet(item.text, 160)}</Button>)}</div> : <p>Nothing stashed yet.</p>}
     </DialogContent></Dialog>
   </>;
