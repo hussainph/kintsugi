@@ -196,6 +196,16 @@ test("the tabs work by keyboard, and the choice is kept across a reload", { time
   await settle();
   assert.ok(await isOpen(), "still open after a reload");
   assert.equal(await tab("References").getAttribute("aria-selected"), "true");
+  // Reduced motion: no slide, a short fade only.
+  const motion = () => page.evaluate(() => {
+    const style = getComputedStyle(document.querySelector("aside.ki-margin")!);
+    return { transform: style.transform, transition: style.transitionProperty };
+  });
+  assert.match((await motion()).transition, /transform/, "it slides");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  assert.equal((await motion()).transform, "none");
+  assert.doesNotMatch((await motion()).transition, /transform/, "no slide under reduced motion");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   // Escape inside the margin closes it and puts focus back in the draft.
   await tab("References").focus();
   await page.keyboard.press("Escape");
@@ -350,4 +360,50 @@ test("windowed, nothing sits under the traffic lights; in full screen their stri
   }
   await page.keyboard.press("Meta+Backslash");
   await page.locator("[data-slot=sidebar][data-state=expanded]").waitFor();
+});
+
+test("away from the editor, nothing sits under the traffic lights either", { timeout: 120_000 }, async () => {
+  await fullscreen(false);
+  for (const collapsed of [false, true]) {
+    if (collapsed) {
+      await page.keyboard.press("Meta+Backslash");
+      await page.locator("[data-slot=sidebar][data-state=collapsed]").waitFor();
+    }
+    for (const [name, key] of [["Feed", "Meta+Shift+f"], ["Inspiration", "Meta+Shift+i"], ["Ideas", "Meta+Shift+e"], ["Settings", "Meta+,"]] as const) {
+      await page.keyboard.press(key);
+      await settle();
+      assert.deepEqual(await controlsUnderLights(), [], `${name}, sidebar ${collapsed ? "rail" : "open"}`);
+      if (name === "Settings") await page.keyboard.press("Escape");
+    }
+  }
+  await page.keyboard.press("Meta+Backslash");
+  await page.locator("[data-slot=sidebar][data-state=expanded]").waitFor();
+  await openDoc(DRAFT);
+});
+
+test("with scroll bars always shown, the margin still moves no line", { timeout: 120_000 }, async () => {
+  // macOS's "Show scroll bars: Always": a classic scroll bar takes room.
+  const classic = await chromium.launch({ headless: true, ignoreDefaultArgs: ["--hide-scrollbars"] });
+  const other = await classic.newPage({ viewport: { width: 1440, height: 900 } });
+  try {
+    await openApp(other, app.url, app.output);
+    await other.locator(`[title="${DRAFT}"]`).click();
+    await other.locator(".cm-line").first().waitFor();
+    const bar = await other.evaluate(() => { const s = document.querySelector(".cm-scroller") as HTMLElement; return s.offsetWidth - s.clientWidth; });
+    assert.ok(bar > 0, `a scroll bar that takes room (${bar}px)`);
+    const boxes = () => other.evaluate(() => [...document.querySelectorAll(".cm-content .cm-line")].flatMap((line) => {
+      const range = document.createRange();
+      range.selectNodeContents(line);
+      return [...range.getClientRects()].map((r) => `${Math.round(r.left * 2) / 2},${Math.round(r.top * 2) / 2},${Math.round(r.width * 2) / 2}`);
+    }));
+    const before = await boxes();
+    await other.keyboard.press("Meta+Shift+r");
+    await other.waitForTimeout(450);
+    assert.ok((await other.locator("aside.ki-margin").getAttribute("data-open")) !== null);
+    assert.deepEqual(await boxes(), before, "no line moved");
+    await other.screenshot({ path: resolve(app.shots, "09-scrollbars-always.png") });
+    await other.keyboard.press("Meta+Shift+r");
+  } finally {
+    await classic.close();
+  }
 });

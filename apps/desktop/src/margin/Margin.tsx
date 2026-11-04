@@ -8,7 +8,7 @@ import { useKinChat } from "@/kin/useKinChat";
 import { onDiscuss, onOpenKin, openKin } from "@/lib/chat";
 import { keysOf, matches } from "@/lib/keys";
 import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
-import { hideMargin, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, type MarginTab, type MarginWhere } from "./state";
+import { hideMargin, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, visibleTab, type MarginTab, type MarginWhere } from "./state";
 import { StashTab, type MarginWriting } from "./Stash";
 import "./margin.css";
 
@@ -42,6 +42,15 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
     };
   }, []);
 
+  // Closing it with focus inside puts focus back in the draft.
+  const refocus = () => {
+    if (!visibleTab() && aside.current?.contains(document.activeElement)) writing?.viewRef.current?.focus();
+  };
+  const close = () => {
+    hideMargin();
+    refocus();
+  };
+
   // Its keys, in the capture phase so they win over the editor's keymap.
   const keys = useRef<(e: KeyboardEvent) => void>(() => {});
   keys.current = (e) => {
@@ -49,6 +58,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
       e.preventDefault();
       e.stopPropagation();
       action();
+      refocus();
     };
     if (matches(e, SHORTCUTS.kin.key)) return run(() => (margin.showing("kin") ? hideMargin() : openKin()));
     if (matches(e, SHORTCUTS.margin.key)) return run(toggleMargin);
@@ -61,13 +71,6 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, []);
-
-  // Closing it with focus inside puts focus back in the draft.
-  const close = () => {
-    const inside = aside.current?.contains(document.activeElement);
-    hideMargin();
-    if (inside) writing?.viewRef.current?.focus();
-  };
 
   return (
     <>
