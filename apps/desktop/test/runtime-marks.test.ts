@@ -199,6 +199,7 @@ test("a trim strikes words in gold, keeps a clicked word, and applies as one und
   const [total, first] = await counts();
   assert.equal(total, 42);
   assert.equal(first, total - 9);
+  await page.mouse.move(1, 1);
   await shot("04-trim-light");
   await page.emulateMedia({ colorScheme: "dark" });
   await page.waitForTimeout(300);
