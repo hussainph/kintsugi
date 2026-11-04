@@ -1,5 +1,6 @@
 import { EditorView } from "@codemirror/view";
 import { element } from "./menu.ts";
+import { matches } from "./keys.ts";
 import type { SpanLevel } from "./spans.ts";
 
 /**
@@ -67,21 +68,27 @@ export function alternativesPanel(actions: PanelActions): AlternativesPanel {
   dom.append(levels, list, input, ask, status);
   let model: PanelModel | null = null;
 
+  // Common keys work from the Ask Kin button too, not only the text field.
+  dom.addEventListener("keydown", (event) => {
+    if (!model || event.isComposing) return;
+    const handled = () => { event.preventDefault(); event.stopPropagation(); };
+    if (matches(event, "Mod-Alt-]") || matches(event, "Mod-Alt-[")) {
+      handled();
+      actions.cycle(matches(event, "Mod-Alt-]") ? 1 : -1);
+    } else if (matches(event, "Mod-Shift-Alt-a")) {
+      handled();
+      actions.askKin();
+    } else if (matches(event, "Mod-Alt-a") || event.key === "Escape") {
+      handled();
+      actions.close();
+    }
+  });
+
   input.addEventListener("keydown", (event) => {
     if (!model || event.isComposing) return;
     const empty = input.value === "";
     const handled = () => { event.preventDefault(); event.stopPropagation(); };
-    if (event.metaKey && event.altKey && (event.code === "BracketRight" || event.code === "BracketLeft")) {
-      handled();
-      actions.cycle(event.code === "BracketRight" ? 1 : -1);
-    } else if (event.metaKey && event.altKey && event.code === "KeyA") {
-      handled();
-      if (event.shiftKey) actions.askKin();
-      else actions.close();
-    } else if (event.key === "Escape") {
-      handled();
-      actions.close();
-    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       handled();
       actions.move(event.key === "ArrowDown" ? 1 : -1);
     } else if (event.key === "Enter") {
@@ -186,7 +193,7 @@ export const panelTheme = EditorView.theme({
     color: "var(--kin-ink)", background: "none", border: "none", borderRadius: "var(--radius-s)", cursor: "pointer",
   },
   ".cm-alt-ask:hover": { backgroundColor: "var(--neutral-3)" },
-  ".cm-alt-ask:focus-visible": { outline: "2px solid var(--kin-ink)", outlineOffset: "2px" },
+  ".cm-alt-ask:focus-visible": { outline: "var(--border-l) solid var(--kin-ink)", outlineOffset: "var(--space-xxs)" },
   ".cm-alt-ask:disabled": { color: "var(--neutral-7)", cursor: "default" },
   ".cm-alt-status": { padding: "var(--space-xs)", color: "var(--error)" },
   "@media (pointer: coarse)": { ".cm-alt-option": { minHeight: "36px" } },
