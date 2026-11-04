@@ -489,7 +489,8 @@ export default function App() {
       const all = flatten(await refresh());
       // He opened a document while the vault loaded (or StrictMode's other
       // run already did): that one stays, not the startup pick (KI-47).
-      if (opening.current !== opened) return;
+      // A delayed StrictMode load can also START after that open began.
+      if (opening.current !== opened || (!switching && opened > 0)) return;
       const last = lastOpened.get(path);
       const pick = all.find((d) => d.path === last) ?? all[0];
       // A view opened while the vault loaded (Feed, Inspiration, Ideas) stays open.
