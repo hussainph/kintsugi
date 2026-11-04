@@ -786,10 +786,10 @@ const alternativesTheme = EditorView.theme({
   ".cm-alt-dot[data-current=true]": { background: "currentColor" },
   ".cm-alt-paragraph": { position: "relative" },
   ".cm-alt-gutter": {
-    position: "absolute", left: "-22px", top: "0.3em", minWidth: "14px", minHeight: "18px", boxSizing: "border-box", padding: "2px 4px",
+    position: "absolute", left: "calc(var(--editor-gutter, 0px) - 22px)", top: "0.3em", minWidth: "14px", minHeight: "18px", boxSizing: "border-box", padding: "2px 4px",
     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "3px", lineHeight: "1",
   },
   "@media (hover: hover) and (pointer: fine)": { ".cm-alt-count:hover, .cm-alt-gutter:hover": { color: "var(--neutral-10, var(--foreground))" } },
   ".cm-alt-open": { backgroundColor: "color-mix(in oklch, var(--neutral-10, currentColor) 8%, transparent)", borderRadius: "2px" },
-  "@media (pointer: coarse)": { ".cm-alt-gutter": { left: "-30px", minWidth: "24px", height: "24px" } },
+  "@media (pointer: coarse)": { ".cm-alt-gutter": { left: "calc(var(--editor-gutter, 0px) - 30px)", minWidth: "24px", height: "24px" } },
 });

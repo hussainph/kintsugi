@@ -13,7 +13,9 @@ export function marginCoversText(view: EditorView | null): boolean {
   // folding the sidebar would widen it again and re-wrap every line. The
   // margin covers the page there instead.
   if (content.getBoundingClientRect().width >= view.scrollDOM.clientWidth - 0.5) return false;
-  const textRight = content.getBoundingClientRect().right - parseFloat(getComputedStyle(content).paddingRight || "0");
+  const line = content.querySelector(".cm-line");
+  if (!line) return false;
+  const textRight = line.getBoundingClientRect().right - parseFloat(getComputedStyle(line).paddingRight || "0");
   const root = getComputedStyle(view.dom);
   const width = parseFloat(root.getPropertyValue("--ki-margin-width")) || 360;
   const gap = parseFloat(root.getPropertyValue("--ki-margin-gap")) || 0;
