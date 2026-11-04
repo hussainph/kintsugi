@@ -111,7 +111,45 @@ ALTER TABLE items ADD COLUMN story_id INTEGER REFERENCES stories(id);
 ALTER TABLE items ADD COLUMN clustered_at INTEGER;
 CREATE INDEX items_story ON items (story_id);
 ";
-const VERSION: i64 = 3;
+/// Version 4 (KI-105): news or writing. Only news from a source that
+/// groups joins stories; an author's own writing always stands alone, and
+/// links to news about the same thing through `coverage`.
+///
+/// - `sources.personal`: the classifier's view, 1 a personal or
+///   individual-author blog, 0 a publication or news site, NULL not read yet.
+/// - `sources.grouping`: Group with other coverage, when he set it; NULL
+///   follows the classifier.
+/// - `items.writing`: it reads as its author's own writing (an essay, a
+///   personal post, a long read), never grouped, whatever its source.
+/// - `coverage`: news about the same thing as a piece of writing, linked
+///   and never merged.
+const WRITING: &str = "
+ALTER TABLE sources ADD COLUMN personal INTEGER;
+ALTER TABLE sources ADD COLUMN grouping INTEGER;
+ALTER TABLE items ADD COLUMN writing INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE coverage (
+  writing_id INTEGER NOT NULL REFERENCES items(id),
+  news_id INTEGER NOT NULL REFERENCES items(id),
+  PRIMARY KEY (writing_id, news_id)
+);
+";
+const VERSION: i64 = 4;
+
+/// Whether a source groups by default: Hacker News and news sites do;
+/// personal blogs, videos, podcasts, X accounts, pages and authors don't.
+macro_rules! group_default {
+    () => {
+        "(CASE WHEN s.kind = 'hn' THEN 1 WHEN s.kind = 'feed' AND s.personal = 0 THEN 1 ELSE 0 END)"
+    };
+}
+/// The source's switch: his choice, else the default.
+macro_rules! groups {
+    () => {
+        concat!("COALESCE(s.grouping, ", group_default!(), ")")
+    };
+}
+/// An item that may join a story: news from a source that groups.
+const GROUPABLE: &str = concat!("(", groups!(), " = 1 AND i.writing = 0)");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -177,6 +215,10 @@ pub struct Source {
     pub catalogue_state: String,
     pub catalogue_count: i64,
     pub catalogue_error: Option<String>,
+    /// Group with other coverage (KI-105).
+    pub grouping: bool,
+    /// The classifier's choice: on for news sites, off for personal blogs.
+    pub grouping_default: bool,
 }
 
 /// What a poll needs to make a conditional request.
@@ -235,6 +277,10 @@ pub struct Item {
     /// from `feed_entries` and `feed_story`, never from this.
     #[serde(skip)]
     pub story_id: Option<i64>,
+    /// The author's own first paragraph, as plain text (KI-105).
+    pub excerpt: Option<String>,
+    /// An author's own writing: never grouped into a story or summarised.
+    pub writing: bool,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -288,14 +334,22 @@ mod ranking;
 /// Stories (KI-94): clustering's decisions, the Newest list with stories
 /// folded in, and Kin's summaries.
 mod stories;
+/// News or writing (KI-105): classifying sources and items, the switch,
+/// un-grouping writing, and coverage.
+mod writing;
 pub use stories::{Entry, Outcome, Sentence, Story, Summary, SummaryJob, SummaryState};
+pub use writing::Coverage;
 
-const SOURCE_COLUMNS: &str = "s.id, s.url, s.kind, s.title, s.site_url, s.image, s.muted, s.added_at,
+const SOURCE_COLUMNS: &str = concat!("s.id, s.url, s.kind, s.title, s.site_url, s.image, s.muted, s.added_at,
   s.last_fetch_at, s.last_success_at, s.last_status, s.last_error, s.failures, s.next_fetch_at,
   (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.dismissed_at IS NULL AND i.expired_at IS NULL
      AND (i.back_catalogue = 0 OR (s.catalogue_enabled = 1 AND i.catalogue_released_at IS NOT NULL))),
   s.catalogue_enabled, s.catalogue_state,
-  (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.back_catalogue = 1), s.catalogue_error";
+  (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id AND i.back_catalogue = 1), s.catalogue_error, ",
+    groups!(),
+    ", ",
+    group_default!()
+);
 
 const ITEM_COLUMNS: &str =
     "i.id, i.source_id, s.title, s.kind, i.url, i.title, i.author, i.summary,
@@ -305,7 +359,7 @@ const ITEM_COLUMNS: &str =
   CASE WHEN s.suggested = 1 THEN s.url END,
   COALESCE(s.site_url, s.url),
   CASE WHEN s.kind = 'hn' AND i.guid LIKE 'rss:https://news.ycombinator.com/item?id=%' THEN substr(i.guid, 5) END,
-  i.story_id";
+  i.story_id, substr(i.content, 1, 4000), i.writing";
 
 /// In the feed: a live, unmuted source; not dismissed, not expired.
 const VISIBLE: &str =
@@ -341,6 +395,8 @@ fn source_row(row: &Row) -> rusqlite::Result<Source> {
         catalogue_state: row.get(16)?,
         catalogue_count: row.get(17)?,
         catalogue_error: row.get(18)?,
+        grouping: row.get(19)?,
+        grouping_default: row.get(20)?,
     })
 }
 
@@ -376,6 +432,11 @@ fn item_row(row: &Row) -> rusqlite::Result<Item> {
         source_site: row.get(21)?,
         discussion: row.get(22)?,
         story_id: row.get(23)?,
+        excerpt: row
+            .get::<_, Option<String>>(24)?
+            .as_deref()
+            .and_then(writing::excerpt),
+        writing: row.get(25)?,
     })
 }
 
@@ -421,6 +482,22 @@ impl Store {
             ))
             .map_err(err)?;
         }
+        if version < 4 {
+            db.execute_batch(&format!(
+                "BEGIN; {WRITING} PRAGMA user_version = 4; COMMIT;"
+            ))
+            .map_err(err)?;
+        }
+        let store = Self { db };
+        if version < 4 {
+            // Read every source and item, then take writing out of the
+            // stories it was grouped into.
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs() as i64);
+            store.classify_all(now)?;
+        }
+        let db = store.db;
         // A process stopped mid-discovery must be able to claim the source again.
         db.execute(
             "UPDATE sources SET catalogue_state = 'queued' WHERE catalogue_state = 'discovering'",
@@ -628,6 +705,17 @@ impl Store {
             let known = catalogue::known_item(&tx, source, &entry.guid, url_key.as_deref())?;
             if let Some((id, owner)) = known {
                 // A URL discovered under another source keeps its identity and actions.
+                // An HN link to an article whose own feed arrives later
+                // takes the author's words (KI-105).
+                if owner != source && entry.content.is_some() {
+                    tx.execute(
+                        "UPDATE items SET content = CASE WHEN full_text_at IS NULL THEN ?2 ELSE content END,
+                           author = COALESCE(author, ?3), image = COALESCE(image, ?4)
+                         WHERE id = ?1 AND expired_at IS NULL AND dismissed_at IS NULL
+                           AND source_id IN (SELECT id FROM sources WHERE kind = 'hn')",
+                        params![id, entry.content, entry.author, entry.image],
+                    ).map_err(err)?;
+                }
                 if owner == source {
                     tx.execute(
                         "UPDATE items SET url = COALESCE(?2, url), url_key = COALESCE(?3, url_key),

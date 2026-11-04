@@ -24,6 +24,10 @@ export type Source = {
   catalogueState: string;
   catalogueCount: number;
   catalogueError: string | null;
+  /** "Group with other coverage": its items may join stories (KI-105). */
+  grouping: boolean;
+  /** What the classifier chose: on for news sites, off for personal blogs. */
+  groupingDefault: boolean;
 };
 
 export type FeedItem = {
@@ -54,6 +58,10 @@ export type FeedItem = {
   sourceSite: string | null;
   /** A Hacker News item's discussion page; `url` is the page it links to. */
   discussion: string | null;
+  /** The author's own first paragraph, as plain text (KI-105). */
+  excerpt: string | null;
+  /** An author's own writing: never grouped into a story or summarised. */
+  writing: boolean;
 };
 
 export type Page = { items: FeedItem[]; total: number };
@@ -84,7 +92,9 @@ export type Story = {
 /** One entry of the Newest list: an item, or a story folded in at its newest item. */
 export type Entry = { kind: "item"; item: FeedItem } | { kind: "story"; story: Story };
 export type Entries = { entries: Entry[]; total: number };
-export type Reading = { item: FeedItem; text: string | null };
+/** News about the same thing as a piece of writing (KI-105): a link, never folded into it. */
+export type Coverage = { id: number; title: string; source: string; story: number | null };
+export type Reading = { item: FeedItem; text: string | null; coverage: Coverage[] };
 export type Polled = { sourceId: number; added: number; error: string | null };
 export type Subscribed = { source: Source; added: number; error: string | null };
 export type Podcast = { title: string; author: string | null; feedUrl: string; artwork: string | null; url: string | null };
@@ -132,6 +142,8 @@ export const feed = {
   subscribe: (input: Subscribe) => invoke<Subscribed>("feed_subscribe", { input }),
   unsubscribe: (id: number) => invoke<void>("feed_unsubscribe", { id }),
   mute: (id: number, muted: boolean) => invoke<Source>("feed_mute", { id, muted }),
+  /** "Group with other coverage" for one source (KI-105). */
+  grouping: (id: number, enabled: boolean) => invoke<Source>("feed_grouping", { id, enabled }),
   refresh: (id?: number) => invoke<Polled[]>("feed_refresh", { id }),
   catalogue: (id: number, enabled?: boolean, retry = false) => invoke<Source>("feed_catalogue", { id, enabled, retry }),
   followSuggestion: (id: number) => invoke<Source>("feed_follow_suggestion", { id }),

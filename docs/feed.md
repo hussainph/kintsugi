@@ -11,8 +11,9 @@ One SQLite file, `feed.sqlite`, in the app's data directory
 (`~/Library/Application Support/dev.phalasiya.kintsugi/`), never the vault.
 Headless runs keep it in `$KINTSUGI_CONFIG_DIR`; a debug run with
 `KINTSUGI_CONFIG_DIR` uses that folder, and a scratch-vault run without one
-uses a temporary folder. Schema version is `PRAGMA user_version` (3: the
-catalogue came in 2, stories in 3; older files migrate in place).
+uses a temporary folder. Schema version is `PRAGMA user_version` (4: the
+catalogue came in 2, stories in 3, news or writing in 4; older files migrate
+in place).
 
 - `sources`: URL (unique), kind (`feed`, `hn`, `youtube`, `podcast`, `x`,
   `page`, `author`), title,
@@ -22,6 +23,9 @@ catalogue came in 2, stories in 3; older files migrate in place).
   X status id, a watched page's validators, hash and lines, or an author's
   seen titles).
   Unfollowing sets `removed_at`; following the same URL again revives it.
+  Since version 4, `personal` (the classifier's view: 1 a personal or
+  individual-author blog, 0 a publication) and `grouping` (his "Group with
+  other coverage" switch, NULL while it follows the classifier).
 - `items`: one row per `(source, guid)`, with plain-text summary (≤600
   characters) and content (≤19,000), image URL, media (`article`, `video`,
   `audio`, `book`), published/fetched/sort times, and his actions: `liked_at`,
@@ -32,7 +36,10 @@ catalogue came in 2, stories in 3; older files migrate in place).
   `catalogue_releases` records admissions by UTC day, and
   `catalogue_neighbours` records links already considered. Since version 3,
   `story_id` (the story it's in; at most one) and `clustered_at` (when
-  clustering placed it).
+  clustering placed it). Since version 4, `writing` (it reads as its
+  author's own writing; see News or writing).
+- `coverage` (version 4): (writing, news) pairs about the same thing, for
+  the reader's "Also covered by".
 - `stories` (version 3): Kin's `title` and `summary` (JSON: paragraphs of
   sentences, each with the item ids it cites), `summary_state`, how many
   items it had when last summarised and how many times it was, the `model`,
@@ -52,8 +59,8 @@ catalogue came in 2, stories in 3; older files migrate in place).
   from `kin` events.
 
 Item text is Markdown from the ingest engine. No feed HTML reaches the
-webview, and the reader renders the Markdown as plain paragraphs, never as
-HTML.
+webview: the reader parses the Markdown (`@kintsugi/core/markdown`, which
+drops raw HTML) and renders each block as an element, never as HTML.
 
 ## Sources and polling
 
@@ -212,16 +219,61 @@ static only in headless) and keeps the longer text. A failure keeps the
 feed's text and isn't retried. Saving never waits on the network: the clip
 gets the best text already stored, and clip enrichment fetches the rest.
 
+## News or writing
+
+The Feed keeps writing as its authors wrote it (KI-105). Kin summarises only
+news that several sources covered; an essay, a personal post, a newsletter
+or a long read is never grouped into a story or summarised.
+
+**Classifying** (`kintsugi_rank::writing`, local, no model calls). Both
+levels must say news for an item to join a story:
+
+- **The source.** A feed is a personal or individual-author blog, or a
+  publication, from its newest 40 items: one author (more so when the byline
+  is the blog's own name, "Simon Willison" on "Simon Willison's Weblog" or
+  simonwillison.net), a first-person voice in most posts, against three or
+  more bylines, datelines, or three or more pieces a day. When nothing says
+  either way, it counts as personal: a missed group costs less than a
+  summarised essay. Hacker News counts as news; YouTube, podcasts, X
+  accounts, pages and authors never group.
+- **The item.** A long read (2,000 words or more), a first-person piece
+  ("I", "my", "me" at least once per 100 words, outside quotation marks) or
+  a byline that is the source's own name is writing even on a news site; a
+  dateline (a place name in capitals and a dash, or "(Reuters)") says news.
+- **Hacker News links.** An HN item linking to a site he follows that
+  doesn't group is that author's writing. When the author's own feed brings
+  the same link after HN did, the HN item takes the author's text.
+
+Sources are read again after each poll that adds items and when a full
+article arrives. Writing that clustering placed in a story is taken out at
+once, and the story loses Kin's summary (it read the writing) and is
+summarised again from the news that stays. Version 4 does this to existing
+stories when it migrates.
+
+**The switch.** Each source in Following has **Group with other coverage**
+(not pages or authors). Its default comes from the classifier: on for news
+sites and Hacker News, off for personal blogs. Off takes the source's items
+out of their stories at once; on lets clustering place its news again.
+Setting it back to the classifier's choice forgets his, so the source
+follows the classifier again. An item that reads as writing stays alone
+even from a source switched on.
+
+**Also covered by.** Clustering also compares writing with the news around
+it, by the same rule as a story (below). A match is kept in `coverage`, and
+the writing's reader ends with "Also covered by" and the sources as links
+(a story opens as the story).
+
 ## Stories
 
-Items about the same thing from different sources are one **story**
+News items about the same thing from different sources are one **story**
 (KI-94, from the KI-72 exploration). A story is shown, ranked and acted on
 as a unit only while its visible items span **two or more sources**; a
 cluster from one source shows its items as plain items. Items stay items:
 every like, note, save and Not interested is still on an item.
 
-**Clustering** (`kintsugi_rank::stories`, local, no model calls). Each new
-visible item is compared with items published within **72 hours of its own
+**Clustering** (`kintsugi_rank::stories`, local, no model calls). Only news
+from sources that group clusters (see News or writing). Each new
+visible news item is compared with items published within **72 hours of its own
 publish date** (never "now", so an older post groups only with posts from
 its own time). It joins the closest story whose centroid it clears, or
 starts one with the closest single item, when:
@@ -241,13 +293,16 @@ the vectors): after a poll that added items, and before the Newest list
 when new items are waiting. The thresholds came from one hand-labelled day
 of the KI-72 run (The Verge, 9to5Mac, Ars Technica, Simon Willison, HN):
 Apple's quarter and Claude Code's game rule group, nothing else does.
+Since KI-105 the thresholds see only news: two essays on one theme, or an
+essay and the news it talks about, clear them easily, so writing is kept
+out before clustering rather than by tighter numbers.
 
 **Summaries.** Each story gets a title and a summary from the `triage`
 task's light model (`modelFor("triage")`, GLM-5.3-Flash first), one story
 at a time in the background:
 
-- Only stories with two or more sources; single items keep their feed's
-  own summary. A story is summarised once, and again when a source joins,
+- Only stories with two or more sources, and only news; single items and
+  all writing keep their authors' own text. A story is summarised once, and again when a source joins,
   at most three times.
 - The input is each article's title, source and first 1,200 characters, as
   numbered `<article>` data, never instructions. The answer is JSON:
@@ -260,6 +315,8 @@ at a time in the background:
   article's own title and text. A later rewrite that fails keeps the
   earlier summary.
 - About $0.0005 a call; a typical day is about $0.03.
+- Kin's tone (KI-102) applies to these summaries only, never to an
+  author's text, which the Feed shows as written.
 - Headless runs with `KINTSUGI_HEADLESS_KIN=mock` summarise with Kin's
   scripted model ($0). It writes a paragraph per article (up to four, to
   test long summaries), plus one uncited sentence and one citing an
@@ -295,7 +352,7 @@ state, and lets the poller fetch new sources in the background.
 ## Commands
 
 `feed_sources`, `feed_subscribe({ input })`, `feed_unsubscribe({ id })`,
-`feed_mute({ id, muted })`, `feed_refresh({ id? })`,
+`feed_mute({ id, muted })`, `feed_grouping({ id, enabled })`, `feed_refresh({ id? })`,
 `feed_catalogue({ id, enabled?, retry? })`, `feed_follow_suggestion({ id })`,
 `feed_podcast_search({ term })`, `feed_opml_import`, `feed_opml_export`,
 `feed_items({ offset?, limit?, source? })`, `feed_read({ id, place? })`,
@@ -314,10 +371,18 @@ story folded into one entry at its newest item), `feed_story({ id })` and
 `apps/desktop/src/feed/`. The Feed sits beside Inspiration in the sidebar
 (⇧⌘F). Cards and rows show an article or a story the same way: its picture
 (none when the feed sends none, and no stand-in art), a serif title, two
-lines of text (Kin's summary for a story, else the feed's), and who said it:
+lines of text (Kin's summary for a story; for an article, the author's own
+opening: the first paragraph of prose in its text, else the feed's summary),
+and who said it:
 stacked source icons and "The Verge", "The Verge, Ars Technica" or "7
 articles from 3 sources" (counts are articles; names are sources). A Hacker News item names the site it
 links to, with "via Hacker News" linking to the discussion.
+
+**The summary mark.** Wherever Kin's summary of several sources shows
+(cards, rows, the story page, the phone), the stacked source icons sit on a
+pill of Kin's colour, led by Kin's mark (`StorySources`). It has no visible
+label; its accessible name is "Kin's summary of 3 sources". A story still
+showing its lead's own text, and every article, never carries it.
 
 **Two layouts, chosen by width** (`model.ts`, `MAGAZINE_MIN_WIDTH`):
 
@@ -339,8 +404,15 @@ nothing else on screen.
 **Opening.** A row or card opens its page in place of the lists, and Back
 returns to where he was:
 
-- **An article**: its text (the full article once fetched), the note, and
-  Like, Save, Note, Discuss, (?), Open the original and Not interested.
+- **An article**: one reader for every item (`Reader.tsx`): the title, the
+  source and author, the date, then the text (the full article once
+  fetched) rendered from its Markdown with the app's typography: headings,
+  paragraphs, block quotes, lists, figures with captions (an image's title,
+  or a short italic line straight after it), code, tables, links (web links
+  only, opened outside the app) and footnotes (`[^1]` definitions become a
+  list at the end). An opening heading that repeats the title is dropped.
+  Then "Also covered by" for writing, the note, and Like, Save, Note,
+  Discuss, (?), Open the original and Not interested.
 - **A story**: its title; "7 articles from 3 sources · updated 1h ago"
   with the sources' icons; its articles as one horizontal strip of compact
   tiles, each source's together (source, title, a small square picture when
@@ -356,7 +428,8 @@ a story logs its best (or lead) item.
 **Following** (a sheet) adds sources (tabs: Link, HN, YouTube, Podcast, X,
 Page, Author; each is an icon, and only the selected one shows its name),
 shows each one's health, mutes, fetches now, unfollows, and imports/exports
-OPML. Each source shows a podcast's artwork or its site's `/favicon.ico`
+OPML. Each source has its Older writing switch and **Group with other
+coverage** (see News or writing). Each source shows a podcast's artwork or its site's `/favicon.ico`
 (loaded straight from that site, with no referrer), else its type icon.
 HN, YouTube, X and authors always use their type icon.
 
@@ -396,7 +469,10 @@ the app's key-value store so it reads offline. With a Mac on API 7 the rows
 are `feed_entries`, so a story is one row; an older Mac's list is plain
 items. A story opens its own page: the title, Kin's cited summary (or the
 lead's text and the line saying why there's none), then a horizontal strip
-of compact source tiles. Long-pressing a tile (or a row) opens the menu:
+of compact source tiles. Kin's summary carries the same summary mark as on
+the Mac; an article opens in the same kind of reader (`FeedReader.tsx`),
+with "Also covered by" for writing, and cards show the author's own
+opening. Long-pressing a tile (or a row) opens the menu:
 Open, Like, Save, Add note, Discuss, Not interested. The header has Like,
 Save, Discuss and (?). Every (?) opens a small card with the reasons. An
 opened article's text is kept too (the latest 40), and so are opened
@@ -411,6 +487,15 @@ Undo. Discuss logs `discuss` and opens Kin with the item (or the story's
 items) as `feed` chips. Older Macs (before API 6) are told to update.
 
 ## Testing
+
+KI-105's recorded fixtures are in `crates/ingest/fixtures/feed/`: a personal
+blog (`personal.atom.xml`, Atom with one author, an essay in rich HTML), a
+news site (`news.rss.xml`, WordPress RSS with several reporters and
+datelines), a second news site (`news-orchard.rss.xml`) and Hacker News
+(`hn.rss.xml`, hnrss's shape, one item linking to the essay). The feed
+tests parse them with the real adapter at a fixed time, classify, cluster
+and check that the essay stands alone with its coverage while the news
+groups; the store's tests cover the version 4 migration and the switch.
 
 Rust unit tests use the ingest crate's fixtures (feeds, X, watched pages in
 `crates/ingest/fixtures/watch/`, Google Books in `crates/ingest/fixtures/authors/`)

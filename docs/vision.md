@@ -53,6 +53,11 @@ The Feed is a personal compilation, new and old. It fills itself from sources
 Hussain follows, their older writing, and a few closely related pieces.
 Nothing in it is saved unless he saves it.
 
+The Feed is the authors' own words. Essays, personal blogs and newsletters
+read as their authors wrote them, in one reader with the app's typography.
+Kin only summarises news covered by several sources, and its summaries carry
+a mark so they never pass for an author's text.
+
 - **Sources:** RSS/Atom first. One adapter covers blogs, YouTube channels,
   podcasts and Hacker News (via hnrss.org). Then X accounts (via the
   FxTwitter API, best-effort, with fallbacks), "follow this page" change

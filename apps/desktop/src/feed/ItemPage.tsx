@@ -8,9 +8,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useScreenContext } from "@/lib/chat";
-import { feed, type FeedItem as Item, type Pick, type Place } from "./api";
+import { feed, type Coverage, type FeedItem as Item, type Pick, type Place } from "./api";
+import type { Open } from "./Cards";
+import { Reader } from "./Reader";
 import { announce, chipFor, itemActions, useItemChanges } from "./actions";
-import { itemSource, itemTitle, paragraphs, webUrl } from "./model";
+import { itemSource, itemTitle, webUrl } from "./model";
 import { itemIcon, ItemWhen, MediaMark, menuIcons, MoreMenu, Picture, serif, SourceIcons, WhyThis } from "./parts";
 import { FollowSuggestion } from "./SuggestionActions";
 
@@ -23,12 +25,15 @@ type Props = {
   note?: boolean;
   /** What the back button returns to: the Feed, or the story it came from. */
   backLabel: string;
+  /** Opens news about the same thing ("Also covered by"). */
+  open: Open;
   onBack: () => void;
 };
 
-export function ItemPage({ id, initial, pick, place, note: startNoting, backLabel, onBack }: Props) {
+export function ItemPage({ id, initial, pick, place, note: startNoting, backLabel, open, onBack }: Props) {
   const [item, setItem] = useState<Item | null>(initial ?? null);
   const [text, setText] = useState<string | null | undefined>(undefined);
+  const [coverage, setCoverage] = useState<Coverage[]>([]);
   const [noting, setNoting] = useState(!!startNoting);
   const [note, setNote] = useState(initial?.note ?? "");
   const noteSaved = useRef(initial?.note ?? "");
@@ -42,6 +47,7 @@ export function ItemPage({ id, initial, pick, place, note: startNoting, backLabe
         if (!live) return;
         setItem(reading.item);
         setText(reading.text);
+        setCoverage(reading.coverage ?? []);
         if (note === noteSaved.current) setNote(reading.item.note ?? "");
         noteSaved.current = reading.item.note ?? "";
       },
@@ -178,17 +184,19 @@ export function ItemPage({ id, initial, pick, place, note: startNoting, backLabe
         )}
         {item.savedPath && item.note && <p className="mt-5 rounded-md bg-muted/40 px-3 py-2 text-sm whitespace-pre-line text-muted-foreground">{item.note}</p>}
 
-        <Picture src={item.image} className="mt-6 max-h-96 w-full rounded-xl" />
+        {/* The reader shows a picture that's in the text where the author put it. */}
+        {!(text && item.image && text.includes(item.image)) && <Picture src={item.image} className="mt-6 max-h-96 w-full rounded-xl" />}
 
-        <div role="region" aria-label={`Reading ${title}`} className={cn(serif, "mt-6 space-y-4 text-[1.0625rem] leading-[1.75] whitespace-pre-line")}>
+        <div role="region" aria-label={`Reading ${title}`} className="mt-6">
           {text === undefined ? (
-            item.summary && <p className="text-muted-foreground">{item.summary}</p>
+            (item.excerpt || item.summary) && <p className={cn(serif, "text-[1.0625rem] leading-[1.75] text-muted-foreground")}>{item.excerpt || item.summary}</p>
           ) : text ? (
-            paragraphs(text).map((p, i) => <p key={i}>{p}</p>)
+            <Reader markdown={text} title={title} base={link} />
           ) : (
-            <p className="font-sans text-sm text-muted-foreground">This feed only sends a headline.</p>
+            <p className="text-sm text-muted-foreground">This feed only sends a headline.</p>
           )}
         </div>
+        {coverage.length > 0 && <AlsoCovered coverage={coverage} open={open} />}
         {link && (
           <Button variant="link" size="sm" className="mt-4 h-auto px-0 text-muted-foreground" onClick={act.openOriginal}>
             Open the original <ArrowUpRight />
@@ -196,6 +204,28 @@ export function ItemPage({ id, initial, pick, place, note: startNoting, backLabe
         )}
       </div>
     </article>
+  );
+}
+
+/** News about the same thing as this piece of writing: links, never folded into it (KI-105). */
+function AlsoCovered({ coverage, open }: { coverage: Coverage[]; open: Open }) {
+  return (
+    <p data-coverage className="mt-6 text-sm text-pretty text-muted-foreground">
+      Also covered by{" "}
+      {coverage.map((c, i) => (
+        <span key={c.id}>
+          {i > 0 && (i === coverage.length - 1 ? " and " : ", ")}
+          <button
+            type="button"
+            title={c.title}
+            className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+            onClick={() => open(c.story != null ? { kind: "story", id: c.story } : { kind: "item", id: c.id })}
+          >
+            {c.source}
+          </button>
+        </span>
+      ))}
+    </p>
   );
 }
 

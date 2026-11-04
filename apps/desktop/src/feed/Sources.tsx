@@ -12,6 +12,7 @@ import { cn } from "@kintsugi/ui/lib/utils";
 import { feed, HN_LISTS, type HnList, type Podcast, type Source, type SourceKind, type Subscribe } from "./api";
 import { health, sourceLogos, sourceName } from "./model";
 import { CatalogueControl } from "./CatalogueControl";
+import { GroupingControl } from "./GroupingControl";
 
 type Props = {
   open: boolean;
@@ -292,6 +293,7 @@ export function Sources({ open, onOpenChange, sources, onChanged }: Props) {
                     </div>
                     </div>
                     <CatalogueControl source={source} onChanged={onChanged} />
+                    <GroupingControl source={source} onChanged={onChanged} />
                   </li>
                 );
               })}

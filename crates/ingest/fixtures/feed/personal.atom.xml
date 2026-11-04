@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A personal blog in the shape a static-site generator writes (Atom, one
+     author at feed level, full HTML content). KI-105's fixture for writing:
+     an essay that shares names with the day's news but is never grouped. -->
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Mara Ito</title>
+  <link href="https://maraito.example/" rel="alternate"/>
+  <link href="https://maraito.example/feed.atom" rel="self"/>
+  <id>https://maraito.example/</id>
+  <updated>2026-11-03T18:00:00Z</updated>
+  <author><name>Mara Ito</name></author>
+  <generator>Hugo</generator>
+  <entry>
+    <title>What Apple's Q4 2026 record taught me about my own numbers</title>
+    <link href="https://maraito.example/2026/apple-q4-numbers/" rel="alternate"/>
+    <id>https://maraito.example/2026/apple-q4-numbers/</id>
+    <published>2026-11-03T17:30:00Z</published>
+    <updated>2026-11-03T17:30:00Z</updated>
+    <content type="html"><![CDATA[
+<p>I read Apple's Q4 2026 earnings the way I read my own studio's books: looking for the line nobody wants to talk about. My studio is tiny, and I still learned more from their $114.5 billion than from a year of my own spreadsheets.</p>
+<h2>The record that wasn't the point</h2>
+<p>Everyone led with the iPhone record. I kept looking at the <em>services</em> line, because that's the part of my own work I keep underpricing.<sup id="fnref:1"><a href="#fn:1">1</a></sup></p>
+<blockquote><p>Revenue is a story you tell about last quarter. Margin is the one you tell about next year.</p></blockquote>
+<p>Three things I'm changing:</p>
+<ul>
+<li>I'm pricing repairs by the hour, not by the bowl.</li>
+<li>I'm writing down every job I turn away.</li>
+<li>I'm keeping a plain list of what each piece cost me:
+<ol><li>materials</li><li>time</li><li>the second coat nobody sees</li></ol></li>
+</ul>
+<figure><img src="https://maraito.example/images/ledger.jpg" alt="An open ledger on a workbench"><figcaption>My ledger, the analogue version.</figcaption></figure>
+<p>The spreadsheet formula I use now is one line:</p>
+<pre><code>=SUM(materials) + hours * rate</code></pre>
+<p>That's all. Read <a href="https://maraito.example/2026/pricing/">my older post on pricing</a> for the long version.</p>
+<script>alert("never")</script>
+<div class="footnotes"><ol><li id="fn:1"><p>My services line is teaching, and I charge too little for it. <a href="#fnref:1">↩</a></p></li></ol></div>
+]]></content>
+  </entry>
+  <entry>
+    <title>Mending a bowl, slowly</title>
+    <link href="https://maraito.example/2026/mending/" rel="alternate"/>
+    <id>https://maraito.example/2026/mending/</id>
+    <published>2026-10-30T09:00:00Z</published>
+    <updated>2026-10-30T09:00:00Z</updated>
+    <content type="html"><![CDATA[<p>I spent my weekend mending a cracked bowl. My hands still smell of lacquer, and I liked every hour of it.</p><p>The third coat is the one I always want to skip.</p>]]></content>
+  </entry>
+  <entry>
+    <title>Notes from the workbench</title>
+    <link href="https://maraito.example/2026/workbench/" rel="alternate"/>
+    <id>https://maraito.example/2026/workbench/</id>
+    <published>2026-10-26T09:00:00Z</published>
+    <updated>2026-10-26T09:00:00Z</updated>
+    <content type="html"><![CDATA[<p>I keep a notebook beside the bench. My rule: if I fix it twice, I write it down.</p>]]></content>
+  </entry>
+</feed>

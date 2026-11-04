@@ -11,7 +11,7 @@ import { feed, FEED_CHANGED, type FeedItem as Item, type Pick, type Place, type 
 import { chipFor, itemActions, storyActions, useItemChanges } from "./actions";
 import type { Open } from "./Cards";
 import { ago, bySource, citeLabel, itemSource, itemTitle, paragraphs, storyCount, summaryNote } from "./model";
-import { itemIcon, menuIcons, MoreMenu, Picture, serif, SourceIcons, WhyThis } from "./parts";
+import { itemIcon, menuIcons, MoreMenu, Picture, serif, SourceIcons, StorySources, WhyThis } from "./parts";
 
 /** Tiles shown before "+N more". */
 const FIRST_TILES = 4;
@@ -85,7 +85,7 @@ export function StoryPage({ id, initial, pick, place, open, onBack }: Props) {
       <div className="mx-auto mt-8 max-w-[54rem]">
         <h1 className={cn(serif, "text-[2.5rem] leading-[1.15] text-pretty")}>{story.title}</h1>
         <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground">
-          <SourceIcons sources={story.sources.map((s) => ({ key: s.id, title: s.title, kind: s.kind, site: s.site }))} />
+          <StorySources story={story} />
           <span>{storyCount(story.sources)}</span>
           <span aria-hidden>·</span>
           <span>updated {ago(story.sortAt)}{/^\d/.test(ago(story.sortAt)) ? " ago" : ""}</span>
@@ -119,7 +119,7 @@ export function StoryPage({ id, initial, pick, place, open, onBack }: Props) {
                   })}
                 </p>
               ))
-            : paragraphs(story.lead.summary ?? "").map((p, i) => <p key={i}>{p}</p>)}
+            : paragraphs(story.lead.excerpt || story.lead.summary || "").map((p, i) => <p key={i}>{p}</p>)}
         </div>
         {note && <p className="mt-4 text-sm text-muted-foreground">{note}</p>}
       </div>

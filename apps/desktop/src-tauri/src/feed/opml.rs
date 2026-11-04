@@ -150,6 +150,8 @@ mod tests {
             catalogue_state: "disabled".into(),
             catalogue_count: 0,
             catalogue_error: None,
+            grouping: false,
+            grouping_default: false,
         }
     }
 

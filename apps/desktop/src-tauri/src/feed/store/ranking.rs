@@ -31,6 +31,8 @@ pub struct RankRow {
     /// The story it is in, and whether clustering has placed it yet.
     pub story: Option<i64>,
     pub clustered: bool,
+    /// News from a source that groups: it may join a story (KI-105).
+    pub groupable: bool,
 }
 
 impl RankRow {
@@ -55,10 +57,11 @@ impl Store {
                    (i.liked_at IS NOT NULL OR i.note IS NOT NULL OR i.saved_path IS NOT NULL OR i.dismissed_at IS NOT NULL
                      OR EXISTS (SELECT 1 FROM events e WHERE e.item_id = i.id AND e.kind <> 'kin_pick'
                        AND COALESCE(e.surface, '') <> 'kin')),
-                   i.story_id, i.clustered_at IS NOT NULL
+                   i.story_id, i.clustered_at IS NOT NULL, {groupable}
                  FROM items i JOIN sources s ON s.id = i.source_id ORDER BY i.id",
                 visible = super::VISIBLE,
-                pending = super::catalogue::PENDING
+                pending = super::catalogue::PENDING,
+                groupable = super::GROUPABLE
             ))
             .map_err(err)?;
         let rows = statement
@@ -82,6 +85,7 @@ impl Store {
                     has_signal: r.get(15)?,
                     story: r.get(16)?,
                     clustered: r.get(17)?,
+                    groupable: r.get(18)?,
                 })
             })
             .map_err(err)?;

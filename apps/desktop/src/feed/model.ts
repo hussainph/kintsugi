@@ -1,5 +1,6 @@
 // Pure helpers for the Feed view, kept free of React and Tauri so they run
 // under plain `node --test`.
+import { parseMarkdown, plain, type Block, type Inline } from "@kintsugi/core/markdown";
 import type { FeedItem, Impression, Source } from "./api.ts";
 
 const MINUTE = 60;
@@ -229,9 +230,83 @@ export function summaryNote(state: string): string | null {
   }
 }
 
+/** Sources whose items could be news: watched pages and authors' books never group. */
+export const groupable = (kind: Source["kind"]) => kind !== "page" && kind !== "author";
+
+/** An item's text for a card or row: the author's own opening, else the feed's summary. Never Kin's words. */
+export function itemBlurb(item: Pick<FeedItem, "excerpt" | "summary" | "title">): string | null {
+  const text = item.excerpt || item.summary;
+  return text && text !== item.title ? text : null;
+}
+
+/** Kin's summary is showing (KI-105): the summary mark goes on exactly these. */
+export const summarised = (story: { summary: { paragraphs: unknown[] } | null }) => !!story.summary?.paragraphs.length;
+
+/** The summary mark's accessible name. */
+export const summaryLabel = (sources: unknown[]) => `Kin’s summary of ${plural(sources.length, "source")}`;
+
 /** A story's text for a card: Kin's first sentences, else the lead's summary. */
-export function storyBlurb(story: { summary: { paragraphs: { text: string }[][] } | null; lead: Pick<FeedItem, "summary"> }): string | null {
+export function storyBlurb(story: { summary: { paragraphs: { text: string }[][] } | null; lead: Pick<FeedItem, "summary" | "excerpt"> }): string | null {
   const first = story.summary?.paragraphs[0];
   if (first?.length) return first.map((s) => s.text).join(" ");
-  return story.lead.summary;
+  return story.lead.excerpt || story.lead.summary;
+}
+
+// ── The reader (KI-105) ──────────────────────────────────────────────────
+
+/** An item's Markdown as the reader shows it: blocks, and footnotes kept apart. */
+export type ReaderDocument = { blocks: Block[]; notes: { id: string; content: Inline[] }[] };
+
+const NOTE = /^\[\^([^\]\s]+)\]:[ \t]*(.*(?:\n(?: {2,}|\t).*)*)/gm;
+
+/**
+ * Reads an item's Markdown for the reader: footnote definitions (`[^1]: …`)
+ * become notes; an opening heading that repeats the title is dropped (the
+ * page shows the title); a short all-italic line straight after a picture
+ * is its caption. Raw HTML never survives `parseMarkdown`.
+ */
+export function readerDocument(markdown: string, title?: string | null): ReaderDocument {
+  const notes: ReaderDocument["notes"] = [];
+  const body = markdown.replace(NOTE, (_, id: string, text: string) => {
+    const first = parseMarkdown(text.replace(/\n\s+/g, " "))[0];
+    notes.push({ id, content: first && "c" in first && first.t !== "quote" && first.t !== "callout" ? (first.c as Inline[]) : [{ t: "text", v: text.trim() }] });
+    return "";
+  });
+  const blocks: Block[] = [];
+  for (let block of parseMarkdown(body)) {
+    // The ingest writes a <figure>'s caption straight after its picture: `![alt](src)Caption`.
+    if (block.t === "p" && block.c[0]?.t === "image" && block.c.length > 1 && block.c.slice(1).every((i) => i.t !== "image")) {
+      const caption = plain(block.c.slice(1)).trim();
+      if (caption && caption.length <= 280) block = { t: "figure", src: block.c[0].src, alt: block.c[0].alt, caption: block.c[0].title ?? caption };
+    }
+    const last = blocks[blocks.length - 1];
+    const italic = block.t === "p" && block.c.length === 1 && block.c[0].t === "em" ? plain(block.c[0].c) : null;
+    if (last?.t === "figure" && !last.caption && italic && italic.length <= 280) {
+      last.caption = italic;
+      continue;
+    }
+    blocks.push(block);
+  }
+  const first = blocks[0];
+  if (first?.t === "h" && title && plain(first.c).trim().toLowerCase() === title.trim().toLowerCase()) blocks.shift();
+  return { blocks, notes };
+}
+
+/** A footnote's marks as the ingest keeps them: `[1](#fn:1)` in the text, `[↩](#fnref:1)` after the note. */
+export function footnoteLink(href: string, text: string): "ref" | "back" | null {
+  if (!href.startsWith("#")) return null;
+  if (/^\d{1,3}$/.test(text.trim())) return "ref";
+  if (/^[↩↑⏎]\uFE0E?$/.test(text.trim())) return "back";
+  return null;
+}
+
+/** A link or picture the reader may use: web URLs only, relative ones against the article's own address. */
+export function readerHref(href: string, base: string | null): string | null {
+  if (!href || href.startsWith("#")) return null;
+  try {
+    const url = base ? new URL(href, base) : new URL(href);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
 }

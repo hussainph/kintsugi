@@ -5,8 +5,9 @@ import { Menu, Popover } from "@kintsugi/ui/graphical";
 import { cn } from "@kintsugi/ui/lib/utils";
 import { useState, type ReactNode } from "react";
 import { toast } from "sonner";
-import { feed, refreshPicked, type FeedItem as Item, type Reason } from "./api";
-import { ago, itemDate, itemSource, sourceIcon, sourceLetter } from "./model";
+import { KinAvatar } from "@/kin/Avatar";
+import { feed, refreshPicked, type FeedItem as Item, type Reason, type Story } from "./api";
+import { ago, itemDate, itemSource, sourceIcon, sourceLetter, summarised, summaryLabel } from "./model";
 import { shownReasons } from "./ranking";
 
 export const serif = "font-[family-name:var(--font-prose)]";
@@ -24,6 +25,7 @@ function SourceIcon({ source, size }: { source: Icon; size: number }) {
   const src = failed ? null : sourceIcon(source);
   return (
     <span
+      data-source-icon
       className="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-[0.6rem] leading-none font-medium text-muted-foreground shadow-[0_0_0_1.5px_var(--background)]"
       style={{ width: size, height: size }}
     >
@@ -37,6 +39,24 @@ export function SourceIcons({ sources, size = 16 }: { sources: Icon[]; size?: nu
   return (
     <span aria-hidden className="inline-flex shrink-0 -space-x-0.5">
       {sources.slice(0, 3).map((s) => (
+        <SourceIcon key={s.key} source={s} size={size} />
+      ))}
+    </span>
+  );
+}
+
+/**
+ * A story's sources. While Kin's summary is what shows, they carry the
+ * summary mark (KI-105): Kin's colour behind the stack and Kin's mark in
+ * front. An author's own text, or a story showing its lead's, never does.
+ */
+export function StorySources({ story, size = 16 }: { story: Pick<Story, "sources" | "summary">; size?: number }) {
+  const icons: Icon[] = story.sources.map((s) => ({ key: s.id, title: s.title, kind: s.kind, site: s.site }));
+  if (!summarised(story)) return <SourceIcons sources={icons} size={size} />;
+  return (
+    <span role="img" aria-label={summaryLabel(story.sources)} data-summary-mark className="ki-summary-mark">
+      <KinAvatar className="shrink-0" style={{ width: size, height: size }} />
+      {icons.slice(0, 3).map((s) => (
         <SourceIcon key={s.key} source={s} size={size} />
       ))}
     </span>

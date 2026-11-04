@@ -132,9 +132,12 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
 
         // The Feed: newest first, and Picked for you from the same items.
         let page = get("/v1/feed").await;
-        assert_eq!(page["total"], 8);
+        assert_eq!(page["total"], 7);
         let first = page["items"][0].clone();
-        assert_eq!(first["title"], "Mending as a design method");
+        assert_eq!(
+            first["title"],
+            "Mending Workshop 2026 measures the cost of visible repair"
+        );
         let id = first["id"].as_i64().unwrap();
         let picked = get("/v1/feed/picked").await;
         assert!(!picked["picks"].as_array().unwrap().is_empty());
@@ -197,11 +200,13 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
             .unwrap();
             assert_eq!(
                 saved["savedPath"],
-                "inspiration/mending-as-a-design-method.md"
+                "inspiration/mending-workshop-2026-measures-the-cost-of-visible-repair.md"
             );
         }
-        let clip = std::fs::read_to_string(vault.join("inspiration/mending-as-a-design-method.md"))
-            .unwrap();
+        let clip = std::fs::read_to_string(
+            vault.join("inspiration/mending-workshop-2026-measures-the-cost-of-visible-repair.md"),
+        )
+        .unwrap();
         assert!(clip.contains("Seams as a method"));
         assert_eq!(
             std::fs::read_dir(vault.join("inspiration"))
@@ -224,7 +229,7 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
         .await
         .unwrap();
         assert_eq!(hidden.status(), 200);
-        assert_eq!(get("/v1/feed").await["total"], 7);
+        assert_eq!(get("/v1/feed").await["total"], 6);
         let impressions = post("/v1/feed/impressions", serde_json::json!({ "impressions": [{ "id": id, "position": 0, "surface": "picked" }] })).await.unwrap();
         assert_eq!(impressions.status(), 200);
         let unknown = post(
@@ -290,7 +295,7 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
         let message = serde_json::json!({
             "id": "11111111-2222-4333-8444-555555555555",
             "text": "What does this say about repair?",
-            "chips": [{ "kind": "feed", "path": id.to_string(), "label": "Mending as a design method" }]
+            "chips": [{ "kind": "feed", "path": id.to_string(), "label": "Mending Workshop 2026 measures the cost of visible repair" }]
         });
         let sent: serde_json::Value = post("/v1/kin", message.clone())
             .await

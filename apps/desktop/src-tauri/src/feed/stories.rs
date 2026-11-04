@@ -41,52 +41,31 @@ const MAX_SENTENCES: usize = 8;
 #[rustfmt::skip]
 const BANNED: &[&str] = &["delve", "tapestry", "testament", "seamless", "seamlessly", "leverage", "utilize", "realm", "beacon", "pivotal", "paramount", "transformative", "game-changer", "game changer", "groundbreaking", "unprecedented", "it's worth noting", "in today's world"]; // copy-lint-allow: the banned-word filter itself // copy-lint-allow: the banned-word filter itself
 
-/// Places the world's unclustered visible items into stories, persists the
-/// decisions, and updates the world's items to match. Returns whether any
-/// story changed.
+/// Places the world's unclustered visible items: news from sources that
+/// group joins stories; writing (KI-105) never does, but is linked to the
+/// news about the same thing. Persists the decisions and updates the
+/// world's items to match. Returns whether any story changed.
 pub(super) fn cluster(
     app: &AppHandle,
     world: &mut World,
     visible: &[i64],
+    groupable: &[i64],
     fresh: &[i64],
     model_space: bool,
 ) -> Result<bool> {
     if fresh.is_empty() {
         return Ok(false);
     }
-    let visible: HashSet<i64> = visible.iter().copied().collect();
-    let published = |id: &i64| world.items.get(id).map(|i| i.published);
-    let (Some(earliest), Some(latest)) = (
-        fresh.iter().filter_map(published).min(),
-        fresh.iter().filter_map(published).max(),
-    ) else {
-        return Ok(false);
-    };
-    let pool: Vec<Member> = world
-        .items
-        .values()
-        .filter(|i| visible.contains(&i.id) || i.story.is_some())
-        .filter(|i| {
-            i.published >= earliest - cluster::WINDOW_SECS
-                && i.published <= latest + cluster::WINDOW_SECS
-        })
-        .map(|i| Member {
-            id: i.id,
-            source: i.source,
-            title: i.title.clone(),
-            url: i.url.clone(),
-            published: i.published,
-            vector: i.vector.clone(),
-            story: i.story,
-        })
-        .collect();
     let space = if model_space {
         StorySpace::Model
     } else {
         StorySpace::Hashed
     };
-    let joins = cluster::assign(&pool, fresh, space);
-    let placed = with(app, |s| s.assign_stories(fresh, &joins, now()))?;
+    let (joins, related) = plan(world, visible, groupable, fresh, space);
+    let placed = with(app, |s| {
+        s.add_coverage(&related)?;
+        s.assign_stories(fresh, &joins, now())
+    })?;
     for (item, story) in &placed {
         if let Some(i) = world.items.get_mut(item) {
             i.story = Some(*story);
@@ -96,6 +75,76 @@ pub(super) fn cluster(
         summarize_soon(app);
     }
     Ok(!placed.is_empty())
+}
+
+/// What clustering decides for `fresh` items, without keeping it: the
+/// stories news joins (as `cluster::assign` returns them), and the (writing,
+/// news) pairs about the same thing.
+pub(super) fn plan(
+    world: &World,
+    visible: &[i64],
+    groupable: &[i64],
+    fresh: &[i64],
+    space: StorySpace,
+) -> (Vec<cluster::Assignment>, Vec<(i64, i64)>) {
+    let visible: HashSet<i64> = visible.iter().copied().collect();
+    let groupable: HashSet<i64> = groupable.iter().copied().collect();
+    let published = |id: &i64| world.items.get(id).map(|i| i.published);
+    let (Some(earliest), Some(latest)) = (
+        fresh.iter().filter_map(published).min(),
+        fresh.iter().filter_map(published).max(),
+    ) else {
+        return (Vec::new(), Vec::new());
+    };
+    let member = |i: &kintsugi_rank::Item| Member {
+        id: i.id,
+        source: i.source,
+        title: i.title.clone(),
+        url: i.url.clone(),
+        published: i.published,
+        vector: i.vector.clone(),
+        story: i.story,
+    };
+    let near = |i: &&kintsugi_rank::Item| {
+        i.published >= earliest - cluster::WINDOW_SECS
+            && i.published <= latest + cluster::WINDOW_SECS
+    };
+    let news: Vec<Member> = world
+        .items
+        .values()
+        .filter(|i| groupable.contains(&i.id) || i.story.is_some())
+        .filter(near)
+        .map(member)
+        .collect();
+    let writing: Vec<Member> = world
+        .items
+        .values()
+        .filter(|i| visible.contains(&i.id) && !groupable.contains(&i.id) && i.story.is_none())
+        .filter(near)
+        .map(member)
+        .collect();
+    // A link to a piece of writing (an HN discussion of an essay) is
+    // coverage of it, not news to group.
+    let joinable: Vec<Member> = news
+        .iter()
+        .filter(|n| {
+            n.story.is_some()
+                || !writing
+                    .iter()
+                    .any(|w| cluster::same_url(n.url.as_deref(), w.url.as_deref()))
+        })
+        .cloned()
+        .collect();
+    let fresh_news: Vec<i64> = fresh
+        .iter()
+        .copied()
+        .filter(|id| joinable.iter().any(|m| m.id == *id))
+        .collect();
+    let fresh_set: HashSet<i64> = fresh.iter().copied().collect();
+    (
+        cluster::assign(&joinable, &fresh_news, space),
+        cluster::related(&writing, &news, &fresh_set, space),
+    )
 }
 
 /// Clusters now if new items are waiting (ranking's world has the vectors).
@@ -248,7 +297,7 @@ fn system_prompt() -> String {
 }
 
 /// Markdown as plain words: images dropped, links as their text.
-fn plain(markdown: &str) -> String {
+pub(super) fn plain(markdown: &str) -> String {
     let mut out = String::with_capacity(markdown.len());
     let mut rest = markdown;
     while let Some(at) = rest.find('[') {
