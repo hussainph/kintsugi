@@ -2,12 +2,15 @@ import { Unpaired } from '@kintsugi/core/remote';
 import type { Surface } from '@kintsugi/core/sections';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { itemRoute } from '@/components/FeedParts';
+import { FeedReader } from '@/components/FeedReader';
 import { FeedWhy } from '@/components/FeedWhy';
 import { useSendWhenWaiting } from '@/components/Toast';
 import { ago } from '@/lib/feed';
+import { itemExcerpt, readerUrl } from '@/lib/feed-reader';
 import { usePairing } from '@/lib/pairing';
 import { useScreenContext } from '@/lib/screen-context';
 import { feed, syncSection, useFeed } from '@/lib/sections-store';
@@ -24,16 +27,23 @@ export default function FeedItemScreen() {
   const { client, unpair } = usePairing();
   const snapshot = useFeed();
   const item = feed.item(id);
-  const [text, setText] = useState<string | null>(() => feed.text(id));
+  const text = feed.text(id);
+  const coverage = feed.coverage(id);
   const [note, setNote] = useState(item?.note ?? '');
+  const noteFor = useRef(item ? id : null);
   useScreenContext(item ? [{ kind: 'feed', path: String(id), label: item.title ?? 'Feed item' }] : null);
+
+  // Coverage can open an item outside the cached page. Initialise its note
+  // when the reading arrives, once, without replacing a note being typed.
+  useEffect(() => {
+    if (!item || noteFor.current === id) return;
+    noteFor.current = id;
+    setNote(item.note ?? '');
+  }, [id, item]);
 
   useEffect(() => {
     if (!client) return;
-    feed.read(client, id, place).then(
-      (read) => setText(read ?? feed.text(id)),
-      (e: unknown) => e instanceof Unpaired && unpair(),
-    );
+    feed.read(client, id, place).catch((e: unknown) => { if (e instanceof Unpaired) unpair(); });
     // Once, when opened.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, id]);
@@ -67,7 +77,8 @@ export default function FeedItemScreen() {
   const saved = item.savedPath !== null;
   const conflict = snapshot.conflicts[id];
   const offline = snapshot.connection === 'offline';
-  const paragraphs = (text ?? item.summary ?? '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const content = text ?? itemExcerpt(item) ?? '';
+  const original = item.url ? readerUrl(item.url) : null;
   const discuss = () => {
     feed.act(id, 'discuss', place);
     router.push({ pathname: '/kin', params: { chips: JSON.stringify([{ kind: 'feed', path: String(id), label: item.title ?? 'Feed item' }]) } });
@@ -77,6 +88,7 @@ export default function FeedItemScreen() {
     <>
       <Stack.Title>{item.sourceTitle ?? 'Feed'}</Stack.Title>
       <ScrollView
+        testID="feed-article"
         automaticallyAdjustKeyboardInsets
         contentInsetAdjustmentBehavior="automatic"
         keyboardDismissMode="interactive"
@@ -88,8 +100,14 @@ export default function FeedItemScreen() {
           {item.title || 'Untitled'}
         </Text>
         <Text style={[styles.meta, { color: theme.muted }]}>
-          {[item.sourceTitle, item.author, ago(item.publishedAt ?? item.sortAt)].filter(Boolean).join(' · ')}
+          {[...new Set([item.sourceTitle, item.author].filter(Boolean))].join(' · ')}
         </Text>
+        <Text style={[styles.meta, { color: theme.muted }]}>{ago(item.publishedAt ?? item.sortAt)}</Text>
+        {coverage.length > 0 && <Text style={[styles.coverage, { color: theme.muted }]}>
+          Also covered by{' '}{coverage.map((source, i) => <Text key={source.id}>
+            {i > 0 ? ', ' : ''}<Text accessibilityRole="link" onPress={() => router.push(source.story !== null ? { pathname: '/feed-story', params: { id: String(source.story), surface: place.surface, position: String(place.position) } } : itemRoute(source.id, place))} style={[styles.coverageLink, { color: theme.text }]}>{source.source}</Text>
+          </Text>)}
+        </Text>}
 
         <View style={styles.actions}>
           <Action
@@ -105,13 +123,13 @@ export default function FeedItemScreen() {
             onPress={() => feed.save(id, place)}
           />
           <Action icon="bubble.left.and.text.bubble.right" label="Discuss" onPress={discuss} />
-          {item.url && (
+          {original && (
             <Action
               icon="arrow.up.right"
               label="Original"
               onPress={() => {
                 feed.act(id, 'openOriginal', place);
-                Linking.openURL(item.url!).catch(() => {});
+                Linking.openURL(original).catch(() => {});
               }}
             />
           )}
@@ -155,12 +173,8 @@ export default function FeedItemScreen() {
         )}
 
         <View style={[styles.rule, { backgroundColor: theme.border }]} />
-        {paragraphs.length ? (
-          paragraphs.map((p, i) => (
-            <Text key={i} selectable style={[styles.body, { color: theme.text }]}>
-              {p}
-            </Text>
-          ))
+        {content ? (
+          <FeedReader text={content} title={item.title} base={item.url} />
         ) : (
           <Text style={[styles.small, { color: theme.muted }]}>
             {offline ? 'The text loads when your Mac is back.' : 'Loading…'}
@@ -202,6 +216,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 160, gap: 12 },
   meta: { fontSize: 13 },
+  coverage: { fontSize: 15, lineHeight: 22 },
+  coverageLink: { textDecorationLine: 'underline' },
   title: { fontFamily: fonts.serif, fontSize: 28, lineHeight: 34 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 8 },

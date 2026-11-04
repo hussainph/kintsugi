@@ -5,8 +5,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { bySource, discussItem, FeedActions, FeedImage, FeedLinkTarget, FeedSources, itemRoute, openOriginal, SourceIcon } from '@/components/FeedParts';
+import { FeedReader } from '@/components/FeedReader';
 import { Toast, useSendWhenWaiting } from '@/components/Toast';
 import { summaryStateLine, type LocalItem } from '@/lib/feed';
+import { itemExcerpt } from '@/lib/feed-reader';
 import { usePairing } from '@/lib/pairing';
 import { useScreenContext } from '@/lib/screen-context';
 import { feed, syncSection, useFeed, useMacApi } from '@/lib/sections-store';
@@ -55,7 +57,8 @@ export default function FeedStoryScreen() {
     </View>
   );
   const pick = snapshot.picks.find((p) => p.story?.id === id);
-  const ready = story.summaryState === 'ready' && story.summary;
+  const ready = story.summary !== null;
+  const leadText = feed.text(story.lead.id) ?? itemExcerpt(story.lead);
   // Tiles keep each source's articles together; citation numbers follow them.
   const articles = bySource(story.items, story.sources);
   const dismiss = (ids: number[]) => { feed.dismiss(ids, false, place); setHidden(ids); };
@@ -85,7 +88,7 @@ export default function FeedStoryScreen() {
           </Text>
         )) : (
           <>
-            {story.lead.summary && <Text selectable style={[styles.body, { color: theme.text }]}>{story.lead.summary}</Text>}
+            {leadText && <FeedReader text={leadText} title={story.lead.title} base={story.lead.url} />}
             <Text style={[styles.state, { color: theme.muted }]}>{summaryStateLine(story.summaryState)}</Text>
           </>
         )}

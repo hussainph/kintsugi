@@ -63,4 +63,6 @@ export const appearanceStyle = {
 export const fonts = {
   /** New York on iOS, like the desktop editor. */
   serif: Platform.select({ ios: 'ui-serif', default: 'serif' }),
+  /** Matches the phone editor's native monospace fallback. */
+  mono: Platform.select({ ios: 'Menlo', default: 'monospace' }),
 };

@@ -21,7 +21,7 @@ export function KinMark({ size = 44 }: { size?: number }) {
         width: 2.4 * u,
         height: length * u,
         borderRadius: 1.2 * u,
-        backgroundColor: '#d4a53c',
+        backgroundColor: theme.kin,
         transform: [{ rotate: `${angle}deg` }],
       }}
     />

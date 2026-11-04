@@ -5,7 +5,9 @@ import { useState, type ReactNode } from 'react';
 import { Image, Linking, Pressable, StyleSheet, Text, View, type StyleProp, type ImageStyle } from 'react-native';
 
 import { FeedWhy } from '@/components/FeedWhy';
+import { KinMark } from '@/components/KinAvatar';
 import { ago, type LocalItem, type LocalStory } from '@/lib/feed';
+import { readerUrl, summaryLabel } from '@/lib/feed-reader';
 import { feed } from '@/lib/sections-store';
 import { useTheme } from '@/theme';
 
@@ -20,9 +22,10 @@ export function discussItem(item: FeedItem, place: Place, related: FeedItem[] = 
 }
 
 export function openOriginal(item: FeedItem, place: Place) {
-  if (!item.url) return;
+  const href = item.url ? readerUrl(item.url) : null;
+  if (!href) return;
   feed.act(item.id, 'openOriginal', place);
-  void Linking.openURL(item.url).catch(() => {});
+  void Linking.openURL(href).catch(() => {});
 }
 
 /** Expo Router's native menu wrapper drops its trigger from the iOS 27
@@ -52,7 +55,7 @@ export function FeedImage({ uri, style }: { uri: string | null; style: StyleProp
   return uri && failed !== uri ? <Image source={{ uri }} resizeMode="cover" style={style} onError={() => setFailed(uri)} /> : null;
 }
 
-export function SourceIcon({ title, site, size = 18 }: { title: string | null; site?: string | null; size?: number }) {
+export function SourceIcon({ title, site, size = 18, ring }: { title: string | null; site?: string | null; size?: number; ring?: string }) {
   const theme = useTheme();
   const [failed, setFailed] = useState(false);
   let icon: string | null = null;
@@ -61,8 +64,8 @@ export function SourceIcon({ title, site, size = 18 }: { title: string | null; s
     if (url.protocol === 'https:' || url.protocol === 'http:') icon = `${url.origin}/favicon.ico`;
   } catch {}
   return (
-    <View accessibilityElementsHidden style={[styles.icon, { width: size, height: size, borderRadius: size, backgroundColor: theme.primary, borderColor: theme.background }]}>
-      {icon && !failed ? <Image source={{ uri: icon }} style={{ width: size, height: size }} onError={() => setFailed(true)} /> : (
+    <View accessibilityElementsHidden style={[styles.icon, { width: size, height: size, borderRadius: size, backgroundColor: theme.primary, borderColor: ring ?? theme.background }]}>
+      {icon && !failed ? <Image source={{ uri: icon }} style={{ width: size - 2, height: size - 2 }} onError={() => setFailed(true)} /> : (
         <Text style={{ fontSize: size * 0.55, fontWeight: '600', color: theme.onPrimary }}>{(title ?? '?').slice(0, 1)}</Text>
       )}
     </View>
@@ -91,10 +94,12 @@ export function FeedSources({ item, story, count = false }: { item: FeedItem; st
   const theme = useTheme();
   const sources: Pick<StorySource, 'id' | 'title' | 'site' | 'items'>[] = story?.sources ?? [{ id: item.sourceId, title: item.sourceTitle, site: item.sourceSite ?? null, items: 1 }];
   const label = story && (count || sources.length > 2) ? storyCount(sources) : sources.map((s) => s.title).filter(Boolean).join(', ');
+  const mark = summaryLabel(story);
   return (
     <View style={styles.sources}>
-      <View style={styles.stack}>
-        {sources.slice(0, 3).map((s, i) => <View key={s.id} style={{ marginLeft: i ? -5 : 0 }}><SourceIcon title={s.title} site={s.site} /></View>)}
+      <View accessible={!!mark} accessibilityLabel={mark} testID={mark ? 'feed-summary-mark' : undefined} style={styles.stack}>
+        {mark && <View accessibilityElementsHidden style={[styles.kinIcon, { borderColor: theme.kin, backgroundColor: theme.background }]}><KinMark size={16} /></View>}
+        {sources.slice(0, 3).map((s, i) => <View key={s.id} style={{ marginLeft: i || mark ? -5 : 0 }}><SourceIcon title={s.title} site={s.site} ring={mark ? theme.kin : undefined} /></View>)}
       </View>
       <Text style={[styles.meta, { color: theme.muted }]} numberOfLines={1}>{[label, ago(story?.sortAt ?? item.publishedAt ?? item.sortAt)].filter(Boolean).join(' · ')}</Text>
     </View>
@@ -123,6 +128,7 @@ export function FeedActions({ item, place, reasons, discuss = false, whyId = ite
 const styles = StyleSheet.create({
   sources: { flexShrink: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 },
   stack: { flexDirection: 'row' },
+  kinIcon: { width: 18, height: 18, borderRadius: 18, borderWidth: 1, alignItems: 'center', justifyContent: 'center', zIndex: 1 },
   icon: { alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1 },
   meta: { flexShrink: 1, fontSize: 12, lineHeight: 18 },
   actions: { flexDirection: 'row', alignItems: 'center' },

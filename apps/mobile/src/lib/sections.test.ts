@@ -289,6 +289,59 @@ test('reasons drop cold-start status and remain readable offline', async () => {
   assert.deepEqual(new Feed(kv).reasons(1)?.map((r) => r.key), ['source:1']);
 });
 
+test('article readings keep rich text, coverage and out-of-page items across offline relaunches', async () => {
+  const kv = memory();
+  const mac = feedMac([item(1)]);
+  const coverage = [{ id: 2, title: 'More reporting', source: 'The Ledger', story: 10 }, { id: 3, title: 'An article', source: 'Newsroom', story: null }];
+  mac.client.feedRead = async (id) => {
+    if (mac.state.away) throw new Offline();
+    return { item: item(id, { excerpt: 'Author’s first paragraph.', writing: true }), text: '## Heading\n\n> Quotation', coverage };
+  };
+  const feed = new Feed(kv);
+  await feed.sync(mac.client);
+  await feed.read(mac.client, 99);
+  assert.equal(feed.item(99)?.writing, true, 'an article linked from coverage need not be in the page');
+  feed.act(99, 'like');
+  mac.state.away = true;
+  const again = new Feed(kv);
+  assert.equal(await again.read(mac.client, 99), '## Heading\n\n> Quotation');
+  assert.equal(again.item(99)?.liked, true);
+  assert.deepEqual(again.coverage(99), coverage);
+  assert.deepEqual(again.coverage(1), []);
+  mac.state.away = false;
+  mac.client.feedRead = async (id) => ({ item: item(id), text: 'Older Mac text' });
+  await again.read(mac.client, 99);
+  assert.deepEqual(new Feed(kv).coverage(99), [], 'older Macs may omit coverage');
+});
+
+test('readings keep the latest 40 opens, not the highest 40 item ids', async () => {
+  const kv = memory();
+  const mac = feedMac([item(1)]);
+  mac.client.feedRead = async (id) => ({ item: item(id), text: `Text ${id}`, coverage: [{ id: 100, title: 'News', source: 'Newsroom', story: null }] });
+  const feed = new Feed(kv);
+  for (let id = 50; id > 9; id--) await feed.read(mac.client, id);
+  const again = new Feed(kv);
+  assert.equal(again.text(50), null);
+  assert.deepEqual(again.coverage(50), []);
+  assert.equal(again.text(10), 'Text 10');
+  assert.equal(again.text(49), 'Text 49');
+});
+
+test('legacy article text survives an upgrade without coverage and shares the cache limit', async () => {
+  const kv = memory();
+  const texts = Object.fromEntries(Array.from({ length: 40 }, (_, i) => [i + 1, `Kept text ${i + 1}`]));
+  kv.setItemSync('feed:state', JSON.stringify({ items: [item(1)], total: 1, picks: [], texts, conflicts: {} }));
+  const feed = new Feed(kv);
+  assert.equal(feed.text(1), 'Kept text 1');
+  assert.deepEqual(feed.coverage(1), []);
+  const mac = feedMac([item(99)]);
+  await feed.read(mac.client, 99);
+  const again = new Feed(kv);
+  assert.equal(again.text(1), null, 'old and new caches together keep at most 40 articles');
+  assert.equal(again.text(2), 'Kept text 2');
+  assert.equal(again.text(99), 'Whole text of 99');
+});
+
 test('every unavailable summary has a plain fallback state', () => {
   assert.equal(summaryStateLine('ready'), null);
   assert.equal(summaryStateLine('pending'), 'Kin is writing a summary.');
