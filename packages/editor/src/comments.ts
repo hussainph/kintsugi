@@ -756,7 +756,9 @@ const commentTheme = EditorView.theme({
   ".cm-comment-ask": {
     display: "flex", width: "fit-content", alignItems: "center", gap: "6px", margin: "6px 0 2px", padding: "2px 10px 2px 4px", cursor: "pointer",
     border: "1px solid var(--border)", borderRadius: "999px", backgroundColor: "var(--background)", color: "var(--muted-foreground)",
-    fontFamily: "var(--font-sans)", fontSize: "12px", fontStyle: "normal", fontWeight: "500", lineHeight: "1.6",
+    fontFamily: "var(--font-ui, var(--font-sans))", fontSize: "12px", fontStyle: "normal", fontWeight: "500", lineHeight: "1.6",
+    // Clear of the document bar under the editor when it's scrolled into view.
+    scrollMarginBottom: "72px",
   },
   ".cm-comment-ask-replied": { borderColor: kin, color: kinInk, backgroundColor: `color-mix(in oklch, ${kin} 10%, var(--background))` },
   ".cm-comment-ask:hover": { borderColor: kin, color: kinInk },

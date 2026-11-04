@@ -91,6 +91,14 @@ export function useComments(path: string, viewRef: RefObject<EditorView | null>,
       if (thread.anchor?.kind !== "paragraph" || thread.anchor.path !== pathRef.current) return;
       setThreads((t) => (t.path === pathRef.current && !t.list.some((x) => x.id === thread.id) ? { ...t, list: [thread, ...t.list] } : t));
       setAsks((a) => ({ ...a, [thread.id]: "asking" }));
+      // He asked from here: bring the chip into view once the editor draws it.
+      let tries = 0;
+      const reveal = () => {
+        const chip = document.querySelector<HTMLElement>(`[data-comment-ask="${CSS.escape(thread.id)}"]`);
+        if (chip) chip.scrollIntoView({ block: "nearest" });
+        else if (++tries < 30) requestAnimationFrame(reveal);
+      };
+      requestAnimationFrame(reveal);
     });
     // Opened anywhere: the chip has done its job.
     const offOpened = onOpenThread((id) => setAsks((a) => {

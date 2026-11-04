@@ -299,7 +299,7 @@ pub struct Sample {
     /// Where it came from: `mock` (the headless model), `live provider/model`,
     /// or a citation for human and slop samples.
     pub from: String,
-    /// What it is: `story`, `idea`, `chat`, `comment`, `review`, `recap`,
+    /// What it is: `story`, `idea`, `chat`, `comment`, `review`, `recap` (older),
     /// `edit`, or for slop and human samples the case it covers.
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
