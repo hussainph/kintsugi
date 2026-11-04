@@ -43,6 +43,7 @@ mod providers;
 #[cfg(feature = "headless")]
 pub(crate) mod scripted;
 pub mod sign_in;
+pub mod stash;
 pub(crate) mod tools;
 pub mod web;
 mod wire;

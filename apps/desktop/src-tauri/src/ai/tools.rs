@@ -6,8 +6,9 @@
 //! cached prompt prefix) never changes mid-turn.
 //!
 //! Safety, by construction:
-//! - Nothing here writes to the vault. Kin's memory and skills, the one
-//!   exception, are written by `memory`, only inside `.kintsugi/agent/`. The only file this module creates is
+//! - Nothing here writes to the vault. Memory and skills are written by
+//!   `memory` inside `.kintsugi/agent/`; explicit stash turns receive a
+//!   separate, path-bound append capability from `stash`. The only file this module creates is
 //!   a long output, spilled into Kin's own outputs folder in app data
 //!   (`spill`), never inside the vault. A test checks the source for writes.
 //! - Paths stay inside the vault: no `..`, no absolute paths, no hidden
@@ -180,6 +181,44 @@ pub fn specs_with_web() -> &'static [ToolSpec] {
     })
 }
 
+/// Read tools plus the one scoped append, only for an explicit stash turn.
+fn stash_specs() -> &'static [ToolSpec] {
+    static SPECS: OnceLock<Vec<ToolSpec>> = OnceLock::new();
+    SPECS.get_or_init(|| {
+        let mut all: Vec<_> = specs().iter()
+            .filter(|s| !matches!(s.name, "memory" | "skill"))
+            .cloned().collect();
+        all.push(ToolSpec {
+            name: "stash_add",
+            description: "Append up to five ideas or anchored rewrites to the requested draft's stash, only in this explicit turn. Read the draft first. No draft changes.",
+            parameters: json!({
+                "type": "object", "additionalProperties": false,
+                "properties": { "items": {
+                    "type": "array", "minItems": 1, "maxItems": 5,
+                    "items": {
+                        "type": "object", "additionalProperties": false,
+                        "properties": {
+                            "kind": { "type": "string", "enum": ["idea", "rewrite"] },
+                            "text": { "type": "string" },
+                            "anchor": {
+                                "type": "object", "additionalProperties": false,
+                                "properties": {
+                                    "exact": { "type": "string" }, "prefix": { "type": "string" },
+                                    "suffix": { "type": "string" }, "line": { "type": "integer" }
+                                },
+                                "required": ["exact"]
+                            }
+                        },
+                        "required": ["kind", "text"]
+                    }
+                } },
+                "required": ["items"]
+            }),
+        });
+        all
+    })
+}
+
 /// A tool loaded on demand through `tool`.
 pub struct Extra {
     pub name: &'static str,
@@ -317,6 +356,8 @@ pub struct Tools {
     feed: Option<FeedTool>,
     /// `web_search` and `web_fetch`; without it, neither is offered.
     web: Option<std::sync::Arc<Web>>,
+    /// Only an explicit stash request can append to its one draft.
+    stash: Option<super::stash::Access>,
 }
 
 impl Tools {
@@ -337,6 +378,7 @@ impl Tools {
             ideas: None,
             feed: None,
             web: None,
+            stash: None,
         })
     }
 
@@ -370,9 +412,20 @@ impl Tools {
         self
     }
 
-    /// The tool list for this turn's requests: the core tools, plus the web
-    /// tools while they're on. Fixed for the turn, so the prefix caches.
+    /// Grants the one narrow stash write for an explicit owner request.
+    /// No memory or skill writes are available in these turns.
+    pub fn with_stash(mut self, access: super::stash::Access) -> Self {
+        self.stash = Some(access);
+        self.memory = None;
+        self.web = None;
+        self
+    }
+
+    /// The tool list is fixed for the turn, so the prefix caches.
     pub fn specs(&self) -> &'static [ToolSpec] {
+        if self.stash.is_some() {
+            return stash_specs();
+        }
         if self.web.is_some() {
             specs_with_web()
         } else {
@@ -432,8 +485,17 @@ impl Tools {
             "read" => self.read(args),
             "list" => self.list(args),
             "tool" => self.extra(args),
+            "stash_add" => match &self.stash {
+                Some(access) => access.add(args),
+                None => Err(
+                    "Stash writes are available only when he asks for stash suggestions.".into(),
+                ),
+            },
             // Kin's own memory, not vault content: not wrapped as data.
             "memory" | "skill" => {
+                if self.stash.is_some() {
+                    return Output::error("Memory and skills are read-only in a stash turn.");
+                }
                 let Some(access) = &self.memory else {
                     return Output::error("Memory isn't available here.");
                 };
@@ -482,7 +544,15 @@ impl Tools {
             _ => false,
         };
         if vault {
-            web.read(text);
+            // A document read carries stash context too. Kin's own saved
+            // suggestions must not grant web-link provenance (like ideas
+            // and history, they may contain a planted link).
+            let source = if call.name == "read" {
+                text.split("\nStash for ").next().unwrap_or(text)
+            } else {
+                text
+            };
+            web.read(source);
         }
     }
 
@@ -642,7 +712,13 @@ impl Tools {
         if path.is_dir() {
             return Err(format!("{shown} is a folder; use list"));
         }
-        let text = read_text(&path).ok_or_else(|| format!("{shown}: not a readable text file"))?;
+        let text = self
+            .stash
+            .as_ref()
+            .and_then(|access| access.draft(rel))
+            .map(str::to_owned)
+            .or_else(|| read_text(&path))
+            .ok_or_else(|| format!("{shown}: not a readable text file"))?;
         let lines: Vec<&str> = text.lines().collect();
         let offset = args["offset"].as_u64().unwrap_or(1).max(1) as usize;
         let count = limit(&args["limit"], READ_DEFAULT_LINES, READ_MAX_LINES);
@@ -660,6 +736,19 @@ impl Tools {
         }
         if end < lines.len() {
             out.push_str(&format!("(more: read with offset {})\n", end + 1));
+        }
+        // A draft's stash is context, not another readable hidden path.
+        // Spilled outputs must never be mistaken for documents.
+        if !rel.starts_with(OUT_PREFIX) && crate::sidecar::document(rel).is_ok() {
+            match super::stash::context(&self.root, rel) {
+                Ok(stash) => {
+                    out.push_str(&stash);
+                    if let Some(access) = &self.stash {
+                        access.read(rel);
+                    }
+                }
+                Err(_) => out.push_str("\nThe stash could not be read.\n"),
+            }
         }
         Ok(out)
     }

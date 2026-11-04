@@ -289,6 +289,100 @@ fn reply(text: String, calls: Vec<ToolCall>) -> Reply {
     }
 }
 
+/// The stash scenario reads its draft and stash, searches the vault, then
+/// exercises the actual narrow writer with an idea and an anchored rewrite.
+fn stash_step(question: &str, items: &[Item]) -> (String, Vec<ToolCall>) {
+    let doc = first_chip(question).unwrap_or_default();
+    let steps = this_turn(items)
+        .iter()
+        .filter(|i| matches!(i, Item::Assistant { .. }))
+        .count();
+    let call = |name: &str, arguments| ToolCall {
+        id: format!("mock-stash-{steps}"),
+        name: name.into(),
+        arguments,
+    };
+    if steps == 0 {
+        return (
+            String::new(),
+            vec![call("read", json!({ "path": doc, "limit": 80 }))],
+        );
+    }
+    let read = this_turn(items)
+        .iter()
+        .find_map(|item| match item {
+            Item::Results(results) => results
+                .iter()
+                .find(|r| r.call_id == "mock-stash-0")
+                .map(|r| r.content.as_str()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let mut in_frontmatter = false;
+    let mut passage = None;
+    for line in read.lines() {
+        let Some((n, text)) = line.split_once(": ") else {
+            continue;
+        };
+        let Ok(n) = n.parse::<u32>() else {
+            continue;
+        };
+        if n == 1 && text == "---" {
+            in_frontmatter = true;
+            continue;
+        }
+        if in_frontmatter {
+            if text == "---" {
+                in_frontmatter = false;
+            }
+            continue;
+        }
+        if !text.trim().is_empty() && !text.starts_with('#') {
+            passage = Some((n, text));
+            break;
+        }
+    }
+    if steps == 1 {
+        let query = longest_word(passage.map_or("writing", |(_, text)| text));
+        return (
+            String::new(),
+            vec![call("search", json!({ "query": query, "k": 3 }))],
+        );
+    }
+    if steps == 2 {
+        let found = last_results(items).first().copied().unwrap_or_default();
+        let hit = found
+            .split("\"id\":")
+            .skip(1)
+            .filter_map(|s| s.trim_start().strip_prefix('"')?.split('"').next())
+            .find(|id| id.ends_with(".md") || id.ends_with(".mdx"))
+            .unwrap_or(&doc);
+        let mut proposals = vec![
+            json!({ "kind": "idea", "text": format!("Compare the draft with [[{}]].", hit.trim_end_matches(".mdx").trim_end_matches(".md")) }),
+        ];
+        if let Some((line, exact)) = passage {
+            let revised = edit(
+                "",
+                &[super::wire::Message {
+                    role: super::wire::Role::User,
+                    content: format!("<passage>{exact}</passage>"),
+                }],
+            );
+            let revised = if revised == exact {
+                format!("Another version: {exact}")
+            } else {
+                revised
+            };
+            proposals.push(json!({ "kind": "rewrite", "text": revised, "anchor": { "exact": exact, "prefix": "", "suffix": "", "line": line } }));
+        }
+        return (
+            String::new(),
+            vec![call("stash_add", json!({ "items": proposals }))],
+        );
+    }
+    ("Added suggestions to the stash.".into(), vec![])
+}
+
 impl Model for Scripted {
     fn model(&self) -> &ModelRef {
         &self.model
@@ -314,6 +408,11 @@ impl Model for Scripted {
             && brief.contains(super::ideas::brief::FORMAT)
         {
             let (text, calls) = ideas::step(ex.system, brief, ex.items);
+            on_text(&text);
+            return Ok(reply(text, calls));
+        }
+        if question.starts_with(super::stash::BRIEF) {
+            let (text, calls) = stash_step(question, ex.items);
             on_text(&text);
             return Ok(reply(text, calls));
         }
