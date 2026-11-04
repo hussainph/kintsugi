@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { beforeEach, test } from "node:test";
 import { history, undo } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { languages } from "@codemirror/language-data";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, syntaxTreeAvailable } from "@codemirror/language";
 import { EditorState, type TransactionSpec } from "@codemirror/state";
 import { flowingBreaks, machineWrapped, softBreaks } from "../src/soft-breaks.ts";
+
+// No EditorView finishes parsing these state-only fixtures in the background.
+// Freeze the clock so a busy runner cannot exhaust CodeMirror's initial 20ms
+// slice. The long-document test still forces a partial parse via the viewport.
+beforeEach((t) => {
+  const now = Date.now();
+  t.mock.method(Date, "now", () => now);
+});
 
 const start = (doc: string, anchor = 0) => EditorState.create({
   doc,
@@ -109,10 +117,17 @@ test("hard breaks, code, frontmatter, HTML and structured blocks keep their line
 
 test("background parser advances also refresh the flowing paragraphs", () => {
   const paragraph = `${LONG}\n${LONG}.\n\n`;
-  let state = EditorState.create({ doc: paragraph.repeat(300), extensions: [markdown(), softBreaks] });
-  assert.ok(ensureSyntaxTree(state, state.doc.length, 1000));
+  const doc = paragraph.repeat(300);
+  let state = EditorState.create({ doc, extensions: [markdown(), softBreaks] });
+  assert.equal(syntaxTreeAvailable(state), false, "the initial viewport leaves later paragraphs unparsed");
+  const before = breaks(state);
+  assert.ok(before.length > 0 && before.length < 300, "only parsed paragraphs flow initially");
+  assert.ok(ensureSyntaxTree(state, state.doc.length));
+  assert.deepEqual(breaks(state), before, "parse work alone does not publish decorations");
   state = state.update({}).state; // the same refresh the parser's worker dispatches
+  assert.equal(syntaxTreeAvailable(state), true);
   assert.equal(breaks(state).length, 300);
+  assert.equal(state.doc.toString(), doc);
 });
 
 const apply = (state: EditorState, spec: TransactionSpec) => state.update(spec).state;
