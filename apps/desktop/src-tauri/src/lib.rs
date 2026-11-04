@@ -15,6 +15,7 @@ mod references;
 mod search;
 mod sidecar;
 mod smoke;
+mod stash;
 mod tools;
 mod vault;
 mod watch;
@@ -156,6 +157,10 @@ fn builder() -> tauri::Builder<Runtime> {
             ai::chat::kin_job_cancel,
             alternatives::alternatives_load,
             alternatives::alternatives_save,
+            stash::stash_load,
+            stash::stash_save,
+            stash::stash_dismiss,
+            ai::stash::stash_ask,
             ai::chat::comments::kin_comments,
             ai::chat::comments::kin_comment_create,
             ai::chat::comments::kin_comment_reply,

@@ -175,9 +175,10 @@ pub fn entry_rename(
     )?;
     crate::blog::repo::refuse_mirror(&vault.root()?, &path)?;
     let renamed = vault::rename(&vault.root()?, &path, &name)?;
-    // Kin's comment threads (KI-38), alternatives (KI-86) and folder colours (KI-75) follow it; best effort.
+    // Document sidecars and folder colours follow it; best effort.
     let _ = crate::ai::comments::renamed(&vault.root()?, &path, &renamed);
     let _ = crate::alternatives::renamed(&vault.root()?, &path, &renamed);
+    let _ = crate::stash::renamed(&vault.root()?, &path, &renamed);
     let _ = vault::folder_styles_moved(&vault.root()?, &path, &renamed);
     references_changed(&app);
     Ok(renamed)
@@ -204,6 +205,7 @@ pub fn entry_move(
     let moved = vault::move_entry(&root, &path, &dir)?;
     let _ = crate::ai::comments::renamed(&root, &path, &moved);
     let _ = crate::alternatives::renamed(&root, &path, &moved);
+    let _ = crate::stash::renamed(&root, &path, &moved);
     let _ = vault::folder_styles_moved(&root, &path, &moved);
     references_changed(&app);
     Ok(moved)
