@@ -237,8 +237,13 @@ impl Drop for Asking {
 /// One owner-requested turn. Awaiting the command gives the final stash;
 /// additions emit stash:changed as soon as the narrow tool saves them.
 #[tauri::command]
-pub async fn stash_ask(app: AppHandle, path: String, text: Option<String>) -> Result<StashFile> {
-    let root = crate::vault::current(&app)?;
+pub async fn stash_ask(
+    app: AppHandle,
+    path: String,
+    text: Option<String>,
+    expected_root: Option<String>,
+) -> Result<StashFile> {
+    let root = stash::check_expected_root(crate::vault::current(&app)?, expected_root.as_deref())?;
     let access = Access::new(&root, &path)?.with_text(text)?;
     let path = crate::sidecar::document(&path)?.to_string();
     let key = stash::file_path(&root, &path)?;
@@ -313,6 +318,27 @@ mod tests {
         Tools::new(root, outputs.into(), "stash-test")
             .unwrap()
             .with_stash(Access::new(root, "drafts/tools.mdx").unwrap())
+    }
+
+    #[test]
+    fn a_stale_stash_request_is_rejected_before_accessing_the_new_vault() {
+        let old = scratch_vault();
+        let current = scratch_vault();
+        let path = "drafts/tools.mdx";
+        let before = fs::read(current.path().join(path)).unwrap();
+        let accessed = std::cell::Cell::new(false);
+        let result = stash::check_expected_root(current.path().into(), old.path().to_str())
+            .and_then(|root| {
+                accessed.set(true);
+                Access::new(&root, path)
+            });
+        assert_eq!(
+            result.err().unwrap(),
+            "The vault changed. Reopen the document."
+        );
+        assert!(!accessed.get());
+        assert!(!current.path().join(stash::DIR).exists());
+        assert_eq!(fs::read(current.path().join(path)).unwrap(), before);
     }
 
     #[test]
