@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { history, redo, undo } from "@codemirror/commands";
-import { EditorSelection, EditorState, Transaction, type TransactionSpec } from "@codemirror/state";
+import { EditorSelection, EditorState, StateEffect, Transaction, type TransactionSpec } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import { anchorAt } from "../src/anchors.ts";
 import {
-  addAlternatives, applyAlternative, askForAlternatives, alternativeExtensions, alternativePanelCommands, alternativesAt, alternativesPanelModel, alternativesToSave,
-  closeAlternatives, cycleAlternative, openAlternatives, refreshAlternatives, type Alternatives, type AlternativeSet,
+  activeAlternative, addAlternatives, applyAlternative, askForAlternatives, alternativeExtensions, alternativePanelCommands, alternativesAt, alternativesPanelModel, alternativesToSave,
+  closeAlternatives, cycleAlternative, openAlternatives, openAlternativesOn, refreshAlternatives, showVersionSwitcher, stepAlternative, versionCard, type Alternatives, type AlternativeSet,
 } from "../src/alternatives.ts";
 import { resolveSpan, sentencesIn, wordAt } from "../src/spans.ts";
 
@@ -480,4 +480,141 @@ test("asking on a selection inside an existing word's phrase targets only that s
   assert.deepEqual(e.shown(), ["*view", "sight"]);
   e.commands().pick(1);
   assert.equal(e.text(), "It is in sight.");
+});
+
+// --- KI-111: the cursor finds versions -----------------------------------------
+
+/** DOC with "along an old line" as a stored selection with two versions, and "old" as a word with three. */
+function nested(options: { externalPanel?: boolean } = {}) {
+  const e = editor(DOC, [], options);
+  const phrase = e.text().indexOf("along an old line");
+  addAlternatives(e.view, { from: phrase, to: phrase + "along an old line".length, texts: ["down an old seam"], by: "owner" });
+  const old = e.text().indexOf("old");
+  addAlternatives(e.view, { from: old, to: old + 3, texts: ["ancient", "faint"], by: "kin" });
+  return e;
+}
+
+test("the cursor inside a span finds its set, with no selection; the innermost wins", () => {
+  const e = nested();
+  e.cursor(e.text().indexOf("along") + 2);
+  assert.equal(activeAlternative(e.state)?.level, "phrase");
+  assert.ok(openAlternatives(e.view));
+  assert.deepEqual(e.shown(), ["*along an old line", "down an old seam"]);
+  assert.deepEqual(e.panel()?.levels, ["phrase", "word", "sentence", "paragraph"], "Selection, then the other spans here");
+  closeAlternatives(e.view);
+  // Inside "old", which is inside the selection: the word.
+  e.cursor(e.text().indexOf("old") + 1);
+  assert.equal(activeAlternative(e.state)?.level, "word");
+  openAlternatives(e.view);
+  assert.equal(e.panel()?.level, "word");
+  assert.deepEqual(e.shown(), ["*old", "ancient", "faint"]);
+  assert.deepEqual(e.panel()?.counts, { phrase: 2, word: 3 }, "the tabs say which spans have versions");
+  // The others are a tab away.
+  e.commands().level("phrase");
+  assert.deepEqual(e.shown(), ["*along an old line", "down an old seam"]);
+  e.commands().level("word");
+  assert.deepEqual(e.shown(), ["*old", "ancient", "faint"]);
+  // At either edge of a span is in it: arrowing into it from either side finds it.
+  e.cursor(e.text().indexOf("old"));
+  assert.equal(activeAlternative(e.state)?.level, "word");
+  e.cursor(e.text().indexOf("old") + 3);
+  assert.equal(activeAlternative(e.state)?.level, "word");
+  e.cursor(e.text().indexOf("Kilns") + 1);
+  assert.equal(activeAlternative(e.state), null);
+});
+
+test("a partial selection finds the set it overlaps most, spaces and all", () => {
+  const e = nested();
+  const phrase = e.text().indexOf("along an old line");
+  // A sloppy selection of the phrase: a space short at one end, a space over at the other.
+  e.select(phrase + 1, phrase + "along an old line".length + 1);
+  assert.equal(activeAlternative(e.state)?.level, "phrase");
+  openAlternatives(e.view);
+  assert.deepEqual(e.shown(), ["*along an old line", "down an old seam"]);
+  // ⌥⌘] cycles the set under the selection, no exact match needed.
+  closeAlternatives(e.view);
+  assert.ok(cycleAlternative(e.view, 1));
+  assert.ok(e.text().includes("broke down an old seam."));
+  assert.ok(cycleAlternative(e.view, 1));
+  assert.ok(e.text().includes("broke along an old line."));
+  // Most of the word, a little of the phrase: the word.
+  const old = e.text().indexOf("old");
+  e.select(old + 1, old + 4);
+  assert.equal(activeAlternative(e.state)?.level, "word");
+  // A selection over no set is its own span, as before.
+  const kilns = e.text().indexOf("Kilns teach");
+  e.select(kilns, kilns + "Kilns teach".length);
+  assert.equal(activeAlternative(e.state), null);
+  openAlternatives(e.view);
+  assert.equal(e.panel()?.level, "phrase");
+  assert.deepEqual(e.shown(), ["*Kilns teach"]);
+});
+
+test("in the margin, the panel follows a partial selection onto its set", () => {
+  const e = nested({ externalPanel: true });
+  e.cursor(e.text().indexOf("Kilns") + 1);
+  openAlternatives(e.view);
+  assert.deepEqual(e.shown(), ["*Kilns"]);
+  const phrase = e.text().indexOf("along an old line");
+  e.select(phrase + 3, phrase + 10);
+  assert.equal(e.panel()?.level, "phrase");
+  assert.deepEqual(e.shown(), ["*along an old line", "down an old seam"]);
+  e.cursor(e.text().indexOf("old") + 2);
+  assert.equal(e.panel()?.level, "word");
+  assert.deepEqual(e.shown(), ["*old", "ancient", "faint"]);
+  // Off the sets, it keeps the span he chose.
+  e.commands().level("sentence");
+  e.cursor(e.text().indexOf("Kilns") + 1);
+  assert.equal(e.panel()?.level, "sentence");
+});
+
+test("the switcher shows on a set, steps it in place, hides on typing and moving off", () => {
+  const e = nested();
+  e.cursor(e.text().indexOf("old") + 1);
+  assert.equal(versionCard(e.state), null, "nothing until the cursor rests (the view's timer)");
+  assert.ok(showVersionSwitcher(e.view));
+  assert.deepEqual({ ...versionCard(e.state), setId: undefined, range: undefined }, { setId: undefined, range: undefined, level: "word", index: 1, total: 3, by: "owner" });
+  // Its ‹ › swap in place and it stays.
+  const id = versionCard(e.state)!.setId;
+  assert.ok(stepAlternative(e.view, id, 1));
+  assert.ok(e.text().includes("along an ancient line"));
+  assert.equal(versionCard(e.state)?.index, 2);
+  assert.equal(versionCard(e.state)?.by, "kin");
+  cycleAlternative(e.view, -1);
+  assert.equal(versionCard(e.state)?.index, 1);
+  // Moving within the span keeps it; typing hides it.
+  e.cursor(e.text().indexOf("old") + 2);
+  assert.equal(versionCard(e.state)?.index, 1);
+  const end = e.text().indexOf("old") + 3;
+  e.edit(end, end, "e");
+  assert.equal(versionCard(e.state), null, "hidden while he types");
+  assert.ok(showVersionSwitcher(e.view), "and back when the cursor rests");
+  assert.equal(versionCard(e.state)?.total, 3);
+  // Moving to the phrase around it hides the word's switcher.
+  e.cursor(e.text().indexOf("along") + 1);
+  assert.equal(versionCard(e.state), null);
+  showVersionSwitcher(e.view);
+  assert.equal(versionCard(e.state)?.level, "phrase");
+  e.cursor(e.text().indexOf("Kilns") + 1);
+  assert.equal(versionCard(e.state), null);
+  assert.equal(showVersionSwitcher(e.view), false, "nothing to show off a set");
+});
+
+test("the switcher's count opens that set's list", () => {
+  const e = nested({ externalPanel: true });
+  e.cursor(e.text().indexOf("old") + 1);
+  showVersionSwitcher(e.view);
+  const phrase = alternativesAt(e.state, e.text().indexOf("along") + 1).find((s) => s.level === "phrase")!;
+  assert.ok(openAlternativesOn(e.view, phrase.id));
+  assert.equal(e.panel()?.level, "phrase");
+  assert.deepEqual(e.shown(), ["*along an old line", "down an old seam"]);
+});
+
+test("no switcher on a read-only document", () => {
+  const e = nested();
+  e.cursor(e.text().indexOf("old") + 1);
+  const readOnly = EditorState.readOnly.of(true);
+  e.view.dispatch({ effects: StateEffect.appendConfig.of(readOnly) });
+  assert.equal(showVersionSwitcher(e.view), false);
+  assert.equal(versionCard(e.state), null);
 });

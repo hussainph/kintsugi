@@ -1,7 +1,8 @@
 import { isolateHistory } from "@codemirror/commands";
-import { EditorSelection, Facet, StateEffect, StateField, Transaction, type EditorState, type Extension } from "@codemirror/state";
+import { EditorSelection, Facet, Prec, StateEffect, StateField, Transaction, type EditorState, type Extension, type SelectionRange } from "@codemirror/state";
 import { Decoration, EditorView, keymap, showTooltip, ViewPlugin, WidgetType, type DecorationSet, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import { anchorAt, type CommentAnchor, type Range } from "./anchors.ts";
+import { inlineCard } from "./card.ts";
 import { alternativesPanel, panelTheme, type PanelActions, type PanelModel } from "./alternatives-panel.ts";
 import { element } from "./menu.ts";
 import { paragraphRange } from "./references.ts";
@@ -22,6 +23,9 @@ import { isWordChar, resolveSpan, sentenceAt, sentencesIn, wordAt, type SpanLeve
  *   removal, a paste) keeps that text as another version.
  * - Deleting the span's text detaches the set; it is kept, and comes back
  *   if the text does (an undo).
+ * - The cursor finds a set (KI-111): the innermost set it's in, or the set a
+ *   selection overlaps most. When the cursor rests there, a `‹ 2 of 3 ›`
+ *   card shows under the span's paragraph, starting below the span's end.
  *
  * Plain DOM like the comments, so the phone's shared editor can adopt it.
  */
@@ -57,7 +61,35 @@ export type Alternatives = {
   onPanelOpen?: () => void;
   onPanelClose?: () => void;
   onPanelChange?: (model: PanelModel | null) => void;
+  /** Draws the version switcher into `dom` and returns a cleanup (the
+   *  desktop's StepCard). Without it the editor draws a plain one. */
+  renderCard?: (dom: HTMLElement, card: VersionCard, actions: VersionCardActions) => () => void;
 };
+
+/** What the version switcher shows: the showing version's place in its set. */
+export type VersionCard = {
+  setId: string;
+  level: SpanLevel;
+  /** From 1. */
+  index: number;
+  total: number;
+  /** Who wrote the showing version. */
+  by: AlternativeAuthor;
+  range: Range;
+};
+
+/** The switcher's controls. Each acts on the set it was drawn for. */
+export type VersionCardActions = {
+  step: (by: 1 | -1) => void;
+  /** The full list: the Stash tab's versions on the desktop. */
+  open: () => void;
+};
+
+/** How long the cursor rests before the switcher shows, in ms. */
+export const SWITCHER_REST = 400;
+/** After a click, how long to wait for a second one before the switcher
+ *  moves: lines mustn't shift between the clicks of a double-click. */
+export const SWITCHER_CLICK = 300;
 
 /** The key specs, for the host's shortcut list (the Mac's registry mirrors them). */
 export const alternativeShortcuts = [
@@ -99,6 +131,8 @@ type Field = {
   cycleId: string | null;
   request: number | null;
   askError: string | null;
+  /** The set whose switcher is showing: the cursor rested in it. */
+  switcher: string | null;
 };
 
 /** The host's sets changed (a document loaded): place new ones. */
@@ -109,6 +143,7 @@ const dropSet = StateEffect.define<string>();
 const setPanel = StateEffect.define<Panel | null>();
 const cycleSet = StateEffect.define<string>();
 const askStatus = StateEffect.define<{ request: number | null; error: string | null }>();
+const showSwitcher = StateEffect.define<string | null>();
 const askFacet = Facet.define<() => Alternatives | undefined, () => Alternatives | undefined>({ combine: (values) => values[0] ?? (() => undefined) });
 const viewLifetimes = new WeakMap<object, object>();
 
@@ -219,7 +254,7 @@ function reconcile(value: Field, state: EditorState, config: Alternatives | unde
 
 function makeField(getConfig: () => Alternatives | undefined) {
   return StateField.define<Field>({
-    create: (state) => reconcile({ loaded: false, baseline: "[]", sets: new Map(), removed: new Set(), panel: null, cycleId: null, request: null, askError: null }, state, configFor(getConfig)),
+    create: (state) => reconcile({ loaded: false, baseline: "[]", sets: new Map(), removed: new Set(), panel: null, cycleId: null, request: null, askError: null, switcher: null }, state, configFor(getConfig)),
     update(value, tr) {
       if (tr.selection || tr.docChanged) value = { ...value, cycleId: null };
       if (tr.docChanged) {
@@ -255,15 +290,23 @@ function makeField(getConfig: () => Alternatives | undefined) {
         } else if (effect.is(setPanel)) value = { ...value, panel: effect.value && mapPanel(tr, effect.value), askError: null };
         else if (effect.is(askStatus)) value = { ...value, request: effect.value.request, askError: effect.value.error };
         else if (effect.is(cycleSet)) value = { ...value, cycleId: effect.value };
+        else if (effect.is(showSwitcher)) value = { ...value, switcher: effect.value };
       }
       // In the margin, versions follow the writer's cursor. Panel commands
       // carry their own target and must not be retargeted by a swap.
       const followsCursor = !!value.panel && !!tr.selection && getConfig()?.externalPanel && !tr.effects.some((effect) => effect.is(setPanel));
       if (value.panel && followsCursor) {
-        const selection = tr.state.selection.main;
-        const phrase = selection.empty ? null : { from: selection.from, to: selection.to };
-        const level = phrase ? levelOf(tr.state, phrase) : value.panel.level === "phrase" ? "word" : value.panel.level;
-        value = { ...value, askError: null, panel: { ...value.panel, pos: phrase ? phrase.from : selection.head, phrase: level === "phrase" ? phrase : null, exact: !!phrase, want: undefined, level, setId: null, homes: {}, highlight: 0 } };
+        const keep = value.panel.level === "phrase" ? "word" : value.panel.level;
+        value = { ...value, askError: null, panel: { ...panelFor(tr.state, value, tr.state.selection.main, keep), key: value.panel.key } };
+      }
+      // Typing hides the switcher, and so does moving off its set; the
+      // cursor resting brings it back (the view plugin below). A click
+      // leaves it until clicks settle, so nothing moves under the pointer.
+      if (value.switcher && !tr.effects.some((effect) => effect.is(showSwitcher))) {
+        const typed = tr.docChanged && !tr.isUserEvent("input.alternative");
+        const live = value.sets.get(value.switcher);
+        const moved = (tr.selection || tr.docChanged) && !tr.isUserEvent("select.pointer") && activeSet(tr.state, tr.state.selection.main, value)?.id !== value.switcher;
+        if (typed || !live?.range || tr.state.readOnly || moved) value = { ...value, switcher: null };
       }
       if (value.panel) {
         let panel = clampPanel(tr.state, value, value.panel);
@@ -333,9 +376,56 @@ function exactSet(state: EditorState, range: Range, field = read(state)): Live |
   return null;
 }
 
+/**
+ * The set the cursor or selection is on (KI-111), with no exact match
+ * needed: at a cursor, the innermost set holding it; with a selection, the
+ * set it overlaps most (shared length over combined length), the smaller
+ * on a tie. Null when there's none.
+ */
+function activeSet(state: EditorState, selection: Pick<SelectionRange, "from" | "to" | "head" | "empty">, field = read(state)): Live | null {
+  if (!field) return null;
+  if (selection.empty) return setsAt(state, selection.head, field)[0] ?? null;
+  let best: Live | null = null;
+  let score = 0;
+  for (const live of field.sets.values()) {
+    const range = live.range;
+    if (!range || range.from >= selection.to || range.to <= selection.from) continue;
+    const shared = Math.min(range.to, selection.to) - Math.max(range.from, selection.from);
+    const fit = shared / (Math.max(range.to, selection.to) - Math.min(range.from, selection.from));
+    if (fit > score || (fit === score && best && size(range) < size(best.range!))) { best = live; score = fit; }
+  }
+  return best;
+}
+
+/** The set at the selection or cursor, as stored: what the switcher and ⌘K show. */
+export function activeAlternative(state: EditorState): AlternativeSet | null {
+  const live = activeSet(state, state.selection.main);
+  return live ? serialize(state, live) : null;
+}
+
+/** The set a level shows at `pos`: the one exactly on its span, else the
+ *  innermost of that level there. A selection's own span is only ever its
+ *  exact set; without one, Selection is the innermost stored selection. */
 function setFor(state: EditorState, level: SpanLevel, range: Range | null, pos: number, field = read(state)): Live | null {
   if (!field) return null;
-  return (range && exactSet(state, range, field)) ?? setsAt(state, pos, field).find((s) => s.level === level && level !== "phrase") ?? null;
+  return (range && exactSet(state, range, field)) ?? (level === "phrase" && range ? null : setsAt(state, pos, field).find((s) => s.level === level)) ?? null;
+}
+
+/** A panel on the selection or cursor: its active set if it has one, else
+ *  the span of `level` there (a selection's own level when it has one). */
+function panelFor(state: EditorState, field: Field, selection: SelectionRange, level: SpanLevel = "word"): Omit<Panel, "key"> {
+  const selected = selection.empty ? null : { from: selection.from, to: selection.to };
+  // A selection that's exactly a word, sentence or paragraph is that level, not Selection.
+  const phrase = selected && levelOf(state, selected) === "phrase" ? selected : null;
+  const live = activeSet(state, selection, field);
+  if (live?.range) {
+    const pos = Math.max(live.range.from, Math.min(live.range.to, selected ? selected.from : selection.head));
+    return { pos, phrase, level: live.level, setId: live.id, homes: {}, highlight: Math.max(0, live.entries.findIndex((e) => e.id === live.current)) };
+  }
+  const pos = selected ? selected.from : selection.head;
+  if (selected) level = levelOf(state, selected);
+  else if (level === "word" && !spanAt(state, "word", pos, null)) level = "sentence";
+  return { pos, phrase, level, setId: null, homes: {}, highlight: 0 };
 }
 
 /** What the panel is on: its set if it has one, else the span of its level. */
@@ -359,12 +449,21 @@ function clampPanel(state: EditorState, field: Field, panel: Panel): Panel {
   return next;
 }
 
-function levelsAt(state: EditorState, panel: Panel): SpanLevel[] {
+/** The levels the panel offers here: Selection (when he made one, or the
+ *  cursor is in a stored one), Word, Sentence and Paragraph. */
+function levelsAt(state: EditorState, field: Field, panel: Panel): SpanLevel[] {
   const out: SpanLevel[] = [];
-  if (panel.phrase) out.push("phrase");
-  else if (spanAt(state, "word", panel.pos, null)) out.push("word");
+  if (panel.phrase || panel.level === "phrase" || setsAt(state, panel.pos, field).some((s) => s.level === "phrase")) out.push("phrase");
+  if (panel.level === "word" || spanAt(state, "word", panel.pos, null)) out.push("word");
   if (paragraphRange(state, panel.pos)) out.push("sentence", "paragraph");
   return out;
+}
+
+/** The set each level would show, for the panel's tabs. */
+function setAtLevel(state: EditorState, field: Field, panel: Panel, level: SpanLevel): Live | null {
+  if (level === panel.level) return target(state, field, panel).live;
+  const home = panel.homes[level] ? field.sets.get(panel.homes[level]!) : undefined;
+  return home?.range ? home : setFor(state, level, spanAt(state, level, panel.pos, panel.phrase), panel.pos, field);
 }
 
 /** The level a selection is: a whole word, sentence or paragraph, else a phrase. */
@@ -398,23 +497,28 @@ function swap(view: ViewLike, live: Live, entryId: string, effects: StateEffect<
   });
 }
 
-/** Opens the panel on the selection, or on the cursor's word (the smallest
- *  span with alternatives there, if any). */
+/** Opens the panel on the set at the selection or cursor (KI-111: the
+ *  innermost, or the one a selection overlaps most), else on the
+ *  selection or the cursor's word. */
 export function openAlternatives(view: ViewLike): boolean {
   const field = read(view.state);
   if (!field) return false;
+  const panel = { ...panelFor(view.state, field, view.state.selection.main), key: ++openings };
+  if (!panel.setId && !spanAt(view.state, panel.level, panel.pos, panel.phrase)) return false;
+  view.dispatch({ effects: setPanel.of(panel) });
+  return true;
+}
+
+/** Opens the panel on one set: the switcher's count. */
+export function openAlternativesOn(view: ViewLike, setId: string): boolean {
+  const field = read(view.state);
+  const live = field?.sets.get(setId);
+  if (!field || !live?.range) return false;
   const selection = view.state.selection.main;
-  const phrase = selection.empty ? null : { from: selection.from, to: selection.to };
-  let level: SpanLevel;
-  if (phrase) level = levelOf(view.state, phrase);
-  else level = setsAt(view.state, selection.head)[0]?.level ?? "word";
-  if (level === "word" && !phrase && !spanAt(view.state, "word", selection.head, null)) level = "sentence";
-  const pos = phrase ? phrase.from : selection.head;
-  const range = spanAt(view.state, level, pos, phrase);
-  if (!range) return false;
-  const live = phrase ? exactSet(view.state, range) : setFor(view.state, level, range, pos);
-  const highlight = live ? live.entries.findIndex((e) => e.id === live.current) : 0;
-  view.dispatch({ effects: setPanel.of({ key: ++openings, pos, phrase: level === "phrase" ? phrase : null, exact: !!phrase, level, setId: live?.id ?? null, homes: {}, highlight }) });
+  const pos = Math.max(live.range.from, Math.min(live.range.to, selection.head));
+  const phrase = !selection.empty && levelOf(view.state, selection) === "phrase" ? { from: selection.from, to: selection.to } : null;
+  const highlight = Math.max(0, live.entries.findIndex((e) => e.id === live.current));
+  view.dispatch({ effects: setPanel.of({ key: ++openings, pos, phrase, level: live.level, setId, homes: {}, highlight }) });
   return true;
 }
 
@@ -425,17 +529,26 @@ export function closeAlternatives(view: ViewLike): boolean {
 }
 
 /** Shows the next (1) or previous (-1) version of the panel's set, or of the
- *  smallest set at the cursor. */
+ *  set at the selection or cursor. */
 export function cycleAlternative(view: ViewLike, direction: 1 | -1): boolean {
   const field = read(view.state);
   if (!field || view.state.readOnly) return false;
   const panel = field.panel;
   const recent = field.cycleId ? field.sets.get(field.cycleId) : null;
-  const live = panel ? target(view.state, field, panel).live : recent?.range ? recent : setsAt(view.state, view.state.selection.main.head)[0];
-  if (!live?.range) return false;
+  const live = panel ? target(view.state, field, panel).live : recent?.range ? recent : activeSet(view.state, view.state.selection.main, field);
+  return !!live && stepAlternative(view, live.id, direction);
+}
+
+/** Shows the next (1) or previous (-1) version of one set, in place. */
+export function stepAlternative(view: ViewLike, setId: string, direction: 1 | -1): boolean {
+  const field = read(view.state);
+  const live = field?.sets.get(setId);
+  if (!field || !live?.range || view.state.readOnly) return false;
   const at = live.entries.findIndex((e) => e.id === live.current);
   const next = live.entries[(at + direction + live.entries.length) % live.entries.length];
-  const effects = panel ? [setPanel.of({ ...panel, setId: live.id, highlight: live.entries.indexOf(next) })] : [];
+  const panel = field.panel;
+  const onIt = panel && (panel.setId === live.id || target(view.state, field, panel).live?.id === live.id);
+  const effects = panel && onIt ? [setPanel.of({ ...panel, setId: live.id, highlight: live.entries.indexOf(next) })] : [];
   swap(view, live, next.id, effects);
   return true;
 }
@@ -489,7 +602,16 @@ export function askForAlternatives(view: ViewLike): boolean {
   let field = read(view.state);
   if (!field || !config?.ask || view.state.readOnly) return false;
   if (field.request !== null) return true;
-  if (!field.panel && !openAlternatives(view)) return false;
+  // Asked with a selection, Kin answers for what's selected, not a set it overlaps.
+  const selection = view.state.selection.main;
+  if (!selection.empty && !onSelection(view.state, field)) {
+    const level = levelOf(view.state, selection);
+    const range = { from: selection.from, to: selection.to };
+    const live = exactSet(view.state, range, field);
+    const highlight = live ? Math.max(0, live.entries.findIndex((e) => e.id === live.current)) : 0;
+    const key = field.panel?.key ?? ++openings;
+    view.dispatch({ effects: setPanel.of({ key, pos: selection.from, phrase: level === "phrase" ? range : null, exact: true, level, setId: live?.id ?? null, homes: {}, highlight }) });
+  } else if (!field.panel && !openAlternatives(view)) return false;
   field = read(view.state)!;
   const panel = field.panel!;
   const { range } = target(view.state, field, panel);
@@ -516,6 +638,13 @@ export function askForAlternatives(view: ViewLike): boolean {
     }
   })();
   return true;
+}
+
+/** The panel is on exactly the selection. */
+function onSelection(state: EditorState, field: Field): boolean {
+  const selection = state.selection.main;
+  const range = field.panel && target(state, field, field.panel).range;
+  return !!range && range.from === selection.from && range.to === selection.to;
 }
 
 /** What the panel does, for whichever panel draws it. */
@@ -594,8 +723,14 @@ function panelModel(state: EditorState, field: Field, panel: Panel): PanelModel 
     ? live.entries.map((e) => ({ text: e.text, by: e.by, current: e.id === live.current }))
     : [{ text: range ? state.sliceDoc(range.from, range.to) : "", by: "owner" as const, current: true }];
   const config = configFor(state.facet(askFacet));
+  const levels = levelsAt(state, field, panel);
+  const counts: Partial<Record<SpanLevel, number>> = {};
+  for (const level of levels) {
+    const set = setAtLevel(state, field, panel, level);
+    if (set && set.entries.length > 1) counts[level] = set.entries.length;
+  }
   return {
-    level: panel.level, levels: levelsAt(state, panel), entries, highlight: panel.highlight, readOnly: state.readOnly,
+    level: panel.level, levels, counts, entries, highlight: panel.highlight, readOnly: state.readOnly,
     canAsk: !!config?.ask && !!range, asking: field.request !== null, askError: field.askError,
   };
 }
@@ -657,13 +792,14 @@ class Count extends WidgetType {
     }
     dom.dataset.alternatives = this.id;
     dom.setAttribute("aria-label", `Version ${this.current + 1} of ${this.count}`);
+    // Like clicking the span: the cursor goes to its end, and the switcher shows.
     dom.addEventListener("mousedown", (event) => {
       event.preventDefault();
       const live = read(view.state)?.sets.get(this.id);
       if (!live?.range) return;
-      view.dispatch({ selection: EditorSelection.cursor(live.range.from) });
-      const highlight = live.entries.findIndex((e) => e.id === live.current);
-      view.dispatch({ effects: setPanel.of({ key: ++openings, pos: live.range.from, phrase: live.level === "phrase" ? live.range : null, level: live.level, setId: live.id, homes: {}, highlight }) });
+      view.dispatch({ selection: EditorSelection.cursor(live.range.to) });
+      view.dispatch({ effects: showSwitcher.of(view.state.readOnly ? null : live.id) });
+      view.focus();
     });
     return dom;
   }
@@ -689,6 +825,124 @@ function decorations(state: EditorState): DecorationSet {
   if (open && open.to > open.from) ranges.push(Decoration.mark({ class: "cm-alt-open" }).range(open.from, open.to));
   return Decoration.set(ranges, true);
 }
+
+// --- The switcher (KI-111) -----------------------------------------------------
+
+/** The switcher's card, or null while it's hidden. */
+export function versionCard(state: EditorState): VersionCard | null {
+  const field = read(state);
+  const live = field?.switcher ? field.sets.get(field.switcher) : null;
+  if (!live?.range || state.readOnly || live.entries.length < 2) return null;
+  const at = Math.max(0, live.entries.findIndex((e) => e.id === live.current));
+  return { setId: live.id, level: live.level, index: at + 1, total: live.entries.length, by: live.entries[at].by, range: live.range };
+}
+
+/** Shows the switcher on the set at the cursor now, without waiting for it
+ *  to rest. False when the cursor isn't in a set. */
+export function showVersionSwitcher(view: ViewLike): boolean {
+  const live = view.state.readOnly ? null : activeSet(view.state, view.state.selection.main);
+  if (!live || read(view.state)?.switcher === live.id) return !!live;
+  view.dispatch({ effects: showSwitcher.of(live.id) });
+  return true;
+}
+
+/** The switcher on the set at the cursor, or hidden off one. */
+function settleSwitcher(view: ViewLike) {
+  const live = view.state.readOnly ? null : activeSet(view.state, view.state.selection.main);
+  const want = live && live.entries.length > 1 ? live.id : null;
+  if ((read(view.state)?.switcher ?? null) !== want) view.dispatch({ effects: showSwitcher.of(want) });
+}
+
+function hideVersionSwitcher(view: ViewLike): boolean {
+  if (!read(view.state)?.switcher) return false;
+  view.dispatch({ effects: showSwitcher.of(null) });
+  return true;
+}
+
+function button(label: string, run: () => void, name?: string): HTMLButtonElement {
+  const dom = element("button", "cm-alt-card-button", label);
+  dom.type = "button";
+  if (name) dom.setAttribute("aria-label", name);
+  dom.addEventListener("click", run);
+  return dom;
+}
+
+/** The switcher without a host renderer: ‹, the count (it opens the list), ›. */
+function plainCard(dom: HTMLElement, card: VersionCard, actions: VersionCardActions): () => void {
+  const body = element("div", "cm-alt-card-body");
+  body.setAttribute("role", "group");
+  body.setAttribute("aria-label", "Versions");
+  body.append(
+    button("‹", () => actions.step(-1), "Previous version"),
+    button(`${card.index} of ${card.total}`, actions.open, "All versions"),
+    button("›", () => actions.step(1), "Next version"),
+  );
+  dom.append(body);
+  return () => body.remove();
+}
+
+/** The `‹ 2 of 3 ›` card under the span's paragraph, starting below its end. */
+function switcherCard(field: StateField<Field>, getConfig: () => Alternatives | undefined): Extension {
+  return inlineCard((state) => {
+    const card = versionCard(state);
+    if (!card) return null;
+    const id = card.setId;
+    return {
+      key: JSON.stringify([id, card.index, card.total, card.by]),
+      slot: "versions",
+      anchor: card.range,
+      align: card.range.to,
+      className: "cm-alt-card",
+      data: { versions: id },
+      estimatedHeight: 36,
+      render: (dom, view) => {
+        const actions: VersionCardActions = {
+          step: (by) => { stepAlternative(view, id, by); },
+          open: () => { openAlternativesOn(view, id); },
+        };
+        const render = getConfig()?.renderCard;
+        return render ? render(dom, card, actions) : plainCard(dom, card, actions);
+      },
+    };
+  }, [field]);
+}
+
+/** Shows the switcher once the cursor rests in a set: about 300 ms after a
+ *  click (once no second click follows), 400 ms after keys or typing. */
+const rest = ViewPlugin.fromClass(class {
+  timer: ReturnType<typeof setTimeout> | undefined;
+  pointer = false;
+  readonly view: EditorView;
+  readonly up = () => {
+    if (!this.pointer) return;
+    this.pointer = false;
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => settleSwitcher(this.view), SWITCHER_CLICK);
+  };
+  constructor(view: EditorView) {
+    this.view = view;
+    view.dom.ownerDocument.addEventListener("mouseup", this.up, true);
+  }
+  down(event: MouseEvent) {
+    if (event.button !== 0 || (event.target as Element | null)?.closest?.(".cm-step-card, .cm-alt-count, .cm-alt-gutter")) return;
+    this.pointer = true;
+    clearTimeout(this.timer);
+  }
+  update(update: ViewUpdate) {
+    if (!update.docChanged && !update.selectionSet) return;
+    if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(showSwitcher)))) return;
+    clearTimeout(this.timer);
+    const live = update.state.readOnly ? null : activeSet(update.state, update.state.selection.main);
+    if (!live || read(update.state)?.switcher === live.id || this.pointer) return;
+    this.timer = setTimeout(() => { if (!this.pointer) showVersionSwitcher(this.view); }, SWITCHER_REST);
+  }
+  destroy() {
+    clearTimeout(this.timer);
+    this.view.dom.ownerDocument.removeEventListener("mouseup", this.up, true);
+  }
+}, {
+  eventHandlers: { mousedown(event) { this.down(event); } },
+});
 
 /** The document's sets as they'd be stored now. */
 export function alternativesToSave(state: EditorState): AlternativeSet[] {
@@ -758,6 +1012,8 @@ export function alternativeExtensions(getConfig: () => Alternatives | undefined)
     { key: alternativeShortcuts[3].key, run: askForAlternatives },
     { key: "Escape", run: closeAlternatives },
   ]);
+  // Escape hides the switcher only when nothing else wants it (Kin's marks).
+  const hideKey = Prec.low(keymap.of([{ key: "Escape", run: hideVersionSwitcher }]));
   const external = ViewPlugin.fromClass(class {
     update(update: ViewUpdate) {
       const config = getConfig();
@@ -769,7 +1025,7 @@ export function alternativeExtensions(getConfig: () => Alternatives | undefined)
       else if (before && !after) config.onPanelClose?.();
     }
   });
-  return [heldPassages, askFacet.of(getConfig), field, draw, keys, popover(field, getConfig), external, persistence(getConfig), alternativesTheme, panelTheme];
+  return [heldPassages, askFacet.of(getConfig), field, draw, keys, hideKey, popover(field, getConfig), external, persistence(getConfig), switcherCard(field, getConfig), rest, alternativesTheme, panelTheme];
 }
 
 const alternativesTheme = EditorView.theme({
@@ -792,4 +1048,15 @@ const alternativesTheme = EditorView.theme({
   "@media (hover: hover) and (pointer: fine)": { ".cm-alt-count:hover, .cm-alt-gutter:hover": { color: "var(--neutral-10, var(--foreground))" } },
   ".cm-alt-open": { backgroundColor: "color-mix(in oklch, var(--neutral-10, currentColor) 8%, transparent)", borderRadius: "2px" },
   "@media (pointer: coarse)": { ".cm-alt-gutter": { left: "calc(var(--editor-gutter, 0px) - 30px)", minWidth: "24px", height: "24px" } },
+  ".cm-alt-card-body": {
+    display: "flex", alignItems: "center", gap: "var(--space-xxs, 4px)", width: "fit-content", padding: "var(--space-xxs, 4px)",
+    borderRadius: "var(--radius-m, 8px)", background: "var(--popover, var(--background))", color: "var(--neutral-8, inherit)",
+    boxShadow: "inset 0 0 0 1px var(--neutral-4, rgba(0,0,0,.1)), 0 6px 24px -12px rgba(0,0,0,.25)", fontVariantNumeric: "tabular-nums",
+  },
+  ".cm-alt-card-button": {
+    border: "none", borderRadius: "var(--radius-s, 6px)", padding: "2px var(--space-xs, 8px)", minHeight: "24px",
+    background: "transparent", color: "inherit", font: "inherit", cursor: "pointer",
+  },
+  ".cm-alt-card-button:hover": { background: "var(--neutral-3, rgba(0,0,0,.06))" },
+  ".cm-alt-card-button:focus-visible": { outline: "2px solid var(--neutral-10, currentColor)", outlineOffset: "1px" },
 });

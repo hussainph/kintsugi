@@ -4,6 +4,8 @@
 .ki-versions-heading [role=tablist] { display: flex; gap: var(--space-xs); }
 .ki-versions-heading [role=tab] { padding: 0; border: 0; background: none; font: inherit; font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); color: var(--neutral-7); cursor: pointer; }
 .ki-versions-heading [role=tab][aria-selected=true] { color: var(--neutral-10); }
+.ki-versions-heading [role=tab]:disabled { cursor: default; }
+.ki-versions-tab-count { margin-inline-start: 0.3em; color: var(--neutral-7); font-variant-numeric: tabular-nums; }
 .ki-versions button:focus-visible, .ki-versions input:focus-visible { outline: var(--border-l) solid var(--neutral-7); outline-offset: 2px; }
 .ki-versions .cm-alt-list { list-style: none; margin: 0; padding: 0; max-height: 32vh; overflow-y: auto; }
 .ki-versions .cm-alt-option { display: flex; gap: var(--space-xs); padding: var(--space-xxs) var(--space-xs); border-radius: var(--radius-s); font-family: var(--font-editorial); font-weight: var(--weight-editorial-regular); font-size: var(--size-m); line-height: var(--line-m); letter-spacing: var(--letter-spacing-m); cursor: pointer; overflow-wrap: anywhere; }

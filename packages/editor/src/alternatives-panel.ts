@@ -20,6 +20,8 @@ export type PanelModel = {
   level: SpanLevel;
   /** The levels he can switch to here, in order. */
   levels: SpanLevel[];
+  /** How many versions each level has here, where it has some. */
+  counts: Partial<Record<SpanLevel, number>>;
   entries: PanelEntry[];
   highlight: number;
   readOnly: boolean;
@@ -118,6 +120,7 @@ export function alternativesPanel(actions: PanelActions): AlternativesPanel {
     list.setAttribute("aria-busy", String(next.asking));
     levels.replaceChildren(...next.levels.map((level) => {
       const tab = element("button", "cm-alt-level", LEVEL_NAMES[level]);
+      if (next.counts[level]) tab.append(" ", element("span", "cm-alt-level-count", String(next.counts[level])));
       tab.type = "button";
       tab.tabIndex = -1;
       tab.setAttribute("role", "tab");
@@ -172,6 +175,7 @@ export const panelTheme = EditorView.theme({
     font: "inherit", fontSize: "12px", padding: "2px 8px", border: "none", borderRadius: "6px", cursor: "pointer",
     background: "none", color: "var(--muted-foreground, var(--neutral-7))",
   },
+  ".cm-alt-level-count": { color: "var(--neutral-7, inherit)", fontVariantNumeric: "tabular-nums" },
   ".cm-alt-level[aria-selected=true]": { backgroundColor: "var(--neutral-3, #8882)", color: "var(--foreground, var(--neutral-10))" },
   ".cm-alt-list": { listStyle: "none", margin: "0", padding: "0", maxHeight: "min(260px, 40vh)", overflowY: "auto" },
   ".cm-alt-option": {

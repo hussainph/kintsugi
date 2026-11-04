@@ -29,8 +29,8 @@ export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPl
 export { closeComment, commentPlace, openComment, paragraphAnchor, reviewParagraphs, startComment } from "./comments";
 export { heldPassage, holdPassage, releasePassage, type Passage } from "./passages";
 export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
-export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet, SpanLevel } from "./alternatives";
-export { addAlternatives, applyAlternative, askForAlternatives, alternativesAt, alternativesPanelModel, alternativePanelCommands, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives } from "./alternatives";
+export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet, SpanLevel, VersionCard, VersionCardActions } from "./alternatives";
+export { activeAlternative, addAlternatives, applyAlternative, askForAlternatives, alternativesAt, alternativesPanelModel, alternativePanelCommands, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives, openAlternativesOn, showVersionSwitcher, stepAlternative, versionCard } from "./alternatives";
 export type { Mark as KinMark, MarkBatch, MarkCard, MarkCardActions, MarkKind, Marks, MarksState, Sentence } from "./marks";
 export { acceptMark, applyMarks, clearMarks, cutRange, dismissMark, focusMark, focusedMark, markCard, markCommands, marksOf, markShortcuts, onWordBoundaries, proseSentences, recapitalise, setMarks, textAfterCuts } from "./marks";
 export type { CardSpec } from "./card";

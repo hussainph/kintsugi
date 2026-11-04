@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, setMarks, stashRange, stashTargetAt, toggleDimRange } from "@kintsugi/editor/Editor";
+import { activeAlternative, addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, openAlternatives, releasePassage, setMarks, stashRange, stashTargetAt, toggleDimRange } from "@kintsugi/editor/Editor";
 import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
@@ -55,6 +55,8 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
   const [marking, setMarking] = useState<{ label: string; error: string | null } | null>(null);
   // With nothing selected, checks and trims cover the whole draft.
   const [selected] = useState(() => !view.state.selection.main.empty);
+  // The cursor's span's versions (KI-111), as ⌘K opened.
+  const [versionCount] = useState(() => activeAlternative(view.state)?.entries.length ?? 0);
   const inflight = useRef<{ cancel: () => void } | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
@@ -341,6 +343,16 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                 </CommandGroup>
               )}
               {!locked && <CommandGroup heading="Edit">
+                {versionCount > 1 && (
+                  <CommandItem value={`Versions (${versionCount})`} onSelect={() => {
+                    onClose();
+                    // After the popover hands focus back, so the list keeps it.
+                    requestAnimationFrame(() => openAlternatives(view));
+                  }}>
+                    Versions ({versionCount})
+                    <CommandShortcut>{keysOf(SHORTCUTS.alternatives.key)}</CommandShortcut>
+                  </CommandItem>
+                )}
                 {/* Writes the passage's comment markers; no model involved (KI-88). */}
                 <CommandItem value={dimmed ? "Undim" : "Dim"} onSelect={() => {
                   const at = here();

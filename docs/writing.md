@@ -219,24 +219,46 @@ version that's showing, so the file stays plain for Obsidian and publishing.
 
 **On the Mac**
 
+- **The cursor finds them (KI-111).** No exact selection is needed. With the
+  cursor in a span that has versions, that span is the one: the innermost,
+  when spans are nested (a word inside a selection inside a paragraph). With
+  a selection, it's the span the selection overlaps most, so a selection a
+  space short or a space over still finds it.
+- **`‹ 2 of 3 ›` in place.** When the cursor rests in a span with versions
+  (about 400 ms after a key; at once after a click), a small card shows under
+  the span's paragraph, starting below the span's end. It's the same
+  `‹ 1 of N ›` card as Kin's marks (`docs/kin.md` › The card), with only
+  the arrows and the count. ‹ › and ⌥⌘[ / ⌥⌘] swap in place; clicking the
+  count opens the full list in the Stash tab. Typing hides it, moving off
+  the span hides it, Escape hides it, and it comes back once the cursor
+  rests again. It never covers a line and no line re-wraps; it only pushes
+  the lines below down. Kin's versions and his own use the same card.
+- Clicking the dotted underline puts the cursor there and shows the card.
+  Clicking a span's dots (a paragraph's are in the gutter) does the same,
+  with the cursor at the span's end.
 - ⌥⌘A opens the Stash tab in the right margin, with the cursor's versions
-  above the stash. Word (or Selection), Sentence and Paragraph choose the span.
-  In the version field, ←/→ switch spans, ↑/↓ and Enter pick a version,
-  ⌫ removes it, and Escape closes. Type into **Add a version** and press Enter
-  to add and show it.
+  above the stash. Selection (when he made one, or the cursor is in a stored
+  one), Word, Sentence and Paragraph choose the span; a tab with versions
+  shows how many. In the version field, ←/→ switch spans, ↑/↓ and Enter pick
+  a version, ⌫ removes it, and Escape closes. Type into **Add a version** and
+  press Enter to add and show it.
+- In ⌘K, a span with versions adds **Versions (3)** at the top of Edit; it
+  opens the list.
 - ⌥⌘] and ⌥⌘[ show the next and previous version without opening anything.
   Each swap is its own undo step.
 - Accepting a ⌘K edit keeps the original one ⌥⌘[ away. ⇧↩ keeps the
   highlighted version without applying it. Both keep Kin's version marked
   with its icon.
 - Ask Kin in the versions section, or press ⌥⇧⌘A, for synonyms, sentence rewordings or
-  paragraph versions. One request adds up to three choices without changing
+  paragraph versions. ⌥⇧⌘A with a selection asks about exactly the selection,
+  not a span it overlaps. One request adds up to three choices without changing
   the draft. Explicit asks work with suggestions off and use the edit model
   and cost cap. No alternatives are fetched in the background.
 - A word, selection or sentence with versions has an ink dotted underline
   and position dots under its end. A paragraph has dots in the left gutter.
-  The filled dot is the showing version. Click the dots to open its versions.
-  These marks stay visible with Kin's suggestions off.
+  The filled dot is the showing version. These marks stay visible with Kin's
+  suggestions off. Nothing else shows unasked: the card needs the cursor in
+  a span that already has versions.
 - The version showing is always one of the set. Typing inside it edits that
   version; replacing the whole span (a paste, an undo) keeps the new text as
   another version. One version left means no alternatives, and the set goes.
@@ -279,7 +301,14 @@ receives `{ doc, from, to, level }` and returns a promise of replacement
 strings. `askForAlternatives` holds that span through edits, rejects answers
 for changed text, and adds valid choices with `by: "kin"`.
 `alternativesPanelModel` and `alternativePanelCommands` drive the panel
-(`alternatives-panel.ts`), including authors, request state and `askKin`, so
-another panel can replace it. The phone
+(`alternatives-panel.ts`), including authors, request state, `askKin` and
+each tab's count, so another panel can replace it. `activeAlternative(state)`
+is the set at the selection or cursor (⌘K's row). The switcher is
+`versionCard(state)` (`{ setId, level, index, total, by, range }`, or null
+while hidden), drawn with `inlineCard` and the host's
+`renderCard(dom, card, { step, open })` (the desktop's
+`src/alternatives/VersionCard.tsx`), else a plain one;
+`showVersionSwitcher(view)`, `stepAlternative(view, setId, by)` and
+`openAlternativesOn(view, setId)` are its commands. The phone
 doesn't show alternatives yet; edits made there are picked up when the Mac
 re-resolves the anchors.

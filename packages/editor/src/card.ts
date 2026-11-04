@@ -1,4 +1,4 @@
-import { Decoration, EditorView, WidgetType } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, type ViewUpdate } from "@codemirror/view";
 import type { EditorState, Extension } from "@codemirror/state";
 import type { Range } from "./anchors.ts";
 
@@ -6,9 +6,9 @@ import type { Range } from "./anchors.ts";
  * An inline card (KI-109): a small block under a paragraph of the draft,
  * drawn by a host, so it never covers the line it's about and never
  * re-wraps one; it only pushes the lines below down. Kin's marks use it for
- * their `‹ 1 of N ›` card; KI-111's version switcher can use it at the
- * cursor. `revealRange` brings what a card is about into view on the
- * card's eased scroll.
+ * their `‹ 1 of N ›` card; KI-111's version switcher uses it at the end of
+ * the cursor's span (`align`). `revealRange` brings what a card is about
+ * into view on the card's eased scroll.
  */
 
 /** One card. */
@@ -25,6 +25,12 @@ export type CardSpec = {
   data?: Record<string, string>;
   /** Height before it's drawn, in px. */
   estimatedHeight?: number;
+  /** Starts the card under this position's x (the end of the span it's
+   *  about), as far right as it fits in the column. Default: the text's left edge. */
+  align?: number;
+  /** Cards with the same slot redraw into the same block when their key
+   *  changes, so the card doesn't blink as it steps in place. */
+  slot?: string;
 };
 
 const fence = /^\s*(```|~~~)/;
@@ -42,6 +48,37 @@ export function paragraphEnd(state: EditorState, pos: number): number {
 }
 
 const cleanups = new WeakMap<HTMLElement, () => void>();
+const drawn = new WeakMap<HTMLElement, CardSpec>();
+
+/** Puts each aligned card under its position's x, once the layout is known. */
+function alignCards(view: EditorView) {
+  view.requestMeasure({
+    key: alignCards,
+    read(view) {
+      const out: { dom: HTMLElement; x: number }[] = [];
+      for (const dom of view.contentDOM.querySelectorAll<HTMLElement>(".cm-step-card[data-card-align]")) {
+        const pos = Number(dom.dataset.cardAlign);
+        if (!(pos >= 0 && pos <= view.state.doc.length)) continue;
+        const at = view.coordsAtPos(pos, -1);
+        if (!at) continue;
+        const box = dom.getBoundingClientRect();
+        const start = box.left + (parseFloat(getComputedStyle(dom).paddingLeft) || 0);
+        out.push({ dom, x: Math.max(0, Math.round(at.left - start)) });
+      }
+      return out;
+    },
+    write(out) {
+      for (const { dom, x } of out) dom.style.setProperty("--card-x", `${x}px`);
+    },
+  });
+}
+
+/** Re-aligns cards when lines re-wrap or move. */
+const aligner = ViewPlugin.fromClass(class {
+  update(update: ViewUpdate) {
+    if (update.geometryChanged || update.docChanged || update.viewportChanged) alignCards(update.view);
+  }
+});
 
 class CardBlock extends WidgetType {
   readonly spec: CardSpec;
@@ -50,17 +87,34 @@ class CardBlock extends WidgetType {
     this.spec = spec;
   }
   eq(other: CardBlock) {
-    return this.spec.key === other.spec.key;
+    return this.spec.key === other.spec.key && this.spec.align === other.spec.align;
   }
   toDOM(view: EditorView) {
     const dom = document.createElement("div");
-    dom.className = `cm-step-card${this.spec.className ? ` ${this.spec.className}` : ""}`;
     dom.contentEditable = "false";
-    for (const [key, value] of Object.entries(this.spec.data ?? {})) dom.dataset[key] = value;
     // Keep the editor's focus and selection.
     dom.addEventListener("mousedown", (event) => event.preventDefault());
-    cleanups.set(dom, this.spec.render(dom, view));
+    this.draw(dom, view);
     return dom;
+  }
+  updateDOM(dom: HTMLElement, view: EditorView) {
+    const before = drawn.get(dom);
+    if (!this.spec.slot || before?.slot !== this.spec.slot) return false;
+    cleanups.get(dom)?.();
+    for (const key of Object.keys(before.data ?? {})) delete dom.dataset[key];
+    this.draw(dom, view);
+    return true;
+  }
+  private draw(dom: HTMLElement, view: EditorView) {
+    dom.className = `cm-step-card${this.spec.className ? ` ${this.spec.className}` : ""}`;
+    for (const [key, value] of Object.entries(this.spec.data ?? {})) dom.dataset[key] = value;
+    if (this.spec.align === undefined) {
+      delete dom.dataset.cardAlign;
+      dom.style.removeProperty("--card-x");
+    } else dom.dataset.cardAlign = String(this.spec.align);
+    drawn.set(dom, this.spec);
+    cleanups.set(dom, this.spec.render(dom, view));
+    if (this.spec.align !== undefined) alignCards(view);
   }
   destroy(dom: HTMLElement) {
     cleanups.get(dom)?.();
@@ -83,6 +137,7 @@ export function inlineCard(compute: (state: EditorState) => CardSpec | null, dep
       const at = paragraphEnd(state, spec.anchor.to);
       return Decoration.set([Decoration.widget({ widget: new CardBlock(spec), block: true, side: 1 }).range(at)]);
     }),
+    aligner,
     theme,
   ];
 }
@@ -176,4 +231,8 @@ const theme = EditorView.theme({
     cursor: "default", userSelect: "none",
     fontFamily: "var(--font-ui, var(--font-sans))", fontSize: "var(--size-xs, 13px)", lineHeight: "var(--line-xs, 18px)",
   },
+  // An aligned card starts at `--card-x`, or as far right as it fits: the
+  // first track takes what's left beside the card, up to that x.
+  ".cm-step-card[data-card-align]": { display: "grid", gridTemplateColumns: "minmax(0, var(--card-x, 0px)) minmax(0, max-content)" },
+  ".cm-step-card[data-card-align]::before": { content: "''" },
 });

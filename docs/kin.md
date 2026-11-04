@@ -1124,8 +1124,8 @@ Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `refere
   jumps. The words flash once, a wash of Kin's accent fading over 450 ms
   (also under reduced motion). Clicking a mark focuses it, except a trim's
   struck word, which is kept. Checks, trims and reviews all use it.
-- **The card is reusable** (for KI-111's version switcher, or any list to
-  step through). Two parts, neither knowing about marks:
+- **The card is reusable** (KI-111's version switcher uses it, and any list
+  to step through can). Two parts, neither knowing about marks:
   - *Where it goes*, `packages/editor/src/card.ts`: `inlineCard(compute,
     deps)` is an extension that shows the card `compute(state)` returns, or
     none, recomputed when `deps` (state fields, `"doc"`, `"selection"`)
@@ -1133,14 +1133,18 @@ Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `refere
     estimatedHeight? }`: `anchor` is the range it's about (it goes under the
     paragraph `anchor.to` is in, `paragraphEnd`), `render(dom, view)` draws
     into the block and returns a cleanup, and the same `key` keeps the
-    drawn card. `revealRange(view, range)` is the stepping scroll above.
+    drawn card. `align` starts the card below a position's x (the version
+    switcher's span end), as far right as it fits in the column; `slot`
+    redraws a changed card into the same block, so stepping in place
+    doesn't blink. `revealRange(view, range)` is the stepping scroll above.
   - *What it shows*, `src/components/StepCard.tsx`: `StepCard` with
     `index` and `total` (from 1; ‹ › hide with one), `onStep(by)`,
     `stepKeys?` (the shortcut ids ‹ and › show; Kin's marks' by default),
     `text?` (words in the draft's type with the accent rule), `note?` (one
     line), `actions` (`{ id, label, icon, shortcut?, onClick }`, in order
-    after the count; `data-card-action={id}`), `label?` and `kind?`
-    (`data-kind`). `src/refine/MarkCard.tsx` maps a mark onto it. The
+    after the count; `data-card-action={id}`), `count?` (`{ label,
+    shortcut?, onClick }` makes the count a button: the versions' list),
+    `label?` and `kind?` (`data-kind`). `src/refine/MarkCard.tsx` maps a mark onto it. The
     desktop portals it into the block from `Writing.tsx`, then asks the
     editor to measure.
 - **Reviews (KI-109).** *Review this draft* and *Review this section* (⌘K's
