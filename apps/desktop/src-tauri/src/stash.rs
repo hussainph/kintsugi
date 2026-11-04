@@ -3,7 +3,7 @@
 //! metadata is a comment, its text follows, and `---` separates items.
 
 use crate::AppHandle;
-use crate::ai::comments::Anchor;
+use crate::ai::threads::Quote as Anchor;
 use crate::vault::Vault;
 use kintsugi_vault::write_atomic;
 use serde::{Deserialize, Serialize};
