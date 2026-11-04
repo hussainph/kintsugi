@@ -205,7 +205,7 @@ test("the pickers offer a short list; a model turned on in Settings and a defaul
   await settings().waitFor({ state: "detached" });
 });
 
-test("the chat's model and effort apply to one conversation and are kept per conversation", { timeout: 120_000 }, async () => {
+test("the composer's model and effort apply to one thread and are kept per thread", { timeout: 120_000 }, async () => {
   const model = () => panel().getByTestId("chat-model").getByRole("button");
   const effort = () => panel().getByTestId("chat-model").getByRole("slider", { name: "Effort" });
   await openDoc(DRAFT);
@@ -237,35 +237,42 @@ test("the chat's model and effort apply to one conversation and are kept per con
   await panel().getByTestId("chat-model").locator('[data-level="low"]').waitFor();
   await shot("05-chat-picked");
   const picks = resolve(app.vault, ".kintsugi/kin/models.json");
-  const stored = await until(() => json(picks), (p) => p?.[DRAFT]?.reasoning === "low", "the pick and effort reach the vault");
-  assert.deepEqual(stored[DRAFT], { provider: "opencode-go", model: "glm-5.3-flash", reasoning: "low" });
+  // Picked before the thread starts: kept for the new thread (`""`).
+  const stored = await until(() => json(picks), (p) => p?.[""]?.reasoning === "low", "the pick and effort reach the vault");
+  assert.deepEqual(stored[""], { provider: "opencode-go", model: "glm-5.3-flash", reasoning: "low" });
 
-  // A message in this conversation runs on it (the mock answers either way).
+  // A new thread sent from here runs on it, and keeps it as its own (the mock answers either way).
   await panel().getByRole("textbox", { name: "Message Kin" }).fill("Tighten the opening?");
   await panel().getByRole("textbox", { name: "Message Kin" }).press("Enter");
   await panel().locator('[data-role="kin"]').first().waitFor({ timeout: 30_000 });
+  const threads = resolve(app.vault, ".kintsugi/kin/threads/index.json");
+  const id = (await until(() => json(threads), (t) => t?.threads?.length > 0, "the thread is stored")).threads[0].id as string;
+  await until(() => json(picks), (p) => p?.[id]?.model === "glm-5.3-flash" && !p?.[""], "the thread takes the pick");
+  await panel().getByRole("button", { name: "Model: GLM-5.3-Flash" }).waitFor();
 
-  // Another conversation keeps the defaults.
+  // Another thread keeps the defaults.
   await page.keyboard.press("Meta+j");
   await panel().waitFor({ state: "detached" });
   await openDoc(NOTE);
   await page.keyboard.press("Meta+j");
+  await panel().getByRole("button", { name: "Back" }).click();
   await panel().getByRole("button", { name: "Model: MiniMax-M3" }).waitFor();
   assert.equal(await effort().getAttribute("aria-valuetext"), "High");
   await page.keyboard.press("Meta+j");
   await panel().waitFor({ state: "detached" });
 
-  // Back on the draft, after a reload: its own pick and effort.
+  // Back on the draft's thread, after a reload: its own pick and effort.
   await page.reload();
   await openDoc(DRAFT);
   await page.keyboard.press("Meta+j");
+  await panel().locator(`[data-thread="${id}"]`).click();
   await panel().getByRole("button", { name: "Model: GLM-5.3-Flash" }).waitFor();
   assert.equal(await effort().getAttribute("aria-valuetext"), "Low");
 
   // Default goes back to the chat default model; the effort stays his.
   await pick(model(), "Default");
   await panel().getByRole("button", { name: "Model: MiniMax-M3" }).waitFor();
-  await until(() => json(picks), (p) => !p?.[DRAFT]?.model && p?.[DRAFT]?.reasoning === "low", "Default clears the model pick");
+  await until(() => json(picks), (p) => !p?.[id]?.model && p?.[id]?.reasoning === "low", "Default clears the model pick");
 
   // Choose models opens Settings' list.
   await model().click();

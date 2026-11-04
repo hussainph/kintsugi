@@ -54,6 +54,8 @@ Your memory is small, capped and always loaded, below:
 - Your notes (NOTES.md): where to look and how his vault is organized. Pointers, never copies of content.
 Save with the memory tool when you learn something durable: he tells you, corrects you, or a pattern is clear. Not one-off requests, not what a search finds again. One fact per line; patch a line rather than add a near-duplicate. When a file is full, the write is refused: consolidate (merge, shorten, drop stale lines) in the same batch. Changes apply at once, and he sees and can undo them in About you. Memory loads when a conversation starts, so what you save shows from the next one.
 
+Each conversation with him is a short thread about one thing: a draft, a paragraph, a clip, a Feed story, an idea, or nothing in particular. Only this thread is in your context. When he refers to something you talked about before, or earlier threads would help, find them with the threads tool.
+
 Skills are procedures, his and yours, listed by name below; load one with the skill tool before following it. When he asks for the same kind of thing again and again, write a skill for it (command: true if it fits the editor's / menu as an AI command) and tell him you did.";
 
 /// Memory loaded into every turn of a conversation, after the instructions:
@@ -140,13 +142,13 @@ pub struct Chip {
 
 /// The newest user message: the question, then the dynamic context.
 /// `remember` is false when the conversation is marked "don't remember this";
-/// `recap` is the running summary of the conversation this turn belongs to.
+/// `about` is what the thread this turn belongs to is about (KI-104).
 pub fn user_message(
     question: &str,
     chips: &[Chip],
     today: &str,
     remember: bool,
-    recap: Option<&str>,
+    about: Option<&str>,
 ) -> String {
     let mut out = question.trim().to_string();
     let _ = write!(out, "\n\n<context>\nToday is {today}.");
@@ -171,11 +173,8 @@ pub fn user_message(
             }
         }
     }
-    if let Some(recap) = recap.map(str::trim).filter(|r| !r.is_empty()) {
-        let _ = write!(
-            out,
-            "\nEarlier in this conversation (your summary; search history for details):\n{recap}"
-        );
+    if let Some(about) = about.map(str::trim).filter(|r| !r.is_empty()) {
+        let _ = write!(out, "\nThis thread is about {about}");
     }
     out.push_str("\n</context>");
     out
@@ -252,11 +251,11 @@ mod tests {
             &chips,
             "2026-11-02",
             true,
-            Some(" We discussed kilns. "),
+            Some(" the clip inspiration/a.md (A clip) "),
         );
         assert_eq!(
             message,
-            "Why?\n\n<context>\nToday is 2026-11-02.\nOn screen (read these if they matter):\n- clip inspiration/a.md (A clip)\n- paragraph drafts/b.md lines 4-6\nEarlier in this conversation (your summary; search history for details):\nWe discussed kilns.\n</context>"
+            "Why?\n\n<context>\nToday is 2026-11-02.\nOn screen (read these if they matter):\n- clip inspiration/a.md (A clip)\n- paragraph drafts/b.md lines 4-6\nThis thread is about the clip inspiration/a.md (A clip)\n</context>"
         );
         let forgetful = user_message("Why?", &[], "2026-11-02", false, None);
         assert!(forgetful.contains("\"don't remember this\"") && forgetful.ends_with("</context>"));

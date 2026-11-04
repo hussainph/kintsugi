@@ -57,7 +57,7 @@ pub fn migrate(old: &Path, to: &Path) -> Result<Migrated> {
 
 /// [`migrate`], stopping after `steps` steps: what a crash at that point
 /// leaves on disk (tests).
-pub(super) fn migrate_until(old: &Path, to: &Path, steps: usize) -> Result<Migrated> {
+pub(crate) fn migrate_until(old: &Path, to: &Path, steps: usize) -> Result<Migrated> {
     let fail =
         |what: &str, e: std::io::Error| format!("could not move Kin's conversation ({what}): {e}");
     let backup = backup_of(old);
@@ -135,7 +135,6 @@ fn copy(from: &Path, to: &Path, stop: &mut impl FnMut() -> bool) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Draft, Log, Role};
     use super::*;
 
     struct Dirs {
@@ -158,30 +157,41 @@ mod tests {
         }
     }
 
-    /// An old global log with a thread, a reply and a summary.
+    /// An old global log with a question, a reply and a summary.
     fn old_log(dir: &Path) -> Vec<u8> {
-        let mut log = Log::open(Some(dir.into()));
-        let q = log.say("What did I say about kilns?", vec![]).unwrap();
-        log.reply(
-            Role::Kin,
-            Draft {
-                text: "That they fire for days.".into(),
-                answers: vec![q.seq],
-                ..Draft::default()
-            },
+        fs::create_dir_all(dir).unwrap();
+        let log = concat!(
+            r#"{"seq":1,"at":"2026-10-01T09:00:00+00:00","role":"owner","text":"What did I say about kilns?","topic":""}"#,
+            "\n",
+            r#"{"seq":2,"at":"2026-10-01T09:00:05+00:00","role":"kin","text":"That they fire for days.","topic":"","answers":[1]}"#,
+            "\n"
+        );
+        fs::write(dir.join("log.jsonl"), log).unwrap();
+        fs::write(
+            dir.join("threads.json"),
+            r#"{"answeredThrough":1,"threads":{"":{"key":"","kind":"general","label":"General","summary":"Kilns.","summarizedThrough":2}}}"#,
         )
         .unwrap();
-        log.mark_answered(q.seq);
-        log.set_summary("", "Kilns.", 2).unwrap();
-        fs::read(dir.join("log.jsonl")).unwrap()
+        log.as_bytes().to_vec()
     }
 
     fn moved_intact(to: &Path, bytes: &[u8]) {
         assert_eq!(fs::read(to.join("log.jsonl")).unwrap(), bytes);
-        let log = Log::open(Some(to.into()));
-        assert_eq!(log.len(), 2);
-        assert_eq!(log.thread("").unwrap().summary, "Kilns.");
-        assert!(log.pending().is_empty());
+        assert!(
+            fs::read_to_string(to.join("threads.json"))
+                .unwrap()
+                .contains("Kilns.")
+        );
+    }
+
+    fn append(to: &Path, line: &str) {
+        use std::io::Write as _;
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(to.join("log.jsonl"))
+            .unwrap();
+        writeln!(file, "{line}").unwrap();
     }
 
     #[test]
@@ -214,7 +224,6 @@ mod tests {
         // Later, the other vault is opened: it starts empty.
         assert_eq!(migrate(&d.old, &d.b).unwrap(), Migrated::Nothing);
         assert!(!d.b.join("log.jsonl").exists());
-        assert_eq!(Log::open(Some(d.b.clone())).len(), 0);
         moved_intact(&d.a, &bytes);
     }
 
@@ -250,12 +259,18 @@ mod tests {
         let d = dirs();
         let bytes = old_log(&d.old);
         let _ = migrate_until(&d.old, &d.a, 3);
-        let mut log = Log::open(Some(d.a.clone()));
-        log.say("And glazes?", vec![]).unwrap();
-        drop(log);
+        append(
+            &d.a,
+            r#"{"seq":3,"at":"2026-10-01T09:01:00+00:00","role":"owner","text":"And glazes?"}"#,
+        );
         migrate(&d.old, &d.a).unwrap();
-        let log = Log::open(Some(d.a.clone()));
-        assert_eq!(log.len(), 3);
+        assert_eq!(
+            fs::read_to_string(d.a.join("log.jsonl"))
+                .unwrap()
+                .lines()
+                .count(),
+            3
+        );
         assert!(fs::read(d.a.join("log.jsonl")).unwrap().starts_with(&bytes));
     }
 
@@ -263,8 +278,11 @@ mod tests {
     fn a_vault_with_its_own_log_is_never_overwritten() {
         let d = dirs();
         let bytes = old_log(&d.old);
-        let mut own = Log::open(Some(d.a.clone()));
-        own.say("This vault's own question.", vec![]).unwrap();
+        fs::create_dir_all(&d.a).unwrap();
+        append(
+            &d.a,
+            r#"{"seq":1,"at":"2026-10-02T09:00:00+00:00","role":"owner","text":"This vault's own question."}"#,
+        );
         let before = fs::read(d.a.join("log.jsonl")).unwrap();
         let Migrated::Kept(kept) = migrate(&d.old, &d.a).unwrap() else {
             panic!("expected the old log to be kept");

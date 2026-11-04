@@ -266,9 +266,9 @@ pub const EXTRAS: &[Extra] = &[
         usage: r#"explain: {"item": "feed:<id>"}. Its score, the cold-start and learned parts, every feature's value and contribution, and the reasons shown in Why this?."#,
     },
     Extra {
-        name: "history",
-        summary: "search everything you and Hussain have said before (the whole conversation log)",
-        usage: r#"history: {"query": string, "about"?: thread (a path, or "" for general), "limit"?: integer (default 10)} finds past messages; {"around": seq} reads the messages around one."#,
+        name: "threads",
+        summary: "your earlier threads with Hussain: search them, list the ones about a document or item, or read one",
+        usage: r#"threads: {"query": string, "about"?: a path or feed:<id> the threads are about, "limit"?: integer (default 10)} finds past threads and their best matching message; {"about": path} alone lists the threads about it; {"id": thread id} reads one thread."#,
     },
     Extra {
         name: "idea",
@@ -280,9 +280,9 @@ pub const EXTRAS: &[Extra] = &[
 /// Reads one idea by id for the `idea` tool (`ai::ideas`, app data).
 pub type IdeaReader = std::sync::Arc<dyn Fn(&str) -> Option<String> + Send + Sync>;
 
-/// Searches the conversation log for the `history` tool. It lives outside
+/// Searches and reads Kin's threads for the `threads` tool. They live outside
 /// the vault, so the vault tools reach it through this hook.
-pub type History = std::sync::Arc<dyn Fn(&Value) -> String + Send + Sync>;
+pub type ThreadsTool = std::sync::Arc<dyn Fn(&Value) -> String + Send + Sync>;
 
 /// The app's shared search index (`crate::search`), which sets the scopes.
 /// Without one, `search` indexes the vault in memory, words only.
@@ -293,7 +293,7 @@ pub type Searcher = std::sync::Arc<dyn Fn(&Query) -> Result<Vec<Hit>> + Send + S
 pub type FeedTool = std::sync::Arc<dyn Fn(&str, &Value) -> Result<String> + Send + Sync>;
 
 /// Tools whose output is vault or Feed text: links in it may be fetched,
-/// and web queries may not quote it (KI-81). Not `history` or `idea`: Kin's
+/// and web queries may not quote it (KI-81). Not `threads` or `idea`: Kin's
 /// own past words may carry a link a page planted.
 const VAULT_EXTRAS: [&str; 7] = [
     "outline",
@@ -351,7 +351,7 @@ pub struct Tools {
     turn: String,
     /// Kin's memory and skills; without it, `memory` and `skill` refuse.
     memory: Option<Access>,
-    history: Option<History>,
+    threads: Option<ThreadsTool>,
     searcher: Option<Searcher>,
     ideas: Option<IdeaReader>,
     feed: Option<FeedTool>,
@@ -374,7 +374,7 @@ impl Tools {
             outputs,
             turn: safe_name(turn),
             memory: None,
-            history: None,
+            threads: None,
             searcher: None,
             ideas: None,
             feed: None,
@@ -474,8 +474,8 @@ impl Tools {
     }
 
     /// Lets Kin search the conversation log.
-    pub fn with_history(mut self, history: History) -> Self {
-        self.history = Some(history);
+    pub fn with_threads(mut self, threads: ThreadsTool) -> Self {
+        self.threads = Some(threads);
         self
     }
 
@@ -571,10 +571,14 @@ impl Tools {
         match extra.name {
             "outline" if inner["path"].is_string() => self.outline(inner),
             "recent" => self.recent(inner),
-            "history" if inner["query"].is_string() || inner["around"].is_u64() => {
-                match &self.history {
-                    Some(history) => Ok(history(inner)),
-                    None => Err("The conversation history isn't available here.".into()),
+            "threads"
+                if inner["query"].is_string()
+                    || inner["id"].is_string()
+                    || inner["about"].is_string() =>
+            {
+                match &self.threads {
+                    Some(threads) => Ok(threads(inner)),
+                    None => Err("Earlier threads aren't available here.".into()),
                 }
             }
             "idea" if inner["id"].is_string() => match &self.ideas {
@@ -1353,27 +1357,27 @@ pub(crate) mod tests {
                 "top_topics",
                 "taste_profile",
                 "explain",
-                "history",
+                "threads",
                 "idea"
             ])
         );
-        // History is a hook: unavailable without one, wrapped as data with one.
+        // Threads are a hook: unavailable without one, wrapped as data with one.
         assert!(
             tools
                 .run(&call(
                     "tool",
-                    json!({ "name": "history", "args": { "query": "kiln" } })
+                    json!({ "name": "threads", "args": { "query": "kiln" } })
                 ))
                 .is_error
         );
         let (with, _out2) = self::tools(vault.path());
-        let with = with.with_history(std::sync::Arc::new(|args: &Value| {
+        let with = with.with_threads(std::sync::Arc::new(|args: &Value| {
             format!("found {}", args["query"])
         }));
         let found = with
             .run(&call(
                 "tool",
-                json!({ "name": "history", "args": { "query": "kiln" } }),
+                json!({ "name": "threads", "args": { "query": "kiln" } }),
             ))
             .content;
         assert_eq!(found, "<data tool=\"tool\">\nfound \"kiln\"\n</data>");

@@ -146,11 +146,11 @@ const transitions: { name: string; run: () => Promise<void> }[] = [
     await page.keyboard.press("Meta+j");
     await kin().waitFor({ state: "detached" });
   } },
-  { name: "comment composer", run: async () => {
+  { name: "paragraph thread composer", run: async () => {
     await page.keyboard.press("Meta+k");
     await refine().getByRole("option", { name: /Discuss this paragraph/ }).click();
-    await page.getByRole("textbox", { name: "Ask Kin about this paragraph" }).waitFor();
-    await escape(page.locator(".cm-comment-popover"));
+    await kin().getByRole("textbox", { name: "Message Kin" }).waitFor();
+    await escape(kin());
   } },
   { name: "palette", run: async () => {
     await page.keyboard.press("Meta+p");

@@ -5,6 +5,7 @@ import { formatShortcuts, isDimmed, openAlternatives, toggleDimRange } from "@ki
 import { Menu } from "@kintsugi/ui/graphical";
 import { stashSelection } from "@kintsugi/editor/stash";
 import { discuss } from "@/lib/chat";
+import { passageAnchor } from "@/comments/api";
 import { ariaKeys, keysOf, matches } from "@/lib/keys";
 import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
 import { passageChips } from "@/kin/screen";
@@ -119,7 +120,7 @@ export function SelectionMenu({ viewRef, path, onRefine }: Props) {
     locked ? [] : [{ id: "stash", label: "Stash", ...key("stash"), run: leave(() => { view.dispatch({ selection: { anchor: from, head: to } }); stashSelection(view); }) }],
     [
       { id: "refine", label: "Edit with Kin…", ...key("refine"), run: leave(() => onRefine(from, to)) },
-      { id: "ask", label: "Ask Kin", ...key("kin"), run: leave(() => discuss(passageChips(view, path, from, to))) },
+      { id: "ask", label: "Ask Kin", ...key("kin"), run: leave(() => discuss(passageChips(view, path, from, to), undefined, { anchor: passageAnchor(view, path, from, to) })) },
     ],
     [
       ...(locked ? [] : [{ id: "cut", label: "Cut", ...key("cut"), run: clip("cut") }]),

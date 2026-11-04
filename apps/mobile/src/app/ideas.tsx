@@ -70,7 +70,7 @@ export default function IdeasScreen() {
       },
       discuss: (idea: LocalIdea) => {
         ideas.discussed(idea.id);
-        router.push({ pathname: '/kin', params: { chips: JSON.stringify([{ kind: 'idea', path: idea.id, label: idea.title }]) } });
+        router.push({ pathname: '/kin', params: { new: '1', chips: JSON.stringify([{ kind: 'idea', path: idea.id, label: idea.title }]) } });
       },
       dismiss: (idea: LocalIdea, undo = false) => {
         ideas.dismiss(idea.id, undo);

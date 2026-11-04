@@ -1,4 +1,4 @@
-import { Offline, type Remote, Unpaired } from '@kintsugi/core/remote';
+import { Offline, Unpaired } from '@kintsugi/core/remote';
 import { randomUUID } from 'expo-crypto';
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -10,6 +10,7 @@ import { syncInspiration, useInspiration } from '@/lib/clip-library';
 import type { Filter } from '@/lib/browse';
 import { captureTarget } from '@/lib/capture-input';
 import { library, useLibrary } from '@/lib/documents';
+import type { PhoneRemote } from '@/lib/kin-api';
 import { unsent } from '@/lib/library';
 import { capture, heldForMacUpdate, outboxWarning, refreshOutbox, send, useOutbox } from '@/lib/outbox';
 import { usePairing } from '@/lib/pairing';
@@ -30,7 +31,7 @@ function saveLabel(text: string): string {
 
 const plural = (n: number, one: string, many: string) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
 
-export function Home({ client, linked }: { client: Remote; linked?: Filter | null }) {
+export function Home({ client, linked }: { client: PhoneRemote; linked?: Filter | null }) {
   const theme = useTheme();
   const { unpair, pairing } = usePairing();
   const outbox = useOutbox();

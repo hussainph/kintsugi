@@ -1,4 +1,4 @@
-import { Offline, type Remote, SECTIONS_API, Unpaired } from '@kintsugi/core/remote';
+import { Offline, SECTIONS_API, Unpaired } from '@kintsugi/core/remote';
 import type { Chip } from '@kintsugi/core/sections';
 import { randomUUID } from 'expo-crypto';
 import Storage from 'expo-sqlite/kv-store';
@@ -7,7 +7,8 @@ import { useSyncExternalStore } from 'react';
 import { library } from './documents';
 import { Feed } from './feed';
 import { Ideas } from './ideas';
-import { Kin } from './kin';
+import { Kin, type Target } from './kin';
+import { type PhoneRemote, THREADS_API } from './kin-api';
 
 /** The phone's Feed, Ideas and Kin, kept in the app's SQLite key-value store. */
 export const feed = new Feed(Storage);
@@ -37,20 +38,24 @@ export const useMacApi = () =>
 
 /** A Mac before API 6 has no Feed, Ideas or Kin for the phone. */
 export const OLD_MAC = 'Update Kintsugi on your Mac to see the Feed, Ideas and Kin here.';
+/** A Mac before API 8 has Kin's one conversation, which this phone no longer reads. */
+export const OLD_KIN = 'Update Kintsugi on your Mac to use Kin here.';
 
 /** Asks the Mac its API version when the phone doesn't know it yet. */
-async function knownApi(client: Remote): Promise<number> {
+async function knownApi(client: PhoneRemote): Promise<number> {
   if (!macApi) setMacApi((await client.hello()).api);
   return macApi;
 }
 
 /** Brings one section up to date. Offline is not a failure here: each
  *  section says so itself. Throws Unpaired. */
-export async function syncSection(client: Remote, section: 'feed' | 'ideas' | 'kin'): Promise<void> {
+export async function syncSection(client: PhoneRemote, section: 'feed' | 'ideas' | 'kin', open?: Target): Promise<void> {
   try {
-    if ((await knownApi(client)) < SECTIONS_API) return;
-    if (section === 'feed') await feed.sync(client, macApi);
-    if (section === 'kin') await kin.sync(client);
+    const api = await knownApi(client);
+    if (api < SECTIONS_API) return;
+    if (section === 'feed') await feed.sync(client, api);
+    // Kin's threads need API 8; an older Mac's messages wait here for the update.
+    if (section === 'kin' && api >= THREADS_API) await kin.sync(client, open);
     if (section === 'ideas') {
       // An adopted idea is a new draft on the Mac: bring it to the phone.
       if ((await ideas.sync(client)).length) await library.sync(client).catch(() => {});
@@ -64,7 +69,7 @@ export async function syncSection(client: Remote, section: 'feed' | 'ideas' | 'k
 
 /** Everything waiting goes, and each copy catches up, when the home screen
  *  loads. */
-export async function syncSections(client: Remote, api: number) {
+export async function syncSections(client: PhoneRemote, api: number) {
   setMacApi(api);
   if (api < SECTIONS_API) return;
   for (const section of ['kin', 'ideas', 'feed'] as const) await syncSection(client, section);

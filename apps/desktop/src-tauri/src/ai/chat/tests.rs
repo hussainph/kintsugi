@@ -1,12 +1,15 @@
-//! The live conversation against scripted models: batching, interrupts,
-//! resumable threads, idle summaries, history search and helper jobs.
+//! The live threads against scripted models: batching, interrupts,
+//! per-thread context, the threads tool, paragraph threads and reviews,
+//! helper jobs, and moving old conversations into threads.
 //! Timings are shortened; nothing calls out or touches a real vault.
 
 use super::*;
 use crate::ai::ModelRef;
 use crate::ai::agent::tests::{answer, calls};
+use crate::ai::threads::Status as ThreadStatus;
 use crate::ai::tools::tests::scratch_vault;
-use crate::ai::wire::Reply;
+use crate::ai::wire::{Exchange, Item, Reply};
+use review::REVIEW_BRIEF;
 use serde_json::json;
 use std::collections::VecDeque;
 use std::time::Instant;
@@ -170,8 +173,6 @@ struct Fixture {
 const FAST: Timing = Timing {
     batch: Duration::from_millis(120),
     typing: Duration::from_millis(250),
-    idle: Duration::from_secs(3600),
-    summary_after: 4,
 };
 
 fn fixture_in(
@@ -225,9 +226,55 @@ fn wait(what: &str, mut done: impl FnMut() -> bool) {
     }
 }
 
+fn all() -> Filter {
+    Filter {
+        resolved: true,
+        ..Filter::default()
+    }
+}
+
 impl Fixture {
+    /// A new thread about the first chip, as the Kin tab starts one.
+    fn ask(&self, text: &str, chips: Vec<Chip>) -> Sent {
+        let anchor = chips.iter().find_map(Anchor::from_chip);
+        self.engine
+            .send(
+                None,
+                text,
+                chips,
+                Start {
+                    anchor,
+                    origin: None,
+                },
+            )
+            .unwrap()
+    }
+
+    fn reply(&self, thread: &str, text: &str) -> Sent {
+        self.engine
+            .send(Some(thread), text, vec![], Start::default())
+            .unwrap()
+    }
+
+    fn thread(&self, id: &str) -> Vec<Entry> {
+        self.engine.thread(id).unwrap().entries
+    }
+
+    /// Every message of every thread, oldest first.
     fn entries(&self) -> Vec<Entry> {
-        self.engine.page(None, None, 500).entries
+        let mut entries: Vec<Entry> = self
+            .engine
+            .list(&all())
+            .threads
+            .iter()
+            .flat_map(|t| self.thread(&t.meta.id))
+            .collect();
+        entries.sort_by(|a, b| {
+            chrono::DateTime::parse_from_rfc3339(&a.at)
+                .unwrap()
+                .cmp(&chrono::DateTime::parse_from_rfc3339(&b.at).unwrap())
+        });
+        entries
     }
 
     fn kin_replies(&self) -> Vec<Entry> {
@@ -241,14 +288,20 @@ impl Fixture {
         wait(&format!("{n} Kin replies"), || {
             self.kin_replies().len() >= n
         });
-        wait("the turn to end", || {
-            self.engine.page(None, None, 1).running.is_none()
-        });
+        wait("the turns to end", || self.engine.running().is_empty());
         self.kin_replies()
     }
 
     fn events(&self) -> Vec<ChatEvent> {
         self.events.lock().unwrap().clone()
+    }
+
+    fn talking(&self, starting: &str) -> bool {
+        self.events().iter().any(|e| matches!(e, ChatEvent::Turn { event: KinEvent::Text { delta }, .. } if delta.starts_with(starting)))
+    }
+
+    fn vault(&self) -> PathBuf {
+        self.engine.0.brain.vault().unwrap()
     }
 }
 
@@ -268,28 +321,52 @@ fn doc(path: &str, label: &str) -> Chip {
     }
 }
 
+fn clip(path: &str) -> Chip {
+    Chip {
+        kind: "clip".into(),
+        path: path.into(),
+        label: None,
+        lines: None,
+    }
+}
+
 #[test]
-fn a_burst_of_messages_is_one_turn() {
+fn a_burst_of_messages_in_a_thread_is_one_turn() {
     let f = fixture(vec![answer("Both, briefly.")], Duration::ZERO);
-    let a = f
-        .engine
-        .send(
-            "Is the opening too slow?",
-            vec![doc("drafts/tools.mdx", "Tools")],
-        )
-        .unwrap();
-    let b = f.engine.send("And is the title right?", vec![]).unwrap();
-    assert!(f.engine.send("   ", vec![]).is_err());
-    // Both are in the log at once, before Kin says anything.
-    assert_eq!(f.engine.page(None, None, 10).pending, [a.seq, b.seq]);
+    let a = f.ask(
+        "Is the opening too slow?",
+        vec![doc("drafts/tools.mdx", "Tools")],
+    );
+    let thread = a.thread.id.clone();
+    assert_eq!(a.thread.title, "Is the opening too slow?");
+    assert_eq!(
+        a.thread
+            .anchor
+            .as_ref()
+            .map(|a| (a.kind.as_str(), a.path.as_str())),
+        Some(("doc", "drafts/tools.mdx"))
+    );
+    let b = f.reply(&thread, "And is the title right?");
+    assert!(
+        f.engine
+            .send(Some(&thread), "   ", vec![], Start::default())
+            .is_err()
+    );
+    assert!(
+        f.engine
+            .send(Some("t-nope"), "Hi", vec![], Start::default())
+            .is_err()
+    );
+    // Both are on disk at once, before Kin says anything.
+    assert_eq!(
+        f.engine.thread(&thread).unwrap().pending,
+        [a.entry.seq, b.entry.seq]
+    );
 
     let replies = f.wait_replies(1);
-    assert_eq!(replies[0].answers, [a.seq, b.seq]);
+    assert_eq!(replies[0].answers, [a.entry.seq, b.entry.seq]);
     assert_eq!(replies[0].text, "Both, briefly.");
-    assert_eq!(
-        replies[0].topic, "drafts/tools.mdx",
-        "the second message stays on the draft"
-    );
+    assert_eq!(replies[0].thread, thread);
     let seen = f.script.seen();
     assert_eq!(seen.len(), 1, "one turn, one request");
     let message = last_user(&seen[0]);
@@ -301,7 +378,11 @@ fn a_burst_of_messages_is_one_turn() {
         message.contains("- doc drafts/tools.mdx (Tools)"),
         "chips go in the dynamic context: {message}"
     );
-    assert!(f.engine.page(None, None, 10).pending.is_empty());
+    assert!(
+        message.contains("This thread is about the document drafts/tools.mdx"),
+        "{message}"
+    );
+    assert!(f.engine.thread(&thread).unwrap().pending.is_empty());
     // The prefix carries the memory snapshot and the fixed tool list.
     assert!(seen[0].system.contains("- Likes short essays."));
     assert_eq!(seen[0].tools, crate::ai::tools::specs().len());
@@ -311,6 +392,92 @@ fn a_burst_of_messages_is_one_turn() {
         .filter(|e| matches!(e, ChatEvent::TurnStarted { .. }))
         .collect();
     assert_eq!(started.len(), 1);
+    // On disk: one file for the thread, and the index naming it.
+    let dir = f.vault().join(".kintsugi/kin/threads");
+    let file = std::fs::read_to_string(dir.join(format!("{thread}.jsonl"))).unwrap();
+    assert_eq!(file.lines().count(), 3);
+    assert!(
+        std::fs::read_to_string(dir.join("index.json"))
+            .unwrap()
+            .contains(&thread)
+    );
+}
+
+/// KI-104: nothing is inferred. Each new ask is its own thread, and a turn
+/// carries only its own thread's exchanges.
+#[test]
+fn each_ask_starts_its_own_thread_with_its_own_context() {
+    let f = fixture(
+        vec![
+            answer("About the draft."),
+            answer("About the clip."),
+            answer("Nothing in particular."),
+            answer("Back on the draft."),
+        ],
+        Duration::ZERO,
+    );
+    let draft = doc("drafts/x.md", "Draft X");
+    let x = f.ask("What's weak in this draft?", vec![draft.clone()]);
+    f.wait_replies(1);
+    let k = f.ask(
+        "Why did I keep this?",
+        vec![clip("inspiration/clip-kiln.md")],
+    );
+    f.wait_replies(2);
+    // The same words with nothing on screen: a new thread, about nothing.
+    let g = f.ask("What's weak in this draft?", vec![]);
+    f.wait_replies(3);
+    assert_ne!(x.thread.id, g.thread.id);
+    assert!(g.thread.anchor.is_none());
+    // Back in draft X's thread: the model sees its exchange only.
+    f.reply(&x.thread.id, "Did I fix it?");
+    let replies = f.wait_replies(4);
+    assert_eq!(replies[3].thread, x.thread.id);
+    let seen = f.script.seen();
+    assert_eq!(seen[1].items.len(), 1, "a new thread starts with nothing");
+    assert_eq!(seen[2].items.len(), 1);
+    let items = &seen[3].items;
+    assert_eq!(items.len(), 3, "{items:?}");
+    assert_eq!(items[0], Item::User("What's weak in this draft?".into()));
+    assert_eq!(
+        items[1],
+        Item::Assistant {
+            text: "About the draft.".into(),
+            calls: vec![]
+        }
+    );
+    assert!(last_user(&seen[3]).starts_with("Did I fix it?"));
+    // The prefix is the same for every thread: a cache hit.
+    assert!(seen.windows(2).all(|w| w[0].system == w[1].system));
+    let list = f.engine.list(&Filter::default()).threads;
+    assert_eq!(list.len(), 3);
+    assert_eq!(list[0].meta.id, x.thread.id, "newest first");
+    let about = f.engine.list(&Filter {
+        about: Some("inspiration/clip-kiln.md".into()),
+        ..Filter::default()
+    });
+    assert_eq!(about.threads.len(), 1);
+    assert_eq!(about.threads[0].meta.id, k.thread.id);
+    assert_eq!(f.thread(&x.thread.id).len(), 4);
+}
+
+#[test]
+fn threads_answer_on_their_own() {
+    let f = fixture(
+        vec![
+            answer("one two three four five six seven eight nine ten"),
+            answer("Quick."),
+        ],
+        Duration::from_millis(40),
+    );
+    let slow = f.ask("A slow one", vec![]);
+    wait("Kin to start the first", || f.talking("two"));
+    // Another thread doesn't interrupt the first.
+    let quick = f.ask("A quick one", vec![]);
+    let replies = f.wait_replies(2);
+    assert!(replies.iter().all(|r| !r.interrupted), "{replies:?}");
+    assert_eq!(f.thread(&slow.thread.id)[1].text.split(' ').count(), 10);
+    assert_eq!(f.thread(&quick.thread.id)[1].text, "Quick.");
 }
 
 /// KI-78: a reply keeps the web searches and pages its turn used, for the
@@ -336,9 +503,7 @@ fn a_reply_keeps_its_web_sources() {
         Duration::ZERO,
     );
     *f.web.lock().unwrap() = true;
-    f.engine
-        .send("What do others say about golden joinery?", vec![])
-        .unwrap();
+    f.ask("What do others say about golden joinery?", vec![]);
     let reply = f.wait_replies(1).remove(0);
     assert_eq!(reply.text, "Two sources say so.");
     assert_eq!(reply.web.len(), 2);
@@ -352,7 +517,6 @@ fn a_reply_keeps_its_web_sources() {
     );
     let seen = f.script.seen();
     assert_eq!(seen[0].tools, crate::ai::tools::specs_with_web().len());
-    // Sources are for the chat; the next turn's history carries only text.
     let line = serde_json::to_value(&reply).unwrap();
     assert_eq!(line["web"][0]["results"][0]["date"], "2025-06-14");
     // KI-79: and the tools it used, in order, with how long it took.
@@ -366,15 +530,15 @@ fn a_reply_keeps_its_web_sources() {
     assert_eq!(line["tools"][1]["name"], "web_fetch");
     assert!(
         line.get("capReached").is_none(),
-        "false flags stay out of the log"
+        "false flags stay out of the thread"
     );
 }
 
-/// KI-79: a long argument is cut before it reaches the log.
+/// KI-79: a long argument is cut before it's kept.
 #[test]
 fn a_tool_use_cuts_long_strings() {
     let long = "x".repeat(500);
-    let used = history::ToolUse::new("read", &json!({ "path": long, "n": 3 }));
+    let used = threads::ToolUse::new("read", &json!({ "path": long, "n": 3 }));
     assert_eq!(
         used.arguments["path"].as_str().unwrap().chars().count(),
         201
@@ -391,12 +555,10 @@ fn typing_interrupts_kin_and_the_next_turn_answers_everything_waiting() {
         vec![slow, answer("Answered both.")],
         Duration::from_millis(60),
     );
-    let first = f.engine.send("Tell me about kilns", vec![]).unwrap();
-    // Wait until Kin is mid-sentence.
-    wait("Kin to start talking", || {
-        f.events().iter().any(|e| matches!(e, ChatEvent::Turn { event: KinEvent::Text { delta }, .. } if delta.starts_with("three")))
-    });
-    f.engine.typing();
+    let first = f.ask("Tell me about kilns", vec![]);
+    let id = first.thread.id.clone();
+    wait("Kin to start talking", || f.talking("three"));
+    f.engine.typing(&id);
     let replies = f.wait_replies(1);
     assert!(replies[0].interrupted);
     assert!(
@@ -406,13 +568,10 @@ fn typing_interrupts_kin_and_the_next_turn_answers_everything_waiting() {
     );
     assert!(!replies[0].text.contains("sixteen"));
     // Still waiting: the interrupted message is answered with the next one.
-    assert_eq!(f.engine.page(None, None, 10).pending, [first.seq]);
-    let second = f
-        .engine
-        .send("Actually, only Japanese ones", vec![])
-        .unwrap();
+    assert_eq!(f.engine.thread(&id).unwrap().pending, [first.entry.seq]);
+    let second = f.reply(&id, "Actually, only Japanese ones");
     let replies = f.wait_replies(2);
-    assert_eq!(replies[1].answers, [first.seq, second.seq]);
+    assert_eq!(replies[1].answers, [first.entry.seq, second.entry.seq]);
     assert!(!replies[1].interrupted);
     let seen = f.script.seen();
     assert_eq!(seen.len(), 2);
@@ -425,19 +584,9 @@ fn typing_interrupts_kin_and_the_next_turn_answers_everything_waiting() {
 fn typing_without_sending_lets_waiting_messages_be_answered_after_a_pause() {
     let slow = answer("a b c d e f g h i j k l m n o p");
     let f = fixture(vec![slow, answer("Done.")], Duration::from_millis(60));
-    f.engine.send("Question", vec![]).unwrap();
-    wait("Kin to start", || {
-        f.events().iter().any(|e| {
-            matches!(
-                e,
-                ChatEvent::Turn {
-                    event: KinEvent::Text { .. },
-                    ..
-                }
-            )
-        })
-    });
-    f.engine.typing();
+    let id = f.ask("Question", vec![]).thread.id;
+    wait("Kin to start", || f.talking(""));
+    f.engine.typing(&id);
     let replies = f.wait_replies(2);
     assert!(replies[0].interrupted && !replies[1].interrupted);
     assert_eq!(replies[1].text, "Done.");
@@ -449,30 +598,42 @@ fn stop_ends_the_turn_and_settles_its_messages() {
         vec![answer("a b c d e f g h i j k l m n o p q r s t")],
         Duration::from_millis(60),
     );
-    f.engine.send("Question", vec![]).unwrap();
-    wait("Kin to start", || {
-        f.events().iter().any(|e| {
-            matches!(
-                e,
-                ChatEvent::Turn {
-                    event: KinEvent::Text { .. },
-                    ..
-                }
-            )
-        })
-    });
-    f.engine.stop();
+    let id = f.ask("Question", vec![]).thread.id;
+    wait("Kin to start", || f.talking(""));
+    f.engine.stop(&id);
     let replies = f.wait_replies(1);
     assert!(replies[0].interrupted);
-    assert!(f.engine.page(None, None, 10).pending.is_empty());
+    assert!(f.engine.thread(&id).unwrap().pending.is_empty());
     std::thread::sleep(FAST.typing * 2);
     assert_eq!(f.script.seen().len(), 1, "no new turn after a stop");
 }
 
 #[test]
-fn a_conversation_runs_on_the_model_picked_for_it() {
+fn ask_again_answers_his_last_message_once_more() {
+    let f = fixture(vec![], Duration::ZERO);
+    let id = f.ask("Hello?", vec![]).thread.id;
+    let failed = f.wait_replies(1);
+    assert_eq!(
+        failed[0].error.as_deref(),
+        Some("the script ran out of replies")
+    );
+    assert!(f.engine.thread(&id).unwrap().pending.is_empty());
+    f.script.push(answer("Hi."));
+    let again = f.engine.again(&id).unwrap().unwrap();
+    assert_eq!(again.text, "Hello?");
+    let replies = f.wait_replies(2);
+    assert_eq!(replies[1].text, "Hi.");
+    assert_eq!(replies[1].answers, [again.seq]);
+}
+
+#[test]
+fn a_thread_runs_on_the_model_picked_for_it() {
     let f = fixture(
-        vec![answer("On the light model."), answer("On the default.")],
+        vec![
+            answer("On the light model."),
+            answer("On the default."),
+            answer("On what he picked before sending."),
+        ],
         Duration::ZERO,
     );
     let light = ModelRef {
@@ -480,19 +641,12 @@ fn a_conversation_runs_on_the_model_picked_for_it() {
         model: "glm-5.3-flash".into(),
         reasoning: None,
     };
-    let dir = crate::ai::history::vault_dir(f._vault.path()).unwrap();
-    crate::ai::picks::set(&dir, "drafts/x.md", Some(light.clone())).unwrap();
-    crate::ai::picks::set_effort(&dir, "drafts/x.md", Some("high".into())).unwrap();
-    f.engine
-        .send("Tighten this?", vec![doc("drafts/x.md", "Draft X")])
-        .unwrap();
+    let first = f.ask("Tighten this?", vec![doc("drafts/x.md", "Draft X")]);
+    let dir = crate::ai::threads::vault_dir(f._vault.path()).unwrap();
+    crate::ai::picks::set(&dir, &first.thread.id, Some(light.clone())).unwrap();
+    crate::ai::picks::set_effort(&dir, &first.thread.id, Some("high".into())).unwrap();
     f.wait_replies(1);
-    f.engine
-        .send(
-            "Unrelated: what's a kiln?",
-            vec![doc("drafts/y.md", "Draft Y")],
-        )
-        .unwrap();
+    f.ask("Unrelated: what's a kiln?", vec![]);
     f.wait_replies(2);
     assert_eq!(
         *f.connected.lock().unwrap(),
@@ -501,164 +655,71 @@ fn a_conversation_runs_on_the_model_picked_for_it() {
                 Task::Chat,
                 Some(crate::ai::picks::Pick {
                     reasoning: Some("high".into()),
-                    ..crate::ai::picks::Pick::with_model(light)
+                    ..crate::ai::picks::Pick::with_model(light.clone())
                 })
             ),
             (Task::Chat, None)
         ]
     );
-}
-
-#[test]
-fn threads_resume_with_their_own_history() {
-    let f = fixture(
-        vec![
-            answer("About the draft."),
-            answer("About the clip."),
-            answer("Back on the draft."),
-        ],
-        Duration::ZERO,
-    );
-    let draft = doc("drafts/x.md", "Draft X");
-    f.engine
-        .send("What's weak in this draft?", vec![draft.clone()])
-        .unwrap();
-    f.wait_replies(1);
-    f.engine
-        .send(
-            "Why did I keep this?",
-            vec![Chip {
-                kind: "clip".into(),
-                path: "inspiration/clip-kiln.md".into(),
-                label: None,
-                lines: None,
-            }],
-        )
-        .unwrap();
-    f.wait_replies(2);
-    // Back to draft X: the model sees that thread's exchange, not the clip's.
-    f.engine.send("Did I fix it?", vec![draft]).unwrap();
-    let replies = f.wait_replies(3);
-    assert_eq!(replies[2].topic, "drafts/x.md");
-    let seen = f.script.seen();
-    let items = &seen[2].items;
-    assert_eq!(items.len(), 3, "{items:?}");
-    assert_eq!(items[0], Item::User("What's weak in this draft?".into()));
-    assert_eq!(
-        items[1],
-        Item::Assistant {
-            text: "About the draft.".into(),
-            calls: vec![]
-        }
-    );
-    assert!(last_user(&seen[2]).starts_with("Did I fix it?"));
-    // The prefix is the same for every thread: a cache hit.
-    assert!(seen.windows(2).all(|w| w[0].system == w[1].system));
-    let threads: Vec<String> = f
-        .engine
-        .page(None, None, 1)
-        .threads
-        .into_iter()
-        .map(|t| t.key)
-        .collect();
-    assert_eq!(threads, ["drafts/x.md", "inspiration/clip-kiln.md"]);
-    assert_eq!(
-        f.engine.page(Some("drafts/x.md"), None, 100).entries.len(),
-        4
-    );
-}
-
-#[test]
-fn summaries_are_made_while_idle_and_used_to_resume() {
-    let timing = Timing {
-        idle: Duration::from_millis(200),
-        ..FAST
-    };
-    let f = fixture_in(
-        None,
-        vec![answer("One."), answer("Two.")],
-        Duration::ZERO,
-        timing,
-    );
-    let draft = doc("drafts/x.md", "Draft X");
-    f.engine.send("First", vec![draft.clone()]).unwrap();
-    f.wait_replies(1);
-    f.engine.send("Second", vec![draft.clone()]).unwrap();
-    f.wait_replies(2);
-    // Four entries in the thread; once idle, it's summarized.
-    f.script.push(answer(
-        "Asked twice about draft X; Kin answered One and Two.",
-    ));
-    wait("an idle summary", || {
-        f.events()
-            .iter()
-            .any(|e| matches!(e, ChatEvent::Thread { .. }))
-    });
-    let seen = f.script.seen();
-    let request = seen.last().unwrap();
-    assert!(request.system.starts_with(SUMMARIZER));
-    assert!(request.system.ends_with(crate::ai::writing::rules()));
-    assert_eq!(request.tools, 0);
-    let Item::User(prompt) = &request.items[0] else {
-        panic!()
-    };
-    assert!(
-        prompt.contains("Hussain: First\nKin: One.\nHussain: Second\nKin: Two."),
-        "{prompt}"
-    );
-    let thread = f
-        .engine
-        .page(None, None, 1)
-        .threads
-        .into_iter()
-        .find(|t| t.key == "drafts/x.md")
-        .unwrap();
-    assert_eq!(
-        thread.summary,
-        "Asked twice about draft X; Kin answered One and Two."
-    );
-    assert_eq!(thread.summarized_through, 4);
-
-    // Resuming sends the summary instead of the old exchanges.
-    f.script.push(answer("Three."));
-    f.engine.send("Third", vec![draft]).unwrap();
+    // Picked in a new thread's composer (`""`): that thread takes it, and
+    // the next new thread starts from the defaults.
+    crate::ai::picks::set(&dir, "", Some(light.clone())).unwrap();
+    let third = f.ask("A third thread", vec![]);
     f.wait_replies(3);
-    let seen = f.script.seen();
-    let last = seen.last().unwrap();
-    assert_eq!(last.items.len(), 1);
-    assert!(last_user(last).contains(
-        "Earlier in this conversation (your summary; search history for details):\nAsked twice"
-    ));
-    // Nothing was deleted.
-    assert_eq!(f.entries().len(), 6);
+    assert_eq!(
+        f.connected.lock().unwrap().last().unwrap().1,
+        Some(crate::ai::picks::Pick::with_model(light))
+    );
+    assert!(crate::ai::picks::get(&dir, &third.thread.id).is_some());
+    assert!(crate::ai::picks::get(&dir, "").is_none());
 }
 
 #[test]
-fn summaries_wait_while_he_is_active() {
-    // The idle timer is fired by hand (FAST's idle never elapses here), so
-    // the outcome can't depend on how quickly this thread gets to type.
-    let timing = Timing {
-        summary_after: 2,
-        ..FAST
-    };
-    let f = fixture_in(None, vec![answer("One.")], Duration::ZERO, timing);
-    f.engine.send("First", vec![]).unwrap();
+fn resolving_keeps_a_thread_findable_and_a_reply_reopens_it() {
+    let f = fixture(vec![answer("Done."), answer("Reopened.")], Duration::ZERO);
+    let id = f
+        .ask(
+            "Does the anagama ending work?",
+            vec![doc("drafts/x.md", "X")],
+        )
+        .thread
+        .id;
     f.wait_replies(1);
-    let idle_from = f.engine.0.live.lock().unwrap().activity;
-    // He types after the turn: the timer set when it ended does nothing.
-    f.engine.typing();
-    async_runtime::block_on(f.engine.idle_since(idle_from));
-    assert_eq!(f.script.seen().len(), 1);
-    // Left alone from here, the same thread is summarized.
-    f.script.push(answer("Asked once; Kin said One."));
-    let quiet = f.engine.0.live.lock().unwrap().activity;
-    async_runtime::block_on(f.engine.idle_since(quiet));
-    assert_eq!(f.script.seen().len(), 2);
-    assert!(f.script.seen()[1].system.starts_with(SUMMARIZER));
+    let renamed = f.engine.set_title(&id, "  The ending  ").unwrap();
+    assert_eq!(
+        (renamed.title.as_str(), renamed.titled),
+        ("The ending", true)
+    );
+    f.engine.set_status(&id, ThreadStatus::Resolved).unwrap();
+    assert!(f.engine.list(&Filter::default()).threads.is_empty());
+    let found = f.engine.list(&Filter {
+        query: Some("anagama".into()),
+        resolved: true,
+        ..Filter::default()
+    });
+    assert_eq!(found.threads.len(), 1);
+    assert!(
+        found.threads[0]
+            .hit
+            .as_deref()
+            .is_some_and(|h| h.contains("anagama"))
+    );
+    f.reply(&id, "One more thing.");
+    f.wait_replies(2);
+    let meta = f.engine.thread(&id).unwrap().thread;
+    assert_eq!(meta.status, ThreadStatus::Open);
+    assert_eq!(meta.title, "The ending", "his title stays");
+    assert!(
+        f.engine
+            .set_title(&id, "")
+            .unwrap()
+            .title
+            .starts_with("Does the")
+    );
 }
 
 #[test]
-fn kin_searches_its_history_with_a_tool() {
+fn kin_finds_earlier_threads_with_a_tool() {
     let f = fixture(
         vec![
             answer("Noted."),
@@ -666,7 +727,15 @@ fn kin_searches_its_history_with_a_tool() {
                 &[(
                     "c1",
                     "tool",
-                    json!({ "name": "history", "args": { "query": "anagama" } }),
+                    json!({ "name": "threads", "args": { "query": "anagama" } }),
+                )],
+                "",
+            ),
+            calls(
+                &[(
+                    "c2",
+                    "tool",
+                    json!({ "name": "threads", "args": { "id": "PLACEHOLDER" } }),
                 )],
                 "",
             ),
@@ -674,43 +743,58 @@ fn kin_searches_its_history_with_a_tool() {
         ],
         Duration::ZERO,
     );
-    f.engine.send("Remember the anagama kilns", vec![]).unwrap();
+    let earlier = f.ask("Remember the anagama kilns", vec![]).thread.id;
     f.wait_replies(1);
-    f.engine.send("What did I ask before?", vec![]).unwrap();
+    // Kin reads the thread it found by id.
+    {
+        let mut replies = f.script.replies.lock().unwrap();
+        replies[1] = calls(
+            &[(
+                "c2",
+                "tool",
+                json!({ "name": "threads", "args": { "id": earlier } }),
+            )],
+            "",
+        );
+    }
+    f.ask("What did I ask before?", vec![]);
     f.wait_replies(2);
     let seen = f.script.seen();
-    let Some(Item::Results(results)) = seen[2].items.last() else {
+    let Some(Item::Results(found)) = seen[2].items.last() else {
         panic!("expected results")
     };
     assert!(
-        results[0]
-            .content
-            .contains("Hussain: Remember the anagama kilns"),
+        found[0].content.contains(&earlier)
+            && found[0].content.contains("Remember the anagama kilns"),
         "{}",
-        results[0].content
+        found[0].content
     );
-    assert!(results[0].content.starts_with("<data tool=\"tool\">"));
-    assert_eq!(f.engine.search("anagama", None, 10).len(), 2);
+    assert!(found[0].content.starts_with("<data tool=\"tool\">"));
+    assert!(
+        !found[0].content.contains("What did I ask before"),
+        "not the thread it's in"
+    );
+    let Some(Item::Results(read)) = seen[3].items.last() else {
+        panic!("expected results")
+    };
+    assert!(
+        read[0]
+            .content
+            .contains("Hussain:\nRemember the anagama kilns")
+            && read[0].content.contains("Kin:\nNoted."),
+        "{}",
+        read[0].content
+    );
 }
 
 #[test]
-fn errors_are_logged_and_settle_the_turn() {
-    let f = fixture(vec![], Duration::ZERO);
-    f.engine.send("Hello?", vec![]).unwrap();
-    let replies = f.wait_replies(1);
-    assert_eq!(
-        replies[0].error.as_deref(),
-        Some("the script ran out of replies")
-    );
-    assert!(f.engine.page(None, None, 10).pending.is_empty());
-}
-
-#[test]
-fn helper_jobs_run_in_the_background_and_report_quietly() {
+fn helper_jobs_report_in_their_own_thread_or_the_one_that_asked() {
     let f = fixture(
         vec![
             calls(&[("c1", "search", json!({ "query": "kiln" }))], ""),
             answer("Three kiln clips; ranked posts/kintsugi.md first."),
+            answer("Asked for it."),
+            answer("Found it, in the thread that asked."),
         ],
         Duration::ZERO,
     );
@@ -720,7 +804,8 @@ fn helper_jobs_run_in_the_background_and_report_quietly() {
             kind: "feed-ranking".into(),
             task: Some("triage".into()),
             brief: "Rank today's kiln items.".into(),
-            topic: Some("inspiration/clip-kiln.md".into()),
+            about: Some("posts/kintsugi.md".into()),
+            thread: None,
         })
         .unwrap();
     assert!(
@@ -729,7 +814,8 @@ fn helper_jobs_run_in_the_background_and_report_quietly() {
                 kind: "x".into(),
                 task: Some("edit".into()),
                 brief: "b".into(),
-                topic: None
+                about: None,
+                thread: None,
             })
             .is_err()
     );
@@ -748,7 +834,7 @@ fn helper_jobs_run_in_the_background_and_report_quietly() {
         .map(|s| (s.step, s.tools.clone()))
         .collect();
     assert_eq!(steps, [(1, vec!["search".to_string()]), (2, vec![])]);
-    // Its own context: the brief and the memory snapshot, nothing of the chat.
+    // Its own context: the brief and the memory snapshot, nothing else.
     let seen = f.script.seen();
     assert!(
         seen[0].system.contains("Likes short essays.")
@@ -761,24 +847,48 @@ fn helper_jobs_run_in_the_background_and_report_quietly() {
             && brief.contains("Brief (feed-ranking):\nRank today's kiln items."),
         "{brief}"
     );
-    // It reported back quietly, in the log, and nothing waits for Kin.
-    let report = f
-        .entries()
-        .into_iter()
-        .find(|e| e.role == Role::Helper)
-        .unwrap();
+    // It reported back in a thread of its own, about what it was about.
+    let threads = f.engine.list(&Filter::default()).threads;
+    assert_eq!(threads.len(), 1);
+    let own = &threads[0].meta;
+    assert_eq!(own.origin, "helper");
+    assert_eq!(own.anchor.as_ref().unwrap().path, "posts/kintsugi.md");
+    let report = &f.thread(&own.id)[0];
     assert_eq!(
-        (report.job.as_deref(), report.topic.as_str()),
-        (Some(job.id.as_str()), "inspiration/clip-kiln.md")
+        (report.role, report.job.as_deref()),
+        (Role::Helper, Some(job.id.as_str()))
     );
-    assert!(f.engine.page(None, None, 10).pending.is_empty());
     assert!(
         f.events()
             .iter()
             .any(|e| matches!(e, ChatEvent::Job { job } if job.status == Status::Running))
     );
-    // Its cost went on the ledger as the triage task.
     assert_eq!(f.engine.0.brain.meter.report().by_task[0].task, "triage");
+
+    // A job a thread asked for reports there.
+    let asking = f.ask("Can a helper look?", vec![]).thread.id;
+    f.wait_replies(1);
+    f.engine
+        .create_job(NewJob {
+            kind: "search".into(),
+            task: None,
+            brief: "Look for it.".into(),
+            about: None,
+            thread: Some(asking.clone()),
+        })
+        .unwrap();
+    wait("the second report", || f.thread(&asking).len() == 3);
+    assert_eq!(f.thread(&asking)[2].role, Role::Helper);
+    assert_eq!(f.engine.list(&Filter::default()).threads.len(), 2);
+    // His next message there sees the report as part of the thread.
+    f.script.push(answer("Using the report."));
+    f.reply(&asking, "Thanks, and?");
+    f.wait_replies(2);
+    let last = f.script.seen().last().unwrap().items.clone();
+    assert!(
+        last.iter().any(|i| matches!(i, Item::Assistant { text, .. } if text == "Found it, in the thread that asked.")),
+        "{last:?}"
+    );
 }
 
 /// KI-81: helpers run unattended, so they get the web tools only while
@@ -794,7 +904,8 @@ fn helpers_get_the_web_only_when_allowed() {
         kind: "ideas".into(),
         task: Some("ideas".into()),
         brief: brief.into(),
-        topic: None,
+        about: None,
+        thread: None,
     };
     f.engine.create_job(job("Today's ideas.")).unwrap();
     wait("the first job", || {
@@ -813,6 +924,24 @@ fn helpers_get_the_web_only_when_allowed() {
     let seen = f.script.seen();
     assert_eq!(seen[0].tools, crate::ai::tools::specs().len());
     assert_eq!(seen[1].tools, crate::ai::tools::specs_with_web().len());
+    let titles: Vec<_> = f
+        .engine
+        .list(&Filter::default())
+        .threads
+        .into_iter()
+        .map(|t| t.meta.title)
+        .collect();
+    assert_eq!(titles, ["New ideas", "New ideas"]);
+}
+
+fn job(kind: &str, brief: &str) -> NewJob {
+    NewJob {
+        kind: kind.into(),
+        task: Some("ideas".into()),
+        brief: brief.into(),
+        about: None,
+        thread: None,
+    }
 }
 
 #[test]
@@ -820,14 +949,7 @@ fn a_helper_that_never_reports_says_why() {
     let mut empty = answer("");
     empty.stop_reason = Some("length".into());
     let f = fixture(vec![empty.clone(), empty], Duration::ZERO);
-    f.engine
-        .create_job(NewJob {
-            kind: "ideas".into(),
-            task: Some("ideas".into()),
-            brief: "Find ideas.".into(),
-            topic: None,
-        })
-        .unwrap();
+    f.engine.create_job(job("ideas", "Find ideas.")).unwrap();
     wait("the job to fail", || {
         f.engine.jobs()[0].status == Status::Failed
     });
@@ -849,14 +971,7 @@ fn helper_jobs_wait_at_the_cap_and_resume_when_it_allows() {
         .meter
         .update_settings(|s| s.monthly_cap_usd = Some(0.0))
         .unwrap();
-    f.engine
-        .create_job(NewJob {
-            kind: "ideas".into(),
-            task: Some("ideas".into()),
-            brief: "Find ideas.".into(),
-            topic: None,
-        })
-        .unwrap();
+    f.engine.create_job(job("ideas", "Find ideas.")).unwrap();
     wait("the job to wait", || {
         f.engine.jobs()[0].status == Status::Waiting
     });
@@ -889,7 +1004,8 @@ fn jobs_survive_quitting_and_resume_on_start() {
                     kind: "search".into(),
                     task: None,
                     brief: "Find every kiln.".into(),
-                    topic: None,
+                    about: None,
+                    thread: None,
                 },
                 "chat",
             )
@@ -911,11 +1027,12 @@ fn jobs_survive_quitting_and_resume_on_start() {
         (job.attempts, job.result.as_deref()),
         (2, Some("Found two kilns."))
     );
-    // The table lives in app data, the conversation in the vault.
+    // The table lives in app data, the threads in the vault.
     assert!(data.path().join("jobs.json").is_file());
     assert!(!data.path().join("conversation").exists());
-    let vault = f.engine.0.brain.vault().unwrap();
-    assert!(vault.join(".kintsugi/kin/log.jsonl").is_file());
+    wait("the report", || {
+        f.vault().join(".kintsugi/kin/threads/index.json").is_file()
+    });
 }
 
 #[test]
@@ -926,26 +1043,8 @@ fn a_running_job_can_be_cancelled() {
         )],
         Duration::from_millis(50),
     );
-    let job = f
-        .engine
-        .create_job(NewJob {
-            kind: "ideas".into(),
-            task: None,
-            brief: "Long work.".into(),
-            topic: None,
-        })
-        .unwrap();
-    wait("the job to start", || {
-        f.events().iter().any(|e| {
-            matches!(
-                e,
-                ChatEvent::Turn {
-                    event: KinEvent::Text { .. },
-                    ..
-                }
-            )
-        })
-    });
+    let job = f.engine.create_job(job("ideas", "Long work.")).unwrap();
+    wait("the job to start", || f.talking(""));
     f.engine.cancel_job(&job.id);
     wait("the job to stop", || {
         f.engine.jobs()[0].status == Status::Cancelled
@@ -969,14 +1068,7 @@ fn a_finished_job_goes_through_its_owner_with_a_footprint() {
         ],
         Duration::ZERO,
     );
-    f.engine
-        .create_job(NewJob {
-            kind: "rewrite".into(),
-            task: Some("ideas".into()),
-            brief: "Find ideas.".into(),
-            topic: None,
-        })
-        .unwrap();
+    f.engine.create_job(job("rewrite", "Find ideas.")).unwrap();
     wait("the job to finish", || {
         f.engine
             .jobs()
@@ -1003,15 +1095,8 @@ fn a_finished_job_goes_through_its_owner_with_a_footprint() {
         )
     );
     assert_eq!(trace.model, "anthropic/claude-sonnet-5-5");
-    // The owner can fail it; the log says so.
-    f.engine
-        .create_job(NewJob {
-            kind: "reject".into(),
-            task: Some("ideas".into()),
-            brief: "Find more.".into(),
-            topic: None,
-        })
-        .unwrap();
+    // The owner can fail it; its thread says so.
+    f.engine.create_job(job("reject", "Find more.")).unwrap();
     wait("the job to fail", || {
         f.engine.jobs()[0].status == Status::Failed
     });
@@ -1019,28 +1104,22 @@ fn a_finished_job_goes_through_its_owner_with_a_footprint() {
         f.engine.jobs()[0].error.as_deref(),
         Some("Nothing passed the checks.")
     );
-    let report = f
-        .entries()
-        .into_iter()
-        .rev()
-        .find(|e| e.role == Role::Helper)
-        .unwrap();
-    assert!(
-        report.text.contains("Nothing passed the checks."),
-        "{}",
-        report.text
-    );
+    wait("the failure report", || {
+        f.entries()
+            .iter()
+            .any(|e| e.role == Role::Helper && e.text.contains("Nothing passed the checks."))
+    });
 }
 
-// --- Comment threads (KI-38) -------------------------------------------------
+// --- Threads on paragraphs (KI-38's comments) -------------------------------
 
-mod comment_threads {
+mod paragraphs {
     use super::*;
-    use crate::ai::chat::comments::Paragraph;
-    use crate::ai::comments::{Anchor, Moved, Status};
+    use crate::ai::chat::review::Paragraph;
+    use crate::ai::threads::Quote;
 
-    fn pencil() -> Anchor {
-        Anchor {
+    fn pencil() -> Quote {
+        Quote {
             exact: "A pencil is a tool for thinking.".into(),
             prefix: "---\n\n".into(),
             suffix: "\n".into(),
@@ -1057,70 +1136,49 @@ mod comment_threads {
         }
     }
 
-    fn vault(f: &Fixture) -> PathBuf {
-        f.engine.0.brain.vault().unwrap()
+    fn on_pencil() -> Start {
+        Start {
+            anchor: Some(Anchor {
+                kind: "paragraph".into(),
+                path: "drafts/tools.mdx".into(),
+                label: None,
+                quote: Some(pencil()),
+                orphaned: false,
+            }),
+            origin: Some("mention".into()),
+        }
     }
 
-    fn settled(f: &Fixture) {
-        wait("comment turns to end", || {
-            f.engine
-                .comments("drafts/tools.mdx")
-                .unwrap()
-                .running
-                .is_empty()
-        });
+    fn ask(f: &Fixture, text: &str) -> Sent {
+        f.engine
+            .send(None, text, vec![paragraph_chip()], on_pencil())
+            .unwrap()
     }
 
     #[test]
-    fn a_thread_is_rows_in_the_one_log_with_its_own_turns() {
+    fn a_paragraph_thread_is_answered_like_a_margin_note() {
         let f = fixture(
             vec![answer(
                 "Which kind of thinking? Compare [[posts/kintsugi]].",
             )],
             Duration::ZERO,
         );
-        let before = std::fs::read_to_string(vault(&f).join("drafts/tools.mdx")).unwrap();
-        let view = f
-            .engine
-            .comment_create(
-                "drafts/tools.mdx",
-                pencil(),
-                "mention",
-                "Is this too obvious?",
-                vec![paragraph_chip()],
-            )
-            .unwrap();
-        assert_eq!(view.thread.status, Status::Open);
-        // Not the chat's to answer.
-        assert!(f.engine.page(None, None, 10).pending.is_empty());
-        wait("Kin's reply", || {
-            f.engine.comments("drafts/tools.mdx").unwrap().threads[0]
-                .entries
-                .len()
-                == 2
-        });
-        settled(&f);
-
-        let page = f.engine.comments("drafts/tools.mdx").unwrap();
-        let entries = &page.threads[0].entries;
-        assert_eq!((entries[0].role, entries[1].role), (Role::Owner, Role::Kin));
+        let before = std::fs::read_to_string(f.vault().join("drafts/tools.mdx")).unwrap();
+        let sent = ask(&f, "Is this too obvious?");
+        assert_eq!(sent.thread.origin, "mention");
         assert_eq!(
-            entries[1].text,
-            "Which kind of thinking? Compare [[posts/kintsugi]]."
+            sent.thread
+                .anchor
+                .as_ref()
+                .unwrap()
+                .quote
+                .as_ref()
+                .unwrap()
+                .exact,
+            "A pencil is a tool for thinking."
         );
-        assert_eq!(entries[1].answers, [entries[0].seq]);
-        for e in entries {
-            assert_eq!(e.topic, "drafts/tools.mdx", "about the document");
-            assert_eq!(e.comment.as_deref(), Some(view.thread.id.as_str()));
-        }
-        // The same rows are in the document's thread of the one log.
-        assert_eq!(
-            f.engine
-                .page(Some("drafts/tools.mdx"), None, 10)
-                .entries
-                .len(),
-            2
-        );
+        let replies = f.wait_replies(1);
+        assert_eq!(replies[0].answers, [sent.entry.seq]);
         let seen = f.script.seen();
         let message = last_user(&seen[0]);
         assert!(
@@ -1132,92 +1190,61 @@ mod comment_threads {
             "{message}"
         );
         assert!(message.contains("- doc drafts/tools.mdx"), "{message}");
-        // Stored beside the document, never in it.
+        assert!(
+            message.contains(
+                "This thread is about a paragraph of drafts/tools.mdx: <data>A pencil is a tool for thinking.</data>"
+            ),
+            "the anchor's content goes with it: {message}"
+        );
+        // Kept outside the document.
         assert_eq!(
-            std::fs::read_to_string(vault(&f).join("drafts/tools.mdx")).unwrap(),
+            std::fs::read_to_string(f.vault().join("drafts/tools.mdx")).unwrap(),
             before
         );
+        // Listed among the document's threads.
+        let listed = f.engine.list(&Filter {
+            about: Some("drafts/tools.mdx".into()),
+            ..Filter::default()
+        });
+        assert_eq!(listed.threads.len(), 1);
+        // A paragraph needs text to be about.
         assert!(
-            vault(&f)
-                .join(".kintsugi/comments/drafts/tools.mdx.json")
-                .is_file()
-        );
-        let started = f
-            .events()
-            .iter()
-            .filter(|e| {
-                matches!(
-                    e,
-                    ChatEvent::CommentStarted {
-                        comment: Some(_),
-                        ..
+            f.engine
+                .send(
+                    None,
+                    "Hm",
+                    vec![],
+                    Start {
+                        anchor: Some(Anchor {
+                            quote: Some(Quote::default()),
+                            ..on_pencil().anchor.unwrap()
+                        }),
+                        origin: None
                     }
                 )
-            })
-            .count();
-        assert_eq!(started, 1);
-        assert!(
-            !f.events()
-                .iter()
-                .any(|e| matches!(e, ChatEvent::TurnStarted { .. })),
-            "the chat's turn machinery isn't involved"
+                .is_err()
         );
     }
 
     #[test]
-    fn a_reply_resumes_the_thread_and_interrupts_a_running_answer() {
+    fn a_reply_interrupts_a_running_answer_and_the_next_answers_both() {
         let slow = answer("one two three four five six seven eight nine ten eleven twelve");
         let f = fixture(
             vec![answer("First thought."), slow, answer("Both, then.")],
             Duration::from_millis(40),
         );
-        let view = f
-            .engine
-            .comment_create(
-                "drafts/tools.mdx",
-                pencil(),
-                "discuss",
-                "Is this too obvious?",
-                vec![paragraph_chip()],
-            )
-            .unwrap();
-        let id = view.thread.id.clone();
-        wait("the first reply", || {
-            f.engine.comments("drafts/tools.mdx").unwrap().threads[0]
-                .entries
-                .len()
-                == 2
-        });
-        settled(&f);
-        f.engine
-            .comment_reply("drafts/tools.mdx", &id, "Say more.", vec![paragraph_chip()])
-            .unwrap();
-        wait("Kin to start talking", || {
-            f.events().iter().any(|e| matches!(e, ChatEvent::Turn { event: KinEvent::Text { delta }, .. } if delta.starts_with("three")))
-        });
-        f.engine
-            .comment_reply(
-                "drafts/tools.mdx",
-                &id,
-                "Actually, briefly.",
-                vec![paragraph_chip()],
-            )
-            .unwrap();
+        let id = ask(&f, "Is this too obvious?").thread.id;
+        f.wait_replies(1);
+        f.reply(&id, "Say more.");
+        wait("Kin to start talking", || f.talking("three"));
+        f.reply(&id, "Actually, briefly.");
         wait("the final reply", || {
-            f.engine.comments("drafts/tools.mdx").unwrap().threads[0]
-                .entries
-                .iter()
-                .any(|e| e.text == "Both, then.")
+            f.thread(&id).iter().any(|e| e.text == "Both, then.")
         });
-        settled(&f);
-        let entries = f.engine.comments("drafts/tools.mdx").unwrap().threads[0]
-            .entries
-            .clone();
-        let interrupted: Vec<_> = entries.iter().filter(|e| e.interrupted).collect();
-        assert_eq!(interrupted.len(), 1);
-        let last = entries.last().unwrap();
-        assert_eq!(last.answers.len(), 2, "answers both waiting messages");
-        // The thread's own exchanges are its history.
+        f.wait_replies(3);
+        let entries = f.thread(&id);
+        assert_eq!(entries.iter().filter(|e| e.interrupted).count(), 1);
+        assert_eq!(entries.last().unwrap().answers.len(), 2);
         let seen = f.script.seen();
         let last_request = seen.last().unwrap();
         assert!(
@@ -1225,41 +1252,19 @@ mod comment_threads {
             "{:?}",
             last_request.items
         );
-        assert!(
-            f.engine
-                .comment_reply("drafts/tools.mdx", "c-nope", "x", vec![])
-                .is_err()
-        );
     }
 
     #[test]
-    fn resolve_reopen_and_moved_anchors_persist() {
+    fn moved_anchors_persist_and_an_orphan_keeps_its_text() {
         let f = fixture(vec![answer("Noted.")], Duration::ZERO);
-        let id = f
-            .engine
-            .comment_create("drafts/tools.mdx", pencil(), "mention", "Hm?", vec![])
-            .unwrap()
-            .thread
-            .id;
-        settled(&f);
+        let id = ask(&f, "Hm?").thread.id;
+        f.wait_replies(1);
         f.engine
-            .comment_status("drafts/tools.mdx", &id, Status::Resolved)
-            .unwrap();
-        assert_eq!(
-            f.engine.comments("drafts/tools.mdx").unwrap().threads[0]
-                .thread
-                .status,
-            Status::Resolved
-        );
-        f.engine
-            .comment_status("drafts/tools.mdx", &id, Status::Open)
-            .unwrap();
-        f.engine
-            .comment_moved(
+            .moved(
                 "drafts/tools.mdx",
                 vec![Moved {
                     id: id.clone(),
-                    anchor: Anchor {
+                    anchor: Quote {
                         exact: "A pencil is a tool.".into(),
                         ..pencil()
                     },
@@ -1268,38 +1273,51 @@ mod comment_threads {
             )
             .unwrap();
         f.engine
-            .comment_moved(
+            .moved(
                 "drafts/tools.mdx",
                 vec![Moved {
                     id: id.clone(),
-                    anchor: Anchor::default(),
+                    anchor: Quote::default(),
                     orphaned: true,
                 }],
             )
             .unwrap();
-        let thread = f.engine.comments("drafts/tools.mdx").unwrap().threads[0]
-            .thread
-            .clone();
-        assert!(thread.orphaned && thread.status == Status::Open);
+        let anchor = f.engine.thread(&id).unwrap().thread.anchor.unwrap();
+        assert!(anchor.orphaned);
         assert_eq!(
-            thread.anchor.exact, "A pencil is a tool.",
+            anchor.quote.unwrap().exact,
+            "A pencil is a tool.",
             "an orphan is kept with the last text it was on"
         );
+        // A renamed document takes its threads along.
+        f.engine
+            .renamed(&f.vault(), "drafts/tools.mdx", "posts/tools.mdx");
+        let anchor = f.engine.thread(&id).unwrap().thread.anchor.unwrap();
+        assert_eq!(anchor.path, "posts/tools.mdx");
+        assert!(f.events().iter().any(|e| matches!(e, ChatEvent::Threads)));
+        // Reopened from disk, it's all still there.
+        let reopened = Store::open(Some(f.vault().join(".kintsugi/kin/threads")));
+        let meta = reopened.meta(&id).unwrap();
+        assert_eq!(meta.anchor.as_ref().unwrap().path, "posts/tools.mdx");
+        assert_eq!(meta.entries, 2);
     }
 
     #[test]
-    fn a_review_leaves_threads_on_the_paragraphs_it_names() {
+    fn a_review_starts_threads_on_the_paragraphs_it_names() {
         let review = "<comments>[{\"paragraph\": 2, \"comment\": \"What does it cost?\"}, {\"paragraph\": 7, \"comment\": \"nope\"}]</comments>";
-        let f = fixture(vec![answer(review)], Duration::ZERO);
+        let f = fixture(
+            vec![answer(review), answer("It costs time.")],
+            Duration::ZERO,
+        );
         let p = |exact: &str, line| Paragraph {
-            anchor: Anchor {
+            anchor: Quote {
                 exact: exact.into(),
                 line,
-                ..Anchor::default()
+                ..Quote::default()
             },
             lines: [line, line],
         };
-        let request = f
+        let own = f
             .engine
             .review(
                 "drafts/tools.mdx",
@@ -1307,52 +1325,83 @@ mod comment_threads {
                     p("A pencil is a tool for thinking.", 6),
                     p("A second paragraph.", 8),
                 ],
-                vec![],
+                vec![doc("drafts/tools.mdx", "Tools that shape thinking")],
             )
             .unwrap();
-        assert!(request.review && f.engine.page(None, None, 10).pending.is_empty());
+        assert_eq!(
+            (own.title.as_str(), own.origin.as_str()),
+            ("Review", "review")
+        );
         assert!(
             f.engine
                 .review("drafts/tools.mdx", vec![p("x", 1)], vec![])
                 .is_err(),
             "one review at a time"
         );
-        settled(&f);
-        let page = f.engine.comments("drafts/tools.mdx").unwrap();
-        assert_eq!(page.threads.len(), 1);
-        let thread = &page.threads[0];
-        assert_eq!(
-            (
-                thread.thread.origin.as_str(),
-                thread.thread.anchor.exact.as_str()
-            ),
-            ("review", "A second paragraph.")
-        );
-        assert_eq!(thread.entries.len(), 1);
-        assert_eq!(
-            (thread.entries[0].role, thread.entries[0].text.as_str()),
-            (Role::Kin, "What does it cost?")
-        );
-        assert_eq!(thread.entries[0].answers, [request.seq]);
-        let note = f
+        wait("the review to end", || {
+            f.events()
+                .iter()
+                .any(|e| matches!(e, ChatEvent::ReviewEnded { .. }))
+        });
+        let threads = f
             .engine
-            .page(Some("drafts/tools.mdx"), None, 10)
-            .entries
-            .into_iter()
-            .rev()
-            .find(|e| e.review && e.role == Role::Kin)
+            .list(&Filter {
+                about: Some("drafts/tools.mdx".into()),
+                ..Filter::default()
+            })
+            .threads;
+        assert_eq!(threads.len(), 2, "the review's own thread and one note");
+        let note = threads
+            .iter()
+            .find(|t| t.meta.anchor.as_ref().unwrap().kind == "paragraph")
             .unwrap();
+        assert_eq!(note.meta.origin, "review");
+        assert_eq!(note.meta.title, "What does it cost?");
+        assert_eq!(
+            note.meta
+                .anchor
+                .as_ref()
+                .unwrap()
+                .quote
+                .as_ref()
+                .unwrap()
+                .exact,
+            "A second paragraph."
+        );
+        let entries = f.thread(&note.meta.id);
+        assert_eq!(
+            (entries[0].role, entries[0].text.as_str(), entries[0].review),
+            (Role::Kin, "What does it cost?", true)
+        );
+        let summary = f.thread(&own.id);
+        assert_eq!(summary[0].text, threads::REVIEW_REQUEST);
         assert!(
-            note.text.starts_with("I left 1 comment on"),
+            summary[1]
+                .text
+                .starts_with("I left 1 comment on Tools that shape thinking"),
             "{}",
-            note.text
+            summary[1].text
         );
         assert!(last_user(&f.script.seen()[0]).starts_with(REVIEW_BRIEF));
         assert!(f.engine.review("drafts/tools.mdx", vec![], vec![]).is_err());
+        // He replies to the note: Kin sees its note as the thread so far.
+        f.reply(&note.meta.id, "Time, mostly?");
+        f.wait_replies(3);
+        let seen = f.script.seen();
+        let items = &seen.last().unwrap().items;
+        assert!(
+            matches!(&items[1], Item::Assistant { text, .. } if text == "What does it cost?"),
+            "{items:?}"
+        );
+        assert_eq!(
+            f.engine.thread(&note.meta.id).unwrap().thread.title,
+            "What does it cost?",
+            "a review note keeps its title"
+        );
     }
 }
 
-// --- One log per vault (KI-59) ----------------------------------------------
+// --- Vaults: each has its own threads (KI-59, KI-104) ----------------------
 
 mod vaults {
     use super::*;
@@ -1369,14 +1418,14 @@ mod vaults {
     /// A global log as the app kept it before KI-59.
     fn old_global_log(data: &Path) -> Vec<u8> {
         let dir = data.join("conversation");
-        let mut log = Log::open(Some(dir.clone()));
-        log.say("From before the update.", vec![]).unwrap();
-        log.mark_answered(1);
+        fs::create_dir_all(&dir).unwrap();
+        let line = r#"{"seq":1,"at":"2026-10-01T09:00:00+00:00","role":"owner","text":"From before the update.","topic":""}"#;
+        fs::write(dir.join("log.jsonl"), format!("{line}\n")).unwrap();
         fs::read(dir.join("log.jsonl")).unwrap()
     }
 
     #[test]
-    fn a_fresh_install_starts_an_empty_log_in_the_vault() {
+    fn a_fresh_install_starts_with_no_threads() {
         let data = tempfile::tempdir().unwrap();
         let f = fixture_in(
             Some(data.path().into()),
@@ -1385,25 +1434,37 @@ mod vaults {
             FAST,
         );
         assert!(f.entries().is_empty());
-        f.engine.send("Hello", vec![]).unwrap();
+        let id = f.ask("Hello", vec![]).thread.id;
         f.wait_replies(1);
-        let vault = f.engine.0.brain.vault().unwrap();
-        let log = fs::read_to_string(vault.join(".kintsugi/kin/log.jsonl")).unwrap();
-        assert_eq!(log.lines().count(), 2);
+        let kin = f.vault().join(".kintsugi/kin");
+        let file = fs::read_to_string(kin.join(format!("threads/{id}.jsonl"))).unwrap();
+        assert_eq!(file.lines().count(), 2);
+        assert!(!kin.join("log.jsonl").exists());
         assert!(!data.path().join("conversation").exists());
     }
 
     #[test]
-    fn the_old_log_moves_into_the_open_vault_and_the_next_one_starts_empty() {
+    fn the_old_global_log_moves_into_the_open_vault_as_threads() {
         let data = tempfile::tempdir().unwrap();
         let bytes = old_global_log(data.path());
         let f = fixture_in(Some(data.path().into()), vec![], Duration::ZERO, FAST);
         assert_eq!(texts(&f), ["From before the update."]);
-        let first = f.engine.0.brain.vault().unwrap();
+        let threads = f.engine.list(&Filter::default()).threads;
+        assert_eq!(threads[0].meta.title, "Earlier conversation");
+        let kin = f.vault().join(".kintsugi/kin");
+        // Kept, never deleted, once it's threads.
+        let archived: Vec<_> = fs::read_dir(kin.join("archive"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(archived.len(), 1, "{archived:?}");
+        assert!(archived[0].starts_with("log-"));
         assert_eq!(
-            fs::read(first.join(".kintsugi/kin/log.jsonl")).unwrap(),
+            fs::read(kin.join("archive").join(&archived[0])).unwrap(),
             bytes
         );
+        assert!(!kin.join("log.jsonl").exists());
         assert!(!data.path().join("conversation").exists());
         assert!(!data.path().join("conversation.moving").exists());
 
@@ -1411,13 +1472,13 @@ mod vaults {
         let second = scratch_vault();
         open(&f, second.path());
         assert!(f.entries().is_empty());
-        assert!(!second.path().join(".kintsugi/kin/log.jsonl").exists());
+        assert!(!second.path().join(".kintsugi/kin/archive").exists());
     }
 
     #[test]
     fn a_move_cut_short_by_a_crash_finishes_on_the_next_launch() {
         let data = tempfile::tempdir().unwrap();
-        let bytes = old_global_log(data.path());
+        old_global_log(data.path());
         // The crash left the old log claimed as a backup, nothing copied yet.
         fs::rename(
             data.path().join("conversation"),
@@ -1426,19 +1487,14 @@ mod vaults {
         .unwrap();
         let f = fixture_in(Some(data.path().into()), vec![], Duration::ZERO, FAST);
         assert_eq!(texts(&f), ["From before the update."]);
-        let vault = f.engine.0.brain.vault().unwrap();
-        assert_eq!(
-            fs::read(vault.join(".kintsugi/kin/log.jsonl")).unwrap(),
-            bytes
-        );
         assert!(!data.path().join("conversation.moving").exists());
     }
 
     #[test]
-    fn switching_vaults_switches_the_conversation() {
+    fn switching_vaults_switches_the_threads() {
         let f = fixture(vec![answer("About A."), answer("About B.")], Duration::ZERO);
-        let a = f.engine.0.brain.vault().unwrap();
-        f.engine.send("Kilns, in vault A", vec![]).unwrap();
+        let a = f.vault();
+        f.ask("Kilns, in vault A", vec![]);
         f.wait_replies(1);
 
         let b = scratch_vault();
@@ -1447,23 +1503,23 @@ mod vaults {
         wait("the switch event", || {
             f.events().iter().any(|e| matches!(e, ChatEvent::Switched))
         });
-        f.engine.send("In vault B", vec![]).unwrap();
+        f.ask("In vault B", vec![]);
         f.wait_replies(1);
         assert_eq!(texts(&f), ["In vault B", "About B."]);
         assert!(
-            f.engine.search("kilns", None, 10).is_empty(),
-            "history only sees the open vault"
+            f.engine
+                .list(&Filter {
+                    query: Some("kilns".into()),
+                    resolved: true,
+                    ..Filter::default()
+                })
+                .threads
+                .is_empty(),
+            "search only sees the open vault"
         );
 
         open(&f, &a);
         assert_eq!(texts(&f), ["Kilns, in vault A", "About A."]);
-        assert_eq!(
-            fs::read_to_string(b.path().join(".kintsugi/kin/log.jsonl"))
-                .unwrap()
-                .lines()
-                .count(),
-            2
-        );
     }
 
     #[test]
@@ -1472,31 +1528,21 @@ mod vaults {
             vec![answer("one two three four five six seven eight nine ten")],
             Duration::from_millis(40),
         );
-        let a = f.engine.0.brain.vault().unwrap();
-        f.engine.send("Slow question in A", vec![]).unwrap();
-        wait("Kin to start answering", || {
-            f.events().iter().any(|e| {
-                matches!(
-                    e,
-                    ChatEvent::Turn {
-                        event: KinEvent::Text { .. },
-                        ..
-                    }
-                )
-            })
-        });
+        let a = f.vault();
+        let id = f.ask("Slow question in A", vec![]).thread.id;
+        wait("Kin to start answering", || f.talking(""));
         let b = scratch_vault();
         open(&f, b.path());
         assert!(f.entries().is_empty());
+        let file = a.join(format!(".kintsugi/kin/threads/{id}.jsonl"));
         wait("the cut-short reply to land in A", || {
-            fs::read_to_string(a.join(".kintsugi/kin/log.jsonl"))
-                .is_ok_and(|log| log.lines().count() == 2)
+            fs::read_to_string(&file).is_ok_and(|log| log.lines().count() == 2)
         });
         std::thread::sleep(Duration::from_millis(200));
         assert!(f.entries().is_empty(), "nothing of A's turn reached B");
         open(&f, &a);
         let entries = f.entries();
         assert!(entries[1].interrupted, "{entries:?}");
-        assert!(f.engine.0.log.lock().unwrap().pending().is_empty());
+        assert!(f.engine.thread(&id).unwrap().pending.is_empty());
     }
 }

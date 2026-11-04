@@ -81,7 +81,7 @@ export default function FeedItemScreen() {
   const original = item.url ? readerUrl(item.url) : null;
   const discuss = () => {
     feed.act(id, 'discuss', place);
-    router.push({ pathname: '/kin', params: { chips: JSON.stringify([{ kind: 'feed', path: String(id), label: item.title ?? 'Feed item' }]) } });
+    router.push({ pathname: '/kin', params: { new: '1', chips: JSON.stringify([{ kind: 'feed', path: String(id), label: item.title ?? 'Feed item' }]) } });
   };
 
   return (

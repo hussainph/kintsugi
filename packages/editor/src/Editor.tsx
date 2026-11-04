@@ -24,7 +24,7 @@ export type { CommandAction, CommandSkill, Commands } from "./commands";
 export { paragraphNear, paragraphRange } from "./references";
 export { formatKeymap, formatShortcuts, setHeading, toggleLink, toggleList, toggleMark, type ListKind, type Mark } from "./format";
 export type { CommentAnchor, CommentLink, CommentMessage, CommentMove, CommentPlace, Comments, CommentThread } from "./comments";
-export { commentPlace, openComment, reviewParagraphs, startComment } from "./comments";
+export { closeComment, commentPlace, openComment, paragraphAnchor, reviewParagraphs, startComment } from "./comments";
 export { heldPassage, holdPassage, releasePassage, type Passage } from "./passages";
 export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
 export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet, SpanLevel } from "./alternatives";

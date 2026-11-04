@@ -6,7 +6,8 @@
 //   KIN_SCENARIOS_MODES=dark pnpm --filter @kintsugi/desktop kin:scenarios
 //
 // It starts `pnpm desktop:headless` on a fresh scratch vault (with a long
-// conversation seeded into General) and writes the shots to
+// conversation seeded in the old single log, which becomes "Earlier
+// conversation" threads on open) and writes the shots to
 // .headless/kin-scenarios-*/shots/<mode>/. KINTSUGI_FRONTEND_PORT and
 // KINTSUGI_BACKEND_PORT pick the ports; KIN_SCENARIOS_URL drives an app
 // that's already running instead (nothing is seeded then).
@@ -24,7 +25,8 @@ const DRAFT = "drafts/kintsugi-and-gold.md";
 const modes = (process.env.KIN_SCENARIOS_MODES ?? "light,dark").split(",").map((m) => m.trim()) as ("light" | "dark")[];
 const only = process.env.KIN_SCENARIOS_ONLY?.split(",");
 
-/** A long conversation in General, so scrolling and anchoring can be seen. */
+/** A long conversation in the old log (KI-104 moves it into threads), so
+ *  scrolling and anchoring can be seen. */
 function seedLongConversation(vault: string) {
   const dir = resolve(vault, ".kintsugi/kin");
   mkdirSync(dir, { recursive: true });
@@ -108,9 +110,21 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
     await page.keyboard.press("Meta+j");
     await panel().waitFor();
   };
+  /** The Kin tab's list, from wherever it is. */
+  const list = async () => {
+    await open();
+    const back = panel().getByRole("button", { name: "Back" });
+    if (await back.count()) await back.click();
+    await panel().locator("[data-new-thread]").waitFor();
+  };
+  const newThread = async () => {
+    await list();
+    await panel().getByRole("button", { name: "New thread" }).click();
+    await box().waitFor();
+  };
   const hide = async () => {
     if (!(await panel().isVisible())) return;
-    await panel().getByRole("button", { name: /^(Hide|Close) Kin$/ }).first().click();
+    await page.keyboard.press("Meta+j");
     await panel().waitFor({ state: "hidden" });
   };
   const say = async (text: string) => {
@@ -142,7 +156,7 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
 
   await scenario("empty", async () => {
     await openDoc("posts/on-craft.mdx").catch(() => openDoc(DRAFT));
-    await open();
+    await list();
     await page.waitForTimeout(600);
     await shot("empty");
   });
@@ -151,7 +165,7 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
     await hide();
     await openDoc(DRAFT);
     await selectParagraph();
-    await open();
+    await newThread();
     await panel().getByLabel("Context").locator('[data-chip^="paragraph:"]').waitFor();
     await shot("context-chips", true);
   });
@@ -215,7 +229,7 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
   await scenario("edit-proposed", async () => {
     await hide();
     await selectParagraph();
-    await open();
+    await newThread();
     await ask("Tighten this");
     await panel().locator("[data-live]").waitFor({ state: "detached", timeout: 45_000 });
     await shot("edit-proposed");
@@ -246,17 +260,32 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
     await invoke(page, "kin_job_create", { job: { kind: "feed-ranking", task: "triage", brief: "Rank recent clips about repair." } });
     await panel().locator("[data-job]").first().waitFor({ timeout: 10_000 }).catch(() => {});
     await shot("helper-running");
-    // A helper's report lands in General; Everything shows it beside the draft's thread.
+    // A helper's report is a thread of its own.
     await panel().locator("[data-job]").first().waitFor({ state: "detached", timeout: 45_000 }).catch(() => {});
-    await panel().getByRole("button", { name: "Conversation", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: /^Everything/ }).click();
+    await list();
+    await panel().getByRole("button", { name: "All threads" }).click();
+    await panel().locator("[data-thread]").first().waitFor();
+    await page.waitForTimeout(500);
+    await shot("all-threads");
+    await panel().getByRole("textbox", { name: "Search threads" }).fill("repair");
+    await page.waitForTimeout(800);
+    await shot("all-threads-search");
+    await panel().getByRole("textbox", { name: "Search threads" }).fill("");
+    const report = panel().locator("[data-thread]").filter({ hasText: "You said" }).first();
+    await report.click();
     await panel().locator('[data-role="helper"]').first().waitFor({ timeout: 45_000 });
     await page.waitForTimeout(800);
     await shot("helper-report");
-    // Back to the draft's thread.
-    await panel().getByRole("button", { name: "Conversation", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: /^Kintsugi and gold/ }).click();
-    await page.waitForTimeout(500);
+  });
+
+  await scenario("draft-threads", async () => {
+    await hide();
+    await openDoc(DRAFT);
+    await list();
+    await page.waitForTimeout(600);
+    await shot("draft-threads");
+    await panel().locator("[data-thread]").first().click();
+    await kinReplies().first().waitFor();
   });
 
   await scenario("cost-cap", async () => {
@@ -280,16 +309,35 @@ async function run(app: { url: string; shots: string }, mode: "light" | "dark") 
   await scenario("long-conversation", async () => {
     await hide();
     await page.keyboard.press("Meta+Shift+i").catch(() => {});
-    await open();
-    const picker = panel().getByRole("button", { name: "Conversation", exact: true });
-    await picker.click();
-    await page.getByRole("menuitemradio", { name: /^General/ }).first().click({ timeout: 5_000 }).catch(() => page.getByRole("button", { name: /^General/ }).first().click());
+    await list();
+    await panel().getByRole("button", { name: "All threads" }).click();
+    await panel().locator("[data-thread]").filter({ hasText: "Earlier conversation" }).last().click();
     await page.waitForTimeout(800);
     await shot("long-conversation");
     const log = panel().getByLabel("Conversation").last();
     await log.evaluate((el) => (el.scrollTop = el.scrollHeight / 3));
     await page.waitForTimeout(500);
     await shot("long-conversation-scrolled-up");
+  });
+
+  await scenario("paragraph-threads", async () => {
+    await hide();
+    await openDoc(DRAFT);
+    // A quick ask: Kin stays out of the way; a chip under the paragraph says it replied.
+    await page.locator(".cm-line", { hasText: "That sentence belongs in" }).click();
+    await page.keyboard.press("Meta+k");
+    await page.locator("[data-slot=popover-content]").getByRole("option", { name: /Who disagrees/ }).click();
+    await page.locator('.cm-comment-ask[data-state="replied"]').waitFor({ timeout: 45_000 });
+    await page.waitForTimeout(400);
+    await shot("quick-ask-replied", true);
+    await page.locator(".cm-comment-ask").click();
+    await panel().locator('[data-role="kin"]').first().waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(600);
+    await shot("quick-ask-thread", true);
+    // The draft's list: the passage each paragraph thread is about.
+    await list();
+    await page.waitForTimeout(600);
+    await shot("draft-threads-with-passages");
   });
 
   await scenario("hidden-pill", async () => {
@@ -311,7 +359,6 @@ try {
         "kin-scenarios",
         {
           KINTSUGI_HEADLESS_KIN: "mock",
-          KINTSUGI_HEADLESS_KIN_IDLE_MS: "600000",
           ...(process.env.KINTSUGI_FRONTEND_PORT ? { KINTSUGI_FRONTEND_PORT: process.env.KINTSUGI_FRONTEND_PORT } : {}),
           ...(process.env.KINTSUGI_BACKEND_PORT ? { KINTSUGI_BACKEND_PORT: process.env.KINTSUGI_BACKEND_PORT } : {}),
         },

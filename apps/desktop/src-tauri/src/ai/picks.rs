@@ -1,16 +1,15 @@
-//! The model and effort picked for one conversation in Kin's chat (KI-61,
-//! KI-77).
+//! The model and effort picked for one thread of Kin's (KI-61, KI-77,
+//! KI-104).
 //!
-//! `models.json` in a vault's conversation folder (`<vault>/.kintsugi/kin/`,
-//! beside `log.jsonl` and `threads.json`; see `history::vault_dir`) maps a
-//! conversation (a thread's topic key, `""` for general) to what he picked
-//! for it in the chat's composer:
-//! `{ "<topic>": { provider?, model?, reasoning? } }`. `provider` and `model`
+//! `models.json` in a vault's Kin folder (`<vault>/.kintsugi/kin/`, beside
+//! `threads/`; see `threads::vault_dir`) maps a thread's id to what he
+//! picked for it in the composer, and `""` to what he picked in a new
+//! thread's composer before sending (the thread takes it when it starts):
+//! `{ "<thread>": { provider?, model?, reasoning? } }`. `provider` and `model`
 //! name the model (absent: the chat default); `reasoning` is the thinking
-//! level (absent: the chat's default effort). It moves with the vault and
-//! never applies to another vault's thread of the same name. Hidden like
-//! the rest of `.kintsugi/`: the watcher, search and Kin's tools never see it.
-//! Functions take that folder, not the vault.
+//! level (absent: the chat's default effort). It moves with the vault.
+//! Hidden like the rest of `.kintsugi/`: the watcher, search and Kin's tools
+//! never see it. Functions take that folder, not the vault.
 
 use super::ModelRef;
 use serde::{Deserialize, Serialize};
@@ -97,6 +96,21 @@ pub fn set(dir: &Path, topic: &str, model: Option<ModelRef>) -> Result<()> {
 /// the chat's default effort. The model picked for it stays.
 pub fn set_effort(dir: &Path, topic: &str, effort: Option<String>) -> Result<()> {
     change(dir, topic, |pick| pick.reasoning = effort)
+}
+
+/// A new thread takes what was picked in its composer before it started
+/// (`""`), and the next new thread starts from the defaults again.
+pub fn hand_over(dir: &Path, to: &str) -> Result<()> {
+    let Some(pick) = get(dir, "") else {
+        return Ok(());
+    };
+    put(dir, to, pick)?;
+    change(dir, "", |p| *p = Pick::default())
+}
+
+/// Gives a conversation a whole pick (a thread taking over an old topic's).
+pub fn put(dir: &Path, topic: &str, pick: Pick) -> Result<()> {
+    change(dir, topic, |p| *p = pick)
 }
 
 fn change(dir: &Path, topic: &str, edit: impl FnOnce(&mut Pick)) -> Result<()> {

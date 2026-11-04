@@ -79,7 +79,6 @@
 
 /* Today's chat in the Kin tab; KI-104 replaces it. */
 .ki-kin-tab { display: flex; flex: 1; min-height: 0; flex-direction: column; }
-.ki-kin-tab > .ki-kin-header { padding-left: var(--space-m); }
 
 @media (prefers-reduced-motion: reduce) {
   .ki-margin, .ki-margin[data-open] { transform: none; transition: opacity 120ms linear, visibility 0s linear 120ms; }

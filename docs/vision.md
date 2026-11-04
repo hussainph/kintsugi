@@ -35,8 +35,9 @@ Kintsugi has four places, and Kin is in all of them:
 | **Ideas** | A few specific, grounded ideas a day about his writing and collection | Kin |
 | **Writing** | Notes, drafts and posts, on the Mac and the phone | **Hussain only** |
 
-**Kin** is on every screen: one avatar, one chat that
-picks up whatever he's looking at, and comment threads in his drafts.
+**Kin** is on every screen, in one right margin: many small threads, each
+about one thing he was looking at (a draft, a paragraph, a story, a clip, an
+idea) or nothing in particular.
 
 ```
  sources ─▶ Feed ──save──▶ Inspiration ─┐
@@ -142,13 +143,24 @@ customizes its look (designed in Paper).
 
 ### Present everywhere
 
-- One avatar on every screen opens one chat. Whatever he's looking at (a
-  feed item, a clip, a paragraph mid-draft) is attached as a removable
-  context chip.
-- In the editor, `@Kin` starts a conversation inline. Kin replies the way a
-  reviewer does: **comment threads** anchored to a paragraph, stored outside
-  the document and moving with the paragraph as it's edited. Anything it
-  finds can be dragged in as a reference.
+- Kin's tab in the right margin lists the threads about what's on screen:
+  in the editor, the draft's threads, newest first, the ones about a
+  paragraph showing the passage. Elsewhere, threads about what's on screen
+  come first, then recent ones. All threads are one searchable list.
+- Every ask starts a **thread**: a small conversation about one thing, with
+  whatever he's looking at attached as removable context chips. A thread he
+  closes is one click away in the list; resolving one keeps it findable but
+  out of the list.
+- In the editor, `@Kin` starts a thread on a paragraph. Kin replies the way
+  a reviewer does in the margin. The paragraph gets a gutter mark that
+  reopens its thread, and the anchor is stored outside the document and moves
+  with the paragraph as it's edited. Anything Kin finds can be dragged in as
+  a reference.
+- A quick ask (⌘K's "Who disagrees?") leaves a "Kin replied" chip under the
+  passage, which opens its thread.
+- Kin never adds anything to the stash on its own. Everything in the stash
+  is there because he asked: "Ask Kin" on the stash, or stashing one of
+  Kin's replies.
 
 ### How it finds things
 
@@ -165,11 +177,11 @@ Its memory is modelled on Hermes Agent: small, capped and visible, in
 | `USER.md` (shown as **About you**) | Taste, voice, themes, dislikes | ~1.5k chars | Always |
 | `NOTES.md` | Where to look and how things are organized, never copies of content | ~2k chars | Always |
 | `skills/` | Procedures and shortcuts (see below) | per skill | Index always; body on demand |
-| Conversation history | Every chat and comment thread | none | Through search only |
+| Threads | Every conversation, one thread each | none | The current thread; others through the `threads` tool |
 
 Writes that would exceed a cap are rejected, so Kin has to consolidate
 what it already has. Changes apply automatically. **About you** shows the
-current memory, where each line came from, a change log, and undo. Any chat
+current memory, where each line came from, a change log, and undo. Any conversation
 can be marked "don't remember this."
 
 **Skills** are one system with two uses. Kin writes procedures for itself
@@ -178,27 +190,31 @@ flagged for the editor appear as AI commands in the `/` menu. Hussain can
 write his own ("/steelman this", "/find counterexamples"), and Kin suggests
 new ones when it notices him asking for the same thing repeatedly.
 
-### One conversation log per vault
+### Many small threads (KI-104)
 
-This follows how always-on agents like Grok Bot are built.
+Kin's whole surface is a series of small threads rather than one long
+conversation per vault.
 
-- **One log per vault.** Each vault keeps its own, in `.kintsugi/kin/`,
-  and opening another vault opens its conversation. What each turn is about
-  (a draft, a clip, a feed item, a paragraph) is inferred from what's on
-  screen and what's said. Hussain never tags or files anything. A "thread",
-  such as "the conversation about draft X", is that inferred grouping: a
-  view of the vault's log with its own running summary. It isn't a separate session. Paragraph comment threads
-  live in the same log.
-- **A lean main conversation, with helpers.** Heavy or background work
-  (ranking the feed, generating ideas, long searches) runs as helper agents
-  with their own context, recorded in a local job table so they survive
-  quitting the app. Each gets a clear brief plus About you and the notes
-  file, and reports back to the log without interrupting him.
+- **Explicit, not inferred.** A new ask starts a new thread unless he's
+  replying inside one. Nothing is filed or guessed for him: a thread is
+  about what he asked from, or nothing.
+- **Small context.** A turn carries its thread's messages and what the
+  thread is about, plus memory and the tools. Continuity across threads
+  comes from memory and a `threads` tool Kin uses to search or read earlier
+  ones.
+- **One primitive.** Chats, paragraph comments, Discuss on a story, clip or
+  idea, and quick asks are all threads, kept in `.kintsugi/kin/threads/` in
+  the vault: one file per thread plus a small index.
+- **Helpers.** Heavy or background work (ranking the feed, generating
+  ideas, long searches) runs as helper agents with their own context,
+  recorded in a local job table so they survive quitting the app. Each gets
+  a clear brief plus About you and the notes file, and reports back in the
+  thread that asked for it, or in one of its own.
 - **Context engineering.** A fixed, cached prompt prefix; context chips as
   references Kin reads on demand rather than pasted text; tools loaded when
-  needed; long outputs written to files. Summaries are made while Hussain is
-  idle, and the history he can scroll is never deleted.
-- Typing interrupts Kin, and bursts of messages are batched into one turn.
+  needed; long outputs written to files.
+- Typing interrupts Kin, and bursts of messages are batched into one turn,
+  per thread.
 
 ### Trust and cost
 
@@ -303,9 +319,9 @@ rather use it. Outside agents never add to Inspiration.
                     long clips' whole text for Kin
   .kintsugi/
     agent/          Kin's memory: USER.md, NOTES.md, skills/
-    comments/       Kin's comment threads on documents (KI-38; see docs/kin.md)
-    stash/          set-aside text, notes and Kin's suggestions, outside the draft
-    kin/            Kin's conversation in this vault: the log and thread summaries
+    stash/          what he set aside, outside the draft (he asks for everything in it)
+    kin/            Kin's threads in this vault (threads/), its model picks,
+                    and the old log and comments it moved (archive/)
     folders.json    each folder's colour and icon (KI-75), by folder path
   …                 drafts, notes and posts, in folders, anywhere else
 ```

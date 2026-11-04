@@ -10,35 +10,273 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { KinMark, markKinSeen } from '@/components/KinAvatar';
-import { activeJobs, kinStatus, type Shown, shown } from '@/lib/kin';
+import { ago } from '@/lib/feed';
+import { activeJobs, kinStatus, type Listed, listed, outgoingIn, type Shown, shown, type Target } from '@/lib/kin';
+import { type Anchor, type Thread, THREADS_API } from '@/lib/kin-api';
 import { usePairing } from '@/lib/pairing';
-import { kin, OLD_MAC, syncSection, useKin, useMacApi } from '@/lib/sections-store';
+import { kin, OLD_KIN, OLD_MAC, syncSection, useKin, useMacApi } from '@/lib/sections-store';
 import { fonts, type Theme, useTheme } from '@/theme';
 
-/** How often the chat asks the Mac while Kin is answering, and otherwise. */
+/** How often the screen asks the Mac while Kin is answering, and otherwise. */
 const BUSY_POLL = 1_500;
 const IDLE_POLL = 6_000;
 
 const chipIcon: Record<string, string> = { doc: 'doc.text', clip: 'sparkles', feed: 'dot.radiowaves.up.forward', idea: 'lightbulb' };
 
-/** Kin's one conversation. Kin runs on the Mac: messages written here go
- *  there, with what was on screen attached as chips, and wait on the phone
- *  (saying so) while the Mac can't be reached. */
+const parseChips = (raw?: string): Chip[] => {
+  try {
+    return raw ? (JSON.parse(raw) as Chip[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+/** Kin's threads. Kin runs on the Mac: the list and the threads he opened
+ *  are kept to read offline, and messages written here wait on the phone
+ *  (saying so) while the Mac can't be reached. `chips` is what was on
+ *  screen: threads about it come first, and a new thread starts with it
+ *  attached. `new` opens a new thread straight away. */
 export default function KinScreen() {
-  const params = useLocalSearchParams<{ chips?: string }>();
+  const params = useLocalSearchParams<{ chips?: string; new?: string }>();
   const theme = useTheme();
   const { client, unpair } = usePairing();
   const snapshot = useKin();
   const api = useMacApi();
-  const [chips, setChips] = useState<Chip[]>(() => {
+  const here = useMemo(() => parseChips(params.chips), [params.chips]);
+  const [open, setOpen] = useState<Target | null>(() => (params.new ? kin.draft() : null));
+  // A draft becomes the Mac's thread once its first message lands.
+  const target = useMemo(() => open && kin.resolve(open), [open, snapshot.made]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [chips, setChips] = useState<Chip[]>(() => (params.new ? here : []));
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Thread[] | null>(null);
+  const found = query.trim() ? results : null;
+
+  const sync = useCallback(async () => {
+    if (!client) return;
     try {
-      return params.chips ? (JSON.parse(params.chips) as Chip[]) : [];
-    } catch {
-      return [];
+      await syncSection(client, 'kin', target ?? undefined);
+    } catch (e) {
+      if (e instanceof Unpaired) unpair();
     }
-  });
-  const [text, setText] = useState('');
+  }, [client, unpair, target]);
+
+  // Ask now, then again while the screen is open: often while Kin answers.
+  useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      await sync();
+      if (!stopped) timer = setTimeout(tick, kin.busy(target ?? undefined) ? BUSY_POLL : IDLE_POLL);
+    };
+    void tick();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [sync, target]);
+
+  // Search: the Mac looks through every message; offline, the phone's copy.
+  useEffect(() => {
+    if (!query.trim()) return;
+    let current = true;
+    const timer = setTimeout(() => {
+      kin
+        .search(client, query)
+        .then((threads) => current && setResults(threads))
+        .catch((e) => e instanceof Unpaired && unpair());
+    }, 300);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [query, client, unpair]);
+
+  const latest = snapshot.threads.reduce((max, t) => (t.updated > max ? t.updated : max), '');
+  useEffect(() => {
+    if (latest) markKinSeen(latest);
+  }, [latest]);
+
+  const startThread = () => {
+    setChips(here);
+    setOpen(kin.draft());
+  };
+  const openRow = (row: Listed) => {
+    setChips([]);
+    setOpen(row.kind === 'thread' ? { thread: row.thread.id } : row.target);
+  };
+  const back = () => {
+    setOpen(null);
+    setChips([]);
+  };
+
+  const oldMac = api > 0 && api < SECTIONS_API ? OLD_MAC : api > 0 && api < THREADS_API ? OLD_KIN : null;
+  const thread = target && 'thread' in target ? (snapshot.views[target.thread]?.thread ?? snapshot.threads.find((t) => t.id === target.thread)) : undefined;
+
+  return (
+    <>
+      <Stack.Screen
+        options={{
+          title: target ? (thread?.title ?? 'New thread') : 'Kin',
+          presentation: 'modal',
+          headerLeft: target
+            ? () => (
+                <Pressable accessibilityRole="button" accessibilityLabel="Back to threads" onPress={back} hitSlop={10}>
+                  <SymbolView name="chevron.left" size={18} tintColor={theme.text} />
+                </Pressable>
+              )
+            : undefined,
+          headerRight: () => (
+            <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={10}>
+              <Text style={[styles.done, { color: theme.text }]}>Done</Text>
+            </Pressable>
+          ),
+        }}
+      />
+      {open && target ? (
+        // Keyed by what he opened, so a draft becoming its thread keeps the composer.
+        <ThreadScreen key={'thread' in open ? open.thread : open.draft} target={target} thread={thread} chips={chips} setChips={setChips} oldMac={oldMac} sync={sync} />
+      ) : (
+        <ThreadList here={here} found={found} query={query} setQuery={setQuery} oldMac={oldMac} onNew={startThread} onOpen={openRow} />
+      )}
+    </>
+  );
+}
+
+function ThreadList(props: {
+  here: Chip[];
+  found: Thread[] | null;
+  query: string;
+  setQuery: (q: string) => void;
+  oldMac: string | null;
+  onNew: () => void;
+  onOpen: (row: Listed) => void;
+}) {
+  const theme = useTheme();
+  const snapshot = useKin();
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const [showJobs, setShowJobs] = useState(false);
+  const rows = listed(snapshot, props.found ?? snapshot.threads, props.here).filter((r) => !props.found || r.kind === 'thread');
+  const status = props.oldMac ?? kinStatus(snapshot);
+  const offline = snapshot.connection === 'offline';
+  const jobs = activeJobs(snapshot.jobs);
+  return (
+    <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: headerHeight }]}>
+      {status && <Banner status={status} offline={offline} theme={theme} />}
+      <View style={styles.toolbar}>
+        <TextInput
+          value={props.query}
+          onChangeText={props.setQuery}
+          placeholder="Search threads"
+          placeholderTextColor={theme.faint}
+          accessibilityLabel="Search threads"
+          clearButtonMode="while-editing"
+          returnKeyType="search"
+          style={[styles.search, { color: theme.text, backgroundColor: theme.surface }]}
+        />
+        <Pressable accessibilityRole="button" testID="kin-new-thread" onPress={props.onNew} style={[styles.newThread, { backgroundColor: theme.primary }]}>
+          <SymbolView name="square.and.pencil" size={15} tintColor={theme.onPrimary} />
+          <Text style={[styles.newThreadText, { color: theme.onPrimary }]}>New thread</Text>
+        </Pressable>
+      </View>
+      <ScrollView style={styles.list} contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 24 }]} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled">
+        {rows.length === 0 &&
+          (props.found ? (
+            <Text style={[styles.emptyText, { color: theme.muted }]}>No threads match.</Text>
+          ) : (
+            <View style={styles.empty}>
+              <KinMark size={56} />
+            </View>
+          ))}
+        {rows.map((row) => (
+          <Row key={row.kind === 'thread' ? row.thread.id : 'draft' in row.target ? row.target.draft : row.target.thread} row={row} running={row.kind === 'thread' && snapshot.running.includes(row.thread.id)} offline={offline} theme={theme} onPress={() => props.onOpen(row)} />
+        ))}
+        {jobs.length > 0 && (
+          <View style={[styles.jobs, { borderColor: theme.border }]}>
+            <Pressable accessibilityRole="button" onPress={() => setShowJobs(!showJobs)} style={styles.jobsHeader}>
+              <Text style={[styles.label, { color: theme.muted }]}>Kin’s jobs</Text>
+              <SymbolView name={showJobs ? 'chevron.up' : 'chevron.down'} size={12} tintColor={theme.muted} />
+            </Pressable>
+            {showJobs && jobs.map((job) => <JobRow key={job.id} job={job} theme={theme} />)}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+/** What a thread is about, in a line: the passage, or the item's name. */
+function about(anchor?: Anchor): string | null {
+  if (!anchor) return null;
+  if (anchor.kind === 'paragraph' && anchor.quote?.exact) return anchor.quote.exact;
+  return anchor.label ?? anchor.path;
+}
+
+function Row({ row, running, offline, theme, onPress }: { row: Listed; running: boolean; offline: boolean; theme: Theme; onPress: () => void }) {
+  if (row.kind === 'draft') {
+    return (
+      <Pressable accessibilityRole="button" onPress={onPress} style={[styles.row, { borderColor: theme.border }]}>
+        <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.text }]}>
+          {row.title}
+        </Text>
+        {row.chips[0] && (
+          <Text numberOfLines={1} style={[styles.rowAbout, { color: theme.muted }]}>
+            {row.chips[0].label ?? row.chips[0].path}
+          </Text>
+        )}
+        <Text style={[styles.meta, { color: theme.faint }]}>{offline ? 'Waiting for your Mac' : 'Sending…'}</Text>
+      </Pressable>
+    );
+  }
+  const { thread } = row;
+  const subject = about(thread.anchor);
+  const when = ago(Date.parse(thread.updated) / 1000);
+  return (
+    <Pressable accessibilityRole="button" testID="kin-thread" onPress={onPress} style={[styles.row, { borderColor: theme.border }]}>
+      <View style={styles.rowTop}>
+        <Text numberOfLines={1} style={[styles.rowTitle, { color: theme.text }]}>
+          {thread.title}
+        </Text>
+        <Text style={[styles.meta, { color: theme.faint }]}>{running ? 'Replying…' : when}</Text>
+      </View>
+      {subject && (
+        <Text numberOfLines={2} style={[styles.rowAbout, { color: theme.muted }, thread.anchor?.kind === 'paragraph' && styles.quoted]}>
+          {subject}
+        </Text>
+      )}
+      {(thread.hit ?? thread.preview) ? (
+        <Text numberOfLines={2} style={[styles.rowPreview, { color: theme.muted }]}>
+          {thread.hit ?? thread.preview}
+        </Text>
+      ) : null}
+    </Pressable>
+  );
+}
+
+function Banner({ status, offline, theme }: { status: string; offline: boolean; theme: Theme }) {
+  return (
+    <View testID="kin-status" style={[styles.banner, { backgroundColor: offline ? theme.surface : 'transparent' }]}>
+      {offline && <SymbolView name="desktopcomputer" size={15} tintColor={theme.muted} />}
+      <Text style={[styles.bannerText, { color: theme.muted }]}>{status}</Text>
+    </View>
+  );
+}
+
+/** One thread: its messages, and a composer that replies in it (or, in a
+ *  new thread, starts it with the chips attached). */
+function ThreadScreen(props: {
+  target: Target;
+  thread?: Thread;
+  chips: Chip[];
+  setChips: (chips: Chip[]) => void;
+  oldMac: string | null;
+  sync: () => Promise<void>;
+}) {
+  const { target, thread, chips, setChips } = props;
+  const theme = useTheme();
+  const { client } = usePairing();
+  const snapshot = useKin();
+  const [text, setText] = useState('');
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   // The composer sits on the keyboard: a spacer under it grows with the
@@ -47,148 +285,113 @@ export default function KinScreen() {
   const spacer = useAnimatedStyle(() => ({ height: Math.max(0, -keyboard.height.value - insets.bottom) }));
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
 
-  const sync = useCallback(async () => {
-    if (!client) return;
-    try {
-      await syncSection(client, 'kin');
-    } catch (e) {
-      if (e instanceof Unpaired) unpair();
-    }
-  }, [client, unpair]);
-
-  // Ask now, then again while the chat is open: often while Kin answers.
-  useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const tick = async () => {
-      await sync();
-      if (!stopped) timer = setTimeout(tick, kin.busy ? BUSY_POLL : IDLE_POLL);
-    };
-    void tick();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [sync]);
-
-  const items = useMemo(() => shown(snapshot), [snapshot]);
-  const last = snapshot.entries.at(-1);
-  useEffect(() => {
-    if (last) markKinSeen(last.seq);
-  }, [last]);
+  const items = useMemo(() => shown(snapshot, target), [snapshot, target]);
+  const view = 'thread' in target ? snapshot.views[target.thread] : undefined;
+  const running = Boolean(view?.running) || ('thread' in target && snapshot.running.includes(target.thread));
+  // Chips go with the message that starts a new thread.
+  const starting = 'draft' in target && outgoingIn(snapshot, target).length === 0;
 
   const send = () => {
     const message = text.trim();
     if (!message) return;
-    kin.write(message, chips);
+    kin.write(message, starting ? chips : [], target);
     setText('');
     setChips([]);
-    void sync();
+    void props.sync();
   };
 
-  const status = api > 0 && api < SECTIONS_API ? OLD_MAC : kinStatus(snapshot);
-  const jobs = activeJobs(snapshot.jobs);
+  const status = props.oldMac ?? kinStatus(snapshot, target);
   const offline = snapshot.connection === 'offline';
+  const passage = thread?.anchor?.kind === 'paragraph' ? thread.anchor.quote?.exact : undefined;
+  const subject = passage ? null : about(thread?.anchor);
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Kin',
-          presentation: 'modal',
-          headerRight: () => (
-            <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={10}>
-              <Text style={[styles.done, { color: theme.text }]}>Done</Text>
-            </Pressable>
-          ),
-        }}
-      />
-      <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: headerHeight }]}>
-        {status && (
-          <View testID="kin-status" style={[styles.banner, { backgroundColor: offline ? theme.surface : 'transparent' }]}>
-            {offline && <SymbolView name="desktopcomputer" size={15} tintColor={theme.muted} />}
-            <Text style={[styles.bannerText, { color: theme.muted }]}>{status}</Text>
+    <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: headerHeight }]}>
+      {status && <Banner status={status} offline={offline} theme={theme} />}
+      <ScrollView
+        ref={scroll}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="handled"
+        onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
+        onLayout={() => scroll.current?.scrollToEnd({ animated: false })}
+      >
+        {passage && (
+          <View style={[styles.passage, { borderColor: theme.border }]}>
+            <Text selectable style={[styles.passageText, { color: theme.muted }]}>
+              {passage}
+            </Text>
+            {thread?.anchor?.orphaned && <Text style={[styles.meta, { color: theme.faint }]}>This passage changed</Text>}
           </View>
         )}
-        <ScrollView
-          ref={scroll}
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          keyboardDismissMode="interactive"
-          keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
-          onLayout={() => scroll.current?.scrollToEnd({ animated: false })}
-        >
-          {items.length === 0 && (
-            <View style={styles.empty}>
-              <KinMark size={56} />
-            </View>
-          )}
-          {items.map((item) => (
-            <Message key={item.kind === 'entry' ? `e${item.entry.seq}` : `o${item.message.id}`} item={item} theme={theme} />
-          ))}
-          {snapshot.running && !offline && <Text style={[styles.typing, { color: theme.kinInk }]}>Kin is replying…</Text>}
-          {jobs.length > 0 && (
-            <View style={[styles.jobs, { borderColor: theme.border }]}>
-              <Pressable accessibilityRole="button" onPress={() => setShowJobs(!showJobs)} style={styles.jobsHeader}>
-                <Text style={[styles.label, { color: theme.muted }]}>Kin’s jobs</Text>
-                <SymbolView name={showJobs ? 'chevron.up' : 'chevron.down'} size={12} tintColor={theme.muted} />
-              </Pressable>
-              {showJobs && jobs.map((job) => <JobRow key={job.id} job={job} theme={theme} />)}
-            </View>
-          )}
-        </ScrollView>
-        <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
-          {chips.length > 0 && (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-              {chips.map((chip) => (
-                <Pressable
-                  key={`${chip.kind}:${chip.path}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${chip.label ?? chip.path} from the context`}
-                  onPress={() => setChips(chips.filter((c) => c !== chip))}
-                  style={[styles.chip, { backgroundColor: theme.surface }]}
-                >
-                  <SymbolView name={(chipIcon[chip.kind] ?? 'doc') as never} size={12} tintColor={theme.muted} />
-                  <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }]}>
-                    {chip.label ?? chip.path}
-                  </Text>
-                  <SymbolView name="xmark" size={10} tintColor={theme.faint} />
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
-          <View style={styles.inputRow}>
-            <TextInput
-              value={text}
-              onChangeText={setText}
-              placeholder="Ask Kin…"
-              placeholderTextColor={theme.faint}
-              multiline
-              accessibilityLabel="Message to Kin"
-              testID="kin-message"
-              style={[styles.input, { color: theme.text, backgroundColor: theme.surface }]}
-            />
-            {snapshot.running && !text.trim() ? (
-              <Pressable accessibilityRole="button" accessibilityLabel="Stop Kin" onPress={() => client && kin.stop(client).catch(() => {})} style={[styles.send, { backgroundColor: theme.surface }]}>
-                <SymbolView name="stop.fill" size={14} tintColor={theme.text} />
-              </Pressable>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Send"
-                disabled={!text.trim()}
-                onPress={send}
-                style={[styles.send, { backgroundColor: text.trim() ? theme.primary : theme.surface }]}
-              >
-                <SymbolView name="arrow.up" size={16} tintColor={text.trim() ? theme.onPrimary : theme.faint} />
-              </Pressable>
-            )}
+        {subject && <Text style={[styles.subject, { color: theme.faint }]}>{subject}</Text>}
+        {items.length === 0 && !passage && (
+          <View style={styles.empty}>
+            <KinMark size={56} />
           </View>
+        )}
+        {items.map((item) => (
+          <Message key={item.kind === 'entry' ? `e${item.entry.seq}` : `o${item.message.id}`} item={item} theme={theme} />
+        ))}
+        {running && !offline && <Text style={[styles.typing, { color: theme.kinInk }]}>Kin is replying…</Text>}
+      </ScrollView>
+      <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
+        {starting && chips.length > 0 && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+            {chips.map((chip) => (
+              <Pressable
+                key={`${chip.kind}:${chip.path}`}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${chip.label ?? chip.path}`}
+                onPress={() => setChips(chips.filter((c) => c !== chip))}
+                style={[styles.chip, { backgroundColor: theme.surface }]}
+              >
+                <SymbolView name={(chipIcon[chip.kind] ?? 'doc') as never} size={12} tintColor={theme.muted} />
+                <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }]}>
+                  {chip.label ?? chip.path}
+                </Text>
+                <SymbolView name="xmark" size={10} tintColor={theme.faint} />
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        <View style={styles.inputRow}>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder="Ask Kin…"
+            placeholderTextColor={theme.faint}
+            multiline
+            autoFocus={'draft' in target}
+            accessibilityLabel="Message to Kin"
+            testID="kin-message"
+            style={[styles.input, { color: theme.text, backgroundColor: theme.surface }]}
+          />
+          {running && !text.trim() && 'thread' in target ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Stop Kin"
+              onPress={() => client && kin.stop(client, target.thread).catch(() => {})}
+              style={[styles.send, { backgroundColor: theme.surface }]}
+            >
+              <SymbolView name="stop.fill" size={14} tintColor={theme.text} />
+            </Pressable>
+          ) : (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Send"
+              disabled={!text.trim()}
+              onPress={send}
+              style={[styles.send, { backgroundColor: text.trim() ? theme.primary : theme.surface }]}
+            >
+              <SymbolView name="arrow.up" size={16} tintColor={text.trim() ? theme.onPrimary : theme.faint} />
+            </Pressable>
+          )}
         </View>
-        <Animated.View style={spacer} />
       </View>
-    </>
+      <Animated.View style={spacer} />
+    </View>
   );
 }
 
@@ -217,17 +420,15 @@ function Message({ item, theme }: { item: Shown; theme: Theme }) {
       </View>
     );
   }
-  const { entry, thread } = item;
+  const { entry } = item;
   return (
     <>
-      {thread && <Text style={[styles.thread, { color: theme.faint }]}>{thread}</Text>}
       {entry.role === 'owner' ? (
         <View style={styles.ownerRow}>
           <View style={[styles.owner, { backgroundColor: theme.surface }]}>
             <Chips chips={entry.chips ?? []} theme={theme} />
             <Text selectable style={[styles.ownerText, { color: theme.text }]}>{entry.text}</Text>
           </View>
-          {entry.comment && <Text style={[styles.meta, { color: theme.faint }]}>In a paragraph’s comments</Text>}
         </View>
       ) : (
         <View style={styles.kinRow} accessible accessibilityLabel={`Kin: ${entry.text}`}>
@@ -237,7 +438,6 @@ function Message({ item, theme }: { item: Shown; theme: Theme }) {
               {entry.role === 'helper' && <Text style={[styles.helper, { color: theme.kinInk }]}>From a helper: </Text>}
               {entry.text || (entry.error ? '' : '…')}
             </Text>
-            {entry.comment && <Text style={[styles.meta, { color: theme.faint }]}>In a paragraph’s comments</Text>}
             {entry.interrupted && <Text style={[styles.meta, { color: theme.faint }]}>Interrupted</Text>}
             {entry.error && <Text style={[styles.meta, { color: theme.danger }]}>{entry.error}</Text>}
           </View>
@@ -290,7 +490,20 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: { padding: 16, gap: 14, paddingBottom: 24 },
   empty: { alignItems: 'center', paddingTop: 60 },
-  thread: { fontSize: 13, textAlign: 'center', marginTop: 6 },
+  emptyText: { fontSize: 15, textAlign: 'center', paddingTop: 40 },
+  toolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 10 },
+  search: { flex: 1, fontSize: 16, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  newThread: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 9 },
+  newThreadText: { fontSize: 15, fontWeight: '600' },
+  row: { gap: 4, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  rowTop: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  rowTitle: { flex: 1, fontSize: 16, fontWeight: '600' },
+  rowAbout: { fontSize: 14, lineHeight: 19 },
+  quoted: { fontFamily: fonts.serif, fontStyle: 'italic' },
+  rowPreview: { fontSize: 14, lineHeight: 19 },
+  passage: { borderLeftWidth: 2, paddingLeft: 12, gap: 4 },
+  passageText: { fontFamily: fonts.serif, fontSize: 16, lineHeight: 23, fontStyle: 'italic' },
+  subject: { fontSize: 13, textAlign: 'center' },
   ownerRow: { alignItems: 'flex-end', gap: 4 },
   owner: { maxWidth: '85%', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, gap: 6 },
   ownerText: { fontSize: 16, lineHeight: 22 },

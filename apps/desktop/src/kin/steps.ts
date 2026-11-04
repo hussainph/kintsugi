@@ -26,7 +26,7 @@ export function describeStep(name: string, args: unknown): StepView {
       return { label: a.name ? `Used the ${String(a.name)} skill` : "Used a skill", icon: Sparkles };
     case "tool": {
       const inner = (a.args ?? {}) as Record<string, unknown>;
-      if (a.name === "history") return { label: inner.query ? `Searched our history for ${quoted(inner.query)}` : "Read our history", icon: Search };
+      if (a.name === "threads") return { label: inner.query ? `Searched earlier threads for ${quoted(inner.query)}` : "Read an earlier thread", icon: Search };
       if (a.name === "shortlist" || a.name === "similar_to" || a.name === "top_topics" || a.name === "taste_profile" || a.name === "explain")
         return { label: "Ranked the Feed", icon: Compass };
       if (a.name === "outline") return { label: `Outlined ${String(inner.path ?? "a document")}`, icon: BookOpen };

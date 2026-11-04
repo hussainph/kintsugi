@@ -5,9 +5,11 @@ import { element } from "./menu.ts";
 import { paragraphNear, paragraphRange } from "./references.ts";
 
 /**
- * Kin's comment threads on paragraphs (KI-38): margin markers, a thread
- * popover (reply, resolve, reopen) and a panel for detached and resolved
- * threads. The host stores threads outside the document and runs Kin; this
+ * Kin's threads on paragraphs (KI-38, KI-104): margin markers, and either a
+ * thread popover (reply, resolve, reopen) with a panel for detached and
+ * resolved threads, or, when the host shows threads itself (`onOpen`, the
+ * desktop's Kin margin), only the markers, the paragraph highlight and a
+ * "Kin replied" chip under a quick ask. The host stores threads outside the document and runs Kin; this
  * extension only places them, keeps them on their paragraph as it's edited,
  * and draws them. It never changes the document, except to insert a
  * [[link]] Kin found when he drags it in or taps Insert.
@@ -72,6 +74,14 @@ export type Comments = {
   onOpenLink?: (target: string) => void;
   /** Kin's avatar; a placeholder mark otherwise. */
   kinMark?: () => HTMLElement;
+  /** The host shows threads (the Kin margin): a marker opens its thread
+   *  there, and no popover or panel is drawn. */
+  onOpen?: (id: string) => void;
+  /** With `onOpen`: a new thread on a paragraph starts in the host's composer. */
+  onStart?: (anchor: CommentAnchor, place: CommentPlace) => void;
+  /** Quick asks on this document: a chip under the paragraph while Kin
+   *  answers ("asking") and once he has ("replied"), until it's opened. */
+  asks?: Record<string, "asking" | "replied">;
 };
 
 /** The host's threads changed: place new ones, redraw. */
@@ -94,12 +104,29 @@ type Field = {
 
 const referenceMime = "application/x-kintsugi-reference";
 
-/** Opens a new thread's composer on the paragraph at `from` (or the one above a blank line). */
+/** Opens a new thread's composer on the paragraph at `from` (or the one
+ *  above a blank line): the popover's, or the host's (`onStart`). */
 export function startComment(view: EditorView, from: number, to = from): boolean {
   const range = paragraphNear(view.state, from) ?? paragraphNear(view.state, to);
   if (!range || !read(view.state)) return false;
   view.dispatch({ effects: [startDraft.of(range), openThread.of(null)] });
+  const config = configFor(view.state.facet(hostConfig) ?? (() => undefined));
+  config?.onStart?.(anchorAt(view.state.doc.toString(), range.from, range.to), place(view.state, range));
   return true;
+}
+
+/** Puts away any open thread or new thread's highlight. */
+export function closeComment(view: EditorView) {
+  if (!read(view.state)) return;
+  view.dispatch({ effects: [openThread.of(null), startDraft.of(null)] });
+}
+
+/** The paragraph at `from` (or the one above a blank line), anchored, for a
+ *  thread about it that starts elsewhere (a quick ask, Ask Kin). */
+export function paragraphAnchor(state: EditorState, from: number, to = from): { anchor: CommentAnchor; place: CommentPlace } | null {
+  const range = paragraphNear(state, from) ?? paragraphNear(state, to);
+  if (!range) return null;
+  return { anchor: anchorAt(state.doc.toString(), range.from, range.to), place: place(state, range) };
 }
 
 /** Opens a thread's popover (or its card in the panel, if detached). */
@@ -160,6 +187,9 @@ function reconcile(value: Field, state: EditorState, config: Comments | undefine
   }
   return { ...value, placed, version: value.version + 1 };
 }
+
+/** Each state's config reader, for `startComment`. */
+const hostConfig = Facet.define<() => Comments | undefined, (() => Comments | undefined) | null>({ combine: (getters) => getters[0] ?? null });
 
 /** Each document's state has its own field, reading that state's config. */
 const fieldFacet = Facet.define<StateField<Field>, StateField<Field> | null>({ combine: (fields) => fields[0] ?? null });
@@ -223,12 +253,14 @@ class Marker extends WidgetType {
   readonly active: boolean;
   readonly resolved: boolean;
   readonly busy: boolean;
-  constructor(ids: string[], active: boolean, resolved: boolean, busy: boolean) {
+  readonly onOpen: ((id: string) => void) | undefined;
+  constructor(ids: string[], active: boolean, resolved: boolean, busy: boolean, onOpen?: (id: string) => void) {
     super();
     this.ids = ids;
     this.active = active;
     this.resolved = resolved;
     this.busy = busy;
+    this.onOpen = onOpen;
   }
   eq(other: Marker) {
     return other.ids.join() === this.ids.join() && other.active === this.active && other.resolved === this.resolved && other.busy === this.busy;
@@ -243,7 +275,42 @@ class Marker extends WidgetType {
     button.addEventListener("mousedown", (event) => event.preventDefault());
     button.addEventListener("click", (event) => {
       event.preventDefault();
-      openComment(view, this.active ? null : this.ids[0]);
+      // In the host's margin: open the paragraph's thread there.
+      if (this.onOpen) {
+        openComment(view, this.ids[0]);
+        this.onOpen(this.ids[0]);
+      } else openComment(view, this.active ? null : this.ids[0]);
+    });
+    return button;
+  }
+  ignoreEvent() { return true; }
+}
+
+/** Under a quick ask's paragraph: Kin is answering, or has; opens the thread. */
+class AskChip extends WidgetType {
+  readonly id: string;
+  readonly state: "asking" | "replied";
+  readonly onOpen: (id: string) => void;
+  readonly mark: () => HTMLElement;
+  constructor(id: string, state: "asking" | "replied", onOpen: (id: string) => void, mark: () => HTMLElement) {
+    super();
+    this.id = id;
+    this.state = state;
+    this.onOpen = onOpen;
+    this.mark = mark;
+  }
+  eq(other: AskChip) { return other.id === this.id && other.state === this.state; }
+  toDOM(view: EditorView) {
+    const button = element("button", `cm-comment-ask cm-comment-ask-${this.state}`);
+    button.type = "button";
+    button.dataset.commentAsk = this.id;
+    button.dataset.state = this.state;
+    button.append(this.mark(), element("span", "", this.state === "replied" ? "Kin replied" : "Kin is answering"));
+    button.addEventListener("mousedown", (event) => event.preventDefault());
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      openComment(view, this.id);
+      this.onOpen(this.id);
     });
     return button;
   }
@@ -269,7 +336,13 @@ function decorations(state: EditorState, config: Comments | undefined): Decorati
     const line = state.doc.lineAt(group.range.from);
     ranges.push(Decoration.line({ class: "cm-comment-line" }).range(line.from));
     const isActive = !!active && active.from === group.range.from;
-    ranges.push(Decoration.widget({ widget: new Marker(group.ids, isActive, group.resolved, group.busy), side: -1 }).range(group.range.from));
+    ranges.push(Decoration.widget({ widget: new Marker(group.ids, isActive, group.resolved, group.busy, config.onOpen), side: -1 }).range(group.range.from));
+  }
+  if (config.onOpen) {
+    for (const [id, state] of Object.entries(config.asks ?? {})) {
+      const range = field.placed.get(id);
+      if (range) ranges.push(Decoration.widget({ widget: new AskChip(id, state, config.onOpen, () => kinMark(config)), side: 1 }).range(range.to));
+    }
   }
   if (active && active.to > active.from) ranges.push(Decoration.mark({ class: "cm-comment-active" }).range(active.from, active.to));
   return Decoration.set(ranges, true);
@@ -496,7 +569,7 @@ function popover(field: StateField<Field>, getConfig: () => Comments | undefined
     const config = configFor(getConfig);
     const id = field.open;
     const range = id ? field.placed.get(id) : field.draft;
-    if (!range || !config || (id && !config.threads.some((t) => t.id === id))) return (cached = null);
+    if (!range || !config || config.onOpen || (id && !config.threads.some((t) => t.id === id))) return (cached = null);
     const key = id ?? "draft";
     if (cached?.key !== key) {
       cached = {
@@ -595,7 +668,7 @@ function panel(field: StateField<Field>, getConfig: () => Comments | undefined):
   return showPanel.compute([field], (state) => {
     const config = configFor(getConfig);
     void state.field(field).version;
-    return config && (config.threads.length || config.reviewing) ? create : null;
+    return config && !config.onOpen && (config.threads.length || config.reviewing) ? create : null;
   });
 }
 
@@ -662,7 +735,7 @@ export function commentExtensions(getConfig: () => Comments | undefined): Extens
       return true;
     },
   }]);
-  return [field, draw, close, popover(field, getConfig), panel(field, getConfig), persistence(getConfig), commentTheme];
+  return [hostConfig.of(getConfig), field, draw, close, popover(field, getConfig), panel(field, getConfig), persistence(getConfig), commentTheme];
 }
 
 const kin = "var(--kin, oklch(0.66 0.125 76))";
@@ -680,6 +753,15 @@ const commentTheme = EditorView.theme({
   ".cm-comment-marker-resolved": { opacity: ".55" },
   ".cm-comment-marker-busy": { borderColor: kin },
   ".cm-comment-marker:focus-visible": { outline: `2px solid ${kin}`, outlineOffset: "2px" },
+  ".cm-comment-ask": {
+    display: "flex", width: "fit-content", alignItems: "center", gap: "6px", margin: "6px 0 2px", padding: "2px 10px 2px 4px", cursor: "pointer",
+    border: "1px solid var(--border)", borderRadius: "999px", backgroundColor: "var(--background)", color: "var(--muted-foreground)",
+    fontFamily: "var(--font-sans)", fontSize: "12px", fontStyle: "normal", fontWeight: "500", lineHeight: "1.6",
+  },
+  ".cm-comment-ask-replied": { borderColor: kin, color: kinInk, backgroundColor: `color-mix(in oklch, ${kin} 10%, var(--background))` },
+  ".cm-comment-ask:hover": { borderColor: kin, color: kinInk },
+  ".cm-comment-ask:focus-visible": { outline: `2px solid ${kin}`, outlineOffset: "2px" },
+  ".cm-comment-ask .comment-kin-avatar, .cm-comment-ask .cm-comment-kin-mark": { width: "16px", height: "16px" },
   ".cm-comment-active": { backgroundColor: `color-mix(in oklch, ${kin} 12%, transparent)`, borderRadius: "2px" },
   ".cm-tooltip.cm-comment-popover": {
     width: "min(360px, calc(100vw - 16px))", maxHeight: "min(440px, 60vh)", overflowY: "auto", boxSizing: "border-box",

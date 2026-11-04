@@ -155,3 +155,19 @@ test("a review offers the body's prose paragraphs with anchors and lines", () =>
   assert.deepEqual(list.map((p) => [p.anchor.exact, p.lines]), [["First para\nwraps.", [7, 8]], ["Second.", [12, 12]]]);
   assert.equal(list[0].anchor.prefix.endsWith("# Heading\n\n"), true);
 });
+
+test("in the host's margin, a new thread starts in its composer and no popover or bar is drawn (KI-104)", () => {
+  const e = editor(DOC, [thread("a", at(DOC, "Kilns teach patience."))]);
+  const started: { anchor: CommentAnchor; text: string }[] = [];
+  const opened: string[] = [];
+  e.host.onOpen = (id) => opened.push(id);
+  e.host.onStart = (anchor, place) => started.push({ anchor, text: place.text });
+  e.refresh();
+  assert.equal(startComment(e.view, e.text().indexOf("pencil")), true);
+  assert.deepEqual(started.map((s) => [s.anchor.exact, s.text]), [["A pencil is a tool for thinking.", "A pencil is a tool for thinking."]]);
+  assert.equal(e.state.facet(showTooltip).filter(Boolean).length, 0, "no popover");
+  assert.equal(e.state.facet(showPanel).filter(Boolean).length, 0, "no comments bar");
+  assert.equal(e.placed("a"), "Kilns teach patience.");
+  assert.equal(e.text(), DOC, "the document is untouched");
+  assert.equal(opened.length, 0);
+});
