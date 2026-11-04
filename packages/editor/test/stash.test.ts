@@ -8,7 +8,7 @@ import * as stashModule from "../src/stash.ts";
 import {
   addRequestedStashItems, addStashNote, flushStash, focusStashItem, insertStashItem,
   moveStashItem, refreshStash, removeStashItem, reorderStashItems, stashCommands, stashExtensions,
-  draftSelectionMime, stashDropped, stashItems, stashKinReply, stashMime, stashRange, stashSelection, stashTargetAt,
+  draftSelectionMime, stashDropped, stashItems, stashKinReply, stashMime, stashRange, stashRewrite, stashSelection, stashTargetAt,
   type Stash, type StashItem,
 } from "../src/stash.ts";
 
@@ -143,8 +143,10 @@ test("stash and insertion are isolated from surrounding typing", () => {
 test("owner notes and explicitly stashed replies need no background feature", () => {
   const e = editor("Draft");
   const note = addStashNote(e.view, "A note");
+  assert.equal(e.opened, 0, "a note typed in the Stash tab is already in sight");
   const reply = stashKinReply(e.view, "Try [[notes/a]].");
   assert.ok(note && reply);
+  assert.equal(e.opened, 1, "a stashed reply reports where it went, like any stash");
   assert.deepEqual(e.items().map(({ by, kind }) => ({ by, kind })), [{ by: "owner", kind: "text" }, { by: "kin", kind: "idea" }]);
   assert.equal(e.text(), "Draft");
   undo(e.view);
@@ -408,6 +410,14 @@ test("stashRange stashes ⌘K's passage as one undo step, and refuses bad spans"
   assert.deepEqual(e.items(), []);
   for (const [from, to] of [[3, 3], [5, 2], [-1, 3], [0, 99], [0.5, 3]]) assert.equal(stashRange(e.view, from, to), false);
   assert.equal(e.text(), "Keep these words here.");
+  assert.equal(e.opened, 1);
+});
+
+test("a stashed review rewrite reports where it went; a failed one doesn't", () => {
+  const e = editor("We utilize gold.");
+  assert.ok(stashRewrite(e.view, { from: 3, to: 10 }, "use"));
+  assert.equal(e.opened, 1);
+  assert.equal(stashRewrite(e.view, { from: 3, to: 99 }, "use"), null);
   assert.equal(e.opened, 1);
 });
 

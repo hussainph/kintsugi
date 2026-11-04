@@ -198,8 +198,8 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     onStash: (mark) => {
       const view = editor.viewRef.current;
       const stashed = !!view && mark.text !== undefined && !!stashRewrite(view, mark.range, mark.text);
-      if (stashed) toast("Added to stash");
-      else toast.error("Couldn’t add to stash");
+      // The stash shows where it went (KI-110): a lit row or a dot, no toast.
+      if (!stashed) toast.error("Couldn’t add to stash");
       return stashed;
     },
     renderCard: (dom, next, actions) => {

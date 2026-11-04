@@ -330,7 +330,7 @@ export function stashRange(view: EditorView, from: number, to: number): boolean 
     effects: mutate.of({ put: [{ item, range: null }] }),
     annotations: isolateHistory.of("full"), userEvent: "delete.stash", scrollIntoView: true,
   });
-  configAt(view.state)?.onStashed?.(item.id);
+  stashed(view, item.id);
   return true;
 }
 
@@ -357,6 +357,12 @@ export function stashDropped(view: EditorView, data: string): boolean {
   }
 }
 
+/** Tells the host where a single stash went (KI-110), the same for every route. */
+function stashed(view: EditorView, id: string): string {
+  configAt(view.state)?.onStashed?.(id);
+  return id;
+}
+
 /** Explicit Ask Kin / Stash-on-reply entry point. No autonomous producer or
  * proactive add API exists. Invalid batches and duplicate IDs reject atomically. */
 export function addRequestedStashItems(view: EditorView, items: readonly StashItem[]): boolean {
@@ -373,7 +379,7 @@ export function addRequestedStashItems(view: EditorView, items: readonly StashIt
 export function stashKinReply(view: EditorView, text: string): string | null {
   if (typeof text !== "string" || !text.trim()) return null;
   const item: StashItem = { id: newId(), by: "kin", kind: "idea", text, created: new Date().toISOString() };
-  return addRequestedStashItems(view, [item]) ? item.id : null;
+  return addRequestedStashItems(view, [item]) ? stashed(view, item.id) : null;
 }
 
 /** Stash on one of Kin's asked rewrites (KI-109): its words, kept for
@@ -382,7 +388,7 @@ export function stashRewrite(view: EditorView, range: Range, text: string): stri
   if (typeof text !== "string" || !text.trim() || range.from < 0 || range.to > view.state.doc.length || range.to <= range.from) return null;
   const anchor = stashAnchorAt(view.state.doc.toString(), range.from, range.to);
   const item: StashItem = { id: newId(), by: "kin", kind: "rewrite", text, created: new Date().toISOString(), anchor };
-  return addRequestedStashItems(view, [item]) ? item.id : null;
+  return addRequestedStashItems(view, [item]) ? stashed(view, item.id) : null;
 }
 
 export function addStashNote(view: EditorView, text: string): string | null {

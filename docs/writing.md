@@ -182,7 +182,8 @@ never re-wraps the draft.
   disabled. Dragging a selection from the draft onto the Stash tab, or onto
   its header, stashes it too. **Add a note** keeps a note without putting it
   in the draft.
-- Stashing never opens the margin and shows no toast. If the Stash tab is
+- Stashing, including **Stash** on a Kin reply or a review's rewrite, never
+  opens the margin and shows no toast. If the Stash tab is
   showing, the new row lights up briefly. If the margin is closed, the
   margin button's dot pulses once; if another tab is showing, the dot is on
   the Stash tab's header.
