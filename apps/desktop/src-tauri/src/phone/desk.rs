@@ -4,6 +4,7 @@
 
 use super::sections::{Fail, Op, Outcome, Pending, Sections};
 use crate::AppHandle;
+use crate::ai::threads::{Anchor, Filter};
 use crate::ai::{Chat, chat, ideas};
 use crate::feed::{self, NoteWrite, picked};
 use serde::Serialize;
@@ -75,16 +76,50 @@ async fn run(app: AppHandle, op: Op) -> Outcome {
         Op::IdeaDismiss { id, undo: false } => value(ideas::ideas_dismiss(app, id, None)),
         Op::IdeaDismiss { id, undo: true } => value(ideas::ideas_undismiss(app, id)),
         Op::IdeaDiscussed { id } => value(ideas::ideas_discussed(app, id).map(|()| json!({}))),
-        Op::Kin { before, limit } => value(chat::kin_chat_log(
+        Op::Kin { before, limit } => value(
+            app.state::<Chat>()
+                .engine()
+                .map(|engine| engine.recent(before, limit)),
+        ),
+        Op::KinThreads {
+            query,
+            about,
+            resolved,
+        } => value(chat::kin_threads(
             app.state::<Chat>(),
-            None,
-            before,
-            Some(limit),
+            Some(Filter {
+                about,
+                query,
+                resolved,
+                limit: Some(200),
+            }),
         )),
-        Op::KinSend { text, chips } => {
-            value(chat::kin_chat_send(app.state::<Chat>(), text, Some(chips)))
+        Op::KinThread { id } => value(chat::kin_thread(app.state::<Chat>(), id)),
+        Op::KinSend {
+            text,
+            chips,
+            thread,
+        } => {
+            // A new thread is about what he asked from: the first chip.
+            let anchor = chips.iter().find_map(Anchor::from_chip);
+            value(chat::kin_thread_send(
+                app.state::<Chat>(),
+                thread,
+                text,
+                Some(chips),
+                Some(chat::Start {
+                    anchor,
+                    origin: None,
+                }),
+            ))
         }
-        Op::KinStop => value(chat::kin_chat_stop(app.state::<Chat>()).map(|()| json!({}))),
+        Op::KinStop { thread } => value(app.state::<Chat>().engine().map(|engine| {
+            match thread {
+                Some(thread) => engine.stop(&thread),
+                None => engine.stop_all(),
+            }
+            json!({})
+        })),
         Op::KinJobs => value(chat::kin_jobs(app.state::<Chat>())),
     }
 }

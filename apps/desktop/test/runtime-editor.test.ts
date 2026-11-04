@@ -138,20 +138,22 @@ test("@ opens the [[ picker and writes the same [[link]] to disk", { timeout: 60
   assert.ok(!disk().includes("@golden"));
 });
 
-test("@Kin, first in the picker, opens a comment thread's composer on the paragraph (KI-38)", { timeout: 60_000 }, async () => {
+test("@Kin, first in the picker, opens a new thread about the paragraph in Kin (KI-38, KI-104)", { timeout: 60_000 }, async () => {
   await page.keyboard.type(" and @");
   await picker().locator('.cm-reference-kin[aria-selected="true"]').waitFor();
   await shot("04-at-kin");
   await page.keyboard.press("Enter");
-  const composer = page.getByRole("textbox", { name: "Ask Kin about this paragraph" });
-  await composer.waitFor();
-  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Ask Kin about this paragraph");
+  const composer = kin().getByRole("textbox", { name: "Message Kin" });
+  await kin().locator("[data-new]").waitFor();
+  await page.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Message Kin");
+  await kin().locator(".ki-kin-about-passage").getByText("See", { exact: false }).waitFor();
   await page.locator(".cm-comment-active", { hasText: "See" }).first().waitFor();
-  await shot("05-at-kin-comment");
+  await shot("05-at-kin-thread");
   await onDisk((t) => /See \[\[(inspiration\/)?golden-joinery\]\] and $/m.test(t), "@Kin takes itself out and writes nothing");
-  // Escape before sending leaves no thread behind.
-  await page.keyboard.press("Escape");
-  await composer.waitFor({ state: "detached" });
+  // Escape before sending puts Kin away and leaves no thread behind.
+  await composer.press("Escape");
+  await kin().waitFor({ state: "detached" });
+  await page.locator(".cm-comment-active").waitFor({ state: "detached" });
   assert.equal(await page.locator(".cm-comment-marker").count(), 0);
 });
 
@@ -171,29 +173,34 @@ test("⌘K keeps its edits and adds Kin's actions: supporting clips", { timeout:
   await onDisk((t) => /that is the point\. \[\[(inspiration\/)?golden-joinery\]\]/.test(t), "choosing a clip adds its link after the passage");
 });
 
-test("⌘K › Who disagrees? asks Kin in the chat, with the paragraph", { timeout: 60_000 }, async () => {
+test("⌘K › Who disagrees? is a quick ask: a Kin replied chip opens its thread", { timeout: 60_000 }, async () => {
   await line("The repair is visible").click();
   await page.keyboard.press("Meta+k");
   await refine().getByRole("option", { name: /Who disagrees\?/ }).click();
-  await kin().waitFor();
+  const chip = page.locator('.cm-comment-ask[data-state="replied"]');
+  await chip.waitFor({ timeout: 30_000 });
+  assert.equal(await kin().count(), 0, "Kin stays out of the way");
+  await shot("08-kin-replied");
+  await chip.click();
   await kin().locator('[data-role="owner"]').getByText(/Who disagrees with this\?/).waitFor();
   await kin().locator('[data-role="owner"]').last().locator(`[data-chip^="paragraph:${DOC}:"]`).waitFor();
-  await kin().locator('[data-role="kin"]').last().getByText(`read {"limit":20,"path":"${DOC}"}`, { exact: false }).waitFor({ timeout: 30_000 });
-  await shot("08-who-disagrees");
+  // A thread about a paragraph is answered like a margin note.
+  await kin().locator('[data-role="kin"]').last().getByText("Mock note: you asked “Who disagrees with this?", { exact: false }).waitFor({ timeout: 30_000 });
+  await shot("08b-who-disagrees");
   await closeKin();
 });
 
-test("⌘K › Discuss this paragraph opens a comment thread's composer on it, unsent", { timeout: 60_000 }, async () => {
+test("⌘K › Discuss this paragraph opens a new thread about it, unsent", { timeout: 60_000 }, async () => {
   await line("Keep the seam.").click();
   await page.keyboard.press("Meta+k");
   await refine().getByRole("option", { name: /Discuss this paragraph/ }).click();
-  const composer = page.getByRole("textbox", { name: "Ask Kin about this paragraph" });
-  await composer.waitFor();
+  const composer = kin().getByRole("textbox", { name: "Message Kin" });
+  await kin().locator("[data-new]").waitFor();
   assert.equal(await composer.inputValue(), "");
   await page.locator(".cm-comment-active", { hasText: "Keep the seam." }).waitFor();
   await shot("09-discuss-paragraph");
-  await page.keyboard.press("Escape");
-  await composer.waitFor({ state: "detached" });
+  await composer.press("Escape");
+  await kin().waitFor({ state: "detached" });
 });
 
 test("⌘K › Ideas for this draft opens Ideas filtered to it", { timeout: 60_000 }, async () => {

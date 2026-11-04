@@ -16,20 +16,18 @@
 //! - `kin`: the Tauri commands for Kin and its settings.
 //! - `memory`: Kin's capped memory and skills in `.kintsugi/agent/`.
 //! - `about`: the About you commands, and the memory snapshot for helpers.
-//! - `history`: the one conversation log, its inferred threads and summaries.
+//! - `threads`: Kin's threads, one file each, and their index (KI-104).
 //! - `jobs`: the helper job table.
-//! - `chat`: the live conversation: batching, interrupts, helpers.
-//! - `picks`: the model picked for each conversation, in the vault.
+//! - `chat`: the live threads: batching, interrupts, reviews, helpers.
+//! - `picks`: the model picked for each thread, in the vault.
 //! - `ideas`: Kin's daily ideas, checked against their sources (KI-39).
 
 pub mod about;
 mod agent;
 pub(crate) mod catalog;
 pub mod chat;
-pub mod comments;
 pub mod cost;
 mod credentials;
-mod history;
 pub mod ideas;
 mod jobs;
 pub mod kin;
@@ -44,6 +42,7 @@ mod providers;
 pub(crate) mod scripted;
 pub mod sign_in;
 pub mod stash;
+pub mod threads;
 pub(crate) mod tools;
 pub mod web;
 mod wire;

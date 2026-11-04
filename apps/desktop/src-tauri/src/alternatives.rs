@@ -10,7 +10,7 @@
 //! (`owner` or `kin`; KI-87 adds Kin's). The editor owns the list while the
 //! document is open and saves it whole.
 
-use crate::ai::comments::Anchor;
+use crate::ai::threads::Quote as Anchor;
 use crate::vault::Vault;
 use kintsugi_vault::write_atomic;
 use serde::{Deserialize, Serialize};

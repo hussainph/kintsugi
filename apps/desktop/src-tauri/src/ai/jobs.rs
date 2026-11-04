@@ -7,7 +7,7 @@
 //! the app quit is queued again on the next start. Each job gets a clear
 //! brief plus Kin's memory snapshot (About you and the notes file, in the
 //! cached prefix), runs as background work (it waits once the monthly cap
-//! is reached), and reports back quietly as a helper entry in the log.
+//! is reached), and reports back quietly in a thread: the one that asked, else its own.
 
 use chrono::Local;
 use kintsugi_vault::write_atomic;
@@ -52,9 +52,13 @@ pub struct Job {
     pub task: String,
     /// What to do, in full. The helper sees nothing else of the conversation.
     pub brief: String,
-    /// The thread its report belongs to, if any.
-    #[serde(default)]
-    pub topic: String,
+    /// The document (or other path) it's about, if any: its own thread's anchor.
+    #[serde(default, alias = "topic")]
+    pub about: String,
+    /// The thread that asked for it; its report goes there. Else the
+    /// report starts a thread of its own (KI-104).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread: Option<String>,
     pub status: Status,
     pub created: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -125,7 +129,7 @@ pub struct Trace {
     /// The web searches and pages that worked, for the reply's sources.
     pub web: Vec<super::web::WebCall>,
     /// Every tool call, for the reply's steps (KI-79), with its id.
-    pub uses: Vec<(String, super::history::ToolUse)>,
+    pub uses: Vec<(String, super::threads::ToolUse)>,
 }
 
 impl Trace {
@@ -182,8 +186,12 @@ pub struct NewJob {
     #[serde(default)]
     pub task: Option<String>,
     pub brief: String,
+    /// The document it's about, if any.
+    #[serde(default, alias = "topic")]
+    pub about: Option<String>,
+    /// The thread that asked for it.
     #[serde(default)]
-    pub topic: Option<String>,
+    pub thread: Option<String>,
 }
 
 pub struct Table {
@@ -245,7 +253,8 @@ impl Table {
             kind: new.kind.trim().chars().take(40).collect(),
             task: task.into(),
             brief: brief.into(),
-            topic: new.topic.unwrap_or_default(),
+            about: new.about.unwrap_or_default(),
+            thread: new.thread.filter(|t| super::threads::valid_id(t)),
             status: Status::Queued,
             created: now(),
             started: None,
@@ -338,7 +347,8 @@ mod tests {
             kind: "ideas".into(),
             task: None,
             brief: brief.into(),
-            topic: None,
+            about: None,
+            thread: None,
         }
     }
 

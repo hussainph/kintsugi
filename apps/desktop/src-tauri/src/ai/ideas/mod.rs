@@ -436,7 +436,8 @@ fn generate(app: &AppHandle, ask: brief::Ask) -> Result<Job> {
         kind: BATCH.into(),
         task: Some(Task::Ideas.id().into()),
         brief: text,
-        topic: ask.about.clone(),
+        about: ask.about.clone(),
+        thread: None,
     })?;
     changed(app);
     Ok(job)
@@ -610,7 +611,8 @@ pub fn ideas_refine(app: AppHandle, id: String, ask: String) -> Result<View> {
         kind: REFINE.into(),
         task: Some(Task::Ideas.id().into()),
         brief: brief::refine(&idea, &ask, super::writing::tone()),
-        topic: idea.content.about.first().cloned(),
+        about: idea.content.about.first().cloned(),
+        thread: None,
     })?;
     act(&app, |s, _| s.set_refining(&id, Some(job.id)).map(drop))
 }

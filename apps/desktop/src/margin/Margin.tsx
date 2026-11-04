@@ -3,9 +3,9 @@ import { Tabs } from "@kintsugi/ui/graphical";
 import { PanelRight } from "@kintsugi/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
 import { ShortcutHint } from "@/components/Shortcuts";
-import { KinChatTab, KinLauncher } from "@/kin/Chat";
-import { useKinChat } from "@/kin/useKinChat";
-import { onDiscuss, onOpenKin, openKin } from "@/lib/chat";
+import { KinLauncher } from "@/kin/Chat";
+import { KinTab } from "@/kin/KinTab";
+import { onDiscuss, onOpenKin, onOpenThread, openKin } from "@/lib/chat";
 import { keysOf, matches } from "@/lib/keys";
 import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
 import { hideMargin, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, visibleTab, type MarginTab, type MarginWhere } from "./state";
@@ -26,7 +26,6 @@ const TAB_KEYS: Record<MarginTab, ShortcutId> = { kin: "kin", references: "refer
  * the margin is closed. `bottom` keeps it above the document bar.
  */
 export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom: number; writing: MarginWriting }) {
-  const chat = useKinChat();
   const margin = useMargin();
   const tabs = tabsFor(where);
   const value = margin.tab ?? (tabs.includes(margin.chosen) ? margin.chosen : "kin");
@@ -35,11 +34,9 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
   // Anything that opens Kin opens the margin on it.
   useEffect(() => {
     const show = () => showMargin("kin");
-    const offOpen = onOpenKin(show);
-    const offDiscuss = onDiscuss(show);
+    const offs = [onOpenKin(show), onDiscuss(show), onOpenThread(show)];
     return () => {
-      offOpen();
-      offDiscuss();
+      for (const off of offs) off();
     };
   }, []);
 
@@ -120,7 +117,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
             </Tabs.List>
           </div>
           <Tabs.Panel value="kin" keepMounted className="ki-margin-panel" data-tab="kin">
-            {chat.open && <KinChatTab chat={chat} />}
+            {margin.showing("kin") && <KinTab onHide={close} />}
           </Tabs.Panel>
           {where === "writing" && (
             <>
@@ -130,7 +127,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
           )}
         </Tabs.Root>
       </aside>
-      <KinLauncher chat={chat} hidden={margin.open && where === "away"} />
+      <KinLauncher hidden={margin.open && where === "away"} />
     </>
   );
 }

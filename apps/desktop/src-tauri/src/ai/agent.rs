@@ -120,7 +120,7 @@ pub struct Turn {
     /// said and what Kin answered. Sent as plain messages after the prefix.
     pub history: Vec<(String, String)>,
     /// The running summary of the conversation, older than `history`.
-    pub recap: Option<String>,
+    pub about: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -297,7 +297,7 @@ async fn steps(
         &turn.chips,
         &turn.today,
         turn.remember,
-        turn.recap.as_deref(),
+        turn.about.as_deref(),
     )));
     let mut summary = Summary {
         text: String::new(),
@@ -562,7 +562,7 @@ pub(crate) mod tests {
             today: "2026-11-02".into(),
             remember: true,
             history: vec![],
-            recap: None,
+            about: None,
         }
     }
 

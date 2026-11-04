@@ -1,9 +1,10 @@
-import { type Pairing, remote, type Remote } from '@kintsugi/core/remote';
+import { type Pairing, remote } from '@kintsugi/core/remote';
 import * as SecureStore from 'expo-secure-store';
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
 
 import { KintsugiCapture as Capture } from '../../modules/capture';
+import { type PhoneRemote, phoneRemote } from './kin-api';
 import { endSample, isSample } from './sample';
 
 const KEY = 'kintsugi.pairing';
@@ -20,7 +21,7 @@ function load(): Pairing | null {
 type Value = {
   pairing: Pairing | null;
   /** The Mac this phone is paired with, or null before pairing. */
-  client: Remote | null;
+  client: PhoneRemote | null;
   pair: (pairing: Pairing) => void;
   unpair: () => void;
 };
@@ -42,7 +43,7 @@ export function PairingProvider({ children }: { children: ReactNode }) {
   const value = useMemo<Value>(
     () => ({
       pairing,
-      client: pairing && remote(pairing),
+      client: pairing && phoneRemote(remote(pairing), pairing),
       pair(next) {
         const raw = JSON.stringify(next);
         // The app's pairing is canonical. The effect mirrors it separately;

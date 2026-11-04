@@ -320,7 +320,8 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
             assert!(listed["dismissed"].is_object());
         }
 
-        // Kin: one message, sent twice with the same id, lands once and is answered.
+        // Kin: one message, sent twice with the same id, lands once, starts a
+        // thread about the story, and is answered there (KI-104).
         let message = serde_json::json!({
             "id": "11111111-2222-4333-8444-555555555555",
             "text": "What does this say about repair?",
@@ -334,44 +335,78 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
             .unwrap();
         assert_eq!(sent["duplicate"], false);
         let seq = sent["entry"]["seq"].as_u64().unwrap();
+        let thread = sent["thread"]["id"].as_str().unwrap().to_string();
+        assert_eq!(sent["thread"]["anchor"]["kind"], "feed", "{sent}");
+        assert_eq!(sent["thread"]["anchor"]["path"], id.to_string());
         let again: serde_json::Value = post("/v1/kin", message)
             .await
             .unwrap()
             .json()
             .await
             .unwrap();
-        assert_eq!(again, serde_json::json!({ "seq": seq, "duplicate": true }));
-        let mut log = serde_json::Value::Null;
+        assert_eq!(
+            again,
+            serde_json::json!({ "seq": seq, "thread": thread, "duplicate": true })
+        );
+        let mut view = serde_json::Value::Null;
         for _ in 0..240 {
-            log = get("/v1/kin").await;
-            let answered = log["entries"].as_array().unwrap().iter().any(|e| {
+            view = get(&format!("/v1/kin/thread?id={thread}")).await;
+            let answered = view["entries"].as_array().unwrap().iter().any(|e| {
                 e["role"] == "kin"
                     && e["answers"]
                         .as_array()
                         .is_some_and(|a| a.contains(&seq.into()))
             });
-            if answered && log["running"].is_null() {
+            if answered && view["running"].is_null() {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         }
-        let owners = log["entries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|e| e["role"] == "owner" && e["text"] == "What does this say about repair?")
-            .count();
-        assert_eq!(owners, 1, "{log}");
+        let entries = view["entries"].as_array().unwrap();
+        assert_eq!(
+            entries.iter().filter(|e| e["role"] == "owner").count(),
+            1,
+            "{view}"
+        );
         assert!(
-            log["entries"]
+            entries.iter().any(|e| e["role"] == "kin"
+                && e["answers"]
+                    .as_array()
+                    .is_some_and(|a| a.contains(&seq.into()))),
+            "{view}"
+        );
+        // A reply in the thread, and the list of threads about the story.
+        let reply: serde_json::Value = post(
+            "/v1/kin",
+            serde_json::json!({ "id": "33333333-2222-4333-8444-555555555555", "text": "And for my essay?", "thread": thread }),
+        )
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+        assert_eq!(reply["thread"]["id"], thread.as_str());
+        let listed = get(&format!("/v1/kin/threads?about={id}")).await;
+        assert_eq!(listed["threads"][0]["id"], thread.as_str(), "{listed}");
+        assert_eq!(listed["threads"].as_array().unwrap().len(), 1);
+        let found = get("/v1/kin/threads?q=essay").await;
+        assert_eq!(found["threads"][0]["id"], thread.as_str(), "{found}");
+        assert_eq!(
+            post("/v1/kin/stop", serde_json::json!({ "thread": thread }))
+                .await
+                .unwrap()
+                .status(),
+            200
+        );
+        // A phone from before threads still sees the latest messages.
+        let old = get("/v1/kin").await;
+        assert!(
+            old["entries"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|e| e["role"] == "kin"
-                    && e["answers"]
-                        .as_array()
-                        .is_some_and(|a| a.contains(&seq.into()))),
-            "{log}"
+                .any(|e| e["text"] == "What does this say about repair?"),
+            "{old}"
         );
         let jobs = get("/v1/kin/jobs").await;
         assert!(
@@ -383,25 +418,22 @@ fn the_phone_reaches_the_real_feed_ideas_and_kin() {
         let bad_chip = post("/v1/kin", serde_json::json!({ "id": "22222222-2222-4333-8444-555555555555", "text": "hi", "chips": [{ "kind": "paragraph", "path": "x.md" }] })).await.unwrap();
         assert_eq!(bad_chip.status(), 400);
 
-        // The conversation is the open vault's, kept in it (KI-59): another
-        // vault shows its own (empty) log, and switching back shows this one.
-        assert!(vault.join(".kintsugi/kin/log.jsonl").is_file());
+        // The threads are the open vault's, kept in it: another vault shows
+        // none, and switching back shows these.
+        assert!(
+            vault
+                .join(format!(".kintsugi/kin/threads/{thread}.jsonl"))
+                .is_file()
+        );
         let open = |path: &Path| {
             crate::vault::vault_open(handle.clone(), path.to_string_lossy().into()).unwrap();
         };
         open(&other_vault);
-        let there = get("/v1/kin").await;
-        assert_eq!(there["entries"], serde_json::json!([]), "{there}");
+        let there = get("/v1/kin/threads").await;
+        assert_eq!(there["threads"], serde_json::json!([]), "{there}");
         open(&vault);
-        let back = get("/v1/kin").await;
-        assert!(
-            back["entries"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|e| e["text"] == "What does this say about repair?"),
-            "{back}"
-        );
+        let back = get("/v1/kin/threads").await;
+        assert_eq!(back["threads"][0]["id"], thread.as_str(), "{back}");
     });
     drop(app);
 }

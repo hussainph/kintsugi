@@ -1,7 +1,7 @@
 # Kin's harness
 
-What exists today (KI-26, and KI-31's chat). `docs/vision.md` describes where Kin is going;
-this file describes what is built. Code: `apps/desktop/src-tauri/src/ai/`.
+What exists today (KI-26, KI-31's chat, and KI-104's threads). `docs/vision.md` describes where Kin is going;
+this file describes what is built (Kin's threads: KI-104). Code: `apps/desktop/src-tauri/src/ai/`.
 
 ## The loop
 
@@ -368,8 +368,9 @@ Extra tools, loaded on demand through `tool`: `outline` (a document's
 headings), `recent` (recently changed documents), the Feed's ranking tools
 `shortlist`, `similar_to`, `top_topics`, `taste_profile` and `explain`
 (compact JSON, ranked locally with no model calls; see
-[ranking.md](ranking.md)) and `history` (searches
-the open vault's whole conversation log, or reads around one entry with `{"around": seq}`). New tools join this
+[ranking.md](ranking.md)) and `threads` (searches the open vault's earlier
+threads with `{"query"}`, lists the ones about a path or `feed:<id>` with
+`{"about"}`, or reads one with `{"id"}`; never the thread it's asked from). New tools join this
 list, so the tool array (part of the cached prefix) never changes mid-turn.
 
 - `search` uses the app's shared index (`Tools::with_searcher`). Without
@@ -404,7 +405,7 @@ providers), `crates/ingest/src/web/guard.rs` (the fetch guard); webview:
 `src/settings/Web.tsx`, `src/kin/WebSources.tsx`.
 
 While web tools are on (Settings › Web, on by default), every Kin turn
-(the chat, comment threads, the developer panel) gets two more core tools
+(every thread, the developer panel) gets two more core tools
 after `tool`. Helpers (the daily Ideas batch and other background jobs) get
 them only while "Background helpers can use it" is on, which it isn't by
 default:
@@ -430,7 +431,7 @@ next turn.
   Hussain can add a key in Settings › Web; the prompt tells Kin to say so in
   one line and carry on. `web_fetch` needs no service and still works.
 - **Keys.** Saved in `<config>/kin/web.json`, owner-only (0600), replaced
-  atomically; never in the vault, the conversation log, a tool result or an
+  atomically; never in the vault, a thread, a tool result or an
   error. The webview only learns whether a provider has a key and where it
   came from. Without a saved key, `EXA_API_KEY`, `BRAVE_API_KEY` (or
   `BRAVE_SEARCH_API_KEY`) and `TAVILY_API_KEY` are read; headless runs read
@@ -466,7 +467,7 @@ hold even when Kin does as told:
   Hussain's own messages (this one and the earlier ones the turn carries,
   bare `example.com/post` included), in what Kin read from the vault or the
   Feed this turn (`search`, `read`, `list` and the vault and Feed extras;
-  not `history`, `idea` or spilled outputs, since Kin's own words may carry
+  not `threads`, `idea` or spilled outputs, since Kin's own words may carry
   a planted link), or in this turn's search results; or it's a link on a
   page fetched this turn, on the same host (`www.` aside) and without a
   query string. URLs compare without scheme, `www.`, fragment or trailing
@@ -487,12 +488,12 @@ hold even when Kin does as told:
   Web allows it (`web.json` `helpers`, off by default). A helper's brief
   counts as its "message".
 
-### Sources in the chat
+### Sources in a thread
 
 Each `web_search` or `web_fetch` that works also emits its results on the
 `toolResult` event (`web: {tool, query?, provider?, results: [{url, title,
 snippet?, date?, favicon?}]}`), and the reply keeps up to 12 of them in the
-log entry's `web` field. They are never sent back to the model.
+message's `web` field. They are never sent back to the model.
 
 `WebSources` (self-contained) shows them under the
 reply and while Kin works: a "3 sources" toggle with favicons, then what was
@@ -523,16 +524,25 @@ the first result, then answers. `test/runtime-kin.test.ts` drives it.
    memory: About Hussain, your notes and the skills index. Identical on every request; tests check it across steps and turns.
    Anthropic gets `cache_control` on the system block and a rolling breakpoint
    on the newest message; OpenAI and Codex get `prompt_cache_key: "kin"`.
-2. **Conversation**: only appended to within a turn.
-3. **Dynamic context**, at the end of the user message: the date,
-   on-screen chips as paths to read on demand (a selected paragraph carries
-   its line range), and the thread's running summary. Reading a draft also
-   returns its stash as data, never instructions, so Kin avoids repeating
-   an idea or rewrite that is already waiting.
+   The instructions say each conversation is a short thread about one
+   thing, that only this thread is in context, and to use the `threads`
+   tool for earlier ones.
+2. **The thread** (KI-104): its latest answered exchanges (at most 12), then
+   the new message. Only appended to within a turn. Interrupted and failed
+   replies stay in the thread but are never sent back to the model. A note
+   Kin started the thread with (a review's) is sent as the reply to "Kin,
+   review this draft"; a helper's report as the reply to "(A helper reported
+   back.)".
+3. **Dynamic context**, at the end of the user message: the date, on-screen
+   chips as paths to read on demand (a selected paragraph carries its line
+   range), then "This thread is about …": the document, clip, Feed item or
+   idea it's anchored to, or for a paragraph thread the paragraph's current
+   text, inside `<data>`. Reading a draft also returns its stash as data,
+   never instructions, so Kin avoids repeating an idea or rewrite that is
+   already waiting.
 
-A chat turn's conversation is its thread's latest answered exchanges (at
-most six, newer than the summary), then the new message. Interrupted and
-failed replies stay in the log but are never sent back to the model.
+There is no running summary and no topic inference: continuity across
+threads comes from memory and the `threads` tool.
 
 ## Memory and skills
 
@@ -589,8 +599,8 @@ For helper jobs (KI-31): `about::snapshot(app, root)` returns the snapshot
 that updates memory runs the loop with that snapshot and
 `Tools::with_memory(Access { store, source: Source::Review { .. }, remember: true })`,
 and skips conversations marked "don't remember this". Today each dev-panel
-turn takes its own snapshot; the conversation log should take one per
-conversation and reuse it.
+turn takes its own snapshot; a thread should take one when it starts
+and reuse it.
 
 ### About you
 
@@ -650,19 +660,18 @@ gets none. The effort control (`src/kin/Effort.tsx`) is a stepped slider
 over the model's `thinkingLevels`, hidden for a model with one level or
 none; it sits beside the model in the composer and in each Settings row.
 
-**Per conversation.** The chat's model picker sets the model for one
-conversation (a thread's key, `""` for general): `kin_chat_model(topic)`,
+**Per thread.** The composer's model picker sets the model for one thread
+(its id; `""` while a new thread hasn't started): `kin_chat_model(topic)`,
 `kin_chat_set_model(topic, model | null)` and, beside it, the effort with
 `kin_chat_set_effort(topic, level | null)` (KI-77), kept in
-`<vault>/.kintsugi/kin/models.json` (`ai/picks.rs`), beside that vault's
-`log.jsonl` and `threads.json`, so it moves with the vault and another
-vault's thread of the same name keeps its own. A turn runs on the pick of
-its conversation in the vault it started in, while that provider is usable,
-else on the chat default, at the conversation's effort, else the chat's
-default effort. An entry is `{ provider?, model?, reasoning? }`: an effort
-alone runs the chat default model at that level. The picker
-(`src/kin/ModelPicker.tsx`) loads and saves its own state and reloads the
-pick on `switched`.
+`<vault>/.kintsugi/kin/models.json` (`ai/picks.rs`), beside `threads/`, so it
+moves with the vault. A thread without a pick of its own runs on the one last
+picked for a new thread (`""`). A turn runs on its thread's pick in the vault
+it started in, while that provider is usable, else on the chat default, at
+the thread's effort, else the chat's default effort. An entry is
+`{ provider?, model?, reasoning? }`: an effort alone runs the chat default
+model at that level. The picker (`src/kin/ModelPicker.tsx`) loads and saves
+its own state and reloads the pick on `switched`.
 
 ## Cost and the cap
 
@@ -684,71 +693,79 @@ without `KINTSUGI_CONFIG_DIR` keeps both in memory.
   for still runs and reports `capReached: true`.
 - A cancelled request's tokens are unknown and aren't recorded.
 
-## The chat (KI-31)
+## Threads (KI-104)
 
-Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
-`ai/jobs.rs` (helpers); webview: `src/kin/Chat.tsx`, `src/lib/chat.ts`.
+Code: `ai/threads.rs` (the store), `ai/threads/migrate.rs` (moving the old
+log and comments in), `ai/chat.rs` (the live threads), `ai/chat/review.rs`
+(paragraph notes and reviews), `ai/jobs.rs` (helpers); webview:
+`src/kin/useKin.ts` (Kin's state), `src/kin/KinTab.tsx` (the Kin tab),
+`src/kin/Conversation.tsx` (a thread's messages and composer),
+`src/kin/Chat.tsx` (the avatar), `src/margin/` (the margin, KI-103),
+`src/lib/chat.ts` (commands and events).
 
-- **One avatar, one chat.** A placeholder avatar (KI-23/KI-41 design the
-  real one) sits bottom-right on every screen; it and ⌘J open the chat in
-  the margin's Kin tab (KI-103, `docs/writing.md`).
-  Screens say what they show through `useScreenContext` (the editor: the
-  selection, then the document; an open clip), and the chat attaches it as
-  removable chips. `discuss(chip)` from `src/lib/chat.ts` opens the chat with
-  an item pinned first: clips use it, and the Feed's Discuss (KI-25) calls it
-  with `{ kind: "feed", path: <item id>, label: <title> }`.
-- **One log per vault (KI-59).** `<vault>/.kintsugi/kin/log.jsonl`,
-  append-only and never shortened, beside `.kintsugi/comments/` and Kin's
-  memory. Hidden like them, so Kin's tools, search and the phone's library
-  never see it, and the watcher ignores it. Each owner message's topic is inferred: the
-  first chip's subject (a paragraph belongs to its document), else a known
-  thread the message names, else the previous topic if it was under 30
-  minutes ago, else general. A thread is the entries sharing a topic, with a
-  running summary in `threads.json` (beside the log); opening the chat on
-  draft X shows X's thread, and the next turn sends X's summary and recent
-  exchanges.
-- **Switching vaults switches the conversation.** The engine opens the open
-  vault's log on first use after a switch (`vault_open` also asks it to at
-  once): the running turn and comment replies stop, the chat and comment
-  margins reload (`kin:chat` `switched`), and history, summaries and the
-  phone's routes all read the new vault's log. A turn, review or helper job
-  that finishes after the switch writes to the log of the vault it started
-  in. The job table and spend stay in app data, shared by every vault.
-- **Moving the old log (KI-59).** Before KI-59 one log in
-  `<config>/kin/conversation/` served every vault. The first time a log is
-  opened after the update, it moves into that vault (the one open, or last
-  used); other vaults start empty. `history::migrate` claims it by renaming
-  the folder to `conversation.moving/` (a backup no other vault picks up),
-  copies `threads.json` then `log.jsonl` into the vault atomically, reads
-  the copy back to check it starts with every byte of the old log, and only
-  then deletes the backup. A crash at any step leaves the old log whole and
-  the next launch finishes the move. A vault that already has a log of its
-  own is never overwritten: the old one is set aside as
-  `conversation.unmoved-<time>/` instead.
-- **Batching and interrupts.** Messages land in the log at once. Kin answers
-  1.2 s after the last message, every waiting message in one turn. A keystroke
-  (`kin_chat_typing`, throttled) or a new message cancels the running turn;
-  its partial reply is logged as interrupted, and its messages are answered
-  by the next turn, 3.5 s after typing stops or 1.2 s after the next message.
-  Stop ends the turn and settles its messages.
-- **Idle summaries.** Two minutes after the last activity, threads with six
-  or more new entries get a new running summary from the chat model. It's
-  background work: it stops at the cap and when he comes back.
-- **Helper jobs.** `kin_job_create({ kind, brief, task?, topic? })` (or
-  `jobs.create` in `src/lib/chat.ts`) records a job in `<config>/kin/jobs.json`
-  and runs it as its own agent: one at a time, `background: true` (so it
-  waits as `waiting` at the cap and resumes when a cap change or the
-  five-minute check allows), with only its brief plus the memory snapshot
-  (`about::snapshot`) in the prefix, and no memory-writing tools. Chat turns
-  take a fresh snapshot and can update memory like any conversation. A job running when the app quit is queued again on start. It
-  reports back as a helper entry in the log (a dot on the avatar, no
-  popup). Feed ranking and Ideas are meant to use this. Helpers get 16k
-  output tokens per call (chat turns 4k): a batch of ideas is long, and a
-  reasoning model's thinking counts against the same budget. Each run's step
-  trace (tools called, stop reason, text length and output tokens per call;
-  no content) is kept on the job in `jobs.json` and printed to stderr as a
-  `kin: helper …` line, and a helper that ends without a report says why
-  (out of steps, its reply spent on thinking, or empty).
+Kin's whole surface is many small threads, not one long conversation per
+vault. A thread is the one primitive behind the chat, paragraph comments,
+Discuss on a Feed story, a clip or an idea, ⌘K's "Discuss" and quick asks.
+
+- **A thread** has an id, a title (from its first message, editable; a
+  thread Kin started takes its first note's), an optional **anchor**, its
+  messages and a status, open or resolved. Anchors are a document
+  (`doc`), a paragraph in one (`paragraph`, with a text quote re-resolved by
+  `packages/editor/src/anchors.ts`), a Feed item (`feed`), a clip (`clip`) or
+  an idea (`idea`). Its `origin` says how it started: `chat`, `discuss`,
+  `mention` (`@Kin`), `ask` (a quick ask), `review`, `helper`, or `earlier`
+  (moved from the old log).
+- **Explicit, not inferred.** A new ask starts a new thread, about what he
+  asked from, unless he's replying inside one. Nothing is guessed from the
+  words or the time.
+- **Messages** carry what the old log's entries did: his messages (with
+  their chips), Kin's replies (with tool steps, web sources, the model, the
+  cost, interrupted or failed), helpers' reports, and edit proposals inside
+  replies. Each is numbered within its thread.
+- **Storage.** `<vault>/.kintsugi/kin/threads/`: one `<id>.jsonl` per
+  thread, only ever appended to (a torn last line is skipped), and
+  `index.json` with each thread's id, title, anchor, status, origin, when
+  it changed, its message count and last line, rewritten atomically. A
+  thread's first message is on disk before the index names it; a thread file
+  the index lost is found again on open, and a damaged index is set aside as
+  `index.json.damaged-<time>` and rebuilt from the files. Hidden like the
+  rest of `.kintsugi/`, so Kin's tools, search and the phone's library never
+  see it, and the watcher ignores it.
+- **Kin never adds anything to the stash on its own**, and threads hold no
+  unasked suggestions. Everything in the stash is there because he asked:
+  "Ask Kin" on the stash, or stashing one of Kin's replies (KI-89).
+- **Batching and interrupts, per thread.** Messages land at once. Kin
+  answers 1.2 s after the last message in a thread, every waiting message of
+  that thread in one turn. A keystroke in a thread (`kin_thread_typing`,
+  throttled) or a new message there cancels that thread's running turn; its
+  partial reply is kept as interrupted, and its messages are answered by the
+  next turn, 3.5 s after typing stops or 1.2 s after the next message. Stop
+  ends the thread's turn and settles its messages; "Ask again" sends his
+  last message once more. Other threads carry on.
+- **The cost cap** works as before: a turn he asked for still runs and
+  reports `capReached`; background work stops.
+- **Switching vaults switches the threads.** The engine opens the open
+  vault's threads on first use after a switch (`vault_open` also asks it to
+  at once): running turns and reviews stop, the Kin tab reloads (`kin:chat`
+  `switched`), and the phone's routes read the new vault's threads. A turn,
+  review or helper that finishes after the switch writes to the vault it
+  started in.
+- **Renaming or moving a document** (or its folder) moves its threads'
+  anchors with it (`chat::renamed`, from `entry_rename` and `entry_move`).
+- **Helper jobs.** `kin_job_create({ kind, brief, task?, about?, thread? })`
+  (or `jobs.create` in `src/lib/chat.ts`) records a job in
+  `<config>/kin/jobs.json` and runs it as its own agent: one at a time,
+  `background: true` (so it waits as `waiting` at the cap and resumes when a
+  cap change or the five-minute check allows), with only its brief plus the
+  memory snapshot (`about::snapshot`) in the prefix, and no memory-writing
+  tools. A job running when the app quit is queued again on start. Its report
+  lands in the thread that asked for it (`thread`), else in a thread of its
+  own (origin `helper`, about `about` when that's a document, titled "New
+  ideas" for an Ideas batch), with a dot on the avatar and no popup. Helpers
+  get 16k output tokens per call (chat turns 4k). Each run's step trace (tools
+  called, stop reason, text length and output tokens per call; no content)
+  is kept on the job in `jobs.json` and printed to stderr as a `kin: helper …`
+  line, and a helper that ends without a report says why.
 - Headless runs never start the daily Ideas batch on their own unless
   `KINTSUGI_HEADLESS_IDEAS_DAILY=1`, so a real-AI smoke test spends nothing
   unasked; `ideas_generate` (the phone's "Ask for more") still works. `KINTSUGI_HEADLESS_WIRE_TRACE=1` prints
@@ -758,32 +775,114 @@ Code: `ai/history.rs` (the log), `ai/chat.rs` (the live conversation),
   swaps in a scripted local model that reads the first chip (a document,
   clip or `feed:<id>`), or calls `shortlist` when asked for one, or searches
   the web (scripted) when asked about the web, or searches,
-  then answers slowly, word by word, quoting the start of what the tool returned. `KINTSUGI_HEADLESS_KIN_IDLE_MS` shortens
-  the idle wait. `test/runtime-kin.test.ts` drives it in headless Chromium.
-  For the chat's design states (KI-79) it also answers by how a message
-  starts: "Think" waits 3 s before it does anything, "Compare" runs a search
-  and a list in one step and then reads two documents together, "Tighten"
-  (or "Rewrite", "Edit") on a selected paragraph proposes an edit, "Fail"
-  fails like a provider error and "Timeout" like a provider that stopped
-  responding; "points" anywhere in it gets an answer in Markdown. `pnpm --filter @kintsugi/desktop
-  kin:scenarios` (`test/kin-scenarios.ts`) walks through every state on a
-  fresh scratch vault, with a long conversation seeded into General, and
-  screenshots each one in light and dark.
+  then answers slowly, word by word, quoting the start of what the tool
+  returned and saying how many earlier exchanges the thread has.
+  `test/runtime-kin.test.ts` and `test/runtime-threads.test.ts` drive it in
+  headless Chromium. For the chat's design states (KI-79) it also answers by
+  how a message starts: "Think" waits 3 s before it does anything, "Compare"
+  runs a search and a list in one step and then reads two documents
+  together, "Tighten" (or "Rewrite", "Edit") on a selected paragraph
+  proposes an edit, "Fail" fails like a provider error and "Timeout" like a
+  provider that stopped responding; "points" anywhere in it gets an answer
+  in Markdown. `pnpm --filter @kintsugi/desktop kin:scenarios`
+  (`test/kin-scenarios.ts`) walks through every state on a fresh scratch
+  vault, with a long earlier conversation seeded, and screenshots each one in
+  light and dark.
 
-### The chat's interface (KI-79)
+### Commands
+
+| Command | Does |
+| --- | --- |
+| `kin_threads({ filter: { about?, query?, resolved?, limit? } })` | Threads, newest first (best matches first for a query): `{ threads, running, reviewing }`. `about` is a path, a Feed item's id or an idea's id; a document's paragraph threads count. A match carries `hit`, its best snippet |
+| `kin_thread({ id })` | One thread: `{ thread, entries, pending, running }` |
+| `kin_thread_send({ thread?, text, chips, start? })` | His message in `thread`, or in a new thread about `start.anchor` (origin `start.origin`): `{ thread, entry }`. Replying in a resolved thread reopens it |
+| `kin_thread_typing({ thread })`, `kin_thread_stop({ thread })`, `kin_thread_again({ thread })` | Typing, Stop, Ask again |
+| `kin_thread_update({ id, title?, status? })` | Rename (an empty title goes back to the first message's) or resolve / reopen |
+| `kin_thread_moved({ path, moves })` | Paragraph anchors the editor re-resolved |
+| `kin_review({ path, paragraphs, chips })`, `kin_review_stop({ path })` | "Kin, review this draft" |
+
+Events, on `kin:chat`: `entry`, `thread` (started or changed), `threads`
+(many changed), `turnStarted` / `turn` / `turnEnded` (each with its
+thread), `reviewStarted` / `reviewEnded`, `job` and `switched`.
+
+### Moving old conversations in (KI-104)
+
+Before KI-104 a vault kept one log, `.kintsugi/kin/log.jsonl` (each
+message's topic inferred, summaries in `threads.json`), and comment threads
+in `.kintsugi/comments/<doc>.json` whose messages were rows in that log. The
+first time a vault's threads are opened, `threads::migrate` turns them into
+threads, without loss:
+
+- **Split by reliable topics.** His messages whose topic came from what was
+  on screen (the first chip names it) become one thread per subject, named
+  as the old thread was and anchored to it. Kin's replies follow the messages
+  they answer. Anything else (no subject, or a topic guessed from the words
+  or the last 30 minutes) becomes an "Earlier conversation" thread, one per
+  day.
+- **Comment threads** become paragraph threads with the same id, anchor,
+  status, origin and messages, kept even with no messages. "Kin, review this
+  draft" and its summary become a review thread about the document; each
+  review note stays in its paragraph's thread. A helper's report becomes a
+  thread of its own. Every message keeps its time and its place in the old
+  log (`was`). A model picked for an old topic follows its thread.
+- **Crash safety.** Each thread file is written whole and atomically, with
+  ids derived from the old log, so a second run writes the same files and
+  checks the ones already there. Then the index, then a read-back: every old
+  message must be in exactly one thread, unchanged, and every comment thread
+  must keep its paragraph. Only then are `log.jsonl`, `threads.json` and
+  `.kintsugi/comments/` moved, never deleted, into `.kintsugi/kin/archive/`.
+  A crash at any step leaves the old files where they were, and the next
+  open finishes; a damaged comments file stops the move with nothing touched.
+- **Before KI-59** one log in `<config>/kin/conversation/` served every
+  vault. The first time a vault is opened after the update it moves into
+  that vault (the one open, or last used), as KI-59 did (`threads::global`:
+  claimed by renaming to `conversation.moving/`, copied atomically, read
+  back, then the backup deleted; a vault with its own log keeps it and the
+  old one is set aside as `conversation.unmoved-<time>/`), and then becomes
+  threads like any vault's log.
+
+### The Kin tab (KI-79, KI-104)
 
 Code: `packages/ui/src/components/ai/` (`@kintsugi/ui/ai`), the chat
-components; `src/kin/useKinChat.ts` (the chat's state), `Conversation.tsx`
-(the log, helpers and composer) and `Chat.tsx` (the Kin tab and the
-avatar). The margin (`src/margin/`) holds the tab. The components follow the structure of Vercel's AI Elements
-(Conversation, Message, Response, PromptInput, ChainOfThought, Suggestion,
-CodeBlock, Shimmer), rebuilt on the Graphical theme and Base UI parts.
-They know nothing about Kin and nothing about where they're placed, so the
-margin or a comment thread can use them.
+components; `src/kin/KinTab.tsx`, `Conversation.tsx` and `useKin.ts`. The
+components follow the structure of Vercel's AI Elements (Conversation,
+Message, Response, PromptInput, ChainOfThought, Suggestion, CodeBlock,
+Shimmer), rebuilt on the Graphical theme and Base UI parts.
 
+- **Where it lives.** `KinTab` fills the right margin's Kin tab (KI-103,
+  `src/margin/`, `docs/writing.md`); away from the editor the margin holds
+  Kin alone. The avatar (`KinLauncher` in `Chat.tsx`) and ⌘J open and hide
+  it, and `openKin()`, `discuss()` and `openThread()` open the margin on it.
+  Its state lives outside it (`useKin`), so a thread stays open while the
+  tab is away, and the avatar's dot (`useKinStatus`) says when a reply
+  arrived.
+- **The list.** In the editor: the draft's threads, newest first. Paragraph
+  threads show the passage they're about. With none, one line and a few
+  asks to send in one click. While Kin reviews the draft, a line says so,
+  with Stop. Away from the editor (Feed, a story, Ideas, Inspiration,
+  Settings): threads about what's on screen first, then recent ones. Each
+  row shows the title, what it's about, its last message, when, a spinner
+  while Kin answers and a dot for an unseen reply. "New thread" and "All
+  threads" sit above.
+- **All threads.** Every thread in the vault, resolved ones too (marked),
+  with a search over titles and messages.
+- **A thread.** Back returns to the list. The title renames in place;
+  Resolve (or Reopen) sits beside it; resolving goes back to the list. What
+  it's about shows under the header (the passage, or the item, which opens
+  it), then its messages and the composer.
+- **Opening Kin.** `openKin()` (the avatar, ⌘J) shows the list for the
+  screen. `discuss(chips, text?, { send?, anchor?, origin? })` opens a new
+  thread's composer about the first chip (or `anchor`) with the chips
+  attached; `send` sends `text` at once. `openThread(id)` opens one thread:
+  a paragraph's gutter mark and a "Kin replied" chip use it.
+- **Chips.** What's on screen (the editor: the selection, then the
+  document; an open clip, story or idea) goes with each message as
+  removable chips. A new thread is about the first one unless Discuss or a
+  paragraph named its anchor; taking that chip off makes it about nothing in
+  particular.
 - **The log** follows new words while he's at the bottom, stays put when
   he's scrolled up to read, and shows a button back to the latest. Opening
-  the chat or another thread starts at the bottom.
+  a thread starts at the bottom.
 - **Kin's reply** is Markdown, rendered without HTML. Vault paths and
   `[[links]]` in it open the document or clip (`kintsugi:open-link`, handled
   in `App.tsx`); web links open in the browser.
@@ -791,31 +890,29 @@ margin or a comment thread can use them.
   each tool call as it runs ("Searched “repair”", "Read drafts/x.md") with its
   status, then streams the reply with a caret. Done, the steps fold into
   one line ("3 steps · 6s", or "Thought for 4s" with none), which opens to
-  the list. The reply keeps them in the log entry: `tools` (name, arguments
-  with long strings cut, whether it failed; at most 24), `ms` (how long the
-  turn took), `model` and `capReached`. None of it is sent back to the
-  model.
+  the list. The reply keeps them: `tools` (name, arguments with long strings
+  cut, whether it failed; at most 24), `ms`, `model` and `capReached`. None
+  of it is sent back to the model.
 - **Under a reply**: its web sources, Copy, **Stash** while a writable draft
   is open, and the model and cost, shown on hover (always on the latest reply).
-  Stash saves the reply as Kin's item beside the draft, never in its prose.
+  Stash saves the reply as Kin's item beside the draft, never in its prose;
+  it's the only way a reply reaches the stash.
 - **Errors** say what failed: "Kin couldn’t answer" with the provider's
   message, or "The model stopped responding" for a timeout, each with Try
-  again (it sends the messages the reply answered again). A reply that ran
-  with the month's cap reached says so, with Change cap.
+  again (`kin_thread_again`). A reply that ran with the month's cap reached
+  says so, with Change cap.
 - **Edits.** When he asks Kin to edit a passage, Kin proposes it as a fenced
   `edit <path>` block of search/replace pairs (the prompt asks for this; see
-  `prompt.rs`). The chat shows it as a word diff with Apply, which replaces
+  `prompt.rs`). The thread shows it as a word diff with Apply, which replaces
   the passage in the open document as one undoable change
   (`replaceInDocument` in `src/lib/insert.ts`, registered by the editor), and
   Undo. Apply waits until the passage is in the document exactly once; with
   the document closed, the button opens it. Nothing is written until he
   applies it.
-- **An empty thread** shows one line and, with something on screen, a few
-  asks to send in one click ("Who disagrees?", "Find a clip").
 - **Helpers** at work sit above the composer, each with a way to stop it.
-- **Hide.** ⌘J, the avatar, Escape and the margin button close it; the
-  conversation and Kin's turn carry on, and the avatar's dot says when Kin
-  replied.
+- **Hide.** ⌘J, the avatar, Escape and the margin button close the margin;
+  threads and Kin's turns carry on. It opens again where he left it (a new
+  thread he never wrote in goes back to the list).
 - **Motion** is small and has a reduced-motion fallback: messages he sends
   and helper reports settle in from just below, a step fades in as it
   starts and its spinner turns into a check, "Thinking" shimmers, the caret
@@ -845,7 +942,7 @@ Ideas opens from the sidebar or ⇧⌘E.
   quotes, hidden or outside paths, a hunch with paragraphs, headings or
   lists, and over-long fields. A citation with no quote behind it is
   removed. What was dropped, and why, goes in the helper's
-  report in the conversation log. The footprint (searches, files read,
+  report in its thread. The footprint (searches, files read,
   seconds, cost) comes from the run itself, not from the model.
 - **App data, not the vault.** `<config>/kin/ideas/<vault key>/ideas.json`
   (rewritten atomically) and `signals.jsonl` (append-only): dismissed (with
@@ -881,7 +978,7 @@ Ideas opens from the sidebar or ⇧⌘E.
   Used in.
 - **Refine** is a helper job of kind `ideas-refine` with the idea and his
   request. The result passes the same checks, replaces the idea and keeps
-  the earlier version; Undo restores it. **Discuss** opens the chat with an
+  the earlier version; Undo restores it. **Discuss** opens a new thread with an
   `idea` chip; Kin reads it with the `idea` extra tool; it's the way to
   talk about an idea.
 - **An open idea** (KI-76) shows the hunch and its takeaways, nothing else.
@@ -937,18 +1034,19 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
 - **`@`** opens the `[[` picker and writes the same `[[link]]`; title matches
   lead in both. **Kin** is first while the query could be "kin": choosing it
   takes `@Kin` back out and calls `References.onKin(anchor)` with the
-  paragraph's range, which the desktop turns into a comment thread on that
-  paragraph (KI-38, below). `@` never
+  paragraph's range, which the desktop turns into a new thread about that
+  paragraph in the Kin tab (below). `@` never
   opens mid-word (email addresses), and a space closes it unless a title still
   matches, so "@karpathy said" stays prose.
 - **⌘K** (the selection, else the paragraph) keeps its edits and lists the
   command skills, then Kin's actions, which write nothing themselves: *Find
   supporting clips* (one `clip_search` per paragraph term, ranked by terms
   matched; choosing one adds its link after the passage), *Who disagrees?*
-  (sends that question to the chat with the paragraph, via
-  `discuss(chips, text, { send: true })`), *Discuss this paragraph* (opens a
-  comment thread's composer on it, unsent), *Kin, review this draft* and
-  *Ideas for this draft* (`ideasForDraft(path)`).
+  (a quick ask: sends that question in a new thread about the paragraph
+  without opening Kin, via `ask()`; a "Kin replied" chip under the paragraph
+  opens it), *Discuss this paragraph* (opens a new thread's composer about
+  it in the Kin tab, unsent), *Kin, review this draft* and *Ideas for this
+  draft* (`ideasForDraft(path)`).
   In a read-only mirror (KI-9) only the actions that write nothing are
   offered, and a supporting clip can only be opened.
 - **Keys of their own (KI-85).** Tighten ⌥⌘T, Rephrase ⌥⌘R, Simplify ⌥⌘P,
@@ -960,7 +1058,7 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   read-only mirror refuses them.
 - **Right-click on a selection** (or ⇧F10, or the context-menu key) opens
   `src/refine/SelectionMenu.tsx`: those edits, *Dim* (⌘/, KI-88), *Edit with Kin…* (⌘K), *Ask
-  Kin* (⌘J; the chat with the passage attached), then Cut and Copy, each row
+  Kin* (⌘J; a new thread about the paragraph, with the passage attached), then Cut and Copy, each row
   with its key. A right-click anywhere else keeps the Mac's menu and its
   spelling suggestions. Alternatives and stash (KI-86, KI-89) add their rows;
   their keys are already held in `src/lib/shortcuts.ts`.
@@ -971,76 +1069,76 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   (drops filler words), so ⌘K and skills can be reviewed without a provider.
   `test/runtime-editor.test.ts` drives all of it in headless Chromium.
 
-## Comment threads (KI-38)
+## Threads on paragraphs (KI-38, KI-104)
 
 Code: `packages/editor/src/anchors.ts` (anchoring, pure) and `comments.ts`
-(the CodeMirror extension); `ai/comments.rs` (storage) and
-`ai/chat/comments.rs` (turns, review, commands); webview: `src/comments/`.
+(the CodeMirror extension); `ai/chat/review.rs` (the margin note and
+reviews); webview: `src/comments/` (the editor's host).
+
+A paragraph comment is a thread anchored to a paragraph. It lists, opens
+and answers like any thread, in the Kin tab.
 
 - **Starting one.** `@Kin` in a paragraph and ⌘K's *Discuss this paragraph*
-  open a composer on the paragraph (`startComment`). Nothing is saved until
-  he sends; Escape leaves nothing behind. *Kin, review this draft* (⌘K, the
-  `/` menu's Kin actions, or the comments bar) is one turn that reads the
-  document and leaves up to five threads on the paragraphs that most need a
-  note. Kin's reply comes back as `<comments>[{"paragraph": n, "comment": …}]</comments>`
-  against a numbered list of the body's paragraphs; anything else is logged
-  as a failed review and leaves no threads.
-- **The familiar UX.** A marker in the right margin of each commented
-  paragraph (a count when there are several), a popover with the thread
-  (reply, Resolve/Reopen, Stop while Kin is replying, Ask again after a
-  failed or stopped reply), and a comments bar under the editor with counts,
-  *Show resolved*, the review action and the detached threads. Kin's
-  messages carry KI-23's Kin accent colour (`--kin`, `--kin-ink` in `@kintsugi/ui`) and
-  the placeholder avatar (the host's `kinMark`; KI-41 replaces it).
-- **References.** Any `[[link]]` or vault path in Kin's reply is a chip:
-  drag it into the draft (the same drop as the reference margin), tap `+` to
-  add it after the paragraph's last word, or click to open it. Other text
-  stays outside the draft until he explicitly inserts or applies it.
-- **Stored outside the document.** `.kintsugi/comments/<document path>.json`
-  in the vault, one file per document: each thread's id, anchor, status,
-  origin and whether it's detached. Renaming or moving a document (or its
-  folder) moves its file. The MDX is never touched.
+  open a new thread's composer about the paragraph in the Kin tab
+  (`startComment`, which calls the host's `onStart`); the paragraph lights
+  up while he writes. Nothing is saved until he sends. Right-click › *Ask
+  Kin* does the same with the selected passage attached. *Kin, review this
+  draft* (⌘K, or the `/` menu's Kin actions) is one turn that reads the
+  document and starts up to five threads on the paragraphs that most need a
+  note, each opening with Kin's note, plus a review thread about the
+  document holding the request and Kin's summary ("I left 2 comments on …").
+  Kin's reply comes back as `<comments>[{"paragraph": n, "comment": …}]</comments>`
+  against a numbered list of the body's paragraphs; anything else is a
+  failed review and starts no threads.
+- **The gutter mark.** Each paragraph with open threads has a marker in the
+  right margin of the draft (a count when there are several). It opens the
+  newest of them in the Kin tab (`openThread`), and the thread open there
+  lights up its paragraph. Resolved threads lose their mark and stay in All
+  threads.
+- **Quick asks.** A question sent without opening Kin (⌘K's *Who
+  disagrees?*) shows a chip under its paragraph: "Kin is answering", then
+  "Kin replied". Clicking it opens the thread; opening the thread anywhere
+  puts the chip away.
+- **Kin's note.** A paragraph thread's turns tell Kin it's replying in a
+  comment thread anchored to a paragraph, with the paragraph's text in the
+  context: brief, specific and plain, a few sentences, no praise, never his
+  prose, anything it found named as a `[[path]]` link.
 - **Anchors.** A text quote of the paragraph with up to 48 characters of
-  context either side and its first line. On open it's re-resolved: the exact
-  quote (the occurrence whose context and line fit best), else the most
-  similar paragraph (word overlap ≥ 0.5), else none. While the document is
-  open, CodeMirror's change mapping moves it and snaps it to the paragraph
-  its start is in, so typing inside or above it, merging or splitting keep it
-  on its paragraph. The editor sends the new quotes back after 0.7 s.
+  context either side and its first line, kept in the thread's index entry,
+  never in the document. On open it's re-resolved: the exact quote (the
+  occurrence whose context and line fit best), else the most similar
+  paragraph (word overlap ≥ 0.5), else none. While the document is open,
+  CodeMirror's change mapping moves it and snaps it to the paragraph its
+  start is in, so typing inside or above it, merging or splitting keep it on
+  its paragraph. The editor sends the new quotes back after 0.7 s
+  (`kin_thread_moved`). Renaming or moving the document moves its threads.
 - **Orphans.** Deleting a paragraph outright detaches its threads. They are
-  kept with the last text they were on (shown as "Was on: …") and their
-  messages, listed in the comments bar, and still answerable; an undo, or a
-  paragraph with that exact text later, re-attaches them.
-- **One log.** A thread's messages are rows in the conversation log with
-  the document as their `topic`, the thread's id in `comment` and the
-  paragraph as a chip (with its current lines). The chat shows them in the
-  document's thread, tagged "Comment on a paragraph", and `history` finds
-  them. Each thread has its own turns (not the chat's batching): the
-  thread's exchanges are the turn's history, a new message interrupts its
-  running reply and the next answers both, and comment replies don't light
-  the chat's unread dot. The review's request and Kin's note on it are
-  `review: true` rows.
-- **Phone.** All of the UI is plain DOM in `packages/editor`, sized for a
-  phone (the popover fits `100vw − 16px`, larger markers on a coarse
-  pointer), behind the `comments` prop on `Editor`, so the phone's shared
-  editor can adopt it with a host like `src/comments/useComments.ts`.
+  kept with the last text they were on (struck through in the list) and
+  their messages, and still answerable; an undo, or a paragraph with that
+  exact text later, re-attaches them.
+- **Phone.** The extension is plain DOM in `packages/editor`. Without the
+  host's `onOpen` it still draws its own popover and comments bar, sized for
+  a phone, so the phone's shared editor can adopt it with a host like
+  `src/comments/useComments.ts`.
 - **Headless.** With `KINTSUGI_HEADLESS_KIN=mock` the scripted model answers
-  comment turns (searches the paragraph's longest word, replies naming the
-  first hit as a `[[link]]`) and reviews (comments on the first and last
-  paragraphs). `test/runtime-comments.test.ts` drives it all in headless
-  Chromium.
+  paragraph threads (searches the paragraph's longest word, replies naming
+  the first hit as a `[[link]]`) and reviews (comments on the first and last
+  paragraphs). `test/runtime-threads.test.ts` drives it in headless
+  Chromium, starting from a vault with an old log and comment thread.
 
 ## On the phone (KI-42)
 
 Kin runs on the Mac; the phone reads and asks through the phone API
-(version 6, `phone/sections.rs`, each route the Mac's own command through
+(version 8, `phone/sections.rs`, each route the Mac's own command through
 `phone/desk.rs`). No key, model call or prompt is ever on the phone.
 
 | Route | Command |
 | --- | --- |
-| `GET /v1/kin?before&limit` | `kin_chat_log` over every thread of the open vault's log (limit 1–500, default 100) |
-| `POST /v1/kin {id, text, chips}` | `kin_chat_send`, once per `id`: `{entry, duplicate: false}`, or `{seq, duplicate: true}` for an id already sent. The last 500 ids are kept in `<config>/phone-kin-ids.json`, so a resend after a restart still lands once. Chips are `doc`, `clip`, `feed` or `idea` (others are 400) |
-| `POST /v1/kin/stop` | `kin_chat_stop` |
+| `GET /v1/kin/threads?q&about&resolved` | `kin_threads`: newest first, `about` a document, clip, Feed item or idea |
+| `GET /v1/kin/thread?id` | `kin_thread`: one thread's messages, what's waiting and whether Kin is answering |
+| `POST /v1/kin {id, text, chips, thread?}` | `kin_thread_send`, once per `id`: `{entry, thread, duplicate: false}`, or `{seq, thread, duplicate: true}` for an id already sent. Without `thread` it starts a new thread about its first chip. The last 500 ids are kept in `<config>/phone-kin-ids.json`, so a resend after a restart still lands once. Chips are `doc`, `clip`, `feed` or `idea` (others are 400) |
+| `POST /v1/kin/stop {thread?}` | `kin_thread_stop` (no thread: every thread) |
+| `GET /v1/kin?before&limit` | API 6's one conversation, for an older phone app: the latest messages of every thread |
 | `GET /v1/kin/jobs` | `kin_jobs` |
 | `GET /v1/ideas` | `ideas_list` |
 | `POST /v1/ideas/more` | `ideas_generate` (no focus): "Ask for more" |
@@ -1049,23 +1147,26 @@ Kin runs on the Mac; the phone reads and asks through the phone API
 | `POST /v1/ideas/discussed {id}` | `ideas_discussed` |
 
 **The phone app.** One avatar (`components/KinAvatar.tsx`, the Mac's
-placeholder bowl) floats bottom right on every screen but the chat and
-pairing, and hides while typing. Screens say what they show with
-`useScreenContext` (`lib/screen-context.ts`): a document, a clip, a feed
-item being read, an open idea. Tapping the avatar opens the chat
-(`app/kin.tsx`) with those as removable chips.
+placeholder bowl) floats bottom right on every screen but Kin and pairing,
+and hides while typing. Screens say what they show with `useScreenContext`
+(`lib/screen-context.ts`): a document, a clip, a feed item being read, an
+open idea. Tapping the avatar opens Kin (`app/kin.tsx`): a list of threads
+(those about what's on screen first), a search, "New thread", and a thread
+view with its composer. A new thread carries the screen's chips. Discuss on
+a story or an idea opens a new thread with it attached.
 
 - **Offline.** Messages are written to a queue on the phone first
-  (`lib/kin.ts`, with a UUID each) and sent in order when the Mac answers.
-  While it doesn't, the chat says "Kin runs on your Mac, which isn't
-  reachable", each waiting message says "Waiting for your Mac", and they go
-  when it's back (the next sync from any screen). A message the Mac refuses
-  stays, marked, with Try again and Discard.
-- The conversation (the latest 100 entries, every thread, with thread labels
-  where the subject changes and paragraph comments tagged) and the jobs are
-  kept to read offline. While Kin is answering the chat asks every 1.5 s
-  (else every 6 s); replies arrive whole, not streamed. "Kin's jobs on your
-  Mac" lists running and recent helper jobs.
+  (`lib/kin.ts`, with a UUID each) and sent in order when the Mac answers;
+  the first message of a new thread learns the thread's id, and later ones
+  typed into it follow. While the Mac doesn't answer, Kin says "Kin runs on
+  your Mac, which isn't reachable", each waiting message says "Waiting for
+  your Mac", and they go when it's back. A message the Mac refuses stays,
+  marked, with Try again and Discard. A Mac older than API 8 gets "Update
+  Kintsugi on your Mac to use Kin here."
+- The thread list and the last threads he opened are kept to read offline.
+  While Kin is answering the open thread the phone asks every 1.5 s (else
+  every 6 s); replies arrive whole, not streamed. "Kin's jobs on your Mac"
+  lists running and recent helper jobs.
 - **Ideas** (`app/ideas.tsx`, `lib/ideas.ts`): the Ledger
   (`components/ideas/Ledger.tsx`, the only layout-specific file;
   `components/ideas/parts.tsx` serves any layout). A row opens in place:

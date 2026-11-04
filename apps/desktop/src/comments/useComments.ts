@@ -1,22 +1,23 @@
 import type { EditorView } from "@codemirror/view";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { toast } from "sonner";
 import { linkFor, resolveReference, type ReferenceSource } from "@kintsugi/core/references";
-import type { CommentPlace, Comments, CommentThread } from "@kintsugi/editor/Editor";
+import { closeComment, openComment, type CommentPlace, type Comments, type CommentThread } from "@kintsugi/editor/Editor";
 import { selectionChip, type Chip } from "@/lib/chips";
-import type { ChatEvent } from "@/lib/chat";
+import { type ChatEvent, discuss, onAsked, onOpenThread, openThread, type Thread, threads as api } from "@/lib/chat";
 import { docChip } from "@/kin/screen";
-import { comments as api, reviewDraft, takeOrigin, type CommentsPage, type StoredThread } from "./api";
+import { useKin } from "@/kin/useKin";
+import { takeOrigin } from "./api";
 
-const toThread = (stored: StoredThread): CommentThread => ({
-  id: stored.id,
-  anchor: stored.anchor,
-  status: stored.status,
-  origin: stored.origin,
-  created: stored.created,
-  orphaned: stored.orphaned,
-  messages: stored.entries.map((e) => ({ seq: e.seq, role: e.role, text: e.text, at: e.at, interrupted: e.interrupted, error: e.error })),
+const toThread = (thread: Thread): CommentThread => ({
+  id: thread.id,
+  anchor: thread.anchor!.quote!,
+  status: thread.status,
+  origin: thread.origin,
+  created: thread.created,
+  orphaned: thread.anchor?.orphaned,
+  // The Kin tab shows the messages; the editor only places the thread.
+  messages: [],
 });
 
 /** The placeholder avatar (KI-41 designs the real one), as plain DOM. */
@@ -39,78 +40,76 @@ function kinMark() {
 }
 
 /**
- * The open document's comment threads for the editor: loaded from the
- * backend, kept live from `kin:chat` (new entries, Kin's streaming reply,
- * reviews), with the editor's actions wired to the commands.
+ * The open document's paragraph threads for the editor (KI-104): placed
+ * by their anchors and kept on their paragraphs as he edits, each with a
+ * gutter mark that opens it in the Kin tab. A quick ask on a paragraph
+ * shows a "Kin replied" chip under it until he opens it.
  */
 export function useComments(path: string, viewRef: RefObject<EditorView | null>, sources: ReferenceSource[], open: (source: ReferenceSource) => void): Comments {
-  const [page, setPage] = useState<CommentsPage>({ path: "", threads: [], running: [] });
-  const [live, setLive] = useState<Record<string, string>>({});
-  const turns = useRef(new Map<string, string | null>());
+  const [threads, setThreads] = useState<{ path: string; list: Thread[] }>({ path: "", list: [] });
+  const [asks, setAsks] = useState<Record<string, "asking" | "replied">>({});
   const pathRef = useRef(path);
   pathRef.current = path;
+  const kin = useKin();
 
   const reload = useCallback(() => {
     const at = pathRef.current;
-    api.list(at).then((next) => {
+    api.list({ about: at, resolved: true, limit: 500 }).then((found) => {
       if (pathRef.current !== at) return;
-      setPage(next);
-      // Turns already running when the document opened.
-      for (const run of next.running) turns.current.set(run.turn, run.comment);
-      setLive((old) => {
-        const now: Record<string, string> = {};
-        for (const run of next.running) if (run.comment) now[run.comment] = old[run.comment] ?? "";
-        return now;
-      });
+      setThreads({ path: at, list: found.threads.filter((t) => t.anchor?.kind === "paragraph" && t.anchor.quote) });
     }).catch((error) => {
-      if (pathRef.current === at) setPage({ path: at, threads: [], running: [] });
-      console.warn("comments unavailable", error);
+      if (pathRef.current === at) setThreads({ path: at, list: [] });
+      console.warn("threads unavailable", error);
     });
   }, []);
 
   useEffect(() => {
-    turns.current.clear();
-    setLive({});
+    setAsks({});
     reload();
   }, [path, reload]);
 
+  const ids = useRef(new Set<string>());
+  ids.current = new Set(threads.list.map((t) => t.id));
   useEffect(() => {
     const off = listen<ChatEvent>("kin:chat", ({ payload: event }) => {
-      const here = pathRef.current;
       switch (event.type) {
+        case "thread":
+          if (event.thread.anchor?.path === pathRef.current || ids.current.has(event.thread.id)) reload();
+          return;
         case "entry":
-          if ((event.entry.comment || event.entry.review) && event.entry.topic === here) reload();
+          if (event.entry.role !== "owner") setAsks((a) => (a[event.entry.thread] === "asking" ? { ...a, [event.entry.thread]: "replied" } : a));
           return;
-        case "commentStarted":
-          if (event.path !== here) return;
-          turns.current.set(event.turn, event.comment);
-          if (event.comment) setLive((l) => ({ ...l, [event.comment!]: "" }));
-          return reload();
-        case "turn": {
-          const id = turns.current.get(event.turn);
-          if (!id) return;
-          const e = event.event;
-          if (e.type === "text") setLive((l) => (id in l ? { ...l, [id]: l[id] + e.delta } : l));
-          // Text before a tool call was thinking aloud.
-          else if (e.type === "toolCall") setLive((l) => (id in l ? { ...l, [id]: "" } : l));
-          return;
-        }
-        case "commentEnded":
-          if (!turns.current.has(event.turn)) return;
-          turns.current.delete(event.turn);
-          if (event.comment) setLive((l) => { const { [event.comment!]: _, ...rest } = l; return rest; });
-          return reload();
-        case "comments":
-          if (event.path === here) reload();
-          return;
+        case "threads":
         case "switched":
-          turns.current.clear();
-          setLive({});
           return reload();
+        case "reviewEnded":
+          if (event.path === pathRef.current) reload();
+          return;
       }
     });
-    return () => { off.then((stop) => stop()); };
+    const offAsked = onAsked((thread) => {
+      if (thread.anchor?.kind !== "paragraph" || thread.anchor.path !== pathRef.current) return;
+      setThreads((t) => (t.path === pathRef.current && !t.list.some((x) => x.id === thread.id) ? { ...t, list: [thread, ...t.list] } : t));
+      setAsks((a) => ({ ...a, [thread.id]: "asking" }));
+    });
+    // Opened anywhere: the chip has done its job.
+    const offOpened = onOpenThread((id) => setAsks((a) => {
+      if (!(id in a)) return a;
+      const { [id]: _, ...rest } = a;
+      return rest;
+    }));
+    return () => { off.then((stop) => stop()); offAsked(); offOpened(); };
   }, [reload]);
+
+  // The thread open in the Kin tab lights up its paragraph.
+  const shown = kin.visible && kin.mode.kind === "thread" ? kin.mode.id : null;
+  const composing = kin.visible && kin.mode.kind === "new" && kin.mode.anchor?.kind === "paragraph";
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    if (shown && ids.current.has(shown)) openComment(view, shown);
+    else if (!composing) closeComment(view);
+  }, [shown, composing, viewRef, threads]);
 
   const chipsFor = useCallback((place: CommentPlace | null): Chip[] => {
     const at = pathRef.current;
@@ -119,37 +118,29 @@ export function useComments(path: string, viewRef: RefObject<EditorView | null>,
     return paragraph ? [paragraph, doc] : [doc];
   }, [viewRef]);
 
-  const threads = useMemo(() => page.threads.map(toThread), [page.threads]);
-  const reviewing = page.running.some((run) => run.comment === null);
+  const list = useMemo(() => threads.list.map(toThread), [threads.list]);
+  const live = useMemo(() => Object.fromEntries(Object.entries(kin.live).filter(([id]) => ids.current.has(id)).map(([id, l]) => [id, l.text])), [kin.live]);
   const sourcesRef = useRef(sources);
   sourcesRef.current = sources;
 
   return useMemo<Comments>(() => ({
-    path: page.path,
-    threads,
+    path: threads.path,
+    threads: list,
     live,
-    reviewing,
-    onCreate: async (anchor, place, text) => {
+    asks,
+    // Threads show in the Kin tab, not in a popover.
+    onOpen: (id) => openThread(id),
+    onStart: (anchor, place) => {
       const at = pathRef.current;
-      const thread = await api.create(at, anchor, takeOrigin(), text, chipsFor(place));
-      setPage((p) => (p.path === at ? { ...p, threads: [...p.threads.filter((t) => t.id !== thread.id), thread] } : p));
-      return thread.id;
+      discuss(chipsFor(place), undefined, { anchor: { kind: "paragraph", path: at, quote: anchor }, origin: takeOrigin() });
     },
-    onReply: (id, text, place) => {
-      const at = pathRef.current;
-      api.reply(at, id, text, chipsFor(place)).then(() => reload()).catch((error) => toast.error(String(error)));
-    },
-    onStatus: (id, status) => {
-      const at = pathRef.current;
-      setPage((p) => ({ ...p, threads: p.threads.map((t) => (t.id === id ? { ...t, status } : t)) }));
-      api.status(at, id, status).catch((error) => { toast.error(String(error)); reload(); });
-    },
+    onCreate: () => Promise.reject(new Error("Threads start in the Kin tab.")),
+    onReply: () => {},
+    onStatus: () => {},
     onMoved: (moves) => {
       const at = pathRef.current;
-      api.moved(at, moves).catch((error) => console.warn("comment anchors not saved", error));
+      api.moved(at, moves).catch((error) => console.warn("thread anchors not saved", error));
     },
-    onStop: (id) => { void api.stop(pathRef.current, id).catch(() => {}); },
-    onReview: () => { const view = viewRef.current; if (view) reviewDraft(view, pathRef.current); },
     link: (target) => {
       const source = resolveReference(target, sourcesRef.current);
       return source ? { label: source.title, link: linkFor(source, sourcesRef.current) } : null;
@@ -157,8 +148,7 @@ export function useComments(path: string, viewRef: RefObject<EditorView | null>,
     onOpenLink: (target) => {
       const source = resolveReference(target, sourcesRef.current);
       if (source) open(source);
-      else toast(`${target} isn't in this vault.`);
     },
     kinMark,
-  }), [page.path, threads, live, reviewing, chipsFor, reload, viewRef, open]);
+  }), [threads.path, list, live, asks, chipsFor, open]);
 }

@@ -156,7 +156,7 @@ never re-wraps a line.
 - **Keys.** ⌥⌘\ opens and closes the margin. ⌘J, ⇧⌘R and ⇧⌘S open Kin,
   References and Stash, or close the margin when that tab is already showing.
   Escape inside the margin closes it and puts focus back in the draft.
-- **Kin** is the chat (`docs/kin.md`). **References** lists what the draft links
+- **Kin** holds the draft's threads (`docs/kin.md` › Threads). **References** lists what the draft links
   to, what's related to the cursor's paragraph, and what links here.
   **Stash** holds the cursor's versions and the draft's set-aside items.
 - **Away from the editor** (Feed, a story, Ideas, Inspiration, Settings) the

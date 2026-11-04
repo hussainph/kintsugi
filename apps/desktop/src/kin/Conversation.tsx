@@ -1,6 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Bookmark, Brain, Check, Clock, Coins, Copy, FileText, Hourglass, Lightbulb, Loader2, MessageCircle, Pilcrow, Rss, Unplug, AlertCircle, X } from "@kintsugi/ui/icons";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { Bookmark, Brain, Check, Clock, Coins, Copy, FileText, Hourglass, Lightbulb, Loader2, Pilcrow, Rss, Unplug, AlertCircle, X } from "@kintsugi/ui/icons";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   ChainOfThought,
@@ -35,7 +35,7 @@ import {
   useCopy,
 } from "@kintsugi/ui/ai";
 import { Button } from "@kintsugi/ui/components/button";
-import { type Entry, type Job, jobs } from "@/lib/chat";
+import type { Entry, Job } from "@/lib/chat";
 import { type Chip, chipKey, chipTitle, snippet } from "@/lib/chips";
 import { openSettings } from "@/lib/kin";
 import { onStashTarget, stashReply, stashTarget } from "@/lib/stash";
@@ -45,7 +45,7 @@ import { EditProposal } from "./EditProposal";
 import { openLink, splitPaths } from "./links";
 import { ChatModelPicker } from "./ModelPicker";
 import { cost, describeStep, isTimeout, modelShort, stepsSummary } from "./steps";
-import type { KinChatState, Live } from "./useKinChat";
+import { again, chipsOf, type KinState, type Live, removeChip, send, setDraft, stop, stopHelper } from "./useKin";
 import { WebSources } from "./WebSources";
 
 const chipIcon = (kind: string) =>
@@ -191,14 +191,6 @@ function CapReached() {
   );
 }
 
-function CommentTag() {
-  return (
-    <MessageStatus data-comment-tag>
-      <MessageCircle aria-hidden /> In a paragraph’s comments
-    </MessageStatus>
-  );
-}
-
 function HelperReport({ entry, fresh }: { entry: Entry; fresh: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const long = entry.text.length > 220 || entry.text.split("\n").length > 4;
@@ -223,9 +215,8 @@ function KinEntry({ entry, waiting, fresh, latest, onRetry }: EntryProps) {
     return (
       <Message from="owner" fresh={fresh} data-entry={entry.seq} data-role="owner">
         <MessageContent>{entry.text}</MessageContent>
-        {(entry.chips?.length || waiting || entry.comment) && (
+        {(entry.chips?.length || waiting) && (
           <MessageFooter>
-            {entry.comment && <CommentTag />}
             {entry.chips?.map((c) => <ChipView key={chipKey(c)} chip={c} />)}
             {waiting && (
               <MessageStatus data-waiting>
@@ -238,9 +229,9 @@ function KinEntry({ entry, waiting, fresh, latest, onRetry }: EntryProps) {
     );
   }
   if (entry.role === "helper") return <HelperReport entry={entry} fresh={fresh} />;
-  const retry = entry.error && entry.answers?.length && !entry.comment ? () => onRetry(entry) : undefined;
+  const retry = entry.error ? () => onRetry(entry) : undefined;
   return (
-    <Message from="assistant" data-entry={entry.seq} data-role="kin" data-comment={entry.comment}>
+    <Message from="assistant" data-entry={entry.seq} data-role="kin" data-review={entry.review || undefined}>
       <MessageAvatar>
         <KinAvatar />
       </MessageAvatar>
@@ -258,7 +249,6 @@ function KinEntry({ entry, waiting, fresh, latest, onRetry }: EntryProps) {
         )}
         {!!entry.web?.length && <WebSources calls={entry.web} />}
         {entry.capReached && <CapReached />}
-        {entry.comment && <CommentTag />}
         <ReplyActions entry={entry} latest={latest} />
       </MessageContent>
     </Message>
@@ -304,46 +294,44 @@ const SUGGESTIONS: Record<string, string[]> = {
   idea: ["Is this worth writing?", "What would I need?"],
 };
 
-function Empty({ chat }: { chat: KinChatState }) {
-  const first = chat.chips[0];
-  const kind = first?.kind === "selection" ? "paragraph" : first?.kind;
+/** A few asks to send in one click, for what's on screen. */
+export function KinSuggestions({ s }: { s: KinState }) {
+  const first = chipsOf(s)[0];
+  const kind = s.mode.kind === "new" && s.mode.anchor?.kind === "paragraph" ? "paragraph" : first?.kind === "selection" ? "paragraph" : first?.kind;
   const asks = (kind && SUGGESTIONS[kind]) || [];
+  if (!asks.length) return null;
   return (
-    <ConversationEmptyState
-      icon={<KinAvatar className="ki-kin-empty-avatar" />}
-      title={chat.view === null ? "No messages yet." : chat.view === "" ? "No messages here yet." : `Nothing about ${chat.threadLabel} yet.`}
-    >
-      {asks.length > 0 && (
-        <Suggestions>
-          {asks.map((ask) => (
-            <Suggestion key={ask} suggestion={ask} onPick={(text) => void chat.sendText(text, chat.chips)} />
-          ))}
-        </Suggestions>
-      )}
-    </ConversationEmptyState>
+    <Suggestions>
+      {asks.map((ask) => (
+        <Suggestion key={ask} suggestion={ask} onPick={(text) => void send(text)} />
+      ))}
+    </Suggestions>
   );
 }
 
-/** The log: the thread's messages, the turn under way, and a way back to the latest. */
-export function KinLog({ chat }: { chat: KinChatState }) {
-  const { page, view, live, seenThrough } = chat;
-  const answering = new Set(page.running?.answers ?? []);
-  const listening = !live && page.pending.length > 0;
-  const lastKin = [...page.entries].reverse().find((e) => e.role === "kin")?.seq;
-  let lastTopic: string | null = null;
+/** A thread's messages, the turn under way, and a way back to the latest. */
+export function KinLog({ s }: { s: KinState }) {
+  const view = s.view;
+  const entries = view?.entries ?? [];
+  const thread = s.mode.kind === "thread" ? s.mode.id : null;
+  const live = (thread && s.live[thread]) || null;
+  const answering = new Set(view?.running?.answers ?? []);
+  const pending = view?.pending ?? [];
+  const listening = !live && pending.length > 0;
+  const lastKin = [...entries].reverse().find((e) => e.role === "kin")?.seq;
   return (
-    <Conversation resetKey={`${chat.open}:${view}`} className="ki-kin-log">
+    <Conversation resetKey={thread ?? s.mode.kind} className="ki-kin-log">
       <ConversationContent aria-label="Conversation" aria-live="polite">
-        {!page.entries.length && !live && !listening && <Empty chat={chat} />}
-        {page.entries.map((entry) => {
-          const divider = view === null && entry.topic !== lastTopic;
-          lastTopic = entry.topic;
-          const label = page.threads.find((t) => t.key === entry.topic)?.label ?? "General";
-          const fresh = seenThrough !== null && entry.seq > seenThrough && entry.role !== "kin";
+        {!entries.length && !live && !listening && (
+          <ConversationEmptyState icon={<KinAvatar className="ki-kin-empty-avatar" />} title="Ask Kin anything.">
+            <KinSuggestions s={s} />
+          </ConversationEmptyState>
+        )}
+        {entries.map((entry) => {
+          const fresh = s.seenThrough !== null && entry.seq > s.seenThrough && entry.role !== "kin";
           return (
             <div key={entry.seq} className="ki-kin-entry">
-              {divider && <p className="ki-kin-divider">{entry.topic ? `About ${label}` : label}</p>}
-              <KinEntry entry={entry} fresh={fresh} latest={entry.seq === lastKin && !live} waiting={page.pending.includes(entry.seq) && !answering.has(entry.seq)} onRetry={chat.retry} />
+              <KinEntry entry={entry} fresh={fresh} latest={entry.seq === lastKin && !live} waiting={pending.includes(entry.seq) && !answering.has(entry.seq)} onRetry={(e) => again(e.thread)} />
             </div>
           );
         })}
@@ -372,7 +360,7 @@ export function KinHelpers({ helpers }: { helpers: Job[] }) {
               {JOB_LEAD[status] ?? ""}
               {snippet(j.brief, 60)}
             </span>
-            <Button variant="ghost" size="icon-xs" aria-label="Stop this helper" title="Stop this helper" onClick={() => void jobs.cancel(j.id).catch((e) => toast.error(String(e)))}>
+            <Button variant="ghost" size="icon-xs" aria-label="Stop this helper" title="Stop this helper" onClick={() => stopHelper(j)}>
               <X />
             </Button>
           </li>
@@ -383,42 +371,37 @@ export function KinHelpers({ helpers }: { helpers: Job[] }) {
 }
 
 /** The composer: what goes with the message, the field, the model and send. */
-export function KinComposer({ chat, onManage }: { chat: KinChatState; onManage: () => void }) {
-  const streaming = chat.talking && !chat.draft.trim();
+export function KinComposer({ s, onManage }: { s: KinState; onManage: () => void }) {
+  const input = useRef<HTMLTextAreaElement>(null);
+  const thread = s.mode.kind === "thread" ? s.mode.id : null;
+  const talking = !!(thread && s.live[thread]);
+  const streaming = talking && !s.draft.trim();
+  const chips = chipsOf(s);
+  useEffect(() => {
+    if (s.focus) requestAnimationFrame(() => input.current?.focus());
+  }, [s.focus]);
   return (
-    <PromptInput className="ki-kin-composer" onSubmit={() => void chat.send()}>
-      {chat.chips.length > 0 && (
+    <PromptInput className="ki-kin-composer" onSubmit={() => void send()}>
+      {chips.length > 0 && (
         <PromptInputHeader aria-label="Context">
-          {chat.chips.map((c) => (
-            <ChipView key={chipKey(c)} chip={c} onRemove={() => chat.removeChip(c)} />
+          {chips.map((c) => (
+            <ChipView key={chipKey(c)} chip={c} onRemove={() => removeChip(c)} />
           ))}
         </PromptInputHeader>
       )}
       <PromptInputTextarea
-        ref={chat.input}
+        ref={input}
         aria-label="Message Kin"
-        placeholder={chat.talking ? "Type to interrupt…" : "Ask Kin…"}
-        value={chat.draft}
-        onChange={(e) => chat.type(e.target.value)}
+        placeholder={talking ? "Type to interrupt…" : thread ? "Reply…" : "Ask Kin…"}
+        value={s.draft}
+        onChange={(e) => setDraft(e.target.value)}
       />
       <PromptInputToolbar>
         <PromptInputTools>
-          <ChatModelPicker conversation={chat.conversation} vault={chat.vaultSeq} onManage={onManage} />
+          <ChatModelPicker conversation={thread ?? ""} vault={s.vaultSeq} onManage={onManage} />
         </PromptInputTools>
-        <PromptInputSubmit status={streaming ? "streaming" : "ready"} onStop={chat.stop} disabled={!chat.draft.trim()} aria-label={streaming ? "Stop Kin" : "Send"} title={streaming ? "Stop Kin" : "Send"} />
+        <PromptInputSubmit status={streaming ? "streaming" : "ready"} onStop={stop} disabled={!s.draft.trim()} aria-label={streaming ? "Stop Kin" : "Send"} title={streaming ? "Stop Kin" : "Send"} />
       </PromptInputToolbar>
     </PromptInput>
-  );
-}
-
-/** The running summary of the thread shown, folded to two lines. */
-export function KinSummary({ chat }: { chat: KinChatState }) {
-  const [open, setOpen] = useState(false);
-  if (!chat.thread?.summary) return null;
-  return (
-    <button type="button" onClick={() => setOpen((s) => !s)} className="ki-kin-summary" data-open={open || undefined} aria-label="Thread summary" aria-expanded={open}>
-      <span className="ki-kin-summary-lead">So far: </span>
-      {chat.thread.summary}
-    </button>
   );
 }

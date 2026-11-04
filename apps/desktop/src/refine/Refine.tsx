@@ -8,8 +8,8 @@ import { Command, CommandGroup, CommandInput, CommandItem, CommandList, CommandM
 import { Kbd } from "@kintsugi/ui/components/kbd";
 import { Popover, PopoverAnchor, PopoverContent } from "@kintsugi/ui/components/popover";
 import { Cancelled, Message, stream } from "@/lib/ai";
-import { discuss } from "@/lib/chat";
-import { beginComment, reviewDraft } from "@/comments/api";
+import { ask as askKin, openThread } from "@/lib/chat";
+import { beginComment, passageAnchor, reviewDraft } from "@/comments/api";
 import { memory, type Skill } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
 import { keysOf, matches } from "@/lib/keys";
@@ -163,7 +163,12 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
       if (!at) return;
       const chips = passageChips(view, path, at.from, at.to);
       onClose();
-      return discuss(chips, WHO_DISAGREES, { send: true });
+      // A quick ask: the answer waits behind a "Kin replied" chip under the paragraph.
+      // Outside a paragraph (a code block) there's nowhere for the chip: Kin opens instead.
+      void askKin(WHO_DISAGREES, chips, passageAnchor(view, path, at.from, at.to))
+        .then((thread) => thread.anchor?.kind !== "paragraph" && openThread(thread.id))
+        .catch((e) => toast.error(String(e)));
+      return;
     }
     setFound({ clips: null });
     supportingClips(original, docs).then((clips) => setFound({ clips })).catch((e) => setFound({ clips: [], error: String(e) }));

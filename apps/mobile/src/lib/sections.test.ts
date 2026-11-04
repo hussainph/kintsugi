@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { HttpError, Offline, Unpaired, version } from '@kintsugi/core/remote';
-import type { FeedItem, Story, IdeasView, KinPage, ListedIdea, Pick as FeedPick } from '@kintsugi/core/sections';
+import type { Chip, FeedItem, Story, IdeasView, ListedIdea, Pick as FeedPick } from '@kintsugi/core/sections';
 
 import { Feed, summaryStateLine, type FeedClient } from './feed.ts';
 import { groupIdeas, Ideas, type IdeasClient } from './ideas.ts';
-import { activeJobs, Kin, type KinClient, kinStatus, shown } from './kin.ts';
+import { activeJobs, Kin, type KinClient, kinStatus, listed, shown } from './kin.ts';
+import type { Entry, Thread } from './kin-api.ts';
 import type { KV } from './library.ts';
 
 function memory(): KV & { map: Map<string, string> } {
@@ -444,93 +445,245 @@ test('ideas are kept offline; Adopt, Dismiss and Ask for more wait for the Mac',
 });
 
 function kinMac() {
+  type Stored = { meta: Thread; entries: Entry[]; pending: number[] };
   const state = {
     away: false,
-    refuse: false,
-    page: { entries: [], threads: [], pending: [], running: null } as KinPage,
-    sent: new Map<string, number>(),
-    seq: 0,
+    threads: new Map<string, Stored>(),
+    sent: new Map<string, { seq: number; thread: string }>(),
+    posts: [] as { text: string; thread?: string }[],
+    running: [] as string[],
+    made: 0,
   };
   const reach = () => {
     if (state.away) throw new Offline();
   };
   const client: KinClient = {
-    kin: async () => (reach(), state.page),
+    kinThreads: async (filter = {}) => {
+      reach();
+      const all = [...state.threads.values()].map((t) => t.meta).reverse();
+      const q = filter.q?.toLowerCase();
+      return { threads: q ? all.filter((t) => t.title.toLowerCase().includes(q)) : all, running: state.running, reviewing: [] };
+    },
+    kinThread: async (id) => {
+      reach();
+      const t = state.threads.get(id);
+      if (!t) throw new HttpError(400, 'That thread is gone.');
+      return { thread: t.meta, entries: t.entries, pending: t.pending, running: null };
+    },
     kinJobs: async () => (reach(), [{ id: 'job-1', kind: 'ideas', task: 'ideas', brief: '', topic: '', status: 'running', created: '2026-11-01' }]),
-    kinStop: async () => (reach(), {}),
-    kinSend: async (id, text, chips = []) => {
+    kinHalt: async () => (reach(), {}),
+    kinPost: async (id, text, chips, thread) => {
       reach();
       if (text.length > 50) throw new HttpError(400, 'That message is too long.');
-      if (state.sent.has(id)) return { seq: state.sent.get(id)!, duplicate: true };
-      const seq = ++state.seq;
-      state.sent.set(id, seq);
-      const entry = { seq, at: `2026-11-01T10:0${seq}:00Z`, role: 'owner' as const, text, chips, topic: chips[0] ? `feed:${chips[0].path}` : '' };
-      state.page = { ...state.page, entries: [...state.page.entries, entry], pending: [...state.page.pending, seq] };
-      return { entry, duplicate: false };
+      const seen = state.sent.get(id);
+      if (seen) return { seq: seen.seq, thread: seen.thread, duplicate: true };
+      if (thread && !state.threads.has(thread)) throw new HttpError(400, 'That thread is gone.');
+      let t = thread ? state.threads.get(thread)! : undefined;
+      if (!t) {
+        const chip = chips[0];
+        const meta: Thread = {
+          id: `thread-${++state.made}`,
+          title: text,
+          status: 'open',
+          origin: 'phone',
+          created: '2026-11-01T10:00:00Z',
+          updated: '2026-11-01T10:00:00Z',
+          entries: 0,
+          preview: '',
+          ...(chip ? { anchor: { kind: chip.kind, path: chip.path, label: chip.label } } : {}),
+        };
+        t = { meta, entries: [], pending: [] };
+        state.threads.set(meta.id, t);
+      }
+      const seq = t.entries.length + 1;
+      const entry: Entry = { seq, thread: t.meta.id, at: `2026-11-01T10:0${seq}:00Z`, role: 'owner', text, chips };
+      t.entries.push(entry);
+      t.pending.push(seq);
+      t.meta = { ...t.meta, entries: seq, preview: text, updated: entry.at };
+      state.sent.set(id, { seq, thread: t.meta.id });
+      state.posts.push({ text, thread });
+      return { entry, thread: t.meta, duplicate: false };
     },
   };
   return { client, state };
 }
 
-test('Kin says it needs the Mac, keeps messages in order, and sends each once', async () => {
+const ids = (prefix = '00000000-0000-4000-8000-0000000000') => {
+  let n = 0;
+  return () => `${prefix}${String(++n).padStart(2, '0')}`;
+};
+
+test('a new thread written offline waits in order, then lands as one thread, each message once', async () => {
   const kv = memory();
   const mac = kinMac();
-  let n = 0;
-  const kin = new Kin(kv, () => `00000000-0000-4000-8000-00000000000${++n}`, () => new Date('2026-11-01T09:00:00Z'));
+  const kin = new Kin(kv, ids(), () => new Date('2026-11-01T09:00:00Z'));
   mac.state.away = true;
-  kin.write('  What does this say about repair?  ', [{ kind: 'feed', path: '7', label: 'Gold in the cracks' }]);
-  kin.write('And the cost?');
-  await kin.sync(mac.client);
+  const draft = kin.draft();
+  kin.write('  What does this say about repair?  ', [{ kind: 'feed', path: '7', label: 'Gold in the cracks' }], draft);
+  kin.write('And the cost?', [], draft);
+  await kin.sync(mac.client, draft);
   let snap = kin.getSnapshot();
   assert.equal(snap.connection, 'offline');
-  assert.match(kinStatus(snap)!, /^Your Mac is offline\. 2 messages waiting\.$/);
-  assert.deepEqual(shown(snap).map((s) => s.kind), ['outgoing', 'outgoing']);
-  assert.equal(kin.busy, false, 'offline, there is nothing to poll for');
+  assert.match(kinStatus(snap, draft)!, /^Your Mac is offline\. 2 messages waiting\.$/);
+  assert.deepEqual(shown(snap, draft).map((s) => s.kind), ['outgoing', 'outgoing']);
+  assert.equal(kin.busy(draft), false, 'offline, there is nothing to poll for');
+  const rows = listed(snap, snap.threads, []);
+  assert.equal(rows.length, 1, 'one new thread, shown once in the list');
+  assert.equal(rows[0].kind === 'draft' && rows[0].title, 'What does this say about repair?');
 
   // Relaunched while away: still waiting, in order.
-  const later = new Kin(kv, () => 'unused-id-0000');
+  const later = new Kin(kv, ids('later-id-'));
   assert.deepEqual(later.getSnapshot().outgoing.map((m) => m.text), ['What does this say about repair?', 'And the cost?']);
   mac.state.away = false;
-  await later.sync(mac.client);
+  await later.sync(mac.client, draft);
   snap = later.getSnapshot();
   assert.deepEqual(snap.outgoing, []);
-  assert.deepEqual(snap.entries.map((e) => e.text), ['What does this say about repair?', 'And the cost?']);
-  assert.equal(snap.entries[0].chips![0].label, 'Gold in the cracks');
-  assert.equal(kinStatus(snap), 'Kin will answer in a moment.');
-  assert.equal(later.busy, true);
+  assert.equal(mac.state.threads.size, 1, 'the second message followed the first into its thread');
+  assert.deepEqual(mac.state.posts.map((p) => p.thread), [undefined, 'thread-1']);
+  const opened = later.resolve(draft);
+  assert.deepEqual(opened, { thread: 'thread-1' });
+  assert.deepEqual(snap.threads.map((t) => t.anchor?.path), ['7']);
+  assert.deepEqual(shown(snap, opened).map((s) => s.kind === 'entry' && s.entry.text), ['What does this say about repair?', 'And the cost?']);
+  assert.deepEqual(shown(snap, draft).length, 0, 'the draft itself has nothing left');
+  const first = snap.views['thread-1'].entries[0];
+  assert.equal(first.chips![0].label, 'Gold in the cracks');
+  assert.equal(kinStatus(snap, opened), 'Kin will answer in a moment.');
+  assert.equal(later.busy(opened), true);
   assert.equal(activeJobs(snap.jobs)[0].status, 'running');
 
+  // A message written into the draft after it landed goes to its thread.
+  const reply = later.write('One more', [], draft);
+  assert.equal(reply.thread, 'thread-1');
+
   // A resend of a message the Mac already has (the reply was lost) lands once.
-  kv.setItemSync('kin:waiting', JSON.stringify([{ id: '00000000-0000-4000-8000-000000000001', text: 'What does this say about repair?', chips: [], written: '' }]));
-  await new Kin(kv, () => 'x').sync(mac.client);
-  assert.equal(mac.state.seq, 2);
+  kv.setItemSync(
+    'kin:waiting',
+    JSON.stringify([{ id: '00000000-0000-4000-8000-000000000002', text: 'What does this say about repair?', chips: [], written: '', draft: 'draft-x' }]),
+  );
+  const again = new Kin(kv, ids('again-id-'));
+  await again.sync(mac.client);
+  assert.equal(mac.state.posts.length, 2);
+  assert.deepEqual(again.resolve({ draft: 'draft-x' }), { thread: 'thread-1' }, 'a duplicate still says which thread it is in');
+});
+
+test('a reply goes to its thread, and Stop names the thread', async () => {
+  const kv = memory();
+  const mac = kinMac();
+  const kin = new Kin(kv, ids());
+  kin.write('Start', [{ kind: 'idea', path: 'idea-1', label: 'An idea' }]);
+  kin.write('Another', []);
+  await kin.sync(mac.client);
+  assert.equal(mac.state.threads.size, 2, 'messages without a thread each start one');
+  kin.write('Reply', [], { thread: 'thread-1' });
+  await kin.sync(mac.client, { thread: 'thread-1' });
+  assert.deepEqual(mac.state.threads.get('thread-1')!.entries.map((e) => e.text), ['Start', 'Reply']);
+  assert.deepEqual(kin.getSnapshot().opened, ['thread-1']);
+  let stopped: string | undefined = 'none';
+  await kin.stop({ ...mac.client, kinHalt: async (thread) => ((stopped = thread), {}) }, 'thread-1');
+  assert.equal(stopped, 'thread-1');
 });
 
 test('a message the Mac refuses stays, marked, out of the way of the rest', async () => {
   const kv = memory();
   const mac = kinMac();
-  let n = 0;
-  const kin = new Kin(kv, () => `id-${++n}-0000-0000`);
+  const kin = new Kin(kv, ids('id-'));
   kin.write('x'.repeat(60));
   kin.write('Short');
   await kin.sync(mac.client);
   const snap = kin.getSnapshot();
   assert.equal(snap.outgoing.length, 1);
   assert.equal(snap.outgoing[0].error, 'That message is too long.');
-  assert.deepEqual(snap.entries.map((e) => e.text), ['Short']);
+  assert.deepEqual(snap.threads.map((t) => t.title), ['Short']);
   kin.discard(snap.outgoing[0].id);
   assert.deepEqual(kin.getSnapshot().outgoing, []);
 });
 
+test('a reply to a thread deleted on the Mac is refused, and its copy goes', async () => {
+  const kv = memory();
+  const mac = kinMac();
+  const kin = new Kin(kv, ids());
+  kin.write('Start');
+  await kin.sync(mac.client, { thread: 'thread-1' });
+  await kin.sync(mac.client, { thread: 'thread-1' });
+  assert.ok(kin.getSnapshot().views['thread-1']);
+  mac.state.threads.delete('thread-1');
+  kin.write('Still there?', [], { thread: 'thread-1' });
+  await kin.sync(mac.client, { thread: 'thread-1' });
+  const snap = kin.getSnapshot();
+  assert.equal(snap.outgoing[0].error, 'That thread is gone.');
+  assert.equal(snap.views['thread-1'], undefined);
+});
+
+test('the list puts threads about what is on screen first', () => {
+  const kv = memory();
+  const kin = new Kin(kv, ids());
+  const thread = (id: string, anchor?: Thread['anchor']): Thread => ({
+    id,
+    title: id,
+    status: 'open',
+    origin: 'chat',
+    created: '',
+    updated: '',
+    entries: 1,
+    preview: '',
+    ...(anchor ? { anchor } : {}),
+  });
+  const threads = [
+    thread('newest'),
+    thread('feed', { kind: 'feed', path: '7' }),
+    thread('passage', { kind: 'paragraph', path: 'drafts/a.md', quote: { exact: 'A line', prefix: '', suffix: '', line: 3 } }),
+    thread('other doc', { kind: 'doc', path: 'drafts/b.md' }),
+  ];
+  const order = (chips: Chip[]) => listed(kin.getSnapshot(), threads, chips).map((r) => (r.kind === 'thread' ? r.thread.id : 'draft'));
+  assert.deepEqual(order([{ kind: 'doc', path: 'drafts/a.md' }]), ['passage', 'newest', 'feed', 'other doc']);
+  assert.deepEqual(order([{ kind: 'feed', path: '7' }]), ['feed', 'newest', 'passage', 'other doc']);
+  assert.deepEqual(order([]), ['newest', 'feed', 'passage', 'other doc']);
+});
+
+test('a copy from before threads is dropped, and its waiting messages still go', async () => {
+  const kv = memory();
+  const mac = kinMac();
+  kv.setItemSync('kin:state', JSON.stringify({ entries: [{ seq: 1, topic: '' }], threads: [{ key: '', kind: 'chat', label: 'Chat' }], pending: [], running: null, jobs: [] }));
+  kv.setItemSync('kin:waiting', JSON.stringify([{ id: 'old-message-1', text: 'Written before threads', chips: [], written: '' }]));
+  const kin = new Kin(kv, ids());
+  let snap = kin.getSnapshot();
+  assert.deepEqual(snap.threads, []);
+  const rows = listed(snap, snap.threads, []);
+  assert.equal(rows.length, 1);
+  assert.ok(rows[0].kind === 'draft');
+  // A follow-up written into that waiting thread joins it.
+  kin.write('Follow-up', [], rows[0].target);
+  await kin.sync(mac.client);
+  snap = kin.getSnapshot();
+  assert.equal(mac.state.threads.size, 1);
+  assert.deepEqual(mac.state.threads.get('thread-1')!.entries.map((e) => e.text), ['Written before threads', 'Follow-up']);
+});
+
+test('search asks the Mac, and offline looks through the phone’s copy', async () => {
+  const kv = memory();
+  const mac = kinMac();
+  const kin = new Kin(kv, ids());
+  kin.write('Repair notes');
+  kin.write('Cost of living');
+  await kin.sync(mac.client);
+  assert.deepEqual((await kin.search(mac.client, 'repair')).map((t) => t.title), ['Repair notes']);
+  mac.state.away = true;
+  assert.deepEqual((await kin.search(mac.client, 'cost')).map((t) => t.title), ['Cost of living']);
+  assert.equal((await kin.search(mac.client, '  ')).length, 2);
+});
+
 test('an unpaired phone is told so, and keeps its messages', async () => {
   const kv = memory();
-  const kin = new Kin(kv, () => 'id-1-0000-0000');
+  const kin = new Kin(kv, ids('id-'));
   kin.write('Hello');
   const client: KinClient = {
-    kin: async () => ({ entries: [], threads: [], pending: [], running: null }),
+    kinThreads: async () => ({ threads: [], running: [], reviewing: [] }),
+    kinThread: async () => {
+      throw new Unpaired();
+    },
     kinJobs: async () => [],
-    kinStop: async () => ({}),
-    kinSend: async () => {
+    kinHalt: async () => ({}),
+    kinPost: async () => {
       throw new Unpaired();
     },
   };

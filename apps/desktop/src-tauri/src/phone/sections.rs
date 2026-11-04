@@ -1,4 +1,5 @@
-//! The Feed, Ideas and Kin on the phone (phone API 6; stories since 7). They live in the
+//! The Feed, Ideas and Kin on the phone (phone API 6; stories since 7, Kin's
+//! threads since 8). They live in the
 //! app's data, not the vault, and the desktop does all the work: ranking,
 //! full text, Kin's turns and its helper jobs all run on the Mac. The phone
 //! only reads and asks; it never calls a model and never holds a key.
@@ -91,16 +92,32 @@ pub enum Op {
     IdeaDiscussed {
         id: String,
     },
-    /// The one conversation, newest last.
+    /// The latest messages of every thread, newest last (phone API 6's
+    /// one conversation, for a phone app from before threads).
     Kin {
         before: Option<u64>,
         limit: usize,
     },
+    /// Kin's threads, newest first (KI-104).
+    KinThreads {
+        query: Option<String>,
+        about: Option<String>,
+        resolved: bool,
+    },
+    /// One thread with its messages.
+    KinThread {
+        id: String,
+    },
+    /// His message in a thread, or (`None`) in a new one about its first chip.
     KinSend {
         text: String,
         chips: Vec<Chip>,
+        thread: Option<String>,
     },
-    KinStop,
+    /// Stops Kin answering in a thread (`None`: in every thread).
+    KinStop {
+        thread: Option<String>,
+    },
     KinJobs,
 }
 
@@ -182,6 +199,8 @@ pub(super) fn routes() -> Router<Ctx> {
         .route("/v1/ideas/discussed", post(idea_discussed))
         .route("/v1/kin", get(kin).post(kin_send))
         .route("/v1/kin/stop", post(kin_stop))
+        .route("/v1/kin/threads", get(kin_threads))
+        .route("/v1/kin/thread", get(kin_thread))
         .route("/v1/kin/jobs", get(kin_jobs))
 }
 
@@ -456,8 +475,8 @@ struct LogQuery {
     limit: Option<usize>,
 }
 
-/// The conversation's latest entries (every thread, newest last), its
-/// threads, the messages still waiting and whether Kin is answering.
+/// The latest messages of every thread, newest last: phone API 6's one
+/// conversation, kept for a phone app from before threads.
 async fn kin(State(ctx): State<Ctx>, q: Result<Query<LogQuery>, QueryRejection>) -> Reply {
     let q = query(q)?;
     Ok(Json(
@@ -473,6 +492,57 @@ async fn kin(State(ctx): State<Ctx>, q: Result<Query<LogQuery>, QueryRejection>)
 }
 
 #[derive(Deserialize)]
+struct ThreadsQuery {
+    #[serde(default)]
+    q: Option<String>,
+    #[serde(default)]
+    about: Option<String>,
+    #[serde(default)]
+    resolved: Option<bool>,
+}
+
+/// Kin's threads, newest first: `?about=` a document, clip, Feed item or
+/// idea; `?q=` words; `?resolved=true` resolved ones too.
+async fn kin_threads(
+    State(ctx): State<Ctx>,
+    q: Result<Query<ThreadsQuery>, QueryRejection>,
+) -> Reply {
+    let q = query(q)?;
+    let clip = |s: Option<String>| s.filter(|s| !s.trim().is_empty() && s.len() <= 1_024);
+    Ok(Json(
+        ask(
+            &ctx,
+            Op::KinThreads {
+                query: clip(q.q),
+                about: clip(q.about),
+                resolved: q.resolved.unwrap_or(false),
+            },
+        )
+        .await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct ThreadQuery {
+    id: String,
+}
+
+/// One thread with its messages, what's waiting and whether Kin is answering.
+async fn kin_thread(
+    State(ctx): State<Ctx>,
+    q: Result<Query<ThreadQuery>, QueryRejection>,
+) -> Reply {
+    let q = query(q)?;
+    if !crate::ai::threads::valid_id(&q.id) {
+        return Err(Error(
+            StatusCode::BAD_REQUEST,
+            "That thread is gone.".into(),
+        ));
+    }
+    Ok(Json(ask(&ctx, Op::KinThread { id: q.id }).await?))
+}
+
+#[derive(Deserialize)]
 struct SendBody {
     /// The phone's id for the message, so one sent again after an
     /// uncertain failure (or from the offline queue) lands once.
@@ -480,6 +550,15 @@ struct SendBody {
     text: String,
     #[serde(default)]
     chips: Vec<Chip>,
+    /// The thread it's a reply in; none starts a new thread.
+    #[serde(default)]
+    thread: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct StopBody {
+    #[serde(default)]
+    thread: Option<String>,
 }
 
 /// The phone's message ids that already reached the log, oldest first,
@@ -487,7 +566,8 @@ struct SendBody {
 /// lands once.
 pub(super) struct Receipts {
     path: Option<PathBuf>,
-    sent: VecDeque<(String, u64)>,
+    /// Message id, its seq and its thread.
+    sent: VecDeque<(String, u64, String)>,
 }
 
 const KEPT_RECEIPTS: usize = 500;
@@ -497,20 +577,33 @@ impl Receipts {
         let sent = path
             .as_ref()
             .and_then(|p| std::fs::read_to_string(p).ok())
-            .and_then(|text| serde_json::from_str::<VecDeque<(String, u64)>>(&text).ok())
-            .unwrap_or_default();
+            .and_then(|text| serde_json::from_str::<Vec<Value>>(&text).ok())
+            .unwrap_or_default()
+            .into_iter()
+            // Phone API 6 kept `[id, seq]`; threads add the thread.
+            .filter_map(|v| {
+                Some((
+                    v.get(0)?.as_str()?.to_string(),
+                    v.get(1)?.as_u64()?,
+                    v.get(2)
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
+                ))
+            })
+            .collect();
         Receipts { path, sent }
     }
 
-    fn seq(&self, id: &str) -> Option<u64> {
+    fn seq(&self, id: &str) -> Option<(u64, String)> {
         self.sent
             .iter()
-            .find(|(sent, _)| sent == id)
-            .map(|(_, seq)| *seq)
+            .find(|(sent, _, _)| sent == id)
+            .map(|(_, seq, thread)| (*seq, thread.clone()))
     }
 
-    fn record(&mut self, id: String, seq: u64) {
-        self.sent.push_back((id, seq));
+    fn record(&mut self, id: String, seq: u64, thread: String) {
+        self.sent.push_back((id, seq, thread));
         while self.sent.len() > KEPT_RECEIPTS {
             self.sent.pop_front();
         }
@@ -530,8 +623,9 @@ fn valid_id(id: &str) -> bool {
 const MAX_CHIP_LABEL: usize = 200;
 const PHONE_CHIPS: [&str; 4] = ["doc", "clip", "feed", "idea"];
 
-/// `{ entry, duplicate }`: the message as it landed in the log. A message id
-/// seen before answers `{ seq, duplicate: true }` without sending it again.
+/// `{ entry, thread, duplicate }`: the message as it landed, and its thread
+/// (a new one unless `thread` names one). A message id seen before answers
+/// `{ seq, thread, duplicate: true }` without sending it again.
 async fn kin_send(State(ctx): State<Ctx>, b: Result<Json<SendBody>, JsonRejection>) -> Reply {
     let b = body(b)?;
     if !valid_id(&b.id) {
@@ -554,25 +648,45 @@ async fn kin_send(State(ctx): State<Ctx>, b: Result<Json<SendBody>, JsonRejectio
     }
     // One send at a time, so a retry racing the original still lands once.
     let mut receipts = ctx.kin_sent.lock().await;
-    if let Some(seq) = receipts.seq(&b.id) {
-        return Ok(Json(json!({ "seq": seq, "duplicate": true })));
+    if let Some((seq, thread)) = receipts.seq(&b.id) {
+        return Ok(Json(
+            json!({ "seq": seq, "thread": thread, "duplicate": true }),
+        ));
     }
-    let entry = ask(
+    if b.thread
+        .as_deref()
+        .is_some_and(|t| !crate::ai::threads::valid_id(t))
+    {
+        return Err(Error(
+            StatusCode::BAD_REQUEST,
+            "That thread is gone.".into(),
+        ));
+    }
+    let sent = ask(
         &ctx,
         Op::KinSend {
             text: b.text,
             chips: b.chips,
+            thread: b.thread,
         },
     )
     .await?;
+    let entry = sent.get("entry").cloned().unwrap_or(Value::Null);
+    let thread = sent.get("thread").cloned().unwrap_or(Value::Null);
     if let Some(seq) = entry.get("seq").and_then(Value::as_u64) {
-        receipts.record(b.id, seq);
+        let id = thread.get("id").and_then(Value::as_str).unwrap_or_default();
+        receipts.record(b.id, seq, id.to_string());
     }
-    Ok(Json(json!({ "entry": entry, "duplicate": false })))
+    Ok(Json(
+        json!({ "entry": entry, "thread": thread, "duplicate": false }),
+    ))
 }
 
-async fn kin_stop(State(ctx): State<Ctx>) -> Reply {
-    Ok(Json(ask(&ctx, Op::KinStop).await?))
+async fn kin_stop(State(ctx): State<Ctx>, b: Option<Json<StopBody>>) -> Reply {
+    let thread = b
+        .and_then(|Json(b)| b.thread)
+        .filter(|t| crate::ai::threads::valid_id(t));
+    Ok(Json(ask(&ctx, Op::KinStop { thread }).await?))
 }
 
 async fn kin_jobs(State(ctx): State<Ctx>) -> Reply {
@@ -653,15 +767,31 @@ mod tests {
                     format!("kin {before:?} {limit}"),
                     Ok(json!({ "entries": [] })),
                 ),
-                Op::KinSend { text, chips } => {
+                Op::KinThreads {
+                    query,
+                    about,
+                    resolved,
+                } => (
+                    format!("threads {query:?} {about:?} {resolved}"),
+                    Ok(json!({ "threads": [] })),
+                ),
+                Op::KinThread { id } => (format!("thread {id}"), Ok(json!({ "entries": [] }))),
+                Op::KinSend {
+                    text,
+                    chips,
+                    thread,
+                } => {
                     let mut sends = self.sends.lock().unwrap();
                     *sends += 1;
                     (
-                        format!("send {text} {}", chips.len()),
-                        Ok(json!({ "seq": *sends, "text": text })),
+                        format!("send {text} {} {thread:?}", chips.len()),
+                        Ok(json!({
+                            "entry": { "seq": *sends, "text": text },
+                            "thread": { "id": thread.unwrap_or_else(|| "t-new".into()) }
+                        })),
                     )
                 }
-                Op::KinStop => (
+                Op::KinStop { .. } => (
                     "stop".into(),
                     Err(Fail::Unavailable("Kin isn't ready yet.".into())),
                 ),
@@ -815,6 +945,15 @@ mod tests {
                 200
             );
             assert_eq!(get("/v1/kin?before=9").await.unwrap().status(), 200);
+            assert_eq!(
+                get("/v1/kin/threads?about=drafts/a.md&q=kilns")
+                    .await
+                    .unwrap()
+                    .status(),
+                200
+            );
+            assert_eq!(get("/v1/kin/thread?id=t-1").await.unwrap().status(), 200);
+            assert_eq!(get("/v1/kin/thread?id=../x").await.unwrap().status(), 400);
             assert_eq!(post("/v1/kin/stop", json!({})).await.unwrap().status(), 503);
             assert_eq!(get("/v1/kin/jobs").await.unwrap().status(), 200);
         });
@@ -840,6 +979,8 @@ mod tests {
                 "dismiss idea-1 true",
                 "discussed idea-1",
                 "kin Some(9) 100",
+                "threads Some(\"kilns\") Some(\"drafts/a.md\") false",
+                "thread t-1",
                 "stop",
                 "jobs",
             ]
@@ -875,6 +1016,7 @@ mod tests {
                     assert!(first["duplicate"] == true || first["entry"]["seq"] == 1);
                     assert_eq!(second["duplicate"], true);
                     assert_eq!(second["seq"], 1);
+                    assert_eq!(second["thread"], "t-new", "the thread it started");
                 },
             );
         }

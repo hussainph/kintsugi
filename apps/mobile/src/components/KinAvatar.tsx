@@ -40,15 +40,15 @@ export function KinMark({ size = 44 }: { size?: number }) {
 /** Where the avatar doesn't float: Kin's own chat, and pairing. */
 const HIDDEN = ['/kin', '/pair'];
 
-/** One avatar on every screen, bottom right, opening Kin's one chat with
- *  whatever the screen shows attached as context chips. A gold dot means
- *  Kin replied, or messages wait here for the Mac. */
+/** One avatar on every screen, bottom right, opening Kin's threads with
+ *  whatever the screen shows as context chips. A gold dot means a thread
+ *  moved since he last looked, or messages wait here for the Mac. */
 export function KinAvatar() {
   const { client } = usePairing();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const theme = useTheme();
-  const { outgoing, entries } = useKin();
+  const { outgoing, threads } = useKin();
   const [typing, setTyping] = useState(false);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardWillShow', () => setTyping(true));
@@ -59,8 +59,7 @@ export function KinAvatar() {
     };
   }, []);
   if (!client || typing || HIDDEN.includes(pathname)) return null;
-  const last = entries.at(-1);
-  const dot = outgoing.length > 0 || (last != null && last.role !== 'owner' && last.seq > seenThrough);
+  const dot = outgoing.length > 0 || threads.some((t) => t.updated > seenThrough);
   return (
     <Pressable
       accessibilityRole="button"
@@ -75,10 +74,10 @@ export function KinAvatar() {
   );
 }
 
-/** The newest entry he has seen in the chat. */
-let seenThrough = 0;
-export function markKinSeen(seq: number) {
-  seenThrough = Math.max(seenThrough, seq);
+/** When the newest thread he has seen in Kin last moved (ISO). */
+let seenThrough = '';
+export function markKinSeen(updated: string) {
+  if (updated > seenThrough) seenThrough = updated;
 }
 
 const styles = StyleSheet.create({

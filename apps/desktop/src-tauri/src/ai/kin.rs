@@ -269,7 +269,7 @@ async fn start(
         today: chrono::Local::now().format("%Y-%m-%d").to_string(),
         remember: turn.remember,
         history: vec![],
-        recap: None,
+        about: None,
     };
     // The loop emits its own error event; don't send a second one.
     let harness = agent::Harness {
@@ -441,9 +441,9 @@ pub struct ChatModel {
     pub resolved: Option<ModelRef>,
 }
 
-/// The vault's conversation folder, where its log and picks live.
+/// The vault's Kin folder, where its threads and picks live.
 fn conversation_dir(app: &AppHandle) -> Result<PathBuf> {
-    super::history::vault_dir(&crate::vault::current(app)?)
+    super::threads::vault_dir(&crate::vault::current(app)?)
 }
 
 fn chat_model(dir: &std::path::Path, topic: String) -> Result<ChatModel> {
@@ -457,7 +457,7 @@ fn chat_model(dir: &std::path::Path, topic: String) -> Result<ChatModel> {
     })
 }
 
-/// The model for the conversation `topic` (a thread's key, `""` for general).
+/// The model for the thread `topic` (its id; `""` for a new thread's composer).
 #[tauri::command]
 pub fn kin_chat_model(app: AppHandle, topic: String) -> Result<ChatModel> {
     chat_model(&conversation_dir(&app)?, topic)

@@ -11,7 +11,7 @@
 
 use super::ModelRef;
 use super::agent::Model;
-use super::chat::{COMMENT_NOTE, REVIEW_BRIEF, SUMMARIZER};
+use super::chat::{COMMENT_NOTE, REVIEW_BRIEF};
 use super::wire::{Exchange, Item, Reply, ToolCall, Usage};
 use super::writing::Tone;
 use serde_json::json;
@@ -433,21 +433,7 @@ impl Model for Scripted {
         if question.contains(COMMENT_NOTE) || question.starts_with(REVIEW_BRIEF) {
             return Ok(comments::step(question, ex.items, on_text).await);
         }
-        let text = if ex.system.starts_with(SUMMARIZER) {
-            let lines = question
-                .lines()
-                .filter(|l| l.starts_with("Hussain:"))
-                .count();
-            let last = question
-                .lines()
-                .rev()
-                .find(|l| l.starts_with("Hussain:"))
-                .unwrap_or_default();
-            format!(
-                "Mock summary: Hussain asked {lines} thing(s); most recently “{}”.",
-                last.trim_start_matches("Hussain:").trim()
-            )
-        } else if let Some(Item::User(message)) = ex.items.last() {
+        let text = if let Some(Item::User(message)) = ex.items.last() {
             // First step of a turn: look something up.
             let asked = said(message).to_lowercase();
             // The chat's design scenarios (KI-79), by what he asked.
@@ -565,7 +551,7 @@ impl Model for Scripted {
                 .iter()
                 .filter(|i| matches!(i, Item::Assistant { calls, .. } if calls.is_empty()))
                 .count();
-            let recap = question.contains("Earlier in this conversation");
+            let about = question.contains("This thread is about");
             format!(
                 "You said: “{}”. I looked with {}. This thread has {earlier} earlier exchange(s){}. \
                  This reply comes from the headless mock model, so nothing was sent to a provider.{}",
@@ -575,7 +561,11 @@ impl Model for Scripted {
                     .collect::<Vec<_>>()
                     .join(" / "),
                 looked.unwrap_or_else(|| "nothing".into()),
-                if recap { " and a summary" } else { "" },
+                if about {
+                    " and knows what it's about"
+                } else {
+                    ""
+                },
                 returned
                     .map(|r| format!(" It returned: {r}"))
                     .unwrap_or_default(),
@@ -668,8 +658,17 @@ mod comments {
         })
     }
 
-    /// The paragraph chip's label, from the dynamic context.
+    /// The thread's paragraph (else the paragraph chip's label), from the
+    /// dynamic context.
     fn paragraph(question: &str) -> String {
+        if let Some(text) = question
+            .lines()
+            .find(|l| l.starts_with("This thread is about a paragraph of"))
+            .and_then(|l| l.split_once("<data>"))
+            .and_then(|(_, rest)| rest.split_once("</data>"))
+        {
+            return text.0.to_string();
+        }
         question
             .lines()
             .find(|l| l.starts_with("- paragraph "))
@@ -1172,7 +1171,7 @@ mod tests {
             today: "2026-11-02".into(),
             remember: true,
             history: vec![],
-            recap: None,
+            about: None,
         };
         let mut trace = Trace::default();
         let summary = block_on(agent::run(
@@ -1521,7 +1520,7 @@ mod web_tests {
             today: "2026-11-03".into(),
             remember: true,
             history: vec![],
-            recap: None,
+            about: None,
         };
         let mut events = vec![];
         let summary = block_on(agent::run(
@@ -1627,7 +1626,7 @@ mod scenario_tests {
             today: "2026-11-03".into(),
             remember: true,
             history: vec![],
-            recap: None,
+            about: None,
         };
         let mut calls = vec![];
         let summary = block_on(agent::run(
