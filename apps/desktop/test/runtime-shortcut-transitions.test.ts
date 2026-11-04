@@ -50,8 +50,16 @@ const settings = () => page.getByRole("region", { name: "Settings", exact: true 
 const kin = () => page.getByRole("dialog", { name: "Kin", exact: true });
 
 async function escape(surface: ReturnType<typeof refine>) {
+  // Visibility isn't keyboard readiness. Menus and composers hand off focus
+  // after mounting; an early Escape goes to the editor's simplifySelection.
+  await surface.and(page.locator(":focus-within")).waitFor();
   await page.keyboard.press("Escape");
   await surface.waitFor({ state: "detached" });
+}
+
+async function closeSelectionMenu() {
+  await escape(selectionMenu());
+  assert.equal(await page.evaluate(() => getSelection()?.toString()), "visible", "the menu preserves the selection");
 }
 
 // A real mouse selection, not an app-state hook. Selecting one word also
@@ -108,14 +116,12 @@ const transitions: { name: string; run: () => Promise<void> }[] = [
   } },
   { name: "selection menu", run: async () => {
     await page.keyboard.press("Shift+F10");
-    await selectionMenu().waitFor();
-    await escape(selectionMenu());
+    await closeSelectionMenu();
   } },
   { name: "right-click selection menu", run: async () => {
     const at = await select();
     await page.mouse.click(at.x, at.y, { button: "right" });
-    await selectionMenu().waitFor();
-    await escape(selectionMenu());
+    await closeSelectionMenu();
   } },
   { name: "alternatives", run: async () => {
     await page.keyboard.press("Meta+Alt+KeyA");
@@ -268,8 +274,7 @@ test("the direct edits and editor shortcuts still work through the same transiti
       await kin().waitFor({ state: "detached" });
       await select();
       await page.keyboard.press("Shift+F10");
-      await selectionMenu().waitFor();
-      await escape(selectionMenu());
+      await closeSelectionMenu();
       assert.equal(await page.locator(".cm-line", { hasText: TEXT }).textContent(), TEXT, "cancelled edits leave the passage unchanged");
     });
   }
