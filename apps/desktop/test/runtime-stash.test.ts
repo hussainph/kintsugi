@@ -29,7 +29,7 @@ before(async () => {
     const note = document.querySelector<HTMLInputElement>('.ki-stash input[aria-label="Add a note"]');
     return note && !note.disabled;
   });
-}, { timeout: 15 * 60_000 });
+}, { timeout: Number(process.env.KINTSUGI_RUNTIME_TIMEOUT ?? 15 * 60_000) });
 
 after(async () => { await browser?.close(); await app?.stop(); });
 
