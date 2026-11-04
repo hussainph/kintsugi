@@ -28,7 +28,8 @@ before(async () => {
   browser = await chromium.launch({ headless: true }).catch((e) => {
     throw new Error(`${e}\nInstall it with: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`);
   });
-  page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  // Wide enough for the margin beside the draft with the sidebar open (KI-103).
+  page = await browser.newPage({ viewport: { width: 1440, height: 820 } });
   await openApp(page, app.url, app.output);
 }, { timeout: TIMEOUT });
 
