@@ -387,7 +387,7 @@ list, so the tool array (part of the cached prefix) never changes mid-turn.
 - Paths stay inside the vault: no `..`, absolute paths, hidden entries or
   symlinks.
 - Ordinary turns write only Kin's memory and skills in `.kintsugi/agent/`.
-  **Ask Kin** in a draft's Stash tab grants one turn the narrow `stash` add
+  **Ask Kin** in a draft's Stash tab grants one turn the narrow `stash_add`
   tool, scoped to that draft's stash file. It cannot choose another file or
   write the draft. Items pass the memory injection scan; a turn adds at most
   five. Outputs over 8,000 characters are saved to

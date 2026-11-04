@@ -87,6 +87,24 @@ test("stash and insert share undo with the draft, and notes stay outside it", { 
   assert.ok(!draft().includes("Check the kiln dates."));
 });
 
+test("version keys work from Ask Kin and with the margin closed", { timeout: 60_000 }, async () => {
+  await page.locator('.cm-alt-span[data-alternatives="word-old"]').click();
+  const ask = page.locator(".ki-versions").getByRole("button", { name: "Ask Kin", exact: true });
+  await ask.focus();
+  await ask.press("Meta+Alt+BracketRight");
+  await until(() => draft().includes(ORIGINAL.replace("old", "ancient")), "the button keeps the version-cycle key");
+  await ask.press("Meta+Alt+BracketLeft");
+  await until(() => draft().includes(ORIGINAL), "cycle restores the original");
+  await ask.press("Meta+Alt+a");
+  await stash().waitFor({ state: "hidden" });
+  await page.keyboard.press("Meta+Alt+BracketRight");
+  await until(() => draft().includes(ORIGINAL.replace("old", "ancient")), "cycling works with the margin closed");
+  await page.keyboard.press("Meta+Alt+BracketLeft");
+  await until(() => draft().includes(ORIGINAL), "closed cycling restores the original");
+  await openStash();
+  assert.equal(await stash().locator('.ki-stash-row[data-by="kin"]').count(), 0, "opening and cycling never asks Kin");
+});
+
 test("Ask Kin explicitly adds ideas and anchored rewrites without writing the draft", { timeout: 120_000 }, async () => {
   const before = draft();
   await stash().locator(".ki-stash-shared").getByRole("button", { name: "Ask Kin", exact: true }).click();
