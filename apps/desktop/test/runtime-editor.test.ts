@@ -51,7 +51,7 @@ before(async () => {
   browser = await chromium.launch({ headless: true }).catch((e) => {
     throw new Error(`${e}\nInstall it with: pnpm --filter @kintsugi/desktop exec playwright install chromium-headless-shell`);
   });
-  page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await openApp(page, app.url, app.output);
 }, { timeout: TIMEOUT });
 
@@ -316,9 +316,8 @@ async function alternativeUntil(check: () => boolean, what: string) {
 }
 
 async function closeAltPanel() {
-  // Opening the tooltip schedules its focus for the next animation frame.
-  // Focus the actual target before Escape, rather than racing that mount.
-  const input = altPanel().getByRole("textbox", { name: "Add an alternative" });
+  // Focus the actual control before Escape, not its scheduled mount focus.
+  const input = altPanel().getByRole("textbox", { name: "Add a version" });
   const target = await input.isDisabled() ? page.locator(".cm-content") : input;
   await target.press("Escape");
   await altPanel().waitFor({ state: "detached" });
@@ -440,7 +439,7 @@ test("⌘K acceptance keeps the owner and Kin versions; ⌥⌘[ swaps back (KI-8
   await page.keyboard.press("Meta+Alt+KeyA");
   await altPanel().waitFor();
   assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"]').textContent(), ACCEPT);
-  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), 1);
+  assert.equal(await kinOptions().locator('svg[data-kin-avatar="placeholder"]').count(), 1);
   await closeAltPanel();
 });
 
@@ -494,7 +493,7 @@ test("⇧Enter keeps only the highlighted synonym, leaving the word alone (KI-87
   await page.keyboard.press("Meta+Alt+KeyA");
   await kinOptions().first().waitFor();
   assert.deepEqual(await kinOptions().locator(".cm-alt-option-text").allTextContents(), [selected]);
-  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), 1);
+  assert.equal(await kinOptions().locator('svg[data-kin-avatar="placeholder"]').count(), 1);
   await closeAltPanel();
 });
 
@@ -595,7 +594,7 @@ test("saved Kin attribution and unapplied alternatives survive a reload (KI-87)"
   await page.keyboard.press("Meta+Alt+KeyA");
   await kinOptions().first().waitFor();
   assert.deepEqual(await altPanel().locator(".cm-alt-option-text").allTextContents(), entries.map((e) => e.text));
-  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), entries.filter((e) => e.by === "kin").length);
+  assert.equal(await kinOptions().locator('svg[data-kin-avatar="placeholder"]').count(), entries.filter((e) => e.by === "kin").length);
   assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"]').getAttribute("data-by"), "owner");
   assert.equal(alternativeDisk(), before);
   await closeAltPanel();
@@ -629,7 +628,8 @@ test("switching documents drops a pending answer and permits a new ask on return
     await page.locator(`[title="${DOC}"]`).click();
     await page.locator(`[title="${DOC}"][data-active="true"]`).waitFor();
     await line("The repair is").waitFor();
-    assert.equal(await altPanel().count(), 0);
+    await page.getByRole("tabpanel", { name: "Stash", exact: true }).waitFor();
+    assert.equal(await kinOptions().count(), 0, "the margin follows the new draft, not the pending span");
     await openAlternativeDoc();
     // Restoring the cached EditorState clears its abandoned pending flag.
     await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).waitFor();

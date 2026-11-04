@@ -28,6 +28,19 @@ function setup(initial: StashItem[] = []) {
   return { session, api, calls, errors, disk: () => disk, replace: (items: StashItem[]) => { disk = structuredClone(items); }, deactivate: () => { active = false; }, readOnly: () => { writable = false; } };
 }
 
+test("dismissing an unsaved Kin reply sends its snapshot for the signal", async () => {
+  const h = setup();
+  await h.session.reload();
+  const reply = item("reply", { by: "kin", kind: "idea", text: "A requested reply" });
+  h.session.onUpdate("drafts/a.md", [reply]);
+  h.session.onUpdate("drafts/a.md", []);
+  let signalled: StashItem | undefined;
+  h.api.dismiss = async (_path, _id, fallback) => { signalled = fallback; };
+  assert.equal(await h.session.remove(reply.id), true);
+  assert.deepEqual(signalled, reply);
+  assert.deepEqual(h.disk(), []);
+});
+
 test("reorder uses final positions, preserves item data and clamps boundaries", () => {
   const list = [item("a"), item("b"), item("c")];
   assert.deepEqual(ids(moveItem(list, "a", 2)), ["b", "c", "a"]);

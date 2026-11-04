@@ -414,6 +414,9 @@ test("failed asks leave versions alone and can be retried; closing is not consen
   assert.equal(e.panel()?.askError, "Cost cap reached.");
   assert.equal(e.panel()?.asking, false);
   assert.deepEqual(e.sets(), []);
+  closeAlternatives(e.view);
+  openAlternatives(e.view);
+  assert.equal(e.panel()?.askError, null, "a new opening does not carry the old ask's error");
   fail = false;
   e.commands().askKin();
   closeAlternatives(e.view);

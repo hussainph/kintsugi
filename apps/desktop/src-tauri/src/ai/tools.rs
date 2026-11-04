@@ -204,9 +204,10 @@ fn stash_specs() -> &'static [ToolSpec] {
                                 "type": "object", "additionalProperties": false,
                                 "properties": {
                                     "exact": { "type": "string" }, "prefix": { "type": "string" },
-                                    "suffix": { "type": "string" }, "line": { "type": "integer" }
+                                    "suffix": { "type": "string" },
+                                    "line": { "type": "integer", "minimum": 1, "maximum": u32::MAX }
                                 },
-                                "required": ["exact"]
+                                "required": ["exact", "line"]
                             }
                         },
                         "required": ["kind", "text"]

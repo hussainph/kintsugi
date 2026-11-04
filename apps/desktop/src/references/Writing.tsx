@@ -165,15 +165,11 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   const alternatives = useAlternatives(editor.path);
   const margin = useMargin();
   const [versionModel, setVersionModel] = useState<ReturnType<typeof alternativesPanelModel>>(null);
-  const previousModel = useRef(versionModel);
   const cursorOpening = useRef(false);
   const showStash = useCallback(() => showMargin("stash"), []);
   const stash = useWritingStash({ root, path: editor.path, viewRef: editor.viewRef, readOnly: editor.readOnly, show: showStash });
-  const onPanelChange = useCallback((model: ReturnType<typeof alternativesPanelModel>) => {
-    const wasOpen = previousModel.current !== null;
-    previousModel.current = model;
-    setVersionModel(model);
-    if (wasOpen && !model && visibleTab(marginState()) === "stash") hideMargin();
+  const onPanelClose = useCallback(() => {
+    if (visibleTab(marginState()) === "stash") hideMargin();
   }, []);
   const onPanelOpen = useCallback(() => {
     showStash();
@@ -181,8 +177,8 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   }, [showStash]);
   const versionHost = useMemo<Alternatives>(() => ({
     ...(alternatives ?? { path: "", sets: [], onSave: () => {} }),
-    externalPanel: true, onPanelOpen, onPanelChange,
-  }), [alternatives, onPanelOpen, onPanelChange]);
+    externalPanel: true, onPanelOpen, onPanelClose, onPanelChange: setVersionModel,
+  }), [alternatives, onPanelOpen, onPanelClose]);
   // A blank paragraph has no version target. Once the cursor reaches words,
   // start following it without stealing focus back from the draft.
   const followVersions = useMemo(() => EditorView.updateListener.of((update) => {
@@ -199,7 +195,10 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     const view = editor.viewRef.current;
     if (!view) return;
     if (margin.showing("stash")) {
-      if (!alternativesPanelModel(view.state)) openAlternatives(view);
+      if (!alternativesPanelModel(view.state)) {
+        cursorOpening.current = true;
+        try { openAlternatives(view); } finally { cursorOpening.current = false; }
+      }
     } else closeAlternatives(view);
   }, [margin.tab, editor.path, alternatives?.path, editor.viewRef]);
   const options = useMemo(() => ({ sources, search, readClipText, onError: onReferenceError, onOpen: open, onParagraph: setParagraph, onKin }), [sources, search, readClipText, onReferenceError, open, onKin]);
