@@ -3,6 +3,11 @@
 //! request, the shape `src/refine/marks.ts` asks a real model for. Each
 //! check also names one quote the draft doesn't have, which the webview
 //! must drop; trims only ever quote words that are there.
+//!
+//! "Review this draft" (KI-109) is answered here too, from the sentences its
+//! brief numbers: a flag on the first sentence with nothing else to change,
+//! cuts of hedges and filler, rewrites of
+//! words off the tone, and one quote the draft doesn't have.
 
 use serde_json::{Value, json};
 
@@ -151,6 +156,48 @@ fn trim(percent: u32, sentences: &[(u64, String)]) -> Vec<Value> {
     out
 }
 
+/// Plainer words for the mock's rewrites.
+const PLAINER: [(&str, &str); 5] = [
+    ("utilize", "use"),
+    ("leverage", "use"),
+    ("delve", "dig"),
+    ("myriad", "many"),
+    ("pivotal", "key"),
+];
+
+/// The mock review's `<suggestions>`, from the brief's `[n] text` lines.
+pub fn review(brief: &str) -> String {
+    let sentences = numbered(brief.split("\nSentences:\n").nth(1).unwrap_or_default());
+    let mut out = Vec::new();
+    let plain: Vec<&str> = PLAINER.iter().map(|(word, _)| *word).collect();
+    // A flag on the first sentence nothing else touches.
+    if let Some((n, _)) = sentences.iter().find(|(_, text)| {
+        occurrences(text, &HEDGES).is_empty()
+            && occurrences(text, &FILLER).is_empty()
+            && occurrences(text, &plain).is_empty()
+    }) {
+        out.push(json!({"sentence": n, "kind": "flag", "reason": "Mock: what is this claim resting on?"}));
+    }
+    for (n, text) in &sentences {
+        for word in occurrences(text, &HEDGES) {
+            out.push(json!({"sentence": n, "kind": "cut", "quote": word, "reason": "A hedge; it's firmer without it."}));
+        }
+        for word in occurrences(text, &FILLER) {
+            out.push(json!({"sentence": n, "kind": "cut", "quote": word, "reason": "Filler; it adds nothing."}));
+        }
+        for word in occurrences(text, &plain) {
+            let lower = word.to_lowercase();
+            let (_, with) = PLAINER.iter().find(|(w, _)| *w == lower).unwrap();
+            out.push(json!({"sentence": n, "kind": "rewrite", "quote": word, "text": with, "reason": "Plainer, and how you'd say it."}));
+        }
+    }
+    if let Some((n, _)) = sentences.first() {
+        out.push(json!({"sentence": n, "kind": "cut", "quote": "words the draft never had", "reason": "Made up."}));
+    }
+    out.truncate(12);
+    format!("<suggestions>{}</suggestions>", Value::Array(out))
+}
+
 /// The answer to a check or trim request, or None for any other edit.
 pub fn answer(message: &str) -> Option<String> {
     if let Some((kind, body)) = tagged(message, "check", "kind") {
@@ -223,6 +270,46 @@ mod tests {
             "marks",
         );
         assert_eq!(convoluted[0]["sentence"], 2);
+    }
+
+    fn list_of(reply: &str) -> Vec<Value> {
+        list(reply, "suggestions")
+    }
+
+    #[test]
+    fn a_review_flags_cuts_and_rewrites() {
+        let brief =
+            format!("Review this draft as a critical reader: a.md. …\n\nSentences:\n{SENTENCES}\n");
+        let list = list(&super::review(&brief), "suggestions");
+        let kinds: Vec<_> = list
+            .iter()
+            .map(|s| {
+                (
+                    s["kind"].as_str().unwrap(),
+                    s["quote"].as_str().unwrap_or(""),
+                )
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("cut", "really"),
+                ("cut", "very"),
+                ("cut", "I think"),
+                ("cut", "maybe"),
+                ("cut", "just"),
+                ("rewrite", "utilize"),
+                ("cut", "words the draft never had")
+            ]
+        );
+        assert_eq!(list[5]["text"], "use");
+        let flagged = list_of(&super::review(&format!(
+            "Review…\n\nSentences:\n{SENTENCES}\n[4] Plain words.\n"
+        )));
+        assert_eq!(
+            (flagged[0]["kind"].as_str(), flagged[0]["sentence"].as_u64()),
+            (Some("flag"), Some(4))
+        );
     }
 
     #[test]

@@ -9,9 +9,10 @@
 // old comment's paragraph shows its gutter mark, which opens it in the Kin
 // pane. Then @Kin starts a thread on a paragraph, which moves with its
 // paragraph through edits and reloads, resolves and reopens, and survives
-// its paragraph being deleted; a quick ask leaves a "Kin replied" chip; and
-// "Kin, review this draft" starts threads on paragraphs. Everything lives in
-// a fresh scratch vault and config; screenshots go to .headless/<run>/shots/.
+// its paragraph being deleted; and a quick ask leaves a "Kin replied" chip.
+// (Reviews are suggestions now, KI-109: runtime-review.test.ts.) Everything
+// lives in a fresh scratch vault and config; screenshots go to
+// .headless/<run>/shots/.
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -232,30 +233,4 @@ test("a quick ask leaves a Kin replied chip under the paragraph", { timeout: 90_
   assert.equal(ask.anchor?.kind, "paragraph");
   assert.match(ask.anchor!.quote!.exact, /^Kilns teach patience/);
   await shot("08-ask-thread");
-});
-
-test("⌘K › Kin, review this draft starts threads on paragraphs", { timeout: 90_000 }, async () => {
-  await page.keyboard.press("Meta+j");
-  await pane().waitFor({ state: "detached" });
-  await line("Kilns teach patience").click();
-  await page.keyboard.press("Meta+k");
-  await page.locator("[data-slot=popover-content]").getByRole("option", { name: /Kin, review this draft/ }).click();
-  await pane().waitFor();
-  await until(() => paragraphs().filter((t) => t.origin === "review").length === 2, "two review threads are stored");
-  const review = paragraphs().filter((t) => t.origin === "review");
-  assert.equal(review[0].anchor?.quote?.exact, "A new opening paragraph.");
-  assert.match(review[1].anchor!.quote!.exact, /^Kilns teach patience/);
-  await markerOn("A new opening paragraph.").waitFor();
-  await pane().locator(`[data-thread="${review[0].id}"]`).waitFor();
-  await shot("09-review-list");
-  // The pane covers the gutter at this width; its mark opens it once it's away.
-  await page.keyboard.press("Meta+j");
-  await pane().waitFor({ state: "detached" });
-  await markerOn("A new opening paragraph.").click();
-  await kinReplies().first().getByText("Mock review: the opening makes a claim", { exact: false }).waitFor();
-  await shot("10-review-thread");
-  const own = index().find((t) => t.origin === "review" && t.anchor?.kind === "doc")!;
-  assert.equal(own.title, "Review");
-  const lines = readFileSync(resolve(kinDir(), `threads/${own.id}.jsonl`), "utf8").trim().split("\n").map((l) => JSON.parse(l));
-  assert.ok(lines.some((e) => e.role === "kin" && /left 2 comments/.test(e.text)));
 });

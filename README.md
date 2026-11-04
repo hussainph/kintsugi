@@ -90,7 +90,9 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | ⇧⌘' | Previous mark |
 | ⌥↩ | Accept a mark |
 | ⌥⌘⌫ | Dismiss a mark |
+| ⇧⌘J | Discuss a mark |
 | ⌥⌘↩ | Apply the cuts |
+| Esc | Close all marks |
 
 ### Formatting
 

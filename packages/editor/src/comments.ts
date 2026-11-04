@@ -68,7 +68,7 @@ export type Comments = {
   onMoved: (moves: CommentMove[]) => void;
   /** Stops Kin replying (`null`: stops the review). */
   onStop?: (id: string | null) => void;
-  /** "Kin, review this draft". */
+  /** "Review this draft". */
   onReview?: () => void;
   link?: (target: string) => CommentLink | null;
   onOpenLink?: (target: string) => void;
@@ -638,7 +638,7 @@ function panel(field: StateField<Field>, getConfig: () => Comments | undefined):
           stop.addEventListener("click", () => config.onStop?.(null));
           bar.append(stop);
         } else if (config?.onReview) {
-          const review = element("button", "cm-comment-action", "Kin, review this draft");
+          const review = element("button", "cm-comment-action", "Review this draft");
           review.type = "button";
           review.addEventListener("click", () => config.onReview?.());
           bar.append(review);

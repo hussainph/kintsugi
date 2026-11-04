@@ -334,6 +334,15 @@ export function stashKinReply(view: EditorView, text: string): string | null {
   return addRequestedStashItems(view, [item]) ? item.id : null;
 }
 
+/** Stash on one of Kin's asked rewrites (KI-109): its words, kept for
+ *  later against the span they'd replace. */
+export function stashRewrite(view: EditorView, range: Range, text: string): string | null {
+  if (typeof text !== "string" || !text.trim() || range.from < 0 || range.to > view.state.doc.length || range.to <= range.from) return null;
+  const anchor = stashAnchorAt(view.state.doc.toString(), range.from, range.to);
+  const item: StashItem = { id: newId(), by: "kin", kind: "rewrite", text, created: new Date().toISOString(), anchor };
+  return addRequestedStashItems(view, [item]) ? item.id : null;
+}
+
 export function addStashNote(view: EditorView, text: string): string | null {
   if (typeof text !== "string" || !text.trim()) return null;
   const item: StashItem = { id: newId(), by: "owner", kind: "text", text, created: new Date().toISOString() };

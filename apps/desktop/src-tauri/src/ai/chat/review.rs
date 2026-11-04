@@ -1,30 +1,49 @@
 //! Kin on paragraphs (KI-38, threads since KI-104): a thread anchored to a
 //! paragraph is a comment thread, answered the way a reviewer writes in the
-//! margin. "Kin, review this draft" reads the document and starts a few such
-//! threads on the paragraphs that most need a note, plus a review thread
-//! about the document holding the request and Kin's summary of it.
+//! margin.
+//!
+//! "Review this draft" (KI-109) reads the document and answers with
+//! suggestions on its numbered sentences: cuts, rewrites and flags, each with
+//! a one-line reason. They go back to the editor, which shows them as Kin's
+//! marks and steps through them on its card; none of them is stored. Discuss
+//! on one starts a paragraph thread that opens with it.
 //!
 //! Nothing here writes to a document: Kin never inserts prose unasked.
 
 use super::*;
 use crate::ai::threads::Quote;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Tells Kin a turn is a comment reply; also how the mock recognizes one.
 pub const COMMENT_NOTE: &str = "(You're replying in a comment thread anchored to a paragraph";
 /// The review's brief; also how the mock recognizes one.
 pub const REVIEW_BRIEF: &str = "Review this draft as a critical reader";
-const MAX_REVIEW_PARAGRAPHS: usize = 120;
-const MAX_REMARKS: usize = 6;
-const MAX_REMARK_CHARS: usize = 1_500;
-pub use crate::ai::threads::REVIEW_REQUEST;
+const MAX_REVIEW_SENTENCES: usize = 600;
+const MAX_SENTENCE_CHARS: usize = 2_000;
+const MAX_SUGGESTIONS: usize = 12;
+const MAX_REASON_CHARS: usize = 200;
+const MAX_TEXT_CHARS: usize = 2_000;
+const MAX_NOTE_CHARS: usize = 4_000;
 
-/// A paragraph offered to a review: where it is and how to anchor to it.
+/// A sentence offered to a review, numbered from 1 as the editor numbers it.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Paragraph {
-    pub anchor: Quote,
-    pub lines: [u32; 2],
+pub struct Sentence {
+    pub n: u32,
+    pub text: String,
+}
+
+/// One of Kin's suggestions: a cut, a rewrite (with `text`) or a flag, on
+/// the words `quote` of sentence `sentence` (the whole sentence without
+/// one). The editor checks it against the text before it shows.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Suggestion {
+    pub sentence: u32,
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quote: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    pub reason: String,
 }
 
 /// The chips a comment message carries: only the ones about this document,
@@ -65,69 +84,98 @@ pub(super) fn note(doc: &str, chips: &[Chip]) -> String {
     )
 }
 
-fn review_brief(doc: &str, label: &str, paragraphs: &[Paragraph]) -> String {
+/// `scope` narrows the review: "the section “Gold”", "the selected passage".
+fn review_brief(doc: &str, label: &str, scope: Option<&str>, sentences: &[Sentence]) -> String {
+    let scope = match scope {
+        Some(scope) => format!(", {} only; the rest is context", scope.trim()),
+        None => String::new(),
+    };
     let mut out = format!(
-        "{REVIEW_BRIEF}: {doc} (\"{label}\"). Read it first with the read tool. Then pick the few paragraphs (at most five) that most \
-         need a reviewer's note: an unclear claim, a missing source, a weak step in the argument, something his own writing or clips \
-         contradict or support. Search his writing and clips where it helps, and name what you find as [[path]] links. \
-         Keep each note short and plain, with no praise.\n\
-         Never write or rewrite his prose, not even as an example: question, point, find.\n\
-         Answer with only a JSON array between <comments> tags, one object per note: \
-         <comments>[{{\"paragraph\": 2, \"comment\": \"…\"}}]</comments>. \"paragraph\" is a number from the list below.\n\nParagraphs:\n"
+        "{REVIEW_BRIEF}: {doc} (\"{label}\"){scope}. Read it first with the read tool. Then pick what most needs his attention in the \
+         sentences below, at most twelve, the most useful first:\n\
+         - \"cut\": words, or a whole sentence, the piece is better without.\n\
+         - \"rewrite\": words that don't work as written, with your replacement in \"text\". Keep his voice: his words where they work, \
+         his claims, tone and punctuation. Change as little as you can, and never add an idea he didn't have.\n\
+         - \"flag\": something to look at, with no change: an unclear claim, a missing source, a weak step in the argument, something \
+         his own writing or clips contradict or support. Search his writing and clips where it helps, and name what you find as a [[path]] link.\n\
+         Each reason is one plain line under 15 words, with no praise. Suggest nothing if nothing needs it.\n\
+         Answer with only a JSON array between <suggestions> tags, one object per suggestion: \
+         <suggestions>[{{\"sentence\": 2, \"kind\": \"rewrite\", \"quote\": \"the exact words\", \"text\": \"the new words\", \"reason\": \"…\"}}]</suggestions>. \
+         \"sentence\" is a number from the list; \"quote\" is copied character for character from that sentence (leave it out for the \
+         whole sentence); \"text\" is only for a rewrite.\n\nSentences:\n"
     );
-    for (i, p) in paragraphs.iter().enumerate() {
-        let flat: String = p
-            .anchor
-            .exact
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
-        let head: String = flat.chars().take(140).collect();
-        let more = if flat.chars().count() > 140 {
-            "…"
-        } else {
-            ""
-        };
-        let [a, b] = p.lines;
+    for s in sentences {
+        let flat: String = s.text.split_whitespace().collect::<Vec<_>>().join(" ");
         out.push_str(&format!(
-            "¶{} (lines {a}-{b}): {}{more}\n",
-            i + 1,
-            head.replace("</data", "<\\/data")
+            "[{}] {}\n",
+            s.n,
+            flat.replace("</data", "<\\/data")
         ));
     }
     out
 }
 
-#[derive(Deserialize)]
-struct Remark {
-    paragraph: usize,
-    comment: String,
-}
-
-/// The review's notes: paragraph index (from 0) and text. `None` if the
-/// reply has no well-formed list.
-fn remarks(text: &str, paragraphs: usize) -> Option<Vec<(usize, String)>> {
+/// The review's suggestions, or `None` if the reply has no well-formed
+/// list. An entry naming a sentence that isn't there, of another kind, or a
+/// rewrite without words, is dropped.
+fn suggestions(text: &str, sentences: &[Sentence]) -> Option<Vec<Suggestion>> {
     let body = text
-        .split("<comments>")
+        .split("<suggestions>")
         .nth(1)?
-        .split("</comments>")
-        .next()?;
-    let list: Vec<Remark> = serde_json::from_str(body.trim()).ok()?;
-    let mut out: Vec<(usize, String)> = Vec::new();
-    for remark in list {
-        let comment = remark.comment.trim();
-        if remark.paragraph == 0
-            || remark.paragraph > paragraphs
-            || comment.is_empty()
-            || out.iter().any(|(i, _)| *i == remark.paragraph - 1)
-        {
+        .split("</suggestions>")
+        .next()?
+        .trim();
+    let body = body
+        .strip_prefix("```json")
+        .or_else(|| body.strip_prefix("```"))
+        .and_then(|b| b.trim_end().strip_suffix("```"))
+        .unwrap_or(body);
+    let list: Vec<serde_json::Value> = serde_json::from_str(body.trim()).ok()?;
+    let string = |v: &serde_json::Value, key: &str| {
+        v.get(key)
+            .and_then(|s| s.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    };
+    let mut out = Vec::new();
+    for entry in &list {
+        let Some(n) = entry.get("sentence").and_then(|n| n.as_u64()) else {
+            continue;
+        };
+        if !sentences.iter().any(|s| u64::from(s.n) == n) {
             continue;
         }
-        out.push((
-            remark.paragraph - 1,
-            comment.chars().take(MAX_REMARK_CHARS).collect(),
-        ));
-        if out.len() == MAX_REMARKS {
+        let kind = string(entry, "kind").unwrap_or_default().to_lowercase();
+        let reason: String = string(entry, "reason")
+            .and_then(|r| r.lines().next().map(|l| l.trim().to_string()))
+            .unwrap_or_default();
+        let text = string(entry, "text");
+        let ok = match kind.as_str() {
+            "cut" => true,
+            "rewrite" => text.is_some(),
+            "flag" => !reason.is_empty(),
+            _ => false,
+        };
+        if !ok {
+            continue;
+        }
+        out.push(Suggestion {
+            sentence: n as u32,
+            quote: entry
+                .get("quote")
+                .and_then(|q| q.as_str())
+                .filter(|q| !q.trim().is_empty())
+                .map(|q| q.chars().take(MAX_SENTENCE_CHARS).collect()),
+            text: if kind == "rewrite" {
+                text.map(|t| t.chars().take(MAX_TEXT_CHARS).collect())
+            } else {
+                None
+            },
+            kind,
+            reason: reason.chars().take(MAX_REASON_CHARS).collect(),
+        });
+        if out.len() == MAX_SUGGESTIONS {
             break;
         }
     }
@@ -135,17 +183,27 @@ fn remarks(text: &str, paragraphs: usize) -> Option<Vec<(usize, String)>> {
 }
 
 impl<B: Brain> Engine<B> {
-    /// "Kin, review this draft": one turn that reads the document and starts
-    /// a few threads on the paragraphs that need a note. Returns the review's
-    /// own thread, about the document.
-    pub fn review(&self, doc: &str, paragraphs: Vec<Paragraph>, chips: Vec<Chip>) -> Result<Meta> {
+    /// "Review this draft" (or one section of it): one turn that reads the
+    /// document and answers with suggestions on `sentences`, which come back
+    /// in `ReviewEnded`. Returns the turn's id. Nothing is stored.
+    pub fn review(
+        &self,
+        doc: &str,
+        sentences: Vec<Sentence>,
+        scope: Option<String>,
+        chips: Vec<Chip>,
+    ) -> Result<String> {
         let doc = crate::sidecar::document(doc)?.to_string();
-        let paragraphs: Vec<Paragraph> = paragraphs
+        let sentences: Vec<Sentence> = sentences
             .into_iter()
-            .filter(|p| !p.anchor.exact.trim().is_empty())
-            .take(MAX_REVIEW_PARAGRAPHS)
+            .filter(|s| s.n > 0 && !s.text.trim().is_empty())
+            .map(|s| Sentence {
+                n: s.n,
+                text: s.text.chars().take(MAX_SENTENCE_CHARS).collect(),
+            })
+            .take(MAX_REVIEW_SENTENCES)
             .collect();
-        if paragraphs.is_empty() {
+        if sentences.is_empty() {
             return Err("Write a paragraph or two first, then ask for a review.".into());
         }
         let mut live = self.0.live.lock().unwrap();
@@ -161,23 +219,9 @@ impl<B: Brain> Engine<B> {
             .find_map(|c| c.label.clone())
             .filter(|l| !l.trim().is_empty())
             .unwrap_or_else(|| doc.rsplit('/').next().unwrap_or(&doc).to_string());
-        let (meta, entry, vault) = {
-            let mut store = self.store();
-            let new = New {
-                anchor: Some(Anchor {
-                    label: Some(label.clone()),
-                    ..Anchor::doc(&doc)
-                }),
-                origin: "review".into(),
-                title: Some("Review".into()),
-            };
-            let draft = Draft {
-                review: true,
-                ..Draft::said(REVIEW_REQUEST, chips.clone())
-            };
-            let (meta, entry) = store.start(new, Role::Owner, draft)?;
-            (meta, entry, store.vault().map(Path::to_path_buf))
-        };
+        let scope: Option<String> = scope
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.chars().take(200).collect());
         let turn = self.turn_id("review");
         let cancel = Cancel::default();
         live.reviews.insert(
@@ -187,26 +231,18 @@ impl<B: Brain> Engine<B> {
             },
         );
         drop(live);
-        self.emit(ChatEvent::Thread {
-            thread: meta.clone(),
-        });
-        self.emit(ChatEvent::Entry {
-            entry: entry.clone(),
-        });
         self.emit(ChatEvent::ReviewStarted {
             turn: turn.clone(),
             path: doc.clone(),
         });
         let engine = self.clone();
-        let (thread, request) = (meta.id.clone(), entry.seq);
+        let id = turn.clone();
         async_runtime::spawn(async move {
             engine
-                .answer_review(
-                    doc, label, paragraphs, chips, thread, request, turn, vault, cancel,
-                )
+                .answer_review(doc, label, scope, sentences, chips, turn, cancel)
                 .await
         });
-        Ok(meta)
+        Ok(id)
     }
 
     /// Stops a running review.
@@ -221,18 +257,16 @@ impl<B: Brain> Engine<B> {
         &self,
         doc: String,
         label: String,
-        paragraphs: Vec<Paragraph>,
+        scope: Option<String>,
+        sentences: Vec<Sentence>,
         chips: Vec<Chip>,
-        thread: String,
-        request: u64,
         turn: String,
-        vault: Option<PathBuf>,
         cancel: Cancel,
     ) {
         let ask = agent::Turn {
             task: Task::Chat,
             background: false,
-            question: review_brief(&doc, &label, &paragraphs),
+            question: review_brief(&doc, &label, scope.as_deref(), &sentences),
             chips,
             today: self.0.brain.today(),
             remember: true,
@@ -240,98 +274,61 @@ impl<B: Brain> Engine<B> {
             about: None,
         };
         let (_, result, _) = self.execute(&turn, "", &ask, &cancel, true, None).await;
-        let base = Draft {
-            answers: vec![request],
-            review: true,
-            ..Draft::default()
-        };
-        let (note, comments) = match result {
-            Ok(summary) if summary.stop == Stop::Cancelled => (
-                Draft {
-                    text: "Review stopped.".into(),
-                    interrupted: true,
-                    ..base
-                },
-                vec![],
-            ),
-            Ok(summary) => match remarks(&summary.text, paragraphs.len()) {
-                Some(found) if found.is_empty() => (
-                    Draft {
-                        text: "I read it through and have nothing worth a comment right now."
-                            .into(),
-                        usd: Some(summary.usd),
-                        ..base
-                    },
-                    vec![],
-                ),
-                Some(found) => {
-                    let n = found.len();
-                    let text = format!(
-                        "I left {n} comment{} on {label}.",
-                        if n == 1 { "" } else { "s" }
-                    );
-                    (
-                        Draft {
-                            text,
-                            usd: Some(summary.usd),
-                            ..base
-                        },
-                        found,
-                    )
-                }
+        let (suggestions, error, stopped) = match result {
+            Ok(summary) if summary.stop == Stop::Cancelled => (None, None, true),
+            Ok(summary) => match suggestions(&summary.text, &sentences) {
+                Some(found) => (Some(found), None, false),
                 None => (
-                    Draft {
-                        error: Some("Kin's review didn't come back as comments. Ask again?".into()),
-                        usd: Some(summary.usd),
-                        ..base
-                    },
-                    vec![],
+                    None,
+                    Some("Kin’s review didn’t come back as suggestions. Try again.".into()),
+                    false,
                 ),
             },
-            Err(message) => (
-                Draft {
-                    error: Some(message),
-                    ..base
-                },
-                vec![],
-            ),
+            Err(message) => (None, Some(message), false),
         };
-        // The vault the review started in, even if another is open now.
-        let ((started, entry), live) = self.in_store(vault.as_deref(), |store| {
-            let mut started = Vec::new();
-            for (i, text) in comments {
-                let new = New {
-                    anchor: Some(Anchor {
-                        kind: "paragraph".into(),
-                        path: doc.clone(),
-                        label: None,
-                        quote: Some(paragraphs[i].anchor.clone()),
-                        orphaned: false,
-                    }),
-                    origin: "review".into(),
-                    title: None,
-                };
-                let draft = Draft {
-                    review: true,
-                    ..Draft::said(&text, vec![])
-                };
-                if let Ok(made) = store.start(new, Role::Kin, draft) {
-                    started.push(made);
-                }
-            }
-            (started, store.append(&thread, Role::Kin, note).ok())
-        });
-        if live {
-            for (meta, entry) in started {
-                self.emit(ChatEvent::Thread { thread: meta });
-                self.emit(ChatEvent::Entry { entry });
-            }
-            if let Some(entry) = entry {
-                self.emit(ChatEvent::Entry { entry });
-            }
-        }
         self.0.live.lock().unwrap().reviews.remove(&doc);
-        self.emit(ChatEvent::ReviewEnded { turn, path: doc });
+        self.emit(ChatEvent::ReviewEnded {
+            turn,
+            path: doc,
+            suggestions,
+            error,
+            stopped,
+        });
+    }
+
+    /// Discuss on one of the review's suggestions: a thread on its
+    /// paragraph that opens with the suggestion as Kin's note, so his reply
+    /// starts from it.
+    pub fn review_discuss(&self, doc: &str, quote: Quote, note: &str) -> Result<Meta> {
+        let doc = crate::sidecar::document(doc)?.to_string();
+        let note: String = note.trim().chars().take(MAX_NOTE_CHARS).collect();
+        if note.is_empty() || quote.exact.trim().is_empty() {
+            return Err("Nothing to discuss.".into());
+        }
+        let (meta, entry) = {
+            let mut store = self.store();
+            let new = New {
+                anchor: Some(Anchor {
+                    kind: "paragraph".into(),
+                    path: doc,
+                    label: None,
+                    quote: Some(quote),
+                    orphaned: false,
+                }),
+                origin: "review".into(),
+                title: None,
+            };
+            let draft = Draft {
+                review: true,
+                ..Draft::said(&note, vec![])
+            };
+            store.start(new, Role::Kin, draft)?
+        };
+        self.emit(ChatEvent::Thread {
+            thread: meta.clone(),
+        });
+        self.emit(ChatEvent::Entry { entry });
+        Ok(meta)
     }
 }
 
@@ -341,11 +338,12 @@ impl<B: Brain> Engine<B> {
 pub fn kin_review(
     chat: State<Chat>,
     path: String,
-    paragraphs: Vec<Paragraph>,
+    sentences: Vec<Sentence>,
+    scope: Option<String>,
     chips: Option<Vec<Chip>>,
-) -> Result<Meta> {
+) -> Result<String> {
     chat.engine()?
-        .review(&path, paragraphs, chips.unwrap_or_default())
+        .review(&path, sentences, scope, chips.unwrap_or_default())
 }
 
 #[tauri::command]
@@ -354,35 +352,104 @@ pub fn kin_review_stop(chat: State<Chat>, path: String) -> Result<()> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn kin_review_discuss(
+    chat: State<Chat>,
+    path: String,
+    quote: Quote,
+    note: String,
+) -> Result<Meta> {
+    chat.engine()?.review_discuss(&path, quote, &note)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_review_reply_becomes_a_few_notes_on_real_paragraphs() {
-        let text = "Thinking…\n<comments>[{\"paragraph\": 2, \"comment\": \" Source? \"}, {\"paragraph\": 2, \"comment\": \"dup\"}, \
-                    {\"paragraph\": 9, \"comment\": \"out of range\"}, {\"paragraph\": 1, \"comment\": \"\"}, {\"paragraph\": 1, \"comment\": \"Unclear.\"}]</comments>";
-        assert_eq!(
-            remarks(text, 3).unwrap(),
-            [(1, "Source?".to_string()), (0, "Unclear.".to_string())]
-        );
-        assert!(remarks("no list here", 3).is_none());
-        assert_eq!(remarks("<comments>[]</comments>", 3).unwrap(), []);
+    fn sentence(n: u32, text: &str) -> Sentence {
+        Sentence {
+            n,
+            text: text.into(),
+        }
     }
 
     #[test]
-    fn the_brief_lists_paragraphs_and_forbids_prose() {
-        let p = |t: &str, a| Paragraph {
-            anchor: Quote {
-                exact: t.into(),
-                ..Quote::default()
-            },
-            lines: [a, a],
-        };
-        let brief = review_brief("drafts/a.md", "A", &[p("One.", 5), p("Two </data> x", 7)]);
+    fn a_review_reply_becomes_suggestions_on_real_sentences() {
+        let list = [sentence(1, "One."), sentence(2, "We utilize gold.")];
+        let text = "Thinking…\n<suggestions>[\
+            {\"sentence\": 2, \"kind\": \"rewrite\", \"quote\": \"utilize\", \"text\": \"use\", \"reason\": \" Plainer. \\nmore\"},\
+            {\"sentence\": 2, \"kind\": \"rewrite\", \"quote\": \"gold\"},\
+            {\"sentence\": 9, \"kind\": \"cut\"},\
+            {\"sentence\": 1, \"kind\": \"praise\", \"reason\": \"Lovely\"},\
+            {\"sentence\": 1, \"kind\": \"flag\"},\
+            {\"sentence\": 1, \"kind\": \"Cut\", \"text\": \"ignored\"},\
+            {\"sentence\": 1, \"kind\": \"flag\", \"quote\": \" \", \"reason\": \"Source?\"}]</suggestions>";
+        assert_eq!(
+            suggestions(text, &list).unwrap(),
+            [
+                Suggestion {
+                    sentence: 2,
+                    kind: "rewrite".into(),
+                    quote: Some("utilize".into()),
+                    text: Some("use".into()),
+                    reason: "Plainer.".into()
+                },
+                Suggestion {
+                    sentence: 1,
+                    kind: "cut".into(),
+                    quote: None,
+                    text: None,
+                    reason: String::new()
+                },
+                Suggestion {
+                    sentence: 1,
+                    kind: "flag".into(),
+                    quote: None,
+                    text: None,
+                    reason: "Source?".into()
+                },
+            ]
+        );
+        assert!(suggestions("no list here", &list).is_none());
+        assert_eq!(
+            suggestions("<suggestions>[]</suggestions>", &list).unwrap(),
+            []
+        );
+        assert_eq!(
+            suggestions(
+                "<suggestions>```json\n[{\"sentence\": 1, \"kind\": \"cut\"}]\n```</suggestions>",
+                &list
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+        let many = format!(
+            "<suggestions>[{}]</suggestions>",
+            vec!["{\"sentence\": 1, \"kind\": \"cut\"}"; 20].join(",")
+        );
+        assert_eq!(suggestions(&many, &list).unwrap().len(), MAX_SUGGESTIONS);
+    }
+
+    #[test]
+    fn the_brief_lists_sentences_and_keeps_his_voice() {
+        let brief = review_brief(
+            "drafts/a.md",
+            "A",
+            None,
+            &[sentence(1, "One."), sentence(2, "Two </data>\n x")],
+        );
         assert!(brief.starts_with(REVIEW_BRIEF));
-        assert!(brief.contains("¶1 (lines 5-5): One.\n¶2 (lines 7-7): Two <\\/data> x"));
-        assert!(brief.contains("Never write or rewrite his prose"));
+        assert!(brief.contains("[1] One.\n[2] Two <\\/data> x\n"));
+        assert!(brief.contains("Keep his voice"));
+        assert!(brief.contains("at most twelve"));
+        let section = review_brief(
+            "drafts/a.md",
+            "A",
+            Some("the section “Gold”"),
+            &[sentence(1, "One.")],
+        );
+        assert!(section.contains("(\"A\"), the section “Gold” only; the rest is context."));
         let chips = doc_chips(
             "drafts/a.md",
             vec![

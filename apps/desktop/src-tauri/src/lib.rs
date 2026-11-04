@@ -167,6 +167,7 @@ fn builder() -> tauri::Builder<Runtime> {
             ai::stash::stash_ask,
             ai::chat::review::kin_review,
             ai::chat::review::kin_review_stop,
+            ai::chat::review::kin_review_discuss,
             ai::ideas::ideas_list,
             ai::ideas::ideas_generate,
             ai::ideas::ideas_dismiss,

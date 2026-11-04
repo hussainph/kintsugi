@@ -2,7 +2,7 @@ import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 import type { ComponentProps, ComponentType } from "react";
 import {
   Add01Icon, Alert01Icon, AlertCircleIcon, ArrowDown01Icon, ArrowLeft02Icon,
-  ArrowRight01Icon, ArrowUpRight01Icon, AtIcon, AttachmentIcon, Bookmark01Icon,
+  ArrowLeft01Icon, ArrowRight01Icon, ArrowUpRight01Icon, AtIcon, AttachmentIcon, Bookmark01Icon,
   BookmarkAdd01Icon, BookmarkCheck01Icon, BookOpen01Icon, BubbleChatIcon, BulbIcon,
   Cancel01Icon, CheckmarkCircle02Icon, CompassIcon, Copy01Icon, Delete02Icon,
   Download01Icon, FavouriteIcon, File01Icon, FileAddIcon, FileDiffIcon, Folder01Icon,
@@ -67,6 +67,7 @@ export const Browser = glyph(BrowserIcon);
 export const Brain = glyph(Brain02Icon);
 export const Check = glyph(Tick02Icon);
 export const ChevronDown = glyph(ArrowDown01Icon);
+export const ChevronLeft = glyph(ArrowLeft01Icon);
 export const ChevronRight = glyph(ArrowRight01Icon);
 export const Clock = glyph(Clock01Icon);
 export const Coins = glyph(Coins01Icon);

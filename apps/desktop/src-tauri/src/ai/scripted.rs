@@ -647,9 +647,9 @@ fn read_first_web_result(items: &[Item]) -> Option<ToolCall> {
     })
 }
 
-/// Comment threads and reviews (KI-38): a reviewer's note that names what
-/// it found as a [[link]], and a review that comments on the first and last
-/// paragraphs.
+/// Comment threads and reviews (KI-38, KI-109): a reviewer's note that
+/// names what it found as a [[link]], and a review that answers with
+/// suggestions (`marks::review`) once it has read the draft.
 mod comments {
     use super::*;
 
@@ -711,18 +711,8 @@ mod comments {
             return reply(String::new(), vec![call]);
         }
         let text = if review {
-            let n = question
-                .lines()
-                .filter(|l| l.starts_with('¶'))
-                .count()
-                .max(1);
-            let mut notes = vec![
-                json!({ "paragraph": 1, "comment": "Mock review: the opening makes a claim without a source. What's it resting on?" }),
-            ];
-            if n > 1 {
-                notes.push(json!({ "paragraph": n, "comment": format!("Mock review: ¶{n} ends without saying what it costs. Is that the point?") }));
-            }
-            format!("<comments>{}</comments>", serde_json::Value::Array(notes))
+            // KI-109: suggestions on the numbered sentences.
+            marks::review(question)
         } else {
             let doc = first_chip(question).unwrap_or_default();
             let said = said(question)
@@ -1873,7 +1863,7 @@ mod writing_tests {
         samples.push(sample("comment", None, note));
 
         let review = format!(
-            "{REVIEW_BRIEF}: drafts/bowl.md (\"The bowl\"). Read it first.\n\nParagraphs:\n¶1 The bowl broke along an old line.\n¶2 I glued it on a Sunday and it held for a year.\n¶3 Then it broke again, somewhere new."
+            "{REVIEW_BRIEF}: drafts/bowl.md (\"The bowl\"). Read it first.\n\nSentences:\n[1] The bowl broke along an old line.\n[2] I think I glued it on a Sunday and it held for a year.\n[3] We utilize glue now."
         );
         let doc = Chip {
             kind: "doc".into(),
@@ -1884,10 +1874,10 @@ mod writing_tests {
         let (review, _) = turn(vault.path(), Task::Chat, review, vec![doc]);
         let notes: serde_json::Value = serde_json::from_str(
             review
-                .split("<comments>")
+                .split("<suggestions>")
                 .nth(1)
                 .unwrap()
-                .split("</comments>")
+                .split("</suggestions>")
                 .next()
                 .unwrap(),
         )
@@ -1896,9 +1886,13 @@ mod writing_tests {
             .as_array()
             .unwrap()
             .iter()
-            .filter_map(|n| n["comment"].as_str())
+            .filter_map(|n| n["reason"].as_str())
             .collect();
-        assert_eq!(notes.len(), 2);
+        assert_eq!(
+            notes.len(),
+            4,
+            "a flag, a cut, a rewrite and the made-up one"
+        );
         samples.push(sample("review", None, notes.join("\n")));
 
         let passage = "I really just wanted the bowl to hold. It held for a year, which is longer than the shop said it would.";

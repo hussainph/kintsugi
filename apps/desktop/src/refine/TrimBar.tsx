@@ -2,6 +2,7 @@ import type { EditorView } from "@codemirror/view";
 import { applyMarks, clearMarks } from "@kintsugi/editor/Editor";
 import { Button } from "@kintsugi/ui/components/button";
 import { Kbd } from "@kintsugi/ui/components/kbd";
+import { Loader2 } from "@kintsugi/ui/icons";
 import { keysOf } from "@/lib/keys";
 import { SHORTCUTS } from "@/lib/shortcuts";
 
@@ -22,6 +23,19 @@ export function TrimBar({ view, count }: { view: EditorView; count: TrimCount })
       </Button>
       <Button size="sm" disabled={view.state.readOnly} onClick={() => { applyMarks(view); done(); }}>
         Apply cuts <Kbd>{keysOf(SHORTCUTS.applyCuts.key)}</Kbd>
+      </Button>
+    </div>
+  );
+}
+
+/** While Kin reads the draft for a review (KI-109), with Stop. */
+export function ReviewBar({ onStop }: { onStop: () => void }) {
+  return (
+    <div className="ki-trim-bar ki-review-bar" role="status" aria-label="Review">
+      <Loader2 aria-hidden className="ki-review-bar-spinner" />
+      <span className="ki-text-xs">Kin is reviewing this draft</span>
+      <Button variant="ghost" size="sm" onClick={onStop}>
+        Stop
       </Button>
     </div>
   );
