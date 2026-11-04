@@ -156,7 +156,7 @@ test("opening the margin never moves or re-wraps a line, at 1440, 1360 and 1280"
   await page.setViewportSize({ width: 1360, height: 900 });
   await settle();
   before = await lineBoxes();
-  await everyTab("1360", async () => assert.deepEqual(await lineBoxes(), before, "1360: no line moved"), false);
+  await everyTab("1360", async () => sameBoxes(await lineBoxes(), before, "1360: no line moved"), false);
 
   // 1280 with the sidebar as icons (⌘\): the margin fits; nothing moves.
   await page.setViewportSize({ width: 1280, height: 900 });
