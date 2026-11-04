@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, setMarks, toggleDimRange } from "@kintsugi/editor/Editor";
+import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, setMarks, stashRange, toggleDimRange } from "@kintsugi/editor/Editor";
 import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
@@ -350,6 +350,16 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                 }}>
                   {dimmed ? "Undim" : "Dim"}
                   <CommandShortcut>{keysOf("Mod-/")}</CommandShortcut>
+                </CommandItem>
+                {/* Moves the passage into the Stash tab, as ⌥⌘X does (KI-110). */}
+                <CommandItem value="Stash" onSelect={() => {
+                  const at = here();
+                  if (!at) return;
+                  stashRange(view, at.from, at.to);
+                  onClose();
+                }}>
+                  Stash
+                  <CommandShortcut>{keysOf(SHORTCUTS.stash.key)}</CommandShortcut>
                 </CommandItem>
                 {actions.map((a) => (
                   <CommandItem key={a.id} value={a.label} onSelect={() => run(a)}>

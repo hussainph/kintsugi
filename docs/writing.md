@@ -175,15 +175,25 @@ The Stash tab holds set-aside prose, notes and Kin's suggestions for the open
 draft. Versions of the cursor's span sit above the list. Opening the margin
 never re-wraps the draft.
 
-- ⌥⌘X moves the selection, else the paragraph, into the stash. **Add a note**
-  keeps a note without putting it in the draft.
+- **Stash selection** at the top of the tab, ⌥⌘X, **Stash** in ⌘K and
+  **Stash** in the selection menu move the selection, else the paragraph,
+  into the stash. With nothing selected the button reads **Stash
+  paragraph**; on a blank line, a read-only draft or with no draft open it's
+  disabled. Dragging a selection from the draft onto the Stash tab, or onto
+  its header, stashes it too. **Add a note** keeps a note without putting it
+  in the draft.
+- Stashing never opens the margin and shows no toast. If the Stash tab is
+  showing, the new row lights up briefly. If the margin is closed, the
+  margin button's dot pulses once; if another tab is showing, the dot is on
+  the Stash tab's header.
 - Click or keyboard-focus a row to show its actions below the text. ↑/↓ move
   between rows; Enter inserts, Delete removes, and ⇧⌘J discusses it with Kin.
   ⌥⌘V opens the stash picker. Drag a row into the draft to put it there,
   or reorder the list by dragging or with ⌥↑/⌥↓ on a focused row.
 - A rewrite replaces only the words it is anchored to. If they have changed
   or gone, it stays in the stash. Other items insert at the cursor.
-  Stashing and inserting each take one undo step; undo restores the item too.
+  Stashing (by any route) and inserting each take one undo step; undo
+  restores the item too.
 - Kin's mark distinguishes its items. Rewrites show the original words
   struck above the replacement. **Ask Kin** reads the draft, its stash and
   the vault, and adds up to five items. **Stash** under a Kin reply saves it

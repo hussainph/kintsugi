@@ -8,7 +8,8 @@ import * as stashModule from "../src/stash.ts";
 import {
   addRequestedStashItems, addStashNote, flushStash, focusStashItem, insertStashItem,
   moveStashItem, refreshStash, removeStashItem, reorderStashItems, stashCommands, stashExtensions,
-  stashItems, stashKinReply, stashMime, stashSelection, type Stash, type StashItem,
+  draftSelectionMime, stashDropped, stashItems, stashKinReply, stashMime, stashRange, stashSelection, stashTargetAt,
+  type Stash, type StashItem,
 } from "../src/stash.ts";
 
 const PATH = "drafts/test.md";
@@ -27,7 +28,7 @@ function editor(doc: string, initial: StashItem[] = [], options: { controller?: 
   const host: Stash = {
     path: options.path ?? PATH, currentPath: PATH, items: initial,
     onSave: (path, items) => saved.push({ path, items }), onChange: (items) => notified.push(items),
-    onOpen: () => opened++, onPicker: () => picked++, onError: (message) => errors.push(message),
+    onStashed: () => opened++, onPicker: () => picked++, onError: (message) => errors.push(message),
   };
   const extensions = stashExtensions(() => host) as unknown[];
   let state = EditorState.create({ doc, extensions: [history(), EditorState.readOnly.of(!!options.readOnly), extensions as any] });
@@ -381,6 +382,63 @@ test("malformed, stale and cross-document stash drops never fall through to plai
   const plain = dropEvent("text", 0, "text/plain");
   assert.equal(e.handlers.drop(plain.event, e.view), false);
   assert.equal(plain.prevented(), false);
+});
+
+test("the stash target is the selection, else a non-blank paragraph, and only while writable (KI-110)", () => {
+  const e = editor("First words.\n\nSecond paragraph.");
+  e.select(2);
+  assert.deepEqual(stashTargetAt(e.state), { from: 0, to: 12, selection: false });
+  e.select(16, 22);
+  assert.deepEqual(stashTargetAt(e.state), { from: 16, to: 22, selection: true });
+  e.select(13);
+  assert.equal(stashTargetAt(e.state), null, "a blank line has nothing to stash");
+  assert.equal(stashTargetAt(editor("Words.", [], { readOnly: true }).state), null);
+  assert.equal(stashTargetAt(editor("Words.", [], { path: "other.md" }).state), null, "next document's props");
+});
+
+test("stashRange stashes ⌘K's passage as one undo step, and refuses bad spans", () => {
+  const e = editor("Keep these words here.");
+  e.select(0);
+  assert.equal(stashRange(e.view, 5, 16), true);
+  assert.equal(e.text(), "Keep  here.");
+  assert.equal(e.items()[0].text, "these words");
+  assert.equal(e.opened, 1, "onStashed runs once");
+  assert.equal(undo(e.view), true);
+  assert.equal(e.text(), "Keep these words here.");
+  assert.deepEqual(e.items(), []);
+  for (const [from, to] of [[3, 3], [5, 2], [-1, 3], [0, 99], [0.5, 3]]) assert.equal(stashRange(e.view, from, to), false);
+  assert.equal(e.text(), "Keep these words here.");
+  assert.equal(e.opened, 1);
+});
+
+test("a dragged draft selection carries its span and stashes on drop if the words still match", () => {
+  const e = editor("Keep these words here.");
+  const data = new Map<string, string>();
+  const dragstart = (from: number, to: number) => {
+    data.clear();
+    e.select(from, to);
+    assert.equal(e.handlers.dragstart({ dataTransfer: { setData: (type: string, value: string) => data.set(type, value) } }, e.view), false, "CodeMirror still runs its text drag");
+  };
+  dragstart(5, 5);
+  assert.equal(data.has(draftSelectionMime), false, "no selection, no payload");
+  dragstart(5, 16);
+  const payload = data.get(draftSelectionMime)!;
+  assert.deepEqual(JSON.parse(payload), { path: PATH, from: 5, to: 16, text: "these words" });
+  for (const bad of ["bad JSON", "null", JSON.stringify({ ...JSON.parse(payload), path: "other.md" }), JSON.stringify({ ...JSON.parse(payload), text: "those words" })]) {
+    assert.equal(stashDropped(e.view, bad), false);
+  }
+  assert.equal(e.text(), "Keep these words here.");
+  assert.equal(stashDropped(e.view, payload), true);
+  assert.equal(e.text(), "Keep  here.");
+  assert.equal(e.items()[0].text, "these words");
+  assert.equal(undo(e.view), true, "the drop is one undo step");
+  assert.equal(e.text(), "Keep these words here.");
+  assert.deepEqual(e.items(), []);
+  e.edit(0, 4, "Hold");
+  assert.equal(stashDropped(e.view, JSON.stringify({ path: PATH, from: 0, to: 4, text: "Keep" })), false, "changed words stay in the draft");
+  const locked = editor("Keep these words here.", [], { readOnly: true });
+  locked.select(5, 16);
+  assert.equal(locked.handlers.dragstart({ dataTransfer: { setData: () => assert.fail("read-only drags carry no stash payload") } }, locked.view), false);
 });
 
 test("persistence debounces, metadata changes notify immediately, and undo notifies too", (t) => {

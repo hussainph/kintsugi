@@ -25,8 +25,9 @@
 }
 .ki-stash-shared { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; padding: var(--space-l); }
 .ki-stash > .ki-versions + .ki-stash-shared { padding-top: var(--space-xs); }
-.ki-stash-heading { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-s); margin-bottom: var(--space-xs); }
-.ki-stash-heading h2 { margin: 0; font: inherit; font-weight: var(--weight-ui-medium); }
+.ki-stash-heading { display: flex; min-width: 0; align-items: center; gap: var(--space-xs); margin-bottom: var(--space-xs); }
+.ki-stash-heading h2 { margin: 0 auto 0 0; font: inherit; font-weight: var(--weight-ui-medium); }
+.ki-stash .ki-stash-take { flex-shrink: 0; }
 .ki-stash .ki-stash-ask { color: var(--neutral-7); }
 .ki-stash .ki-stash-ask:disabled { color: var(--neutral-6); }
 .ki-stash .ki-stash-ask-avatar { width: 1em; height: 1em; flex-shrink: 0; }
@@ -61,6 +62,14 @@
 .ki-stash-row[data-drop]::after { content: ""; position: absolute; right: 0; left: calc(var(--ki-stash-mark) + var(--ki-stash-mark-gap)); height: var(--border-l); background: var(--neutral-8); pointer-events: none; }
 .ki-stash-row[data-drop="before"]::after { top: 0; }
 .ki-stash-row[data-drop="after"]::after { bottom: 0; }
+/* KI-110: a selection dragged from the draft over the tab, and the row it
+   just made. The highlight fades out within FRESH_MS (StashTab.tsx). */
+.ki-stash[data-drop-target] .ki-stash-shared { border-radius: var(--radius-s); background: var(--neutral-2); box-shadow: inset 0 0 0 var(--border-l) var(--neutral-6); }
+.ki-stash-row[data-fresh]::before { background: var(--neutral-4); animation: ki-stash-fresh 1200ms ease-out both; }
+@keyframes ki-stash-fresh {
+  0%, 35% { opacity: 1; }
+  100% { opacity: 0; }
+}
 .ki-stash[data-skip-motion] .ki-stash-actions { transition: none; }
 .ki-stash[data-skip-motion] .ki-stash-toolbar { transition: none; }
 @media (hover: hover) and (pointer: fine) {
@@ -72,4 +81,5 @@
   .ki-stash-row, .ki-stash-row::before, .ki-stash .ki-stash-action, .ki-stash-actions { transition: none; }
   .ki-stash-row[data-focused] .ki-stash-toolbar { transition-delay: 0ms; }
   .ki-stash .ki-stash-action:active:not(:disabled) { transform: none; }
+  .ki-stash-row[data-fresh]::before { animation-duration: 600ms; }
 }

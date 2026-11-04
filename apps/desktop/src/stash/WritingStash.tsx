@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { EditorView } from "@codemirror/view";
-import { addRequestedStashItems, addStashNote, focusStashItem, insertStashItem, moveStashItem, removeStashItem, stashItems, stashKinReply, type StashItem } from "@kintsugi/editor/stash";
+import { ViewPlugin, type EditorView } from "@codemirror/view";
+import type { EditorState } from "@codemirror/state";
+import { addRequestedStashItems, addStashNote, focusStashItem, insertStashItem, moveStashItem, removeStashItem, stashDropped, stashItems, stashKinReply, stashSelection, stashTargetAt, type StashItem } from "@kintsugi/editor/stash";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { toast } from "sonner";
@@ -9,6 +10,7 @@ import { discuss } from "@/lib/chat";
 import { registerStashTarget } from "@/lib/stash";
 import { trackStashWrite } from "@/lib/stashFlush";
 import { snippet } from "@/lib/chips";
+import { noticeStash } from "@/margin/state";
 import { StashTab } from "./StashTab";
 import { useStash } from "./useStash";
 import "./writing-stash.css";
@@ -24,7 +26,27 @@ export function useWritingStash({ root, path, viewRef, readOnly = false, show }:
   const items = store.items;
   const openPicker = useCallback(() => { show(); setPicker(true); }, [show]);
   const onError = useCallback((message: string) => { toast.error(message); }, []);
-  const config = useMemo(() => store.config && { ...store.config, onOpen: show, onPicker: openPicker, onError }, [store.config, show, openPicker, onError]);
+  // KI-110: a stash from anywhere lights its row if the Stash tab is showing,
+  // else pulses a dot. It no longer opens the margin.
+  const [fresh, setFresh] = useState<string | null>(null);
+  const onStashed = useCallback((id: string) => { if (noticeStash() === "row") setFresh(id); }, []);
+  const config = useMemo(() => store.config && { ...store.config, onStashed, onPicker: openPicker, onError }, [store.config, onStashed, openPicker, onError]);
+  // What the Stash selection button would take, from the editor's state.
+  const [target, setTarget] = useState({ selection: false, ready: false });
+  const reported = useRef(target);
+  const extension = useMemo(() => {
+    const report = (state: EditorState) => {
+      const selection = !state.selection.main.empty;
+      const ready = !!stashTargetAt(state);
+      if (reported.current.selection === selection && reported.current.ready === ready) return;
+      reported.current = { selection, ready };
+      setTarget(reported.current);
+    };
+    return ViewPlugin.define((view) => {
+      queueMicrotask(() => report(view.state));
+      return { update: (update) => report(update.state) };
+    });
+  }, []);
   useEffect(() => { setPicker(false); }, [root, path]);
   useEffect(() => {
     if (!store.loaded || !store.recoveryItems.length || readOnly) return;
@@ -60,6 +82,9 @@ export function useWritingStash({ root, path, viewRef, readOnly = false, show }:
   };
   const content = (versions: ReactNode) => <>
     <StashTab path={path} items={items} readOnly={readOnly} loading={store.loading || !store.loaded} asking={store.asking} error={store.error} versions={versions}
+      target={target} fresh={fresh}
+      onStash={() => { const view = viewRef.current; if (view) stashSelection(view); }}
+      onStashDrop={(data) => { const view = viewRef.current; if (view) stashDropped(view, data); }}
       onInsert={insert}
       onFocus={(item) => { const view = viewRef.current; if (view && item?.kind === "rewrite") focusStashItem(view, item.id); }}
       onRemove={async (item) => {
@@ -83,5 +108,5 @@ export function useWritingStash({ root, path, viewRef, readOnly = false, show }:
       {items.length ? <div className="ki-stash-picker-list">{items.map((item) => <Button variant="ghost" key={item.id} onClick={() => insert(item)}>{snippet(item.text, 160)}</Button>)}</div> : <p>Nothing stashed yet.</p>}
     </DialogContent></Dialog>
   </>;
-  return { config, content, items: () => viewRef.current ? stashItems(viewRef.current.state) : items };
+  return { config, content, extension, items: () => viewRef.current ? stashItems(viewRef.current.state) : items };
 }
