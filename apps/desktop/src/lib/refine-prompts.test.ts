@@ -11,7 +11,8 @@ for (const level of LEVELS) {
     const request = askAlternatives(level, `Before. ${passage} After.`, 8, 8 + passage.length);
     assert.match(request.system, /The writing is theirs/);
     assert.match(request.system, /Never add new ideas, claims, examples or flourishes/);
-    assert.match(request.system, /Never introduce: em dashes/);
+    assert.match(request.system, /Never introduce any of these into the passage/);
+    assert.match(request.system, /- Em dashes\. Use a comma/);
     assert.match(request.system, /Keep any Markdown or MDX syntax/);
     assert.match(request.system, /JSON array of up to 3 distinct strings/);
     assert.match(request.system, /Do not include the original passage/);
