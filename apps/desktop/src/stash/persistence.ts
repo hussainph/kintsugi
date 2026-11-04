@@ -223,7 +223,7 @@ export class StashSession {
       this.publish({ saving: true });
       let dismissed = false;
       try {
-        await this.api.dismiss(this.path, id);
+        await this.api.dismiss(this.path, id, intent.recovery?.item);
         dismissed = true;
         if (!this.active()) return false;
         const restored = intent.restored && this.editorItems?.some((item) => item.id === id);

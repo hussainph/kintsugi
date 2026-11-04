@@ -55,6 +55,7 @@ export type Alternatives = {
   /** The desktop draws the versions in its Stash tab instead of a tooltip. */
   externalPanel?: boolean;
   onPanelOpen?: () => void;
+  onPanelClose?: () => void;
   onPanelChange?: (model: PanelModel | null) => void;
 };
 
@@ -251,7 +252,7 @@ function makeField(getConfig: () => Alternatives | undefined) {
           const sets = new Map(value.sets);
           sets.delete(effect.value);
           value = { ...value, sets, removed: new Set(value.removed).add(effect.value) };
-        } else if (effect.is(setPanel)) value = { ...value, panel: effect.value && mapPanel(tr, effect.value) };
+        } else if (effect.is(setPanel)) value = { ...value, panel: effect.value && mapPanel(tr, effect.value), askError: null };
         else if (effect.is(askStatus)) value = { ...value, request: effect.value.request, askError: effect.value.error };
         else if (effect.is(cycleSet)) value = { ...value, cycleId: effect.value };
       }
@@ -262,7 +263,7 @@ function makeField(getConfig: () => Alternatives | undefined) {
         const selection = tr.state.selection.main;
         const phrase = selection.empty ? null : { from: selection.from, to: selection.to };
         const level = phrase ? levelOf(tr.state, phrase) : value.panel.level === "phrase" ? "word" : value.panel.level;
-        value = { ...value, panel: { ...value.panel, pos: phrase ? phrase.from : selection.head, phrase: level === "phrase" ? phrase : null, exact: !!phrase, want: undefined, level, setId: null, homes: {}, highlight: 0 } };
+        value = { ...value, askError: null, panel: { ...value.panel, pos: phrase ? phrase.from : selection.head, phrase: level === "phrase" ? phrase : null, exact: !!phrase, want: undefined, level, setId: null, homes: {}, highlight: 0 } };
       }
       if (value.panel) {
         let panel = clampPanel(tr.state, value, value.panel);
@@ -765,6 +766,7 @@ export function alternativeExtensions(getConfig: () => Alternatives | undefined)
       const after = read(update.state)?.panel;
       config.onPanelChange?.(alternativesPanelModel(update.state));
       if (after && before?.key !== after.key) config.onPanelOpen?.();
+      else if (before && !after) config.onPanelClose?.();
     }
   });
   return [heldPassages, askFacet.of(getConfig), field, draw, keys, popover(field, getConfig), external, persistence(getConfig), alternativesTheme, panelTheme];

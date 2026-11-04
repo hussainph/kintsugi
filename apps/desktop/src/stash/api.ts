@@ -17,7 +17,7 @@ export type StashApi = {
   load: (path: string) => Promise<StashFile>;
   /** Compare-and-save against the exact list read before this mutation. */
   save: (path: string, items: StashItem[], base?: StashItem[]) => Promise<unknown>;
-  dismiss: (path: string, id: string) => Promise<unknown>;
+  dismiss: (path: string, id: string, item?: StashItem) => Promise<unknown>;
   ask: (path: string, text?: string) => Promise<unknown>;
 };
 
@@ -27,7 +27,7 @@ export function stashForRoot(expectedRoot: string): StashApi {
   return {
     load: (path) => invoke<StashFile>("stash_load", { path, expectedRoot }),
     save: (path, items, base) => invoke("stash_save", { path, items, base, expectedRoot }),
-    dismiss: (path, id) => invoke("stash_dismiss", { path, id, expectedRoot }),
+    dismiss: (path, id, item) => invoke("stash_dismiss", { path, id, item, expectedRoot }),
     ask: (path, text) => invoke("stash_ask", { path, text, expectedRoot }),
   };
 }

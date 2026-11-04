@@ -14,14 +14,15 @@ export function Versions({ model, viewRef, onAsk }: Props) {
   const [text, setText] = useState("");
   const input = useRef<HTMLInputElement>(null);
   const actions = () => viewRef.current && alternativePanelCommands(viewRef.current);
-  return <section className="ki-versions cm-alt-panel" aria-label="Versions">
+  const hasSpan = model?.entries.some((entry) => entry.text.trim());
+  return <section className={model ? "ki-versions cm-alt-panel" : "ki-versions"} aria-label="Versions">
     <div className="ki-versions-heading"><h2>Versions</h2><div role="tablist" aria-label="Version span">
-      {(model?.levels ?? ["word", "sentence", "paragraph"] as const).map((level) => <button key={level} type="button" role="tab" aria-selected={model?.level === level} disabled={!model} onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.level(level)}>{names[level]}</button>)}
+      {([model?.levels.includes("phrase") ? "phrase" : "word", "sentence", "paragraph"] as const).map((level) => <button key={level} type="button" role="tab" aria-selected={model?.level === level} disabled={!model?.levels.includes(level)} onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.level(level)}>{names[level]}</button>)}
     </div></div>
-    {model && <><ul role="listbox" aria-label="Versions" aria-busy={model.asking} className="cm-alt-list">{model.entries.map((entry, index) => <li key={index} role="option" aria-label={entry.by === "kin" ? `Kin: ${entry.text}` : undefined} aria-selected={model.highlight === index} aria-current={entry.current || undefined} data-by={entry.by} className="cm-alt-option" onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.pick(index)}>
+    {model && <><ul role="listbox" aria-label="Versions" aria-busy={model.asking} className="cm-alt-list">{model.entries.map((entry, index) => entry.text.trim() ? <li key={index} role="option" aria-label={entry.by === "kin" ? `Kin: ${entry.text}` : undefined} aria-selected={model.highlight === index} aria-current={entry.current || undefined} data-by={entry.by} className="cm-alt-option" onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.pick(index)}>
       <span className="ki-version-mark" aria-hidden>{entry.by === "kin" ? <KinAvatar /> : <span data-current={entry.current} />}</span><span className="cm-alt-option-text">{entry.text}</span>
-    </li>)}</ul><div className="ki-versions-add">
-      <input ref={input} aria-label="Add a version" placeholder="Add a version" value={text} disabled={model.readOnly} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
+    </li> : null)}</ul><div className="ki-versions-add">
+      <input ref={input} aria-label="Add a version" placeholder="Add a version" value={text} disabled={model.readOnly || !hasSpan} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
         const command = actions();
         if (!command) return;

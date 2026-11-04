@@ -25,6 +25,10 @@ before(async () => {
   await openApp(page, app.url, app.output);
   await page.locator(`[title="${DOC}"]`).click();
   await page.locator(`[title="${DOC}"][data-active=true]`).waitFor();
+  await page.waitForFunction(() => {
+    const note = document.querySelector<HTMLInputElement>('.ki-stash input[aria-label="Add a note"]');
+    return note && !note.disabled;
+  });
 }, { timeout: 15 * 60_000 });
 
 after(async () => { await browser?.close(); await app?.stop(); });
@@ -85,10 +89,16 @@ test("Ask Kin explicitly adds ideas and anchored rewrites without writing the dr
   const replacement = await rewrite.locator(".ki-stash-text").innerText();
   await rewrite.focus();
   assert.equal(await rewrite.getAttribute("data-focused"), "");
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await page.waitForTimeout(250);
   await shot("01-stash-light");
-  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   await shot("02-stash-dark");
-  await page.evaluate(() => document.documentElement.classList.remove("dark"));
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
   await rewrite.press("Enter");
   await until(() => draft().includes(replacement) && !draft().includes(original), "rewrite replaces only its anchored words");
   await page.keyboard.press("Meta+z");
