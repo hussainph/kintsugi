@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { after, before, test } from "node:test";
 import { chromium, type Browser, type Page } from "playwright";
@@ -18,7 +18,16 @@ const draft = () => readFileSync(resolve(app.vault, DOC), "utf8");
 
 before(async () => {
   app = await startApp("ki89", { KINTSUGI_HEADLESS_KIN: "mock", CARGO_BUILD_JOBS: "2" }, (vault) => {
-    writeFileSync(resolve(vault, DOC), `---\ntitle: Bowls\nstatus: draft\n---\n\n${ORIGINAL}\n\n${CUT}\n`);
+    const text = `---\ntitle: Bowls\nstatus: draft\n---\n\n${ORIGINAL}\n\n${CUT}\n`;
+    writeFileSync(resolve(vault, DOC), text);
+    const at = text.indexOf("old");
+    const created = "2026-11-04T00:00:00Z";
+    mkdirSync(resolve(vault, ".kintsugi/alternatives/drafts"), { recursive: true });
+    writeFileSync(resolve(vault, `.kintsugi/alternatives/${DOC}.json`), JSON.stringify({ version: 1, path: DOC, sets: [{
+      id: "word-old", level: "word", current: "owner-old", created,
+      anchor: { exact: "old", prefix: text.slice(Math.max(0, at - 48), at), suffix: text.slice(at + 3, at + 51), line: text.slice(0, at).split("\n").length },
+      entries: ["old", "ancient", "weathered"].map((word) => ({ id: `owner-${word}`, text: word, by: "owner", created })),
+    }] }));
   });
   browser = await chromium.launch({ headless: true });
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
@@ -87,6 +96,7 @@ test("Ask Kin explicitly adds ideas and anchored rewrites without writing the dr
   assert.ok(await stash().locator('.ki-stash-row[data-by="kin"]').count() <= 5);
   const original = await rewrite.locator(".ki-stash-original").innerText();
   const replacement = await rewrite.locator(".ki-stash-text").innerText();
+  await page.locator('.cm-alt-span[data-alternatives="word-old"]').click();
   await rewrite.focus();
   assert.equal(await rewrite.getAttribute("data-focused"), "");
   await page.emulateMedia({ colorScheme: "light" });
@@ -100,9 +110,9 @@ test("Ask Kin explicitly adds ideas and anchored rewrites without writing the dr
   await page.emulateMedia({ colorScheme: "light" });
   await page.waitForFunction(() => !document.documentElement.classList.contains("dark"));
   await rewrite.press("Enter");
-  await until(() => draft().includes(replacement) && !draft().includes(original), "rewrite replaces only its anchored words");
+  await until(() => draft() === before.replace(original, replacement), "rewrite replaces only its anchored words");
   await page.keyboard.press("Meta+z");
-  await until(() => draft().includes(original), "undo restores anchored words");
+  await until(() => draft() === before, "undo restores anchored words");
   await stash().locator('.ki-stash-row[data-kind="rewrite"]').first().waitFor();
 });
 
