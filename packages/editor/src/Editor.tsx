@@ -27,7 +27,7 @@ export { commentPlace, openComment, reviewParagraphs, startComment } from "./com
 export { heldPassage, holdPassage, releasePassage, type Passage } from "./passages";
 export { dimmedRanges, isDimmed, toggleDim, toggleDimRange } from "./dim";
 export type { AlternativeAuthor, AlternativeEntry, Alternatives, AlternativeSet, SpanLevel } from "./alternatives";
-export { addAlternatives, alternativesAt, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives } from "./alternatives";
+export { addAlternatives, applyAlternative, askForAlternatives, alternativesAt, alternativesPanelModel, alternativePanelCommands, alternativeShortcuts, closeAlternatives, cycleAlternative, openAlternatives } from "./alternatives";
 
 /** New text for a document from somewhere else, such as the phone. `seq`
  *  tells repeated deliveries of the same text apart. */

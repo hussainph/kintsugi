@@ -5,7 +5,7 @@ import { EditorSelection, EditorState, Transaction, type TransactionSpec } from 
 import type { EditorView } from "@codemirror/view";
 import { anchorAt } from "../src/anchors.ts";
 import {
-  addAlternatives, alternativeExtensions, alternativePanelCommands, alternativesAt, alternativesPanelModel, alternativesToSave,
+  addAlternatives, applyAlternative, askForAlternatives, alternativeExtensions, alternativePanelCommands, alternativesAt, alternativesPanelModel, alternativesToSave,
   closeAlternatives, cycleAlternative, openAlternatives, refreshAlternatives, type Alternatives, type AlternativeSet,
 } from "../src/alternatives.ts";
 import { resolveSpan, sentencesIn, wordAt } from "../src/spans.ts";
@@ -48,8 +48,8 @@ test("a span is found by any of its versions, by context when a word repeats, el
 
 type Host = Alternatives & { saved: AlternativeSet[][] };
 
-function editor(text: string, sets: AlternativeSet[] = [], options: { path?: string } = {}) {
-  const host: Host = { path: options.path ?? PATH, sets, saved: [], onSave: (_path, list) => host.saved.push(list) };
+function editor(text: string, sets: AlternativeSet[] = [], options: { path?: string; ask?: Alternatives["ask"] } = {}) {
+  const host: Host = { path: options.path ?? PATH, sets, saved: [], ask: options.ask, onSave: (_path, list) => host.saved.push(list) };
   let state = EditorState.create({
     doc: text,
     selection: EditorSelection.cursor(0),
@@ -295,4 +295,166 @@ test("read-only documents can be looked at but not swapped", () => {
   let state = EditorState.create({ doc: DOC, extensions: [EditorState.readOnly.of(true), alternativeExtensions(() => undefined)] });
   const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; }, focus() {} } as unknown as EditorView;
   assert.equal(cycleAlternative(view, 1), false);
+});
+
+test("accepting an edit keeps its author and the prior text one previous-cycle away", () => {
+  const e = editor(DOC);
+  const from = DOC.indexOf("lacquer");
+  assert.ok(applyAlternative(e.view, { from, to: from + 7, text: "glue", by: "kin" }));
+  assert.ok(e.text().includes("with glue."));
+  assert.deepEqual(e.sets()[0].entries.map((x) => [x.text, x.by]), [["lacquer", "owner"], ["glue", "kin"]]);
+  e.cursor(from + 4);
+  cycleAlternative(e.view, -1);
+  assert.equal(e.text(), DOC);
+  // Other kept options don't stand between an accepted version and its original.
+  addAlternatives(e.view, { from, to: from + 7, texts: ["gold"], by: "kin" });
+  assert.ok(applyAlternative(e.view, { from, to: from + 7, text: "resin", by: "kin" }));
+  e.cursor(from + 5);
+  cycleAlternative(e.view, -1);
+  assert.equal(e.text(), DOC);
+  undo(e.view);
+  assert.ok(e.text().includes("with resin."));
+  undo(e.view);
+  assert.equal(e.text(), DOC, "accepting is one undo step");
+});
+
+test("kept edits preserve passage whitespace and panel authors", () => {
+  const e = editor(DOC);
+  const from = DOC.indexOf("old");
+  addAlternatives(e.view, { from, to: from + 4, texts: ["ancient "], by: "kin" });
+  assert.equal(e.text(), DOC);
+  e.select(from, from + 4);
+  openAlternatives(e.view);
+  assert.deepEqual(e.panel()?.entries, [
+    { text: "old ", by: "owner", current: true },
+    { text: "ancient ", by: "kin", current: false },
+  ]);
+  e.commands().pick(1);
+  assert.ok(e.text().includes("an ancient line."));
+});
+
+const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test("explicit Kin asks use the panel's level, only once, without changing the draft", async () => {
+  let finish!: (texts: string[]) => void;
+  const requests: Parameters<NonNullable<Alternatives["ask"]>>[0][] = [];
+  const e = editor(DOC, [], { ask: (spec) => { requests.push(spec); return new Promise((done) => { finish = done; }); } });
+  e.cursor(DOC.indexOf("old") + 1);
+  assert.ok(askForAlternatives(e.view));
+  assert.equal(e.panel()?.asking, true);
+  assert.ok(e.panel()?.canAsk);
+  askForAlternatives(e.view);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].level, "word");
+  assert.equal(DOC.slice(requests[0].from, requests[0].to), "old");
+  finish(["ancient", "aged"]);
+  await settle();
+  assert.equal(e.text(), DOC);
+  assert.equal(e.panel()?.asking, false);
+  assert.deepEqual(e.panel()?.entries.map((x) => x.by), ["owner", "kin", "kin"]);
+  e.commands().level("sentence");
+  e.commands().askKin();
+  assert.equal(requests[1].level, "sentence");
+  finish(["The bowl split along an old line."]);
+  await settle();
+  e.commands().level("paragraph");
+  e.commands().askKin();
+  assert.equal(requests[2].level, "paragraph");
+  finish(["The bowl split. I mended it with lacquer."]);
+  await settle();
+  assert.equal(e.text(), DOC);
+  assert.deepEqual(e.sets().map((s) => s.level), ["word", "sentence", "paragraph"]);
+});
+
+test("a Kin answer follows edits above its held span, not a changed passage", async () => {
+  let finish!: (texts: string[]) => void;
+  const e = editor(DOC, [], { ask: () => new Promise((done) => { finish = done; }) });
+  e.cursor(DOC.indexOf("old") + 1);
+  askForAlternatives(e.view);
+  e.edit(0, 0, "An opening.\n\n");
+  finish(["ancient"]);
+  await settle();
+  assert.equal(e.sets()[0].anchor.exact, "old");
+  assert.ok(e.sets()[0].anchor.line > 5);
+  e.commands().askKin();
+  const from = e.text().indexOf("old");
+  e.edit(from, from + 3, "new");
+  finish(["aged"]);
+  await settle();
+  assert.equal(e.panel()?.askError, "The text changed. Try again.");
+  assert.ok(!e.sets()[0].entries.some((x) => x.text === "aged"));
+});
+
+test("failed asks leave versions alone and can be retried; closing is not consent to apply", async () => {
+  let fail = true;
+  const e = editor(DOC, [], { ask: async () => { if (fail) throw new Error("Cost cap reached."); return ["ancient"]; } });
+  e.cursor(DOC.indexOf("old") + 1);
+  askForAlternatives(e.view);
+  await settle();
+  assert.equal(e.panel()?.askError, "Cost cap reached.");
+  assert.equal(e.panel()?.asking, false);
+  assert.deepEqual(e.sets(), []);
+  fail = false;
+  e.commands().askKin();
+  closeAlternatives(e.view);
+  await settle();
+  assert.equal(e.text(), DOC);
+  assert.deepEqual(e.sets()[0].entries.map((x) => x.text), ["old", "ancient"]);
+});
+
+test("read-only and unavailable hosts cannot ask or add Kin versions", () => {
+  const e = editor(DOC);
+  assert.equal(askForAlternatives(e.view), false);
+  let called = false;
+  let state = EditorState.create({ doc: DOC, extensions: [EditorState.readOnly.of(true), alternativeExtensions(() => ({
+    path: PATH, currentPath: PATH, sets: [], onSave() {}, ask: async () => { called = true; return ["new"]; },
+  }))] });
+  const view = { get state() { return state; }, dispatch(spec: TransactionSpec) { state = state.update(spec).state; } } as unknown as EditorView;
+  assert.equal(askForAlternatives(view), false);
+  assert.equal(addAlternatives(view, { from: 0, to: 3, texts: ["new"], by: "kin" }), null);
+  assert.equal(applyAlternative(view, { from: 0, to: 3, text: "new", by: "kin" }), false);
+  assert.equal(called, false);
+});
+
+test("exact-range Kin edits and kept versions never replace a containing set", () => {
+  const e = editor("It is visible.");
+  applyAlternative(e.view, { from: 6, to: 13, text: "in view", by: "kin" });
+  assert.equal(e.text(), "It is in view.");
+  addAlternatives(e.view, { from: 9, to: 13, texts: ["sight"], by: "kin" });
+  assert.equal(e.text(), "It is in view.");
+  assert.equal(e.sets().length, 2);
+  assert.ok(applyAlternative(e.view, { from: 9, to: 13, text: "sight", by: "kin" }));
+  assert.equal(e.text(), "It is in sight.");
+  e.cursor(11);
+  cycleAlternative(e.view, -1);
+  assert.equal(e.text(), "It is in view.");
+});
+
+test("accept closes a panel on another level and cycles the accepted span, not a nested set", () => {
+  const e = editor("Good writing takes time.");
+  e.cursor(1);
+  openAlternatives(e.view);
+  applyAlternative(e.view, { from: 0, to: 24, text: "Writing needs time.", by: "kin" });
+  assert.equal(e.panel(), null);
+  assert.ok(cycleAlternative(e.view, -1));
+  assert.equal(e.text(), "Good writing takes time.");
+
+  const nested = editor("It is good.");
+  addAlternatives(nested.view, { from: 6, to: 10, texts: ["fine"], by: "kin" });
+  applyAlternative(nested.view, { from: 0, to: 10, text: "It seems good", by: "kin" });
+  assert.ok(cycleAlternative(nested.view, -1));
+  assert.equal(nested.text(), "It is good.", "the accepted span, even with a smaller set at its end");
+});
+
+test("asking on a selection inside an existing word's phrase targets only that selection", async () => {
+  const requests: { from: number; to: number }[] = [];
+  const e = editor("It is visible.", [], { ask: async (at) => { requests.push(at); return ["sight"]; } });
+  applyAlternative(e.view, { from: 6, to: 13, text: "in view", by: "kin" });
+  e.select(9, 13);
+  askForAlternatives(e.view);
+  await settle();
+  assert.deepEqual(requests.map(({ from, to }) => ({ from, to })), [{ from: 9, to: 13 }]);
+  assert.deepEqual(e.shown(), ["*view", "sight"]);
+  e.commands().pick(1);
+  assert.equal(e.text(), "It is in sight.");
 });

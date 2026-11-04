@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { heldPassage, holdPassage, isDimmed, releasePassage, toggleDimRange } from "@kintsugi/editor/Editor";
+import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, toggleDimRange } from "@kintsugi/editor/Editor";
 import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
@@ -12,7 +12,8 @@ import { discuss } from "@/lib/chat";
 import { beginComment, reviewDraft } from "@/comments/api";
 import { memory, type Skill } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
-import { keysOf } from "@/lib/keys";
+import { keysOf, matches } from "@/lib/keys";
+import { SHORTCUTS } from "@/lib/shortcuts";
 import { modelFor } from "@/lib/models";
 import { passageChips } from "@/kin/screen";
 import { Action, ACTIONS, ask, choices, clean } from "./prompts";
@@ -130,14 +131,15 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
     }
   };
 
-  const accept = (replacement: string) => {
+  const accept = (replacement: string, keep = false) => {
     const at = here("The text changed while Kintsugi was thinking. Try again.");
-    if (!at) return;
-    view.dispatch({
-      changes: { from: at.from, to: at.to, insert: replacement },
-      selection: { anchor: at.from + replacement.length },
-      userEvent: "input.refine",
-    });
+    if (!at || view.state.readOnly) return;
+    if (!replacement.trim()) {
+      toast.error("Kin returned no text. Try again.");
+      return;
+    }
+    if (keep) addAlternatives(view, { ...at, texts: [replacement], by: "kin" });
+    else applyAlternative(view, { ...at, text: replacement, by: "kin" });
     onClose();
   };
 
@@ -183,12 +185,13 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
 
   const onResultKey = (e: KeyboardEvent) => {
     const key = e.key;
-    if (key === "Enter" && version?.done) {
+    const keep = matches(e.nativeEvent, SHORTCUTS.refineAlternatives.key);
+    if ((matches(e.nativeEvent, SHORTCUTS.accept.key) || keep) && version?.done && !error && !e.nativeEvent.isComposing) {
       e.preventDefault();
       if (action?.shape === "choices") {
-        if (options[choice]) accept(options[choice]);
+        if (options[choice]) accept(clean(options[choice], original), keep);
       } else {
-        accept(clean(version.text, original));
+        accept(clean(version.text, original), keep);
       }
     } else if (key === "r" && e.metaKey && action) {
       e.preventDefault();
@@ -201,7 +204,7 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
       setChoice((c) => Math.max(0, Math.min(options.length - 1, c + (key === "ArrowUp" ? -1 : 1))));
     } else if (/^[1-6]$/.test(key) && options[Number(key) - 1]) {
       e.preventDefault();
-      accept(options[Number(key) - 1]);
+      if (version?.done && !error) accept(clean(options[Number(key) - 1], original));
     } else if (key === "Backspace") {
       e.preventDefault();
       inflight.current?.cancel();
@@ -319,7 +322,8 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                         aria-current={i === choice ? "true" : undefined}
                         data-selected={i === choice}
                         onMouseEnter={() => setChoice(i)}
-                        onClick={() => accept(option)}
+                        disabled={!version.done || !!error}
+                        onClick={() => accept(clean(option, original))}
                       >
                         <Kbd>{i + 1}</Kbd>
                         {option}
@@ -336,6 +340,9 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
             <div className="ki-refine-footer ki-divider-top ki-text-xs ki-muted flex flex-wrap items-center gap-x-[var(--space-s)] gap-y-[var(--space-xxs)]">
               <span>
                 <Kbd>↩</Kbd> accept
+              </span>
+              <span>
+                <Kbd>{keysOf(SHORTCUTS.refineAlternatives.key)}</Kbd> keep
               </span>
               <span>
                 <Kbd>⌘R</Kbd> another
