@@ -13,6 +13,14 @@ class SoftBreak extends WidgetType {
 
 const space = Decoration.replace({ widget: new SoftBreak() });
 
+// The Markdown parser reads MDX modules and block JSX/expressions as prose.
+// Match only code-shaped lines, so a wrapped line that happens to start with
+// "import the" or "<em>word</em> and" still flows.
+const esm = /^(?:import|export)\s*(?:[{*"']|(?:default|const|let|var|function|class|async)\b|[\w$]+\s*(?:,|from\s*["']))/;
+// Flow JSX and expressions fill their line; an opener with no close yet spans lines.
+const block = (line: string) => /^[<{]/.test(line) && (/[>}]$/.test(line) || !/[>}]/.test(line));
+const mdx = (text: string) => text.split("\n").some((line) => esm.test(line.trim()) || block(line.trim()));
+
 /** Flow source-wrapped prose without changing a byte of the document.
  *  Leave structured blocks and explicit Markdown hard breaks alone. */
 function decorations(state: EditorState): DecorationSet {
@@ -25,8 +33,7 @@ function decorations(state: EditorState): DecorationSet {
       // Quotes and lists have visible continuation markers/indentation.
       if (node.node.parent?.name !== "Document") return false;
       const text = state.sliceDoc(node.from, node.to);
-      // The Markdown parser treats MDX modules and block expressions as prose.
-      if (/(^|\n)[ \t]*(?:import\b|export\b|\{|<)/.test(text)) return false;
+      if (mdx(text)) return false;
       for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) {
         const pos = node.from + at;
         let literal = false;
