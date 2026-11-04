@@ -31,6 +31,7 @@ export const GROUPS = {
   kin: { title: "Kin", scope: "writing" },
   alternatives: { title: "Versions", scope: "editor" },
   stash: { title: "Stash", scope: "editor" },
+  marks: { title: "Kin's marks", scope: "editor" },
   formatting: { title: "Formatting", scope: "editor" },
   text: { title: "Text", scope: "editor" },
   review: { title: "Reviewing an edit", scope: "refine" },
@@ -141,6 +142,15 @@ export const SHORTCUTS = {
   kinAlternatives: { key: "Mod-Shift-Alt-a", label: "Kin's versions", group: "alternatives" },
   stash: { key: "Mod-Alt-x", label: "Stash", group: "stash" },
   unstash: { key: "Mod-Alt-v", label: "Insert from stash", group: "stash" },
+
+  // Kin's marks from ⌘K's checks and trims (KI-90): the editor's keymap
+  // (`markShortcuts` in @kintsugi/editor/marks); a test keeps the two the
+  // same. KI-109's card steps through marks with the same keys.
+  nextMark: { key: "Mod-'", label: "Next mark", group: "marks" },
+  previousMark: { key: "Mod-Shift-'", label: "Previous mark", group: "marks" },
+  acceptMark: { key: "Alt-Enter", label: "Accept a mark", group: "marks" },
+  dismissMark: { key: "Mod-Alt-Backspace", label: "Dismiss a mark", group: "marks" },
+  applyCuts: { key: "Mod-Alt-Enter", label: "Apply the cuts", group: "marks" },
 } as const satisfies Record<string, Shortcut>;
 
 export type ShortcutId = keyof typeof SHORTCUTS;

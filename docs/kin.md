@@ -1019,7 +1019,7 @@ published. See [writing.md](writing.md#stash).
 
 ## In the editor (KI-37)
 
-Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
+Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `references.ts` (`[[` and
 `@`), `menu.ts` (their shared look); webview: `src/refine/` (⌘K) and
 `src/references/Writing.tsx` (the wiring).
 
@@ -1049,6 +1049,58 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   draft* (`ideasForDraft(path)`).
   In a read-only mirror (KI-9) only the actions that write nothing are
   offered, and a supporting clip can only be opened.
+- **Checks (KI-90).** ⌘K's *Check* group runs one check on the selection,
+  or with nothing selected on the whole draft: *Weakest sentences*,
+  *Sentences that run long*, *Convoluted sentences*, *Words off the tone*
+  and *Hedges and filler*. Kin gets the passage as numbered sentences
+  (`proseSentences`: no frontmatter, headings, code, tables or MDX) and
+  answers `<marks>[{"sentence": 2, "quote": "…", "reason": "…"}]</marks>`;
+  `quote` narrows a mark to words in that sentence. An entry naming a
+  sentence that isn't there or quoting words it doesn't have is dropped;
+  a reply without the list shows an error and marks nothing. The marks are
+  underlines in Kin's accent (`--kin`), and the first one is focused with
+  its reason under it.
+  A check never changes a character.
+- **Trims (KI-90).** ⌘K's *Trim* group (not in a read-only mirror): *Slight
+  trim −10%*, *Tighten more* (20%), *Even sharper* (30%) and *Cut in half
+  −50%*. Kin answers only deletions, `<cuts>[{"sentence": 2, "cut": "…"}]</cuts>`,
+  each `cut` copied from that sentence. The answer is checked against the
+  text before anything shows: an entry with any other field (a replacement),
+  or a cut through the middle of a word, refuses the whole reply, and what's
+  left must be his words in order with some taken out; a quote the sentence
+  doesn't have is dropped. Each cut takes the space beside it so the words
+  close up. The cuts show as strike-throughs in Kin's accent, and a bar at the foot of
+  the page shows the word count before and after ("42 → 33 words") with
+  Cancel (Esc) and Apply cuts (⌥⌘↩). Clicking a struck word keeps it. Apply
+  deletes every remaining cut as one undo step.
+- **Marks (KI-90).** Checks and trims end as Kin's marks
+  (`packages/editor/src/marks.ts`): view-only decorations on the open
+  document's state, never saved to the file, drawn with text decorations and
+  a background only so no line re-wraps. Nothing shows unless he asked:
+  there's no suggestions setting and no background check. Marks go on
+  Escape (all of them), on the first edit inside one (that one), and as each
+  is accepted or dismissed; when the last goes, the batch is done. ⌘' and
+  ⇧⌘' step to the next and previous mark (wrapping) and show its reason
+  under it; ⌥↵ accepts it (a cut goes, a flag is done) and ⌥⌘⌫ dismisses
+  it (a cut's words stay). *Discuss* on a flag opens a new thread about its
+  paragraph in the Kin tab, with the marked words attached (KI-104).
+  The model, for KI-109's `‹ 1 of N ›` card and any later set of marks:
+
+  ```ts
+  type Mark = { id: string; range: { from: number; to: number }; kind: "cut" | "flag" | "rewrite";
+                reason: string; text?: string /* a rewrite's words */ };
+  type MarkBatch = { id: string; label: string; kind: "check" | "trim" | "review"; scope: { from: number; to: number } };
+  setMarks(view, batch, marks, { focus: "first" })  // replaces any shown marks
+  focusMark(view, id | 1 | -1)                      // by id, next or previous
+  acceptMark(view, id?) / dismissMark(view, id?)    // the focused one by default; focus moves on
+  applyMarks(view, kinds?)                           // every cut and rewrite, one undo step
+  clearMarks(view); marksOf(state); focusedMark(state); textAfterCuts(state, range)
+  ```
+
+  `markCommands(view)` bundles them; the `Editor`'s `marks` prop takes
+  `onChange(marks, state)` (each change, and the document's marks when it
+  opens) and `onDiscuss(mark)`. Accepting a rewrite replaces its range with
+  `text`. The keys are `markShortcuts`, listed in `src/lib/shortcuts.ts`.
 - **Keys of their own (KI-85).** Tighten ⌥⌘T, Rephrase ⌥⌘R, Simplify ⌥⌘P,
   Fix grammar and spelling ⌥⌘F and Synonyms ⌥⌘S run on the selection (else
   the paragraph) without ⌘K's list, and land in the same review: a diff to
@@ -1068,6 +1120,9 @@ Code: `packages/editor/src/commands.ts` (`/`), `references.ts` (`[[` and
   first edit model as `mock` and `ai_stream` answers with `scripted::edit`
   (drops filler words), so ⌘K and skills can be reviewed without a provider.
   `test/runtime-editor.test.ts` drives all of it in headless Chromium.
+  Checks and trims get scripted answers from the numbered sentences
+  (`scripted/marks.rs`): each check also names one quote the draft doesn't
+  have, which must be dropped. `test/runtime-marks.test.ts` drives them.
 
 ## Threads on paragraphs (KI-38, KI-104)
 

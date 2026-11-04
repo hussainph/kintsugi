@@ -9,7 +9,8 @@
     "./keys": "./src/keys.ts",
     "./keymaps": "./src/keymaps.ts",
     "./alternatives": "./src/alternatives.ts",
-    "./stash": "./src/stash.ts"
+    "./stash": "./src/stash.ts",
+    "./marks": "./src/marks.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

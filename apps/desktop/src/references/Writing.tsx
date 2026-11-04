@@ -7,11 +7,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps 
 import { toast } from "sonner";
 import type { Clip } from "@kintsugi/core/clips";
 import { attributedQuote, linkFor, type ReferenceSource } from "@kintsugi/core/references";
-import { Editor, type CommandSkill, type Commands, type KinAnchor } from "@kintsugi/editor/Editor";
+import { Editor, textAfterCuts, type CommandSkill, type Commands, type KinAnchor, type Marks } from "@kintsugi/editor/Editor";
 import { Button } from "@kintsugi/ui/components/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@kintsugi/ui/components/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
-import { beginComment, reviewDraft } from "@/comments/api";
+import { beginComment, passageAnchor, reviewDraft } from "@/comments/api";
+import { discuss } from "@/lib/chat";
+import { passageChips } from "@/kin/screen";
+import { words } from "@/refine/marks";
+import { TrimBar, type TrimCount } from "@/refine/TrimBar";
 import { useComments } from "@/comments/useComments";
 import { useAlternatives } from "@/alternatives/useAlternatives";
 import { Versions } from "@/alternatives/Versions";
@@ -162,6 +166,20 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
     if (view) beginComment(view, anchor.from, anchor.to, "mention");
   }, [editor.viewRef]);
   const comments = useComments(editor.path, editor.viewRef, sources, open);
+  // Kin's gold marks (KI-90). A trim's preview shows its word counts.
+  const [trim, setTrim] = useState<TrimCount | null>(null);
+  const marks = useMemo<Marks>(() => ({
+    onChange: (value, state) => {
+      const scope = value.batch?.kind === "trim" ? value.batch.scope : null;
+      setTrim(scope && { before: words(state.sliceDoc(scope.from, scope.to)).length, after: words(textAfterCuts(state, scope)).length });
+    },
+    onDiscuss: (mark) => {
+      const view = editor.viewRef.current;
+      if (!view) return;
+      const { from, to } = mark.range;
+      discuss(passageChips(view, activePath.current, from, to), undefined, { anchor: passageAnchor(view, activePath.current, from, to) });
+    },
+  }), [editor.viewRef]);
   const alternatives = useAlternatives(editor.path);
   const margin = useMargin();
   const [versionModel, setVersionModel] = useState<ReturnType<typeof alternativesPanelModel>>(null);
@@ -232,7 +250,8 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
 
   return (
     <div className="reference-writing">
-      <Editor {...editor} references={options} commands={commands} comments={comments} alternatives={versionHost} stash={stash.config} extensions={extensions} />
+      <Editor {...editor} references={options} commands={commands} comments={comments} alternatives={versionHost} stash={stash.config} marks={marks} extensions={extensions} />
+      {trim && editor.viewRef.current && <TrimBar view={editor.viewRef.current} count={trim} />}
       {onRefine && <SelectionMenu viewRef={editor.viewRef} path={editor.path} onRefine={onRefine} />}
       <MarginPortal tab="stash">{stash.content(<Versions model={versionModel} viewRef={editor.viewRef} onAsk={() => { const view = editor.viewRef.current; if (view) alternativePanelCommands(view).askKin(); }} />)}</MarginPortal>
       <MarginPortal tab="references">

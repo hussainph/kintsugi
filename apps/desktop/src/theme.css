@@ -143,6 +143,12 @@
 .ki-pairing-code { border-radius: var(--radius-m); padding: var(--space-s); background: white; }
 .ki-phone-label { font-family: var(--font-ui); font-size: var(--size-s); line-height: var(--line-s); letter-spacing: var(--letter-spacing-s); font-weight: var(--weight-ui-medium); color: var(--neutral-10); }
 
+/* A trim's preview (KI-90): floats over the foot of the page, never moving a line. */
+.ki-trim-bar { position: absolute; z-index: 20; bottom: var(--space-m); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-xs); border-radius: var(--radius-m); padding: var(--space-xxs) var(--space-xxs) var(--space-xxs) var(--space-s); background: var(--popover); color: var(--popover-foreground); box-shadow: inset 0 0 0 var(--border-l) var(--neutral-4), 0 8px 28px -12px rgb(0 0 0 / 0.35); white-space: nowrap; animation: ki-trim-in var(--motion-duration) var(--motion-easing); }
+.ki-trim-bar .ki-data { color: var(--neutral-9); font-variant-numeric: tabular-nums; }
+.ki-trim-bar kbd { margin-inline-start: var(--space-xxs); }
+@keyframes ki-trim-in { from { opacity: 0; transform: translate(-50%, var(--space-xs)); } }
+@media (prefers-reduced-motion: reduce) { .ki-trim-bar { animation: none; } }
 .ki-refine-popup { width: min(32rem, calc(100vw - var(--space-xl))); padding: 0; }
 .ki-refine-heading, .ki-refine-footer { padding: var(--space-xs) var(--space-s); }
 .ki-refine-result { padding: var(--space-s) var(--space-m); }

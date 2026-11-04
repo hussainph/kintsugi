@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, toggleDimRange } from "@kintsugi/editor/Editor";
+import { addAlternatives, applyAlternative, heldPassage, holdPassage, isDimmed, releasePassage, setMarks, toggleDimRange } from "@kintsugi/editor/Editor";
 import { diffWords } from "diff";
 import { Bookmark, Lightbulb, MessageCircle, Search, Sparkles, Swords, Wand2 } from "@kintsugi/ui/icons";
 import { KeyboardEvent, useEffect, useRef, useState } from "react";
@@ -18,6 +18,7 @@ import { modelFor } from "@/lib/models";
 import { passageChips } from "@/kin/screen";
 import { Action, ACTIONS, ask, choices, clean } from "./prompts";
 import { editKey } from "./direct";
+import { askCheck, askTrim, type Check, CHECKS, parseCheck, parseTrim, sentencesFor, type Trim, TRIMS } from "./marks";
 import { type Found, KIN_ACTIONS, type KinAction, skillAction, supportingClips, WHO_DISAGREES } from "./kin";
 
 type Props = {
@@ -48,6 +49,10 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
   const [query, setQuery] = useState("");
   const [skills, setSkills] = useState<Skill[]>([]);
   const [found, setFound] = useState<{ clips: Found[] | null; error?: string } | null>(null);
+  // A check or trim Kin is answering (KI-90): it ends in marks on the draft.
+  const [marking, setMarking] = useState<{ label: string; error: string | null } | null>(null);
+  // With nothing selected, checks and trims cover the whole draft.
+  const [selected] = useState(() => !view.state.selection.main.empty);
   const inflight = useRef<{ cancel: () => void } | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
@@ -128,6 +133,52 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
       update(await s.done, true);
     } catch (e) {
       if (!(e instanceof Cancelled)) setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  /** A check or trim: Kin answers with ranges, which show as gold marks.
+   *  Nothing in the text changes until he applies a trim's cuts. */
+  const mark = async (item: Check | Trim) => {
+    inflight.current?.cancel();
+    const trim = "percent" in item;
+    if (trim && view.state.readOnly) return;
+    const at = selected ? here() : null;
+    if (selected && !at) return;
+    const doc = view.state.doc.toString();
+    const sentences = sentencesFor(doc, at);
+    if (!sentences.length) {
+      toast("No sentences here to check.");
+      return;
+    }
+    setMarking({ label: item.label, error: null });
+    requestAnimationFrame(() => resultRef.current?.focus());
+    const request = trim ? askTrim(item, doc, sentences, !at) : askCheck(item as Check, doc, sentences, !at);
+    try {
+      const model = await modelFor("edit");
+      const s = stream(model, request, () => {});
+      inflight.current = s;
+      const reply = await s.done;
+      if (view.state.doc.toString() !== doc) {
+        toast.error("The text changed while Kin was reading. Try again.");
+        onClose();
+        return;
+      }
+      const batch = `${item.id}-${Date.now().toString(36)}`;
+      const parsed = trim ? parseTrim(reply, doc, sentences, batch) : parseCheck(reply, doc, sentences, batch);
+      if (!parsed.ok) {
+        setMarking({ label: item.label, error: parsed.error });
+        return;
+      }
+      if (!parsed.marks.length) {
+        toast(trim ? "Kin found nothing to cut." : "Nothing to mark.");
+        onClose();
+        return;
+      }
+      const scope = at ?? { from: sentences[0].from, to: sentences[sentences.length - 1].to };
+      setMarks(view, { id: batch, label: item.label, kind: trim ? "trim" : "check", scope }, parsed.marks, { focus: trim ? null : "first" });
+      onClose();
+    } catch (e) {
+      if (!(e instanceof Cancelled)) setMarking({ label: item.label, error: e instanceof Error ? e.message : String(e) });
     }
   };
 
@@ -229,7 +280,39 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
         className="ki-refine-popup"
         onOpenAutoFocus={(e) => (action || initial) && e.preventDefault()}
       >
-        {found ? (
+        {marking ? (
+          <div
+            ref={resultRef}
+            tabIndex={-1}
+            className="outline-none"
+            onKeyDown={(e) => {
+              if (e.key !== "Backspace") return;
+              e.preventDefault();
+              inflight.current?.cancel();
+              setMarking(null);
+            }}
+          >
+            <div className="ki-refine-heading ki-divider-bottom ki-text-xs ki-muted flex items-center gap-[var(--space-xs)]">
+              <Sparkles className="size-[1em]" />
+              <span className="truncate">{marking.label}</span>
+            </div>
+            <div className="ki-refine-result">
+              {marking.error ? (
+                <p className="ki-text-s ki-error" role="alert">{marking.error}</p>
+              ) : (
+                <p className="ki-text-s ki-muted" role="status">Reading…</p>
+              )}
+            </div>
+            <div className="ki-refine-footer ki-divider-top ki-text-xs ki-muted flex flex-wrap items-center gap-x-[var(--space-s)]">
+              <span>
+                <Kbd>⌫</Kbd> back
+              </span>
+              <span className="ml-auto">
+                <Kbd>Esc</Kbd> close
+              </span>
+            </div>
+          </div>
+        ) : found ? (
           <Supporting found={found} onReference={locked ? null : reference} onOpen={(clip) => {
             onClose();
             window.dispatchEvent(new CustomEvent("kintsugi:open-clip", { detail: { path: clip } }));
@@ -288,6 +371,20 @@ export function Refine({ view, from, to, path, docs, initial, onClose }: Props) 
                   ))}
                 </CommandGroup>
               )}
+              <CommandGroup heading="Check">
+                {CHECKS.map((c) => (
+                  <CommandItem key={c.id} value={c.label} onSelect={() => void mark(c)}>
+                    {c.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              {!locked && <CommandGroup heading="Trim">
+                {TRIMS.map((t) => (
+                  <CommandItem key={t.id} value={t.label} onSelect={() => void mark(t)}>
+                    {t.label}
+                  </CommandItem>
+                ))}
+              </CommandGroup>}
               <CommandGroup heading="Kin">
                 {KIN_ACTIONS.map((a) => {
                   const Icon = a.id === "supporting" ? Search : a.id === "disagrees" ? Swords : a.id === "ideas" ? Lightbulb : MessageCircle;
