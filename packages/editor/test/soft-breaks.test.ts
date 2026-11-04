@@ -59,7 +59,15 @@ test("hard breaks, code, frontmatter, HTML and structured blocks keep their line
   ]) assert.deepEqual(breaks(start(doc)), [], JSON.stringify(doc));
   const mixed = "First  \nsecond\nthird\\\nfourth\nfifth";
   assert.deepEqual(breaks(start(mixed)), [mixed.indexOf("\nthird"), mixed.indexOf("\nfifth")]);
-  for (const doc of ["Some `code`\nthen prose.", "Some <u>text</u>\nthen prose."]) {
+  for (const doc of [
+    "Some `code`\nthen prose.",
+    "Some <u>text</u>\nthen prose.",
+    "Files we\nimport from elsewhere.",
+    "Then we\nexport the draft.",
+    "Some data we\nimport data from the web.",
+    "A line\n<em>that</em> starts with a tag.",
+    "A line\n{x} starts with an expression.",
+  ]) {
     assert.deepEqual(breaks(start(doc)), [doc.indexOf("\n")], "a newline after a literal span is still soft");
   }
 });
