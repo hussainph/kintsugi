@@ -316,7 +316,11 @@ async function alternativeUntil(check: () => boolean, what: string) {
 }
 
 async function closeAltPanel() {
-  await page.keyboard.press("Escape");
+  // Opening the tooltip schedules its focus for the next animation frame.
+  // Focus the actual target before Escape, rather than racing that mount.
+  const input = altPanel().getByRole("textbox", { name: "Add an alternative" });
+  const target = await input.isDisabled() ? page.locator(".cm-content") : input;
+  await target.press("Escape");
   await altPanel().waitFor({ state: "detached" });
 }
 
