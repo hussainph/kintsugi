@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type DragEvent } from "react";
-import { draftSelectionMime, stashDropped } from "@kintsugi/editor/stash";
+import { useEffect, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { draftSelectionMime, stashDropped, stashTargetAt } from "@kintsugi/editor/stash";
 import { Tabs } from "@kintsugi/ui/graphical";
 import { PanelRight } from "@kintsugi/ui/icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components/tooltip";
@@ -9,7 +9,7 @@ import { KinTab } from "@/kin/KinTab";
 import { onDiscuss, onOpenKin, onOpenThread, openKin } from "@/lib/chat";
 import { keysOf, matches } from "@/lib/keys";
 import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
-import { hideMargin, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, useStashPulse, visibleTab, type MarginTab, type MarginWhere } from "./state";
+import { hideMargin, PULSE_MS, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, useStashNotice, visibleTab, type MarginTab, type MarginWhere } from "./state";
 import type { MarginWriting } from "./Stash";
 import "./margin.css";
 
@@ -31,10 +31,14 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
   const tabs = tabsFor(where);
   const value = margin.tab ?? (tabs.includes(margin.chosen) ? margin.chosen : "kin");
   const aside = useRef<HTMLElement>(null);
-  const pulse = useStashPulse();
+  const pulse = useStashNotice();
+  const pulseStyle = { "--ki-stash-pulse-duration": `${PULSE_MS}ms` } as CSSProperties;
   // A selection dragged from the draft onto the Stash tab's header (KI-110).
   const [dropOnTab, setDropOnTab] = useState(false);
-  const draftDrag = (e: DragEvent) => !!writing && e.dataTransfer.types.includes(draftSelectionMime);
+  const draftDrag = (e: DragEvent) => {
+    const view = writing?.viewRef.current;
+    return !!view && !!stashTargetAt(view.state) && e.dataTransfer.types.includes(draftSelectionMime);
+  };
 
   // Anything that opens Kin opens the margin on it.
   useEffect(() => {
@@ -77,6 +81,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
 
   return (
     <>
+      <span className="sr-only" role="status">{pulse && <span key={pulse.n}>Stashed</span>}</span>
       {(where === "writing" || margin.open) && (
         <Tooltip>
           <TooltipTrigger asChild>
@@ -88,7 +93,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
               onClick={() => (margin.open ? close() : toggleMargin())}
             >
               <PanelRight />
-              {pulse?.at === "margin" && <span key={pulse.n} className="ki-margin-pulse" data-testid="margin-pulse" aria-hidden />}
+              {pulse?.at === "margin" && <span key={pulse.n} className="ki-margin-pulse" style={pulseStyle} data-testid="margin-pulse" aria-hidden />}
               <ShortcutHint id="margin" side="below" />
             </button>
           </TooltipTrigger>
@@ -128,7 +133,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
                       e.dataTransfer.dropEffect = "move";
                       setDropOnTab(true);
                     },
-                    onDragLeave: () => setDropOnTab(false),
+                    onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropOnTab(false); },
                     onDrop: (e: DragEvent) => {
                       setDropOnTab(false);
                       const view = writing?.viewRef.current;
@@ -139,7 +144,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
                   })}
                 >
                   {label}
-                  {tab === "stash" && pulse?.at === "tab" && <span key={pulse.n} className="ki-margin-pulse" data-testid="stash-tab-pulse" aria-hidden />}
+                  {tab === "stash" && pulse?.at === "tab" && <span key={pulse.n} className="ki-margin-pulse" style={pulseStyle} data-testid="stash-tab-pulse" aria-hidden />}
                   <ShortcutHint id={TAB_KEYS[tab]} side="below" />
                 </Tabs.Tab>
               ))}

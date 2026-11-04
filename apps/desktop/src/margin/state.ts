@@ -130,39 +130,39 @@ export function useSlot(tab: MarginTab): HTMLElement | null {
 // After stashing with the Stash tab hidden, a dot pulses once: on the margin
 // button while the margin is closed, else on the Stash tab's header. No toast.
 
-export type StashPulse = { at: "margin" | "tab"; n: number } | null;
-let pulse: StashPulse = null;
-let pulseTimer: ReturnType<typeof setTimeout> | undefined;
-const pulseListeners = new Set<() => void>();
-const pulsed = () => pulseListeners.forEach((listener) => listener());
+export type StashNotice = { at: "row" | "margin" | "tab"; n: number } | null;
+let notice: StashNotice = null;
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+const noticeListeners = new Set<() => void>();
+const notify = () => noticeListeners.forEach((listener) => listener());
 
 /** The dot's whole life; `margin.css` animates within it. */
 export const PULSE_MS = 900;
 
 /** Where a fresh stash shows: "row" when the Stash tab is showing (its row
- *  highlights), otherwise it pulses a dot and says where. */
+ *  highlights), otherwise it pulses a dot on a visible control. */
 export function noticeStash(): "row" | "margin" | "tab" {
   const tab = visibleTab();
-  if (tab === "stash") return "row";
-  const at = tab ? "tab" : "margin";
-  pulse = { at, n: (pulse?.n ?? 0) + 1 };
-  clearTimeout(pulseTimer);
-  pulseTimer = setTimeout(() => {
-    pulse = null;
-    pulsed();
+  const at = tab === "stash" ? "row" : tab && state.where === "writing" ? "tab" : "margin";
+  notice = { at, n: (notice?.n ?? 0) + 1 };
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => {
+    notice = null;
+    notify();
   }, PULSE_MS);
-  pulsed();
+  notify();
   return at;
 }
 
-export const stashPulse = () => pulse;
+export const stashNotice = () => notice;
 
-export function useStashPulse(): StashPulse {
+/** Also reports visible-row stashes to the margin's polite live region. */
+export function useStashNotice(): StashNotice {
   return useSyncExternalStore(
     (listener) => {
-      pulseListeners.add(listener);
-      return () => pulseListeners.delete(listener);
+      noticeListeners.add(listener);
+      return () => noticeListeners.delete(listener);
     },
-    () => pulse,
+    () => notice,
   );
 }

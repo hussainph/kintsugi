@@ -189,6 +189,9 @@ test("Stash on a Kin reply saves an explicitly requested item, never draft text"
   const text = await reply.locator(".ki-kin-reply").innerText();
   assert.ok(text.trim());
   await save.click();
+  await page.locator('.ki-margin-tab[data-tab="stash"] .ki-margin-pulse').waitFor({ state: "attached" });
+  assert.equal(await page.locator("[data-sonner-toast]").count(), 0, "a reply uses the same quiet feedback, without a toast");
+  assert.equal(await page.getByRole("tab", { name: "Kin", exact: true }).getAttribute("aria-selected"), "true", "stashing leaves Kin open");
   await openStash();
   await rows().filter({ hasText: text.slice(0, 80) }).waitFor();
   await until(() => readFileSync(file(), "utf8").includes(text.slice(0, 80)), "reply saved to sidecar");

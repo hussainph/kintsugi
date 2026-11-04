@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hideMargin, marginState, noticeStash, parseSaved, PULSE_MS, stashPulse, setMarginWhere, showMargin, tabsFor, toggleMargin, toggleTab, visibleTab } from "./state.ts";
+import { hideMargin, marginState, noticeStash, parseSaved, PULSE_MS, stashNotice, setMarginWhere, showMargin, tabsFor, toggleMargin, toggleTab, visibleTab } from "./state.ts";
 
 test("the old reference margin's saved choice carries over", () => {
   assert.deepEqual(parseSaved("visible"), { open: true, tab: "references" });
@@ -49,15 +49,19 @@ test("a stash shows in the Stash tab's row, else as one pulse on the margin butt
   setMarginWhere("writing");
   showMargin("stash");
   assert.equal(noticeStash(), "row");
-  assert.equal(stashPulse(), null);
+  assert.equal(stashNotice()?.at, "row", "the live region also hears a visible stash");
   hideMargin();
   assert.equal(noticeStash(), "margin");
-  const first = stashPulse();
+  const first = stashNotice();
   assert.equal(first?.at, "margin");
   showMargin("kin");
   assert.equal(noticeStash(), "tab");
-  assert.equal(stashPulse()?.at, "tab");
-  assert.notEqual(stashPulse()?.n, first?.n, "each stash restarts the pulse");
+  assert.equal(stashNotice()?.at, "tab");
+  assert.notEqual(stashNotice()?.n, first?.n, "each stash restarts the pulse");
+  setMarginWhere("away");
+  assert.equal(noticeStash(), "margin", "away from the editor there is no Stash tab header");
   t.mock.timers.tick(PULSE_MS);
-  assert.equal(stashPulse(), null, "it pulses once, then goes");
+  assert.equal(stashNotice(), null, "it pulses once, then goes");
+  hideMargin();
+  setMarginWhere("writing");
 });
