@@ -145,7 +145,7 @@ function ReplyActions({ entry, latest }: { entry: Entry; latest: boolean }) {
         </MessageAction>
       )}
       {!entry.error && !entry.interrupted && target && <MessageAction label="Stash" onClick={async () => {
-        try { if (await stashReply(entry.text)) toast("Added to stash"); else toast.error("Couldn’t add to stash"); }
+        try { if (!await stashReply(entry.text)) toast.error("Couldn’t add to stash"); }
         catch (error) { toast.error(String(error)); }
       }}><Bookmark /></MessageAction>}
       {meta && <span className="ki-message-meta" data-model={entry.model}>{meta}</span>}

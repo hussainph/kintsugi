@@ -218,7 +218,9 @@ test("Stash keeps a rewrite for later; Escape closes the rest", { timeout: 60_00
   await line("Nobody was allowed").locator(".cm-kin-rewrite").click();
   await focused().filter({ hasText: "leverage" }).waitFor();
   await action("stash").click();
-  await page.getByText("Added to stash").waitFor();
+  // Like every stash (KI-110): a lit row or a pulsing dot, never a toast.
+  await page.locator(".ki-margin-pulse, .ki-stash-row[data-fresh]").first().waitFor({ state: "attached" });
+  assert.equal(await page.getByText("Added to stash").count(), 0);
   await until(async () => (await marked()).length === 2, "the stashed one goes");
   const sidecar = resolve(app.vault, `.kintsugi/stash/${DOC}.md`);
   await until(() => existsSync(sidecar) && /\buse\b/.test(readFileSync(sidecar, "utf8")), "the rewrite is in the stash");
