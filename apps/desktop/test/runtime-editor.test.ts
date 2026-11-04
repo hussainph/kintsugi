@@ -6,19 +6,26 @@
 // Covers the / menu (blocks, and skills flagged `command` run as a reviewed
 // edit), @ (the same [[link]] as [[, and @Kin opening the chat with the
 // paragraph; KI-38 made that a comment thread), ⌘K's non-prose actions
-// (supporting clips, who disagrees, discuss), and both pickers at phone width with touch. Everything lives in
+// (supporting clips, who disagrees, discuss), KI-87's kept/asked alternatives,
+// and both pickers at phone width with touch. Everything lives in
 // a fresh scratch vault and config; screenshots go to .headless/<run>/shots/.
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { after, before, test } from "node:test";
-import { chromium, type Browser, type Page } from "playwright";
+import { chromium, type Browser, type Page, type Request, type Route } from "playwright";
 import { startApp, type App, openApp } from "./headless-app.ts";
 
 const DOC = "drafts/gold-seams.md";
 const MIRROR = "posts/mirrored.md";
 // After DOC in the tree, so a new window still opens DOC first.
 const DRIFT = "posts/drift.md";
+// Its own document: KI-87 never changes the passages the KI-37/80 tests use.
+const ALTERNATIVES = "posts/kin-alternatives.md";
+const ACCEPT = "The first draft is really very clear.";
+const KEEP = "The next draft is really very useful.";
+const ASK = "A good editor keeps the sentence clear. A quick review is useful.";
+const ALTERNATIVES_TEXT = `# Alternatives\n\n${ACCEPT}\n\n${KEEP}\n\nA small change keeps the argument simple.\n\n${ASK}\n\nI read in order to keep the argument clear.\n\nA quiet editor reads a difficult draft.\n`;
 const SAME = "Same words really matter.";
 /** As long as SAME, so cutting it slides the next SAME under the old offsets. */
 const OTHER = "Another thought, cut out.";
@@ -32,6 +39,7 @@ before(async () => {
   app = await startApp("ki37", { KINTSUGI_HEADLESS_KIN: "mock" }, (vault) => {
     writeFileSync(resolve(vault, DOC), `---\ntitle: "Gold seams"\nstatus: draft\n---\n\n# Gold seams\n\nThe repair is really very visible, and that is the point.\n`);
     writeFileSync(resolve(vault, DRIFT), `# Drift\n\n${OTHER}\n\n${SAME}\n\n${SAME}\n`);
+    writeFileSync(resolve(vault, ALTERNATIVES), ALTERNATIVES_TEXT);
     writeFileSync(resolve(vault, MIRROR), `---\ntitle: "Mirrored post"\nmirror: hussain.ph/blog/mirrored\n---\n\nA published paragraph about repair.\n`);
     const skill = (name: string, description: string, command: boolean, body: string) => {
       mkdirSync(resolve(vault, `.kintsugi/agent/skills/${name}`), { recursive: true });
@@ -280,4 +288,438 @@ test("at phone width with touch, the pickers fit the screen and rows are tap tar
   await phone.locator('.cm-command-menu [data-command="todo"]').tap();
   await phone.locator(".cm-line", { hasText: "- [ ] A long line of prose" }).waitFor();
   await context.close();
+});
+
+// KI-87 uses the same real runtime, with a separate document and sidecar.
+type AlternativeEntry = { id: string; text: string; by: "owner" | "kin" };
+type AlternativeSet = { id: string; level: string; current: string; anchor: { exact: string }; entries: AlternativeEntry[] };
+type AlternativesFile = { version: number; path: string; sets: AlternativeSet[] };
+const alternativeDisk = () => readFileSync(resolve(app.vault, ALTERNATIVES), "utf8");
+const alternativeStore = (path = ALTERNATIVES) => resolve(app.vault, `.kintsugi/alternatives/${path}.json`);
+const savedAlternatives = (): AlternativesFile => JSON.parse(readFileSync(alternativeStore(), "utf8"));
+const alternativeSet = (original: string) => savedAlternatives().sets.find((s) => s.entries.some((e) => e.by === "owner" && e.text === original));
+const currentAlternative = (set: AlternativeSet) => set.entries.find((e) => e.id === set.current);
+const altPanel = () => page.locator(".cm-alt-panel");
+const kinOptions = () => altPanel().locator('.cm-alt-option[data-by="kin"]');
+const altText = () => page.locator(".cm-content").evaluate((el) => {
+  const copy = el.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll(".cm-alt-count, .cm-alt-gutter").forEach((node) => node.remove());
+  return copy.innerText;
+});
+
+async function alternativeUntil(check: () => boolean, what: string) {
+  for (let i = 0; i < 150; i++) {
+    try { if (check()) return; } catch { /* The sidecar may not exist yet. */ }
+    await page.waitForTimeout(100);
+  }
+  assert.fail(`${what}; the document is:\n${alternativeDisk()}`);
+}
+
+async function openAlternativeDoc() {
+  await page.locator(`[title="${ALTERNATIVES}"]`).click();
+  await page.locator(`[title="${ALTERNATIVES}"][data-active="true"]`).waitFor();
+  // Counts can split the first sentence's text after alternatives are added.
+  await line("A quick review is useful.").waitFor();
+}
+
+/** Real pointer/keyboard selection; no editor module or state injected. */
+async function alternativeCursor(text: string, select = false) {
+  await line(text).first().scrollIntoViewIfNeeded();
+  const at = await page.locator(".cm-content").evaluate((content, target) => {
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.parentElement?.closest(".cm-alt-count, .cm-alt-gutter")) continue;
+      const i = node.textContent!.indexOf(target);
+      if (i === -1) continue;
+      const range = document.createRange();
+      range.setStart(node, i + 1);
+      range.setEnd(node, i + 2);
+      const box = range.getBoundingClientRect();
+      return { x: box.left + 1, y: box.top + box.height / 2 };
+    }
+    return null;
+  }, text);
+  assert.ok(at, `${text} is in the editor`);
+  if (select) {
+    await page.mouse.dblclick(at.x, at.y);
+    // Double-click selects the first word; extend it for a phrase.
+    for (let i = text.split(" ")[0].length; i < text.length; i++) await page.keyboard.press("Shift+ArrowRight");
+    assert.equal(await page.evaluate(() => window.getSelection()?.toString()), text);
+  } else {
+    await page.mouse.click(at.x, at.y);
+  }
+  await page.waitForTimeout(50);
+}
+
+async function completedRewrite() {
+  await refine().locator(".ki-refine-result del").first().waitFor({ timeout: 15_000 });
+  return refine().locator(".ki-refine-result").evaluate((el) => {
+    const copy = el.cloneNode(true) as HTMLElement;
+    copy.querySelectorAll("del").forEach((node) => node.remove());
+    return copy.textContent!.trim();
+  });
+}
+
+async function completedAlternatives() {
+  await kinOptions().first().waitFor({ timeout: 15_000 });
+  await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).waitFor();
+  assert.equal(await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).isEnabled(), true);
+  assert.equal(await altPanel().getByRole("listbox").getAttribute("aria-busy"), "false");
+  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), await kinOptions().count(), "each Kin version has its mark");
+}
+
+/** Observe real bridge requests, without replacing the model or the transport. */
+function watchAlternativeRequests() {
+  const levels: string[] = [];
+  const watch = (request: Request) => {
+    if (request.method() !== "POST" || !request.url().endsWith("/invoke")) return;
+    const body = request.postDataJSON();
+    if (body?.cmd !== "ai_stream") return;
+    const user = body.args?.request?.messages?.find((m: { role: string }) => m.role === "user");
+    const level = /<alternatives level="([^"]+)">/.exec(user?.content ?? "")?.[1];
+    if (level) levels.push(level);
+  };
+  page.on("request", watch);
+  return { levels, stop: () => page.off("request", watch) };
+}
+
+async function alternativeShot(name: string, colorScheme: "light" | "dark") {
+  await page.emulateMedia({ colorScheme });
+  await page.waitForFunction((dark) => document.documentElement.classList.contains("dark") === dark, colorScheme === "dark");
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await shot(`${name}-${colorScheme}`);
+}
+
+function assertKept(set: AlternativeSet, original: string, replacement: string) {
+  assert.deepEqual(set.entries.map(({ text, by }) => ({ text, by })), [
+    { text: original, by: "owner" }, { text: replacement, by: "kin" },
+  ]);
+  assert.equal(currentAlternative(set)?.text, original);
+  assert.equal(set.anchor.exact, original);
+}
+
+test("⌘K acceptance keeps the owner and Kin versions; ⌥⌘[ swaps back (KI-87)", { timeout: 60_000 }, async () => {
+  await openAlternativeDoc();
+  const before = alternativeDisk();
+  await alternativeCursor(ACCEPT);
+  await page.keyboard.press("Meta+k");
+  await refine().getByRole("option", { name: /Tighten/ }).click();
+  const replacement = await completedRewrite();
+  assert.notEqual(replacement, ACCEPT);
+  assert.equal(alternativeDisk(), before, "the completed rewrite still waits for acceptance");
+  await page.keyboard.press("Enter");
+  await refine().waitFor({ state: "detached" });
+  await alternativeUntil(() => alternativeDisk() === before.replace(ACCEPT, replacement), "only the accepted version reaches Markdown");
+  await alternativeUntil(() => currentAlternative(alternativeSet(ACCEPT)!)?.text === replacement, "the replacement and its author are saved");
+  const file = savedAlternatives();
+  assert.equal(file.version, 1);
+  assert.equal(file.path, ALTERNATIVES);
+  const set = alternativeSet(ACCEPT)!;
+  assert.deepEqual(set.entries.map(({ text, by }) => ({ text, by })), [
+    { text: ACCEPT, by: "owner" }, { text: replacement, by: "kin" },
+  ]);
+  assert.equal(set.anchor.exact, replacement);
+
+  await alternativeCursor(replacement);
+  await page.keyboard.press("Meta+Alt+BracketLeft");
+  await alternativeUntil(() => alternativeDisk() === before && currentAlternative(alternativeSet(ACCEPT)!)?.text === ACCEPT, "previous swaps back to the owner's original");
+  await page.keyboard.press("Meta+Alt+KeyA");
+  await altPanel().waitFor();
+  assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"]').textContent(), ACCEPT);
+  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), 1);
+  await page.keyboard.press("Escape");
+});
+
+test("⇧Enter keeps only the selected completed rewrite without applying it (KI-87)", { timeout: 60_000 }, async () => {
+  await openAlternativeDoc();
+  const before = alternativeDisk();
+  const editorBefore = await altText();
+  await alternativeCursor(KEEP);
+  await page.keyboard.press("Meta+k");
+  await refine().getByRole("option", { name: /Tighten/ }).click();
+  const first = await completedRewrite();
+  await page.keyboard.press("Meta+r");
+  await refine().getByText("2 / 2", { exact: true }).waitFor();
+  const selected = await completedRewrite();
+  assert.notEqual(selected, first, "the retry is a different version");
+  await page.keyboard.press("Shift+Enter");
+  await refine().waitFor({ state: "detached" });
+  await alternativeUntil(() => alternativeSet(KEEP)?.entries.length === 2, "only the selected rewrite is kept");
+  assertKept(alternativeSet(KEEP)!, KEEP, selected);
+  assert.equal(alternativeDisk(), before);
+  assert.equal(await altText(), editorBefore, "keeping changes neither the editor nor Markdown");
+  await page.keyboard.press("Meta+Alt+KeyA");
+  await kinOptions().first().waitFor();
+  assert.deepEqual(await kinOptions().locator(".cm-alt-option-text").allTextContents(), [selected]);
+  await page.keyboard.press("Escape");
+});
+
+test("⇧Enter keeps only the highlighted synonym, leaving the word alone (KI-87)", { timeout: 60_000 }, async () => {
+  await openAlternativeDoc();
+  const before = alternativeDisk();
+  const editorBefore = await altText();
+  await alternativeCursor("small", true);
+  await page.keyboard.press("Meta+k");
+  await refine().getByRole("option", { name: /Synonyms/ }).click();
+  await refine().locator(".ki-refine-choice:enabled").first().waitFor({ timeout: 15_000 });
+  assert.ok(await refine().locator(".ki-refine-choice").count() > 1);
+  await page.keyboard.press("ArrowDown");
+  const selected = await refine().locator('.ki-refine-choice[data-selected="true"]').evaluate((el) => {
+    const copy = el.cloneNode(true) as HTMLElement;
+    copy.querySelector("kbd")?.remove();
+    return copy.textContent!.trim();
+  });
+  await page.keyboard.press("Shift+Enter");
+  await refine().waitFor({ state: "detached" });
+  await alternativeUntil(() => alternativeSet("small")?.entries.length === 2, "one highlighted synonym, not the whole list");
+  const set = alternativeSet("small")!;
+  assert.equal(set.level, "word");
+  assertKept(set, "small", selected);
+  assert.equal(alternativeDisk(), before);
+  assert.equal(await altText(), editorBefore);
+  await page.keyboard.press("Meta+Alt+KeyA");
+  await kinOptions().first().waitFor();
+  assert.deepEqual(await kinOptions().locator(".cm-alt-option-text").allTextContents(), [selected]);
+  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), 1);
+  await page.keyboard.press("Escape");
+});
+
+test("explicit word, sentence and paragraph asks work with automatic suggestions off; nothing auto-applies (KI-87)", { timeout: 90_000 }, async () => {
+  await openAlternativeDoc();
+  const before = alternativeDisk();
+  const editorBefore = await altText();
+  const requests = watchAlternativeRequests();
+  try {
+    await alternativeCursor("good");
+    await page.keyboard.press("Meta+Alt+KeyA");
+    await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).waitFor();
+    assert.deepEqual(await altPanel().getByRole("tab").allTextContents(), ["Word", "Sentence", "Paragraph"]);
+    assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), "Word");
+    assert.equal(await kinOptions().count(), 0);
+    // The fresh app's automatic suggestions stay off. Merely opening the
+    // panel doesn't ask; the explicit shortcut and button still do.
+    await page.waitForTimeout(200);
+    assert.deepEqual(requests.levels, []);
+    await page.keyboard.press("Meta+Shift+Alt+KeyA");
+    await completedAlternatives();
+    assert.equal(alternativeDisk(), before);
+    assert.equal(await altText(), editorBefore);
+    await alternativeShot("13-kin-word-alternatives", "light");
+    await alternativeShot("13-kin-word-alternatives", "dark");
+
+    const originals = { word: "good", sentence: ASK.split(". ")[0] + ".", paragraph: ASK };
+    for (const [level, tab] of [["sentence", "Sentence"], ["paragraph", "Paragraph"]] as const) {
+      await altPanel().getByRole("tab", { name: tab, exact: true }).click();
+      assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), tab);
+      assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"] .cm-alt-option-text').textContent(), originals[level]);
+      await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).click();
+      const thinking = altPanel().getByRole("button", { name: "Thinking…", exact: true });
+      await thinking.waitFor();
+      assert.equal(await thinking.isDisabled(), true);
+      assert.equal(await altPanel().getByRole("listbox").getAttribute("aria-busy"), "true");
+      // Repeated explicit asks while one is running must not start another.
+      await page.keyboard.press("Meta+Shift+Alt+KeyA");
+      await page.keyboard.press("Meta+Shift+Alt+KeyA");
+      assert.equal(alternativeDisk(), before, "pending work changes no prose");
+      await completedAlternatives();
+      assert.equal(alternativeDisk(), before, "completed work changes no prose");
+      assert.equal(await altText(), editorBefore);
+    }
+    assert.deepEqual(requests.levels, ["word", "sentence", "paragraph"], "one request per explicit ask, at the panel's level");
+    for (const [level, original] of Object.entries(originals)) {
+      await alternativeUntil(() => (alternativeSet(original)?.entries.filter((e) => e.by === "kin").length ?? 0) > 0, `${level} options are saved beside Markdown`);
+      const set = alternativeSet(original)!;
+      assert.equal(set.level, level);
+      assert.equal(currentAlternative(set)?.text, original);
+      assert.equal(currentAlternative(set)?.by, "owner");
+      assert.equal(set.anchor.exact, original);
+      assert.ok(set.entries.slice(1).every((e) => e.by === "kin"));
+    }
+    await alternativeShot("14-kin-paragraph-alternatives", "light");
+    await alternativeShot("14-kin-paragraph-alternatives", "dark");
+
+    const chosen = alternativeSet(ASK)!.entries.find((e) => e.by === "kin")!.text;
+    await kinOptions().first().click();
+    await alternativeUntil(() => alternativeDisk() === before.replace(ASK, chosen) && currentAlternative(alternativeSet(ASK)!)?.text === chosen, "only picking a version applies it");
+    // Cycle with the panel open so its paragraph, not the nested word or
+    // sentence set, is the target.
+    await altPanel().getByRole("textbox", { name: "Add an alternative" }).press("Meta+Alt+BracketLeft");
+    await alternativeUntil(() => alternativeDisk() === before && currentAlternative(alternativeSet(ASK)!)?.text === ASK, "the owner's paragraph is still one previous-cycle away");
+    await page.keyboard.press("Escape");
+  } finally {
+    requests.stop();
+    await page.emulateMedia({ colorScheme: "light" });
+  }
+});
+
+test("⇧⌥⌘A on a selected phrase asks for that selection without applying (KI-87)", { timeout: 60_000 }, async () => {
+  await openAlternativeDoc();
+  const before = alternativeDisk();
+  const editorBefore = await altText();
+  await alternativeCursor("in order to", true);
+  await page.keyboard.press("Meta+Shift+Alt+KeyA");
+  await completedAlternatives();
+  assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), "Selection");
+  assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"] .cm-alt-option-text').textContent(), "in order to");
+  await alternativeUntil(() => (alternativeSet("in order to")?.entries.length ?? 0) > 1, "the selection's alternatives are persisted");
+  const set = alternativeSet("in order to")!;
+  assert.equal(set.level, "phrase");
+  assert.equal(currentAlternative(set)?.text, "in order to");
+  assert.ok(set.entries.slice(1).every((e) => e.by === "kin"));
+  assert.equal(alternativeDisk(), before);
+  assert.equal(await altText(), editorBefore);
+  await page.keyboard.press("Escape");
+});
+
+test("saved Kin attribution and unapplied alternatives survive a reload (KI-87)", { timeout: 60_000 }, async () => {
+  const before = alternativeDisk();
+  await alternativeUntil(() => savedAlternatives().sets.length === 7, "all seven spans are saved before reload");
+  const entries = alternativeSet("good")!.entries;
+  await page.reload();
+  await openAlternativeDoc();
+  await alternativeCursor("good");
+  await page.keyboard.press("Meta+Alt+KeyA");
+  await kinOptions().first().waitFor();
+  assert.deepEqual(await altPanel().locator(".cm-alt-option-text").allTextContents(), entries.map((e) => e.text));
+  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), entries.filter((e) => e.by === "kin").length);
+  assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"]').getAttribute("data-by"), "owner");
+  assert.equal(alternativeDisk(), before);
+  await page.keyboard.press("Escape");
+});
+
+test("switching documents drops a pending answer and permits a new ask on return (KI-87)", { timeout: 60_000 }, async () => {
+  await openAlternativeDoc();
+  const before = alternativeDisk();
+  const otherBefore = disk();
+  const requests = watchAlternativeRequests();
+  let release!: () => void;
+  const gate = new Promise<void>((done) => { release = done; });
+  let first = true;
+  const holdFirstAsk = async (route: Route) => {
+    const body = route.request().postDataJSON();
+    if (first && body?.cmd === "ai_stream") {
+      first = false;
+      // Delay forwarding this one real model request, not its answer or
+      // the editor API. Other commands still reach the real registry.
+      await gate;
+    }
+    await route.continue();
+  };
+  await page.route("**/invoke", holdFirstAsk);
+  try {
+    await alternativeCursor("quiet");
+    const pending = page.waitForRequest((r) => r.method() === "POST" && r.url().endsWith("/invoke") && r.postDataJSON()?.cmd === "ai_stream");
+    await page.keyboard.press("Meta+Shift+Alt+KeyA");
+    const request = await pending;
+    await altPanel().getByRole("button", { name: "Thinking…", exact: true }).waitFor();
+    await page.locator(`[title="${DOC}"]`).click();
+    await page.locator(`[title="${DOC}"][data-active="true"]`).waitFor();
+    await line("The repair is").waitFor();
+    assert.equal(await altPanel().count(), 0);
+    await openAlternativeDoc();
+    // Restoring the cached EditorState clears its abandoned pending flag.
+    await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).waitFor();
+    assert.equal(await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).isEnabled(), true);
+    assert.equal(await kinOptions().count(), 0);
+    const replied = page.waitForResponse((response) => response.request() === request);
+    release();
+    await (await replied).finished();
+    // This word's scripted answer streams in one 40 ms chunk. Give the
+    // real SSE channel time to deliver it after the document was restored.
+    await page.waitForTimeout(500);
+    assert.equal(await kinOptions().count(), 0, "the abandoned answer cannot land in the restored state");
+    assert.equal(alternativeSet("quiet"), undefined);
+    assert.equal(alternativeDisk(), before);
+    assert.equal(disk(), otherBefore);
+
+    await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).click();
+    await completedAlternatives();
+    assert.deepEqual(requests.levels, ["word", "word"], "a fresh request is allowed after returning");
+    await alternativeUntil(() => (alternativeSet("quiet")?.entries.length ?? 0) > 1, "only the new ask is kept");
+    assert.equal(currentAlternative(alternativeSet("quiet")!)?.text, "quiet");
+    assert.equal(alternativeDisk(), before);
+    await page.keyboard.press("Escape");
+  } finally {
+    release();
+    await page.unroute("**/invoke", holdFirstAsk);
+    requests.stop();
+  }
+});
+
+test("a smaller word selected inside a word's phrase version gets its own alternatives (KI-87)", { timeout: 60_000 }, async () => {
+  await openAlternativeDoc();
+  await alternativeCursor("good");
+  await page.keyboard.press("Meta+Alt+KeyA");
+  const input = altPanel().getByRole("textbox", { name: "Add an alternative" });
+  await input.fill("very good");
+  await input.press("Enter");
+  await alternativeUntil(() => alternativeDisk().includes(ASK.replace("good", "very good")), "the existing word set can show a phrase");
+  await input.press("Escape");
+  const before = alternativeDisk();
+  const outer = savedAlternatives().sets.find((s) => s.level === "word" && s.anchor.exact === "very good")!;
+  assert.ok(outer);
+  await alternativeCursor("good", true);
+  await page.keyboard.press("Meta+Shift+Alt+KeyA");
+  await completedAlternatives();
+  assert.equal(await altPanel().getByRole("tab", { selected: true }).textContent(), "Word");
+  assert.equal(await altPanel().locator('.cm-alt-option[aria-current="true"] .cm-alt-option-text').textContent(), "good", "the selected word, not the containing phrase");
+  await alternativeUntil(() => savedAlternatives().sets.some((s) => s.id !== outer.id && s.anchor.exact === "good"), "the smaller exact range gets its own set");
+  const smaller = savedAlternatives().sets.find((s) => s.id !== outer.id && s.anchor.exact === "good")!;
+  assert.equal(alternativeDisk(), before, "asking about the smaller selection applies nothing");
+  await page.keyboard.press("Escape");
+
+  await alternativeCursor("good", true);
+  await page.keyboard.press("Meta+k");
+  await refine().getByRole("option", { name: /Synonyms/ }).click();
+  await refine().locator(".ki-refine-choice:enabled").first().waitFor({ timeout: 15_000 });
+  const chosen = await refine().locator('.ki-refine-choice[data-selected="true"]').evaluate((el) => {
+    const copy = el.cloneNode(true) as HTMLElement;
+    copy.querySelector("kbd")?.remove();
+    return copy.textContent!.trim();
+  });
+  assert.equal(alternativeDisk(), before);
+  await page.keyboard.press("Enter");
+  await refine().waitFor({ state: "detached" });
+  await alternativeUntil(() => alternativeDisk() === before.replace("very good", `very ${chosen}`), "accepting replaces only the smaller word");
+  await alternativeUntil(() => savedAlternatives().sets.some((s) => s.id !== outer.id && s.anchor.exact === chosen), "the smaller exact range is stored separately");
+  const inner = savedAlternatives().sets.find((s) => s.id !== outer.id && s.anchor.exact === chosen)!;
+  assert.equal(inner.level, "word");
+  assert.equal(inner.id, smaller.id, "Refine reuses the exact smaller set, not its enclosing phrase");
+  assert.equal(inner.entries.filter((e) => e.by === "owner").length, 1);
+  assert.equal(inner.entries.find((e) => e.by === "owner")?.text, "good");
+  assert.ok(smaller.entries.every((e) => inner.entries.some((saved) => saved.id === e.id)), "the earlier asked versions are retained");
+  assert.equal(currentAlternative(inner)?.text, chosen);
+  assert.equal(currentAlternative(inner)?.by, "kin");
+  await page.keyboard.press("Meta+Alt+BracketLeft");
+  await alternativeUntil(() => alternativeDisk() === before && currentAlternative(savedAlternatives().sets.find((s) => s.id === inner.id)!)?.text === "good", "the smaller word swaps back without losing the rest of the phrase");
+});
+
+test("a read-only mirror refuses Kin alternatives and swaps (KI-87)", { timeout: 60_000 }, async () => {
+  await page.locator(`[title="${MIRROR}"]`).click();
+  await page.locator(`[title="${MIRROR}"][data-active="true"]`).waitFor();
+  const before = readFileSync(resolve(app.vault, MIRROR), "utf8");
+  const sidecar = existsSync(alternativeStore(MIRROR)) ? readFileSync(alternativeStore(MIRROR), "utf8") : null;
+  const editorBefore = await altText();
+  const requests = watchAlternativeRequests();
+  try {
+    await alternativeCursor("repair");
+    await page.keyboard.press("Meta+Shift+Alt+KeyA");
+    await page.waitForTimeout(250);
+    assert.equal(await altPanel().count(), 0, "a direct ask is refused");
+    await page.keyboard.press("Meta+Alt+KeyA");
+    await altPanel().waitFor();
+    assert.equal(await altPanel().getByRole("textbox", { name: "Add an alternative" }).isDisabled(), true);
+    assert.equal(await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).isDisabled(), true);
+    await page.keyboard.press("Meta+Shift+Alt+KeyA");
+    await page.keyboard.press("Meta+Alt+BracketRight");
+    await page.waitForTimeout(250);
+    assert.deepEqual(requests.levels, [], "no model request for a read-only passage");
+    assert.equal(await kinOptions().count(), 0);
+    assert.equal(readFileSync(resolve(app.vault, MIRROR), "utf8"), before);
+    assert.equal(await altText(), editorBefore);
+    assert.equal(existsSync(alternativeStore(MIRROR)) ? readFileSync(alternativeStore(MIRROR), "utf8") : null, sidecar);
+    await page.keyboard.press("Escape");
+  } finally {
+    requests.stop();
+  }
 });

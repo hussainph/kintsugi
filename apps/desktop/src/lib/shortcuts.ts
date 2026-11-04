@@ -106,6 +106,7 @@ export const SHORTCUTS = {
   gotoLine: { key: "Mod-Alt-g", label: "Go to line", group: "text", builtin: true },
 
   accept: { key: "Enter", label: "Accept", group: "review" },
+  refineAlternatives: { key: "Shift-Enter", label: "Keep as alternative", group: "review" },
   another: { key: "Mod-r", label: "Another version", group: "review" },
   previousVersion: { key: "ArrowLeft", label: "Previous version", group: "review" },
   nextVersion: { key: "ArrowRight", label: "Next version", group: "review" },
@@ -127,10 +128,9 @@ export const SHORTCUTS = {
   alternatives: { key: "Mod-Alt-a", label: "Alternatives", group: "alternatives" },
   nextAlternative: { key: "Mod-Alt-]", label: "Next alternative", group: "alternatives" },
   previousAlternative: { key: "Mod-Alt-[", label: "Previous alternative", group: "alternatives" },
+  kinAlternatives: { key: "Mod-Shift-Alt-a", label: "Kin's alternatives", group: "alternatives" },
 
   // Reserved for the tickets that add them (Write_On's alternative control).
-  kinAlternatives: { key: "Mod-Shift-Alt-a", label: "Kin's alternatives", scope: "editor", soon: "KI-87" },
-  refineAlternatives: { key: "Shift-Enter", label: "Keep as alternatives", scope: "refine", soon: "KI-87" },
   stash: { key: "Mod-Alt-x", label: "Stash", scope: "editor", soon: "KI-89" },
   unstash: { key: "Mod-Alt-v", label: "Put back from stash", scope: "editor", soon: "KI-89" },
 } as const satisfies Record<string, Shortcut>;

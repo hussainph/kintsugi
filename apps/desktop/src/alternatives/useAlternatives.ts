@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Alternatives, AlternativeSet } from "@kintsugi/editor/Editor";
+import { stream } from "@/lib/ai";
+import { modelFor } from "@/lib/models";
+import { alternativeChoices, askAlternatives } from "@/refine/prompts";
 
 /**
  * The open document's alternatives (KI-86) for the editor. They're stored
@@ -27,6 +30,12 @@ export function useAlternatives(path: string): Alternatives | undefined {
   return useMemo<Alternatives | undefined>(() => file ? {
     path: file.path,
     sets: file.sets,
+    // Explicit asks remain available with automatic suggestions off.
+    ask: async ({ doc, from, to, level }) => {
+      const model = await modelFor("edit");
+      const request = stream(model, askAlternatives(level, doc, from, to), () => {});
+      return alternativeChoices(await request.done, doc.slice(from, to));
+    },
     onSave: (at, sets) => {
       invoke("alternatives_save", { path: at, sets }).catch((error) => console.warn("alternatives not saved", error));
     },

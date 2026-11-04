@@ -5,6 +5,7 @@ import { anchorAt, type CommentAnchor, type Range } from "./anchors.ts";
 import { alternativesPanel, panelTheme, type PanelActions, type PanelModel } from "./alternatives-panel.ts";
 import { element } from "./menu.ts";
 import { paragraphRange } from "./references.ts";
+import { heldPassage, heldPassages, holdPassage, releasePassage } from "./passages.ts";
 import { isWordChar, resolveSpan, sentenceAt, sentencesIn, wordAt, type SpanLevel } from "./spans.ts";
 
 /**
@@ -49,6 +50,8 @@ export type Alternatives = {
   currentPath?: string;
   /** The document's whole list, once edits pause. */
   onSave: (path: string, sets: AlternativeSet[]) => void;
+  /** Explicit asks only. The host chooses the edit model and enforces its cost cap. */
+  ask?: (passage: { doc: string; from: number; to: number; level: SpanLevel }) => Promise<string[]>;
 };
 
 /** The key specs, for the host's shortcut list (the Mac's registry mirrors them). */
@@ -56,6 +59,7 @@ export const alternativeShortcuts = [
   { key: "Mod-Alt-a", label: "Alternatives" },
   { key: "Mod-Alt-]", label: "Next alternative" },
   { key: "Mod-Alt-[", label: "Previous alternative" },
+  { key: "Mod-Shift-Alt-a", label: "Kin's alternatives" },
 ] as const;
 
 type Live = Omit<AlternativeSet, "orphaned"> & { range: Range | null };
@@ -69,6 +73,8 @@ type Panel = {
   want?: number;
   /** The selection it opened on, if any. */
   phrase: Range | null;
+  /** An explicit selection must not fall back to a larger containing set. */
+  exact?: boolean;
   level: SpanLevel;
   setId: string | null;
   /** The set it was on at each level, to go back to. */
@@ -84,6 +90,10 @@ type Field = {
   /** Removed here; the host's copy is stale until it saves. */
   removed: ReadonlySet<string>;
   panel: Panel | null;
+  /** Keep cycling the span just swapped until the writer moves or edits. */
+  cycleId: string | null;
+  request: number | null;
+  askError: string | null;
 };
 
 /** The host's sets changed (a document loaded): place new ones. */
@@ -92,6 +102,10 @@ const putSet = StateEffect.define<Live>();
 const dropSet = StateEffect.define<string>();
 /** Its positions are in the document before the transaction's changes. */
 const setPanel = StateEffect.define<Panel | null>();
+const cycleSet = StateEffect.define<string>();
+const askStatus = StateEffect.define<{ request: number | null; error: string | null }>();
+const askFacet = Facet.define<() => Alternatives | undefined, () => Alternatives | undefined>({ combine: (values) => values[0] ?? (() => undefined) });
+const viewLifetimes = new WeakMap<object, object>();
 
 const fieldFacet = Facet.define<StateField<Field>, StateField<Field> | null>({ combine: (fields) => fields[0] ?? null });
 function read(state: EditorState): Field | null {
@@ -200,8 +214,9 @@ function reconcile(value: Field, state: EditorState, config: Alternatives | unde
 
 function makeField(getConfig: () => Alternatives | undefined) {
   return StateField.define<Field>({
-    create: (state) => reconcile({ loaded: false, baseline: "[]", sets: new Map(), removed: new Set(), panel: null }, state, configFor(getConfig)),
+    create: (state) => reconcile({ loaded: false, baseline: "[]", sets: new Map(), removed: new Set(), panel: null, cycleId: null, request: null, askError: null }, state, configFor(getConfig)),
     update(value, tr) {
+      if (tr.selection || tr.docChanged) value = { ...value, cycleId: null };
       if (tr.docChanged) {
         const sets = new Map<string, Live>();
         let text: string | null = null;
@@ -233,6 +248,8 @@ function makeField(getConfig: () => Alternatives | undefined) {
           sets.delete(effect.value);
           value = { ...value, sets, removed: new Set(value.removed).add(effect.value) };
         } else if (effect.is(setPanel)) value = { ...value, panel: effect.value && mapPanel(tr, effect.value) };
+        else if (effect.is(askStatus)) value = { ...value, request: effect.value.request, askError: effect.value.error };
+        else if (effect.is(cycleSet)) value = { ...value, cycleId: effect.value };
       }
       if (value.panel) value = { ...value, panel: clampPanel(tr.state, value, value.panel) };
       return value;
@@ -292,10 +309,14 @@ function setsAt(state: EditorState, pos: number, field = read(state)): Live[] {
   return [...field.sets.values()].filter((s) => s.range && contains(s.range, pos)).sort((a, b) => size(a.range!) - size(b.range!));
 }
 
+function exactSet(state: EditorState, range: Range, field = read(state)): Live | null {
+  if (field) for (const live of field.sets.values()) if (live.range?.from === range.from && live.range.to === range.to) return live;
+  return null;
+}
+
 function setFor(state: EditorState, level: SpanLevel, range: Range | null, pos: number, field = read(state)): Live | null {
   if (!field) return null;
-  if (range) for (const live of field.sets.values()) if (live.range && live.range.from === range.from && live.range.to === range.to) return live;
-  return setsAt(state, pos, field).find((s) => s.level === level && level !== "phrase") ?? null;
+  return (range && exactSet(state, range, field)) ?? setsAt(state, pos, field).find((s) => s.level === level && level !== "phrase") ?? null;
 }
 
 /** What the panel is on: its set if it has one, else the span of its level. */
@@ -309,7 +330,8 @@ function clampPanel(state: EditorState, field: Field, panel: Panel): Panel {
   let next = panel;
   if (next.setId && !field.sets.get(next.setId)?.range) next = { ...next, setId: null };
   if (!next.setId) {
-    const live = setFor(state, next.level, spanAt(state, next.level, next.pos, next.phrase), next.pos, field);
+    const range = spanAt(state, next.level, next.pos, next.phrase);
+    const live = next.exact ? range && exactSet(state, range, field) : setFor(state, next.level, range, next.pos, field);
     if (live) next = { ...next, setId: live.id };
   }
   if (next.setId && next.homes[next.level] !== next.setId) next = { ...next, homes: { ...next.homes, [next.level]: next.setId } };
@@ -340,7 +362,7 @@ function levelOf(state: EditorState, range: Range): SpanLevel {
 type ViewLike = Pick<EditorView, "state" | "dispatch">;
 
 /** Shows `entry` in place of the span: one change, its own undo step. */
-function swap(view: ViewLike, live: Live, entryId: string, effects: StateEffect<unknown>[] = []) {
+function swap(view: ViewLike, live: Live, entryId: string, effects: StateEffect<unknown>[] = [], cursorAtEnd = false) {
   const range = live.range!;
   const entry = live.entries.find((e) => e.id === entryId)!;
   const head = view.state.selection.main.head;
@@ -349,8 +371,8 @@ function swap(view: ViewLike, live: Live, entryId: string, effects: StateEffect<
   const showing = view.state.sliceDoc(range.from, range.to);
   view.dispatch({
     changes: showing === entry.text ? undefined : { from: range.from, to: range.to, insert: entry.text },
-    selection: offset === null ? undefined : EditorSelection.cursor(range.from + Math.min(offset, entry.text.length)),
-    effects: [putSet.of({ ...live, current: entryId, range: { from: range.from, to } }), ...effects],
+    selection: cursorAtEnd ? EditorSelection.cursor(to) : offset === null ? undefined : EditorSelection.cursor(range.from + Math.min(offset, entry.text.length)),
+    effects: [putSet.of({ ...live, current: entryId, range: { from: range.from, to } }), cycleSet.of(live.id), ...effects],
     annotations: isolateHistory.of("full"),
     userEvent: "input.alternative",
     scrollIntoView: true,
@@ -371,9 +393,9 @@ export function openAlternatives(view: ViewLike): boolean {
   const pos = phrase ? phrase.from : selection.head;
   const range = spanAt(view.state, level, pos, phrase);
   if (!range) return false;
-  const live = setFor(view.state, level, range, pos);
+  const live = phrase ? exactSet(view.state, range) : setFor(view.state, level, range, pos);
   const highlight = live ? live.entries.findIndex((e) => e.id === live.current) : 0;
-  view.dispatch({ effects: setPanel.of({ key: ++openings, pos, phrase: level === "phrase" ? phrase : null, level, setId: live?.id ?? null, homes: {}, highlight }) });
+  view.dispatch({ effects: setPanel.of({ key: ++openings, pos, phrase: level === "phrase" ? phrase : null, exact: !!phrase, level, setId: live?.id ?? null, homes: {}, highlight }) });
   return true;
 }
 
@@ -389,7 +411,8 @@ export function cycleAlternative(view: ViewLike, direction: 1 | -1): boolean {
   const field = read(view.state);
   if (!field || view.state.readOnly) return false;
   const panel = field.panel;
-  const live = panel ? target(view.state, field, panel).live : setsAt(view.state, view.state.selection.main.head)[0];
+  const recent = field.cycleId ? field.sets.get(field.cycleId) : null;
+  const live = panel ? target(view.state, field, panel).live : recent?.range ? recent : setsAt(view.state, view.state.selection.main.head)[0];
   if (!live?.range) return false;
   const at = live.entries.findIndex((e) => e.id === live.current);
   const next = live.entries[(at + direction + live.entries.length) % live.entries.length];
@@ -412,18 +435,68 @@ function fresh(state: EditorState, level: SpanLevel, range: Range): Live {
  * the set's id, or null if the span is empty or nothing was new.
  */
 export function addAlternatives(view: ViewLike, spec: { from: number; to: number; texts: string[]; by: AlternativeAuthor; level?: SpanLevel }): string | null {
-  if (!read(view.state) || spec.to <= spec.from) return null;
+  if (!read(view.state) || view.state.readOnly || spec.from < 0 || spec.to > view.state.doc.length || spec.to <= spec.from) return null;
   const range = { from: spec.from, to: spec.to };
   const level = spec.level ?? levelOf(view.state, range);
-  const base = setFor(view.state, level, range, range.from) ?? fresh(view.state, level, range);
+  const base = exactSet(view.state, range) ?? fresh(view.state, level, range);
   const entries = [...base.entries];
   for (const raw of spec.texts) {
-    const text = raw.trim();
-    if (text && !entries.some((e) => e.text === text)) entries.push({ id: newId("e"), text, by: spec.by, created: now() });
+    const text = raw;
+    if (text.trim() && !entries.some((e) => e.text === text)) entries.push({ id: newId("e"), text, by: spec.by, created: now() });
   }
   if (entries.length === base.entries.length || entries.length < 2) return null;
   view.dispatch({ effects: putSet.of({ ...base, entries }) });
   return base.id;
+}
+
+/** Accept an explicit edit, retaining both versions and the replacement's author.
+ *  Put it just after the showing version so one previous-cycle swaps back. */
+export function applyAlternative(view: ViewLike, spec: { from: number; to: number; text: string; by: AlternativeAuthor }): boolean {
+  if (!read(view.state) || view.state.readOnly || spec.from < 0 || spec.to > view.state.doc.length || spec.to <= spec.from || !spec.text.trim()) return false;
+  addAlternatives(view, { ...spec, texts: [spec.text] });
+  const live = exactSet(view.state, spec);
+  const entry = live?.entries.find((e) => e.text === spec.text);
+  if (!live?.range || !entry) return false;
+  const entries = live.entries.filter((e) => e.id !== entry.id);
+  entries.splice(entries.findIndex((e) => e.id === live.current) + 1, 0, entry);
+  swap(view, { ...live, entries }, entry.id, [setPanel.of(null)], true);
+  return true;
+}
+
+/** Ask on the panel's span, or open it on the selection/cursor first.
+ *  A held passage prevents an answer from landing on text edited while waiting. */
+export function askForAlternatives(view: ViewLike): boolean {
+  const config = configFor(view.state.facet(askFacet));
+  let field = read(view.state);
+  if (!field || !config?.ask || view.state.readOnly) return false;
+  if (field.request !== null) return true;
+  if (!field.panel && !openAlternatives(view)) return false;
+  field = read(view.state)!;
+  const panel = field.panel!;
+  const { range } = target(view.state, field, panel);
+  if (!range || !view.state.sliceDoc(range.from, range.to).trim()) return false;
+  const text = view.state.sliceDoc(range.from, range.to);
+  const doc = view.state.doc.toString();
+  const held = holdPassage(range.from, range.to);
+  view.dispatch({ effects: [held.effect, askStatus.of({ request: held.id, error: null })] });
+  const lifetime = viewLifetimes.get(view);
+  const active = () => viewLifetimes.get(view) === lifetime && read(view.state)?.request === held.id;
+  void (async () => {
+    let error: string | null = null;
+    try {
+      const texts = await config.ask!({ doc, ...range, level: panel.level });
+      if (!active()) return;
+      const at = heldPassage(view.state, held.id, text);
+      if (!at) throw new Error("The text changed. Try again.");
+      const id = addAlternatives(view, { ...at, texts, by: "kin", level: panel.level });
+      if (!id) error = "No new alternatives. Try again.";
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (active()) view.dispatch({ effects: [releasePassage(held.id), askStatus.of({ request: null, error })] });
+    }
+  })();
+  return true;
 }
 
 /** What the panel does, for whichever panel draws it. */
@@ -482,8 +555,9 @@ export function alternativePanelCommands(view: ViewLike & { focus: () => void })
       const range = spanAt(view.state, level, panel.pos, panel.phrase);
       const live = home?.range ? home : setFor(view.state, level, range, panel.pos);
       const highlight = live ? live.entries.findIndex((e) => e.id === live.current) : 0;
-      view.dispatch({ effects: setPanel.of({ ...panel, level, setId: live?.id ?? null, highlight }) });
+      view.dispatch({ effects: setPanel.of({ ...panel, exact: false, level, setId: live?.id ?? null, highlight }) });
     },
+    askKin: () => { askForAlternatives(view); },
     cycle: (direction: 1 | -1) => { cycleAlternative(view, direction); },
     close: () => { closeAlternatives(view); refocus(); },
   };
@@ -500,7 +574,11 @@ function panelModel(state: EditorState, field: Field, panel: Panel): PanelModel 
   const entries = live
     ? live.entries.map((e) => ({ text: e.text, by: e.by, current: e.id === live.current }))
     : [{ text: range ? state.sliceDoc(range.from, range.to) : "", by: "owner" as const, current: true }];
-  return { level: panel.level, levels: levelsAt(state, panel), entries, highlight: panel.highlight, readOnly: state.readOnly };
+  const config = configFor(state.facet(askFacet));
+  return {
+    level: panel.level, levels: levelsAt(state, panel), entries, highlight: panel.highlight, readOnly: state.readOnly,
+    canAsk: !!config?.ask && !!range, asking: field.request !== null, askError: field.askError,
+  };
 }
 
 function popover(field: StateField<Field>): Extension {
@@ -626,7 +704,22 @@ export function alternativeExtensions(getConfig: () => Alternatives | undefined)
   const field = makeField(getConfig);
   const draw = ViewPlugin.fromClass(class {
     decorations: DecorationSet;
-    constructor(view: EditorView) { this.decorations = decorations(view.state); }
+    readonly lifetime = {};
+    readonly view: EditorView;
+    constructor(view: EditorView) {
+      this.view = view;
+      viewLifetimes.set(view, this.lifetime);
+      this.decorations = decorations(view.state);
+      // A cached state can return after its request was abandoned on a document
+      // switch. Clear the stale hold once setState has finished mounting plugins.
+      const request = read(view.state)?.request;
+      if (request != null) queueMicrotask(() => {
+        if (viewLifetimes.get(view) === this.lifetime && read(view.state)?.request === request) {
+          view.dispatch({ effects: [releasePassage(request), askStatus.of({ request: null, error: null })] });
+        }
+      });
+    }
+    destroy() { if (viewLifetimes.get(this.view) === this.lifetime) viewLifetimes.delete(this.view); }
     update(update: ViewUpdate) {
       if (update.docChanged || read(update.startState) !== read(update.state)) this.decorations = decorations(update.state);
     }
@@ -635,9 +728,10 @@ export function alternativeExtensions(getConfig: () => Alternatives | undefined)
     { key: alternativeShortcuts[0].key, run: (view) => (read(view.state)?.panel ? closeAlternatives(view) : openAlternatives(view)) },
     { key: alternativeShortcuts[1].key, run: (view) => cycleAlternative(view, 1) },
     { key: alternativeShortcuts[2].key, run: (view) => cycleAlternative(view, -1) },
+    { key: alternativeShortcuts[3].key, run: askForAlternatives },
     { key: "Escape", run: closeAlternatives },
   ]);
-  return [field, draw, keys, popover(field), persistence(getConfig), alternativesTheme, panelTheme];
+  return [heldPassages, askFacet.of(getConfig), field, draw, keys, popover(field), persistence(getConfig), alternativesTheme, panelTheme];
 }
 
 const alternativesTheme = EditorView.theme({

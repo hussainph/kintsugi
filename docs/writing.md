@@ -150,6 +150,13 @@ version that's showing, so the file stays plain for Obsidian and publishing.
   one, ⌫ removes the highlighted one, Escape closes.
 - ⌥⌘] and ⌥⌘[ show the next and previous version without opening anything.
   Each swap is its own undo step.
+- Accepting a ⌘K edit keeps the original one ⌥⌘[ away. ⇧↩ keeps the
+  highlighted version without applying it. Both keep Kin's version marked
+  with its icon.
+- Ask Kin in the panel, or press ⌥⇧⌘A, for synonyms, sentence rewordings or
+  paragraph versions. One request adds up to three choices without changing
+  the draft. Explicit asks work with suggestions off and use the edit model
+  and cost cap. No alternatives are fetched in the background.
 - A word, selection or sentence with alternatives has a dotted underline and
   a small count; a paragraph has the count in the left margin. Click a count
   to open its alternatives.
@@ -189,8 +196,13 @@ version that's showing, so the file stays plain for Obsidian and publishing.
 The editor's `alternatives` prop (`packages/editor/src/alternatives.ts`)
 takes the loaded sets and an `onSave(path, sets)` that receives the whole
 list once edits pause. `addAlternatives(view, { from, to, texts, by })` adds
-versions to a span without showing them (Kin's suggestions, KI-87).
+versions to a span without showing them. `applyAlternative` accepts a
+replacement and keeps the old version beside it. The optional `ask` callback
+receives `{ doc, from, to, level }` and returns a promise of replacement
+strings. `askForAlternatives` holds that span through edits, rejects answers
+for changed text, and adds valid choices with `by: "kin"`.
 `alternativesPanelModel` and `alternativePanelCommands` drive the panel
-(`alternatives-panel.ts`), so another panel can replace it. The phone
+(`alternatives-panel.ts`), including authors, request state and `askKin`, so
+another panel can replace it. The phone
 doesn't show alternatives yet; edits made there are picked up when the Mac
 re-resolves the anchors.

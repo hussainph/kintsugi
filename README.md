@@ -65,6 +65,7 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | ⌥⌘A | Alternatives |
 | `⌥⌘]` | Next alternative |
 | `⌥⌘[` | Previous alternative |
+| ⌥⇧⌘A | Kin's alternatives |
 
 ### Formatting
 
@@ -109,6 +110,7 @@ Every shortcut is defined once, in `apps/desktop/src/lib/shortcuts.ts` (the edit
 | Keys | Action |
 | --- | --- |
 | ↩ | Accept |
+| ⇧↩ | Keep as alternative |
 | ⌘R | Another version |
 | ← | Previous version |
 | → | Next version |

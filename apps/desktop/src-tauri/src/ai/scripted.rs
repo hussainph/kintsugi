@@ -1055,10 +1055,97 @@ mod tests {
     }
 }
 
+/// A small vocabulary for meaningful, repeatable alternatives in scratch
+/// documents. Unknown words get no suggestions rather than invented synonyms.
+const SYNONYMS: &[(&str, [&str; 3])] = &[
+    ("good", ["fine", "nice", "great"]),
+    ("quick", ["fast", "swift", "speedy"]),
+    ("important", ["significant", "key", "major"]),
+    ("clear", ["plain", "direct", "explicit"]),
+    ("small", ["little", "modest", "slight"]),
+    ("difficult", ["hard", "tough", "challenging"]),
+    ("simple", ["plain", "straightforward", "uncomplicated"]),
+    ("useful", ["helpful", "practical", "handy"]),
+    ("beautiful", ["lovely", "handsome", "attractive"]),
+    ("visible", ["noticeable", "apparent", "in view"]),
+    ("repair", ["restoration", "mend", "patch"]),
+    ("quiet", ["silent", "still", "hushed"]),
+    ("in order to", ["to", "so as to", "with the intent to"]), // copy-lint-allow: input phrase for the mock synonym lookup
+    ("a lot of", ["plenty of", "lots of", "a great deal of"]),
+    ("at the moment", ["now", "currently", "at present"]),
+];
+
+fn matching_case(original: &str, replacement: &str) -> String {
+    if original
+        .chars()
+        .all(|c| !c.is_alphabetic() || c.is_uppercase())
+    {
+        replacement.to_uppercase()
+    } else if original.chars().next().is_some_and(char::is_uppercase) {
+        let mut chars = replacement.chars();
+        let first = chars.next().unwrap_or_default();
+        first.to_uppercase().to_string() + chars.as_str()
+    } else {
+        replacement.to_string()
+    }
+}
+
+/// Reword the full passage without discarding sentences or line breaks.
+fn alternative_passage(passage: &str, version: usize) -> String {
+    let mut base = passage.to_string();
+    for (phrase, replacements) in SYNONYMS.iter().filter(|(phrase, _)| phrase.contains(' ')) {
+        base = base.replace(phrase, replacements[version]);
+    }
+    base.split_inclusive(|c: char| !c.is_alphabetic())
+        .map(|piece| {
+            let word = piece.trim_end_matches(|c: char| !c.is_alphabetic());
+            let lower = word.to_lowercase();
+            if piece.strip_suffix(' ') == Some(word)
+                && ["really", "very", "just", "actually", "quite", "basically"]
+                    .contains(&lower.as_str())
+            {
+                return String::new();
+            }
+            if let Some((_, replacements)) = SYNONYMS.iter().find(|(key, _)| *key == lower) {
+                matching_case(word, replacements[version]) + &piece[word.len()..]
+            } else {
+                piece.to_string()
+            }
+        })
+        .collect()
+}
+
+fn alternatives(level: &str, passage: &str) -> String {
+    let original = passage.trim();
+    let candidates: Vec<String> = match level {
+        "word" | "phrase" => SYNONYMS
+            .iter()
+            .find(|(word, _)| *word == original.to_lowercase())
+            .map(|(_, replacements)| {
+                replacements
+                    .iter()
+                    .map(|s| matching_case(original, s))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        "sentence" | "paragraph" => (0..3)
+            .map(|version| alternative_passage(original, version))
+            .collect(),
+        _ => vec![],
+    };
+    let mut choices = Vec::new();
+    for candidate in candidates {
+        if !candidate.trim().is_empty() && candidate != original && !choices.contains(&candidate) {
+            choices.push(candidate);
+        }
+    }
+    json!(choices).to_string()
+}
+
 /// The webview's ⌘K edits (and `/` skills) in a mock run: a deterministic
 /// edit of `<passage>`, so a diff can be reviewed without a provider. It
-/// drops filler words; asked for alternatives, it lists a few; retried,
-/// it says which attempt this is.
+/// drops filler words; KI-87 alternatives use JSON, older synonyms keep
+/// their line list; retried edits say which attempt this is.
 pub fn edit(system: &str, messages: &[super::wire::Message]) -> String {
     use super::wire::Role;
     let first = messages
@@ -1071,6 +1158,14 @@ pub fn edit(system: &str, messages: &[super::wire::Message]) -> String {
         .nth(1)
         .and_then(|rest| rest.split("</passage>").next())
         .unwrap_or_default();
+    if system.contains("JSON array of up to 3 distinct strings")
+        && let Some(level) = first
+            .split_once("<alternatives level=\"")
+            .and_then(|(_, rest)| rest.split_once("\">"))
+            .map(|(level, _)| level)
+    {
+        return alternatives(level, passage);
+    }
     if system.contains("alternatives") {
         let word = passage.trim();
         return format!("{word} (mock one)\n{word} (mock two)\n{word} (mock three)");
@@ -1128,11 +1223,91 @@ mod edit_tests {
         });
         assert_eq!(edit("rewrite", &retry), "Plain words. (mock version 2)");
         assert_eq!(
-            edit("Reply with up to six alternatives", &ask("gold"))
-                .lines()
-                .count(),
-            3
+            edit("Reply with up to six alternatives", &ask("gold")),
+            "gold (mock one)\ngold (mock two)\ngold (mock three)"
         );
+    }
+
+    fn alternative_choices(level: &str, passage: &str) -> Vec<String> {
+        let mut messages = ask(passage);
+        messages[0].content = format!(
+            "<alternatives level=\"{level}\">\n{}\n</alternatives>",
+            messages[0].content
+        );
+        let answer = edit(
+            "Reply only with a JSON array of up to 3 distinct strings",
+            &messages,
+        );
+        assert_eq!(
+            answer,
+            edit(
+                "Reply only with a JSON array of up to 3 distinct strings",
+                &messages
+            ),
+            "the same request is deterministic"
+        );
+        serde_json::from_str(&answer).expect("one JSON string array, not a line list")
+    }
+
+    #[test]
+    fn mock_word_and_phrase_alternatives_are_synonyms() {
+        assert_eq!(
+            alternative_choices("word", "quick"),
+            ["fast", "swift", "speedy"]
+        );
+        assert_eq!(
+            alternative_choices("word", "Quick"),
+            ["Fast", "Swift", "Speedy"]
+        );
+        assert_eq!(
+            alternative_choices("word", "QUICK"),
+            ["FAST", "SWIFT", "SPEEDY"]
+        );
+        assert_eq!(
+            alternative_choices("phrase", "  in order to  "),
+            ["to", "so as to", "with the intent to"]
+        );
+        assert!(alternative_choices("word", "unknown").is_empty());
+    }
+
+    #[test]
+    fn mock_sentence_alternatives_reword_the_whole_sentence() {
+        assert_eq!(
+            alternative_choices("sentence", "It was really very good."),
+            ["It was fine.", "It was nice.", "It was great."]
+        );
+        assert_eq!(
+            alternative_choices("sentence", "Adjust it in order to make it useful."),
+            [
+                "Adjust it to make it helpful.",
+                "Adjust it so as to make it practical.",
+                "Adjust it with the intent to make it handy.",
+            ]
+        );
+    }
+
+    #[test]
+    fn mock_paragraph_alternatives_keep_every_sentence_and_line_break() {
+        let choices = alternative_choices("paragraph", "It was really good.\nKeep **every** mark.");
+        assert_eq!(
+            choices,
+            [
+                "It was fine.\nKeep **every** mark.",
+                "It was nice.\nKeep **every** mark.",
+                "It was great.\nKeep **every** mark.",
+            ]
+        );
+    }
+
+    #[test]
+    fn mock_alternatives_exclude_unchanged_and_duplicate_passages() {
+        assert!(alternative_choices("paragraph", "Keep every mark.").is_empty());
+        assert!(alternative_choices("sentence", "").is_empty());
+        assert_eq!(
+            alternative_choices("sentence", "It was really here."),
+            ["It was here."]
+        );
+        assert!(alternative_choices("other", "good").is_empty());
     }
 }
 

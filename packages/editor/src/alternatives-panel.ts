@@ -22,6 +22,9 @@ export type PanelModel = {
   entries: PanelEntry[];
   highlight: number;
   readOnly: boolean;
+  canAsk: boolean;
+  asking: boolean;
+  askError: string | null;
 };
 
 export type PanelActions = {
@@ -30,6 +33,7 @@ export type PanelActions = {
   remove: (index: number) => void;
   move: (delta: number) => void;
   level: (level: SpanLevel) => void;
+  askKin: () => void;
   cycle: (direction: 1 | -1) => void;
   close: () => void;
 };
@@ -54,7 +58,13 @@ export function alternativesPanel(actions: PanelActions): AlternativesPanel {
   input.placeholder = "Add an alternative";
   input.setAttribute("aria-label", "Add an alternative");
   input.spellcheck = true;
-  dom.append(levels, list, input);
+  const ask = element("button", "cm-alt-ask", "Ask Kin");
+  ask.type = "button";
+  ask.addEventListener("mousedown", (event) => event.preventDefault());
+  ask.addEventListener("click", () => actions.askKin());
+  const status = element("div", "cm-alt-status");
+  status.setAttribute("role", "status");
+  dom.append(levels, list, input, ask, status);
   let model: PanelModel | null = null;
 
   input.addEventListener("keydown", (event) => {
@@ -66,7 +76,8 @@ export function alternativesPanel(actions: PanelActions): AlternativesPanel {
       actions.cycle(event.code === "BracketRight" ? 1 : -1);
     } else if (event.metaKey && event.altKey && event.code === "KeyA") {
       handled();
-      actions.close();
+      if (event.shiftKey) actions.askKin();
+      else actions.close();
     } else if (event.key === "Escape") {
       handled();
       actions.close();
@@ -92,6 +103,12 @@ export function alternativesPanel(actions: PanelActions): AlternativesPanel {
   const update = (next: PanelModel) => {
     model = next;
     input.disabled = next.readOnly;
+    ask.hidden = !next.canAsk;
+    ask.disabled = next.readOnly || next.asking;
+    ask.textContent = next.asking ? "Thinking…" : "Ask Kin";
+    status.textContent = next.askError ?? "";
+    status.hidden = !next.askError;
+    list.setAttribute("aria-busy", String(next.asking));
     levels.replaceChildren(...next.levels.map((level) => {
       const tab = element("button", "cm-alt-level", LEVEL_NAMES[level]);
       tab.type = "button";
@@ -109,7 +126,23 @@ export function alternativesPanel(actions: PanelActions): AlternativesPanel {
       row.setAttribute("aria-selected", String(i === next.highlight));
       if (entry.current) row.setAttribute("aria-current", "true");
       row.dataset.by = entry.by;
-      row.append(element("span", "cm-alt-option-mark"), element("span", "cm-alt-option-text", flat(entry.text)));
+      row.append(element("span", "cm-alt-option-mark"));
+      if (entry.by === "kin") {
+        const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        mark.setAttribute("viewBox", "0 0 24 24");
+        mark.setAttribute("class", "cm-alt-kin-mark");
+        mark.setAttribute("role", "img");
+        mark.setAttribute("aria-label", "Kin");
+        const path = document.createElementNS(mark.namespaceURI, "path");
+        path.setAttribute("d", "m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z");
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "currentColor");
+        path.setAttribute("stroke-width", "1.5");
+        path.setAttribute("stroke-linejoin", "round");
+        mark.append(path);
+        row.append(mark);
+      }
+      row.append(element("span", "cm-alt-option-text", flat(entry.text)));
       row.addEventListener("mousedown", (event) => event.preventDefault());
       row.addEventListener("click", () => actions.pick(i));
       return row;
@@ -147,5 +180,14 @@ export const panelTheme = EditorView.theme({
     border: "1px solid var(--border, var(--neutral-4))", backgroundColor: "var(--background, transparent)", color: "inherit",
   },
   ".cm-alt-input:focus": { outline: "none", borderColor: "var(--neutral-7)" },
+  ".cm-alt-kin-mark": { width: "1em", height: "1em", flexShrink: "0", alignSelf: "center", color: "var(--kin-ink)" },
+  ".cm-alt-ask": {
+    font: "inherit", marginTop: "var(--space-xs)", padding: "var(--space-xxs) var(--space-xs)",
+    color: "var(--kin-ink)", background: "none", border: "none", borderRadius: "var(--radius-s)", cursor: "pointer",
+  },
+  ".cm-alt-ask:hover": { backgroundColor: "var(--neutral-3)" },
+  ".cm-alt-ask:focus-visible": { outline: "2px solid var(--kin-ink)", outlineOffset: "2px" },
+  ".cm-alt-ask:disabled": { color: "var(--neutral-7)", cursor: "default" },
+  ".cm-alt-status": { padding: "var(--space-xs)", color: "var(--error)" },
   "@media (pointer: coarse)": { ".cm-alt-option": { minHeight: "36px" } },
 });
