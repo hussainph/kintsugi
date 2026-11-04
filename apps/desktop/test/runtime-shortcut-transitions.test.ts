@@ -47,7 +47,7 @@ const refine = () => page.locator(".ki-refine-popup");
 const selectionMenu = () => page.getByRole("menu", { name: "Selection", exact: true });
 const shortcuts = () => page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
 const settings = () => page.getByRole("region", { name: "Settings", exact: true });
-const kin = () => page.getByRole("dialog", { name: "Kin", exact: true });
+const kin = () => page.getByRole("region", { name: "Kin", exact: true });
 
 async function escape(surface: ReturnType<typeof refine>) {
   // Visibility isn't keyboard readiness. Menus and composers hand off focus
