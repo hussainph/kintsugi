@@ -202,6 +202,9 @@ test("deleting the paragraph keeps the thread, with the text it was on", { timeo
   await kinReplies().first().waitFor();
   assert.equal(await kinReplies().count(), 1, "its messages are kept");
 
+  // Closed first: an open margin folds the sidebar at this width.
+  await page.keyboard.press("Meta+j");
+  await pane().waitFor({ state: "detached" });
   await page.reload();
   await openDoc();
   assert.ok(claim(), "never lost");
