@@ -190,7 +190,7 @@ What Kin does at each stage of a piece:
 | Spark | Notices. Offers a few sparks a day from his writing and saves |
 | I want to write about this | Stays out of the way. The idea is his line, with nothing attached |
 | Research and test it | Gathers what he already has when asked, his own writing first. Asks what a sharp reader would ask, and finds who disagrees |
-| Write and revise | Reads. Comments and questions; writing suggestions only when he turns them on, into the stash; edits only when asked |
+| Write and revise | Reads. Comments and questions. With suggestions turned on, it may put rewrites in the stash; nothing else goes there unasked. Edits only when asked |
 | Publish or keep | Checks links and quotes. Moves nothing by itself |
 
 ### Present everywhere
@@ -302,7 +302,10 @@ draft argues the opposite of what you published in March."
   prose; or added to a draft he's started), Discuss with Kin, Refine,
   Dismiss (a signal). Unused ideas of Kin's fade after about a week.
 - Inside a draft, "ideas for this draft" opens Ideas filtered to that
-  document. Kin's suggestions for a draft go to its stash (KI-89).
+  document. Kin never puts an idea in a draft's stash on its own: ideas
+  reach the stash only when he asks, through Ask Kin on the stash or by
+  stashing one of Kin's replies (KI-89). The only things Kin adds unasked
+  are rewrites, and only while suggestions are on.
 
 ## Writing
 
@@ -342,7 +345,8 @@ much it asks of him:
 - **Gather**, when he asks. Kin reads the section and lays out what he has
   on it: what he's said before, what supports it, what argues against it,
   each with a quote checked against its source. One Kin turn, under the
-  monthly cap.
+  monthly cap. It stays in the References tab; nothing from it reaches
+  the stash unless he stashes it.
 
 What he inserts and what he waves away teach the ranking, the way Feed
 signals do.
