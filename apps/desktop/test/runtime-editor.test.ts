@@ -377,7 +377,7 @@ async function completedAlternatives() {
   await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).waitFor();
   assert.equal(await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).isEnabled(), true);
   assert.equal(await altPanel().getByRole("listbox").getAttribute("aria-busy"), "false");
-  assert.equal(await kinOptions().locator('svg[aria-label="Kin"]').count(), await kinOptions().count(), "each Kin version has its mark");
+  assert.equal(await kinOptions().locator('svg[data-kin-avatar="placeholder"]').count(), await kinOptions().count(), "each Kin version has its mark");
 }
 
 /** Observe real bridge requests, without replacing the model or the transport. */
@@ -557,7 +557,7 @@ test("explicit word, sentence and paragraph asks work with automatic suggestions
     await alternativeUntil(() => alternativeDisk() === before.replace(ASK, chosen) && currentAlternative(alternativeSet(ASK)!)?.text === chosen, "only picking a version applies it");
     // Cycle with the panel open so its paragraph, not the nested word or
     // sentence set, is the target.
-    await altPanel().getByRole("textbox", { name: "Add an alternative" }).press("Meta+Alt+BracketLeft");
+    await altPanel().getByRole("textbox", { name: "Add a version" }).press("Meta+Alt+BracketLeft");
     await alternativeUntil(() => alternativeDisk() === before && currentAlternative(alternativeSet(ASK)!)?.text === ASK, "the owner's paragraph is still one previous-cycle away");
     await closeAltPanel();
   } finally {
@@ -664,7 +664,7 @@ test("a smaller word selected inside a word's phrase version gets its own altern
   await openAlternativeDoc();
   await alternativeCursor("good");
   await page.keyboard.press("Meta+Alt+KeyA");
-  const input = altPanel().getByRole("textbox", { name: "Add an alternative" });
+  const input = altPanel().getByRole("textbox", { name: "Add a version" });
   await input.fill("very good");
   await input.press("Enter");
   await alternativeUntil(() => alternativeDisk().includes(ASK.replace("good", "very good")), "the existing word set can show a phrase");
@@ -722,7 +722,7 @@ test("a read-only mirror refuses Kin alternatives and swaps (KI-87)", { timeout:
     assert.equal(await altPanel().count(), 0, "a direct ask is refused");
     await page.keyboard.press("Meta+Alt+KeyA");
     await altPanel().waitFor();
-    assert.equal(await altPanel().getByRole("textbox", { name: "Add an alternative" }).isDisabled(), true);
+    assert.equal(await altPanel().getByRole("textbox", { name: "Add a version" }).isDisabled(), true);
     assert.equal(await altPanel().getByRole("button", { name: "Ask Kin", exact: true }).isDisabled(), true);
     await page.keyboard.press("Meta+Shift+Alt+KeyA");
     await page.keyboard.press("Meta+Alt+BracketRight");

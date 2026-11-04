@@ -9,10 +9,11 @@ import { onDiscuss, onOpenKin, openKin } from "@/lib/chat";
 import { keysOf, matches } from "@/lib/keys";
 import { SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
 import { hideMargin, setSlot, showMargin, TABS, tabsFor, toggleMargin, toggleTab, useMargin, visibleTab, type MarginTab, type MarginWhere } from "./state";
-import { StashTab, type MarginWriting } from "./Stash";
+import type { MarginWriting } from "./Stash";
 import "./margin.css";
 
 const referencesSlot = (element: HTMLDivElement | null) => setSlot("references", element);
+const stashSlot = (element: HTMLDivElement | null) => setSlot("stash", element);
 const TAB_KEYS: Record<MarginTab, ShortcutId> = { kin: "kin", references: "referencesTab", stash: "stashTab" };
 
 /**
@@ -124,9 +125,7 @@ export function Margin({ where, bottom, writing }: { where: MarginWhere; bottom:
           {where === "writing" && (
             <>
               <Tabs.Panel value="references" keepMounted className="ki-margin-panel ki-margin-scroll" data-tab="references" ref={referencesSlot} />
-              <Tabs.Panel value="stash" keepMounted className="ki-margin-panel" data-tab="stash">
-                <StashTab writing={writing} />
-              </Tabs.Panel>
+              <Tabs.Panel value="stash" keepMounted className="ki-margin-panel" data-tab="stash" ref={stashSlot} />
             </>
           )}
         </Tabs.Root>

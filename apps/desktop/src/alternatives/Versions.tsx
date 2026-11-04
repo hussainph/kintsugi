@@ -18,8 +18,8 @@ export function Versions({ model, viewRef, onAsk }: Props) {
     <div className="ki-versions-heading"><h2>Versions</h2><div role="tablist" aria-label="Version span">
       {(model?.levels ?? ["word", "sentence", "paragraph"] as const).map((level) => <button key={level} type="button" role="tab" aria-selected={model?.level === level} disabled={!model} onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.level(level)}>{names[level]}</button>)}
     </div></div>
-    {model && <><ul role="listbox" aria-label="Versions" className="cm-alt-list">{model.entries.map((entry, index) => <li key={index} role="option" aria-selected={model.highlight === index} aria-current={entry.current || undefined} data-by={entry.by} className="cm-alt-option" onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.pick(index)}>
-      <span className="ki-version-mark" aria-hidden>{entry.by === "kin" ? <KinAvatar /> : <span data-current={entry.current} />}</span><span>{entry.text}</span>
+    {model && <><ul role="listbox" aria-label="Versions" aria-busy={model.asking} className="cm-alt-list">{model.entries.map((entry, index) => <li key={index} role="option" aria-label={entry.by === "kin" ? `Kin: ${entry.text}` : undefined} aria-selected={model.highlight === index} aria-current={entry.current || undefined} data-by={entry.by} className="cm-alt-option" onMouseDown={(event) => event.preventDefault()} onClick={() => actions()?.pick(index)}>
+      <span className="ki-version-mark" aria-hidden>{entry.by === "kin" ? <KinAvatar /> : <span data-current={entry.current} />}</span><span className="cm-alt-option-text">{entry.text}</span>
     </li>)}</ul><div className="ki-versions-add">
       <input ref={input} aria-label="Add a version" placeholder="Add a version" value={text} disabled={model.readOnly} onChange={(event) => setText(event.target.value)} onKeyDown={(event) => {
         if (event.nativeEvent.isComposing) return;
@@ -32,10 +32,11 @@ export function Versions({ model, viewRef, onAsk }: Props) {
           if (level) { event.preventDefault(); command.level(level); }
         }
         else if (event.key === "Backspace" && !text) { event.preventDefault(); command.remove(model.highlight); }
+        else if (event.altKey && event.metaKey && event.code === "KeyA") { event.preventDefault(); if (event.shiftKey) command.askKin(); else command.close(); }
         else if (event.key === "Escape") { event.preventDefault(); command.close(); }
         else if (event.altKey && event.metaKey && (event.code === "BracketLeft" || event.code === "BracketRight")) { event.preventDefault(); command.cycle(event.code === "BracketRight" ? 1 : -1); }
       }} />
-      <Button variant="ghost" size="xs" disabled={model.readOnly} onClick={onAsk}>Ask Kin</Button>
-    </div></>}
+      <Button variant="ghost" size="xs" disabled={model.readOnly || !model.canAsk || model.asking} onClick={onAsk}>{model.asking ? "Thinking…" : "Ask Kin"}</Button>
+    </div>{model.askError && <p role="alert" className="ki-error">{model.askError}</p>}</>}
   </section>;
 }

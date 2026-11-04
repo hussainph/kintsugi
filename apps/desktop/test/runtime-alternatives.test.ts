@@ -237,7 +237,7 @@ test("the selection menu opens alternatives for the selection", { timeout: 60_00
   await page.keyboard.press("Shift+F10");
   const item = page.locator('.ki-selection-menu [data-action="alternatives"]');
   await item.waitFor();
-  assert.match(await item.textContent() ?? "", /Alternatives…\s*⌥⌘A/);
+  assert.match(await item.textContent() ?? "", /Versions…\s*⌥⌘A/);
   await item.click();
   await field().waitFor();
   assert.equal(await panel().getByRole("tab", { selected: true }).textContent(), "Paragraph");
