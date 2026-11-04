@@ -225,7 +225,7 @@ version that's showing, so the file stays plain for Obsidian and publishing.
   a selection, it's the span the selection overlaps most, so a selection a
   space short or a space over still finds it.
 - **`‹ 2 of 3 ›` in place.** When the cursor rests in a span with versions
-  (about 400 ms after a key; at once after a click), a small card shows under
+  (about 400 ms after a key, 300 ms after a click), a small card shows under
   the span's paragraph, starting below the span's end. It's the same
   `‹ 1 of N ›` card as Kin's marks (`docs/kin.md` › The card), with only
   the arrows and the count. ‹ › and ⌥⌘[ / ⌥⌘] swap in place; clicking the

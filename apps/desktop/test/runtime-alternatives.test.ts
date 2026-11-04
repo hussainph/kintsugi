@@ -190,9 +190,10 @@ test("sentence and paragraph: ←/→ switch, ⌫ removes, a mark in the gutter"
   await field().press("Escape");
   await line("The bowl broke").locator(".cm-alt-gutter").waitFor();
   assert.equal(await line("The bowl broke").locator(".cm-alt-gutter .cm-alt-dot").count(), 2);
-  // The cursor rests in the paragraph's versions: their card shows (KI-111).
-  // Wait for it, so no later click lands as it pushes the lines down.
-  await page.locator(".cm-alt-card .ki-step-card").waitFor();
+  // Escape closed the list and cancelled the pending card (KI-111): no
+  // delayed layout change may move the next test's click to another line.
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator(".cm-alt-card .ki-step-card").count(), 0);
   await shot("03-markers-light");
 
   await until(() => stored().sets.length === 3, "a word, a sentence and a paragraph");

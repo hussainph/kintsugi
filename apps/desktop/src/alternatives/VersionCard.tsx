@@ -14,7 +14,6 @@ export function VersionCard({ card, actions }: { card: Card; actions: VersionCar
       onStep={actions.step}
       stepKeys={{ previous: "previousAlternative", next: "nextAlternative" }}
       count={{ label: "All versions", shortcut: "alternatives", onClick: actions.open }}
-      actions={[]}
     />
   );
 }

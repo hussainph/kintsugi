@@ -1141,7 +1141,7 @@ Code: `packages/editor/src/commands.ts` (`/`), `marks.ts` (Kin's marks), `refere
     `index` and `total` (from 1; ‹ › hide with one), `onStep(by)`,
     `stepKeys?` (the shortcut ids ‹ and › show; Kin's marks' by default),
     `text?` (words in the draft's type with the accent rule), `note?` (one
-    line), `actions` (`{ id, label, icon, shortcut?, onClick }`, in order
+    line), `actions?` (`{ id, label, icon, shortcut?, onClick }`, in order
     after the count; `data-card-action={id}`), `count?` (`{ label,
     shortcut?, onClick }` makes the count a button: the versions' list),
     `label?` and `kind?` (`data-kind`). `src/refine/MarkCard.tsx` maps a mark onto it. The

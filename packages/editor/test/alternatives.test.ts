@@ -485,7 +485,7 @@ test("asking on a selection inside an existing word's phrase targets only that s
 // --- KI-111: the cursor finds versions -----------------------------------------
 
 /** DOC with "along an old line" as a stored selection with two versions, and "old" as a word with three. */
-function nested(options: { externalPanel?: boolean } = {}) {
+function nested(options: { externalPanel?: boolean; ask?: Alternatives["ask"] } = {}) {
   const e = editor(DOC, [], options);
   const phrase = e.text().indexOf("along an old line");
   addAlternatives(e.view, { from: phrase, to: phrase + "along an old line".length, texts: ["down an old seam"], by: "owner" });
@@ -550,6 +550,26 @@ test("a partial selection finds the set it overlaps most, spaces and all", () =>
   assert.deepEqual(e.shown(), ["*Kilns teach"]);
 });
 
+test("Ask Kin uses the panel's tab; the shortcut still asks about the exact selection", async () => {
+  const requests: { from: number; to: number; level: string }[] = [];
+  const e = nested({ externalPanel: true, ask: async (at) => { requests.push(at); return ["Another choice"]; } });
+  const phrase = e.text().indexOf("along an old line");
+  e.select(phrase + 1, phrase + 15);
+  openAlternatives(e.view);
+  e.commands().askKin();
+  await settle();
+  assert.deepEqual(requests.map(({ from, to, level }) => ({ from, to, level })), [{ from: phrase, to: phrase + 17, level: "phrase" }]);
+  e.commands().level("word");
+  e.commands().askKin();
+  await settle();
+  assert.equal(e.text().slice(requests[1].from, requests[1].to), "along");
+  assert.equal(requests[1].level, "word");
+  askForAlternatives(e.view);
+  await settle();
+  assert.deepEqual({ from: requests[2].from, to: requests[2].to, level: requests[2].level }, { from: phrase + 1, to: phrase + 15, level: "phrase" });
+  assert.equal(e.text(), DOC, "all asks leave the draft alone");
+});
+
 test("in the margin, the panel follows a partial selection onto its set", () => {
   const e = nested({ externalPanel: true });
   e.cursor(e.text().indexOf("Kilns") + 1);
@@ -598,6 +618,26 @@ test("the switcher shows on a set, steps it in place, hides on typing and moving
   e.cursor(e.text().indexOf("Kilns") + 1);
   assert.equal(versionCard(e.state), null);
   assert.equal(showVersionSwitcher(e.view), false, "nothing to show off a set");
+});
+
+test("a card held still for a pointer click cannot swap a span the cursor has left", () => {
+  const e = nested();
+  e.cursor(e.text().indexOf("old") + 1);
+  showVersionSwitcher(e.view);
+  e.view.dispatch({ selection: EditorSelection.cursor(e.text().indexOf("Kilns") + 2), userEvent: "select.pointer" });
+  assert.equal(versionCard(e.state)?.level, "word", "the card holds still until clicks settle");
+  assert.equal(cycleAlternative(e.view, 1), false, "keys use the new cursor, not the stale card");
+  assert.equal(e.text(), DOC);
+});
+
+test("a new pointer position chooses the innermost set before the old card moves", () => {
+  const e = nested();
+  e.cursor(e.text().indexOf("along") + 1);
+  showVersionSwitcher(e.view);
+  e.view.dispatch({ selection: EditorSelection.cursor(e.text().indexOf("old") + 1), userEvent: "select.pointer" });
+  assert.equal(versionCard(e.state)?.level, "phrase", "the old card still holds its layout");
+  cycleAlternative(e.view, 1);
+  assert.ok(e.text().includes("along an ancient line"), "keys follow the cursor immediately");
 });
 
 test("the switcher's count opens that set's list", () => {
