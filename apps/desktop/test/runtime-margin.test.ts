@@ -43,8 +43,15 @@ const tab = (name: string) => margin().getByRole("tab", { name });
 const sidebar = () => page.locator("[data-slot=sidebar]").first();
 const kin = () => page.getByRole("region", { name: "Kin" });
 
-/** Lets the margin's slide and the sidebar's fold finish. */
-const settle = () => page.waitForTimeout(450);
+/** Lets the margin's slide and the sidebar's fold finish: every CSS
+ *  transition has ended (a slow machine takes longer than the 240 ms). */
+async function settle() {
+  // Two frames: React has committed, effects (the fold) have run, and the
+  // browser has started any transition they cause.
+  for (let i = 0; i < 2; i++) await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await page.waitForFunction(() => document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState !== "running"));
+  await page.waitForTimeout(50);
+}
 
 async function openDoc(path: string) {
   await page.locator(`[title="${path}"]`).click();
@@ -398,7 +405,7 @@ test("with scroll bars always shown, the margin still moves no line", { timeout:
     }));
     const before = await boxes();
     await other.keyboard.press("Meta+Shift+r");
-    await other.waitForTimeout(450);
+    await other.waitForFunction(() => document.getAnimations().every((a) => !(a instanceof CSSTransition) || a.playState !== "running"));
     assert.ok((await other.locator("aside.ki-margin").getAttribute("data-open")) !== null);
     assert.deepEqual(await boxes(), before, "no line moved");
     await other.screenshot({ path: resolve(app.shots, "09-scrollbars-always.png") });
