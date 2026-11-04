@@ -42,7 +42,8 @@
 .ki-margin-tab { position: relative; }
 .ki-margin-panel { display: flex; flex: 1; min-height: 0; flex-direction: column; padding: 0; }
 .ki-margin-panel[hidden] { display: none; }
-.ki-margin-scroll, .ki-margin-panel[data-tab="stash"] {
+.ki-margin-panel[data-tab="stash"] { overflow: hidden; }
+.ki-margin-scroll {
   overflow-y: auto;
   padding: var(--space-s) var(--space-m) var(--space-xxl);
   scrollbar-color: var(--neutral-4) transparent;

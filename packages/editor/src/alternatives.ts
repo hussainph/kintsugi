@@ -262,7 +262,7 @@ function makeField(getConfig: () => Alternatives | undefined) {
         const selection = tr.state.selection.main;
         const phrase = selection.empty ? null : { from: selection.from, to: selection.to };
         const level = phrase ? levelOf(tr.state, phrase) : value.panel.level === "phrase" ? "word" : value.panel.level;
-        value = { ...value, panel: { ...value.panel, pos: phrase ? phrase.from : selection.head, phrase: level === "phrase" ? phrase : null, level, setId: null, homes: {}, highlight: 0 } };
+        value = { ...value, panel: { ...value.panel, pos: phrase ? phrase.from : selection.head, phrase: level === "phrase" ? phrase : null, exact: !!phrase, want: undefined, level, setId: null, homes: {}, highlight: 0 } };
       }
       if (value.panel) {
         let panel = clampPanel(tr.state, value, value.panel);

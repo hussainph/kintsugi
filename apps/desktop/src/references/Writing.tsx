@@ -1,4 +1,6 @@
 import { isolateHistory } from "@codemirror/commands";
+import { EditorView } from "@codemirror/view";
+import { alternativePanelCommands, alternativesPanelModel, closeAlternatives, openAlternatives, type Alternatives } from "@kintsugi/editor/alternatives";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
@@ -12,6 +14,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kintsugi/ui/components
 import { beginComment, reviewDraft } from "@/comments/api";
 import { useComments } from "@/comments/useComments";
 import { useAlternatives } from "@/alternatives/useAlternatives";
+import { Versions } from "@/alternatives/Versions";
+import { useWritingStash } from "@/stash/WritingStash";
+import { hideMargin, marginState, showMargin, useMargin, visibleTab } from "@/margin/state";
 import { registerInsert, type Found } from "@/lib/insert";
 import { memory } from "@/lib/kin";
 import { ideasForDraft } from "@/ideas/api";
@@ -158,6 +163,45 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
   }, [editor.viewRef]);
   const comments = useComments(editor.path, editor.viewRef, sources, open);
   const alternatives = useAlternatives(editor.path);
+  const margin = useMargin();
+  const [versionModel, setVersionModel] = useState<ReturnType<typeof alternativesPanelModel>>(null);
+  const previousModel = useRef(versionModel);
+  const cursorOpening = useRef(false);
+  const showStash = useCallback(() => showMargin("stash"), []);
+  const stash = useWritingStash({ root, path: editor.path, viewRef: editor.viewRef, readOnly: editor.readOnly, show: showStash });
+  const onPanelChange = useCallback((model: ReturnType<typeof alternativesPanelModel>) => {
+    const wasOpen = previousModel.current !== null;
+    previousModel.current = model;
+    setVersionModel(model);
+    if (wasOpen && !model && visibleTab(marginState()) === "stash") hideMargin();
+  }, []);
+  const onPanelOpen = useCallback(() => {
+    showStash();
+    if (!cursorOpening.current) requestAnimationFrame(() => document.querySelector<HTMLInputElement>(".ki-versions input")?.focus());
+  }, [showStash]);
+  const versionHost = useMemo<Alternatives>(() => ({
+    ...(alternatives ?? { path: "", sets: [], onSave: () => {} }),
+    externalPanel: true, onPanelOpen, onPanelChange,
+  }), [alternatives, onPanelOpen, onPanelChange]);
+  // A blank paragraph has no version target. Once the cursor reaches words,
+  // start following it without stealing focus back from the draft.
+  const followVersions = useMemo(() => EditorView.updateListener.of((update) => {
+    if (!update.selectionSet || visibleTab(marginState()) !== "stash" || alternativesPanelModel(update.state)) return;
+    queueMicrotask(() => {
+      const view = editor.viewRef.current;
+      if (!view || view.state !== update.state || visibleTab(marginState()) !== "stash") return;
+      cursorOpening.current = true;
+      try { openAlternatives(view); } finally { cursorOpening.current = false; }
+    });
+  }), [editor.viewRef]);
+  const extensions = useMemo(() => [editor.extensions ?? [], followVersions], [editor.extensions, followVersions]);
+  useEffect(() => {
+    const view = editor.viewRef.current;
+    if (!view) return;
+    if (margin.showing("stash")) {
+      if (!alternativesPanelModel(view.state)) openAlternatives(view);
+    } else closeAlternatives(view);
+  }, [margin.tab, editor.path, alternatives?.path, editor.viewRef]);
   const options = useMemo(() => ({ sources, search, readClipText, onError: onReferenceError, onOpen: open, onParagraph: setParagraph, onKin }), [sources, search, readClipText, onReferenceError, open, onKin]);
 
   // Skills flagged for the / menu. Re-read when he comes back to the window,
@@ -189,8 +233,9 @@ export function Writing({ root, onOpenDoc, onOpenClip, onRefine, ...editor }: Pr
 
   return (
     <div className="reference-writing">
-      <Editor {...editor} references={options} commands={commands} comments={comments} alternatives={alternatives} />
+      <Editor {...editor} references={options} commands={commands} comments={comments} alternatives={versionHost} stash={stash.config} extensions={extensions} />
       {onRefine && <SelectionMenu viewRef={editor.viewRef} path={editor.path} onRefine={onRefine} />}
+      <MarginPortal tab="stash">{stash.content(<Versions model={versionModel} viewRef={editor.viewRef} onAsk={() => { const view = editor.viewRef.current; if (view) alternativePanelCommands(view).askKin(); }} />)}</MarginPortal>
       <MarginPortal tab="references">
         <div className="reference-margin">
           {index.error && <button className="reference-error" onClick={index.refresh}>References unavailable · Retry</button>}
