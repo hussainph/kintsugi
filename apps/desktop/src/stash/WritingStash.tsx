@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { EditorView } from "@codemirror/view";
 import { addRequestedStashItems, addStashNote, focusStashItem, insertStashItem, moveStashItem, removeStashItem, stashItems, stashKinReply, type StashItem } from "@kintsugi/editor/stash";
 import { Button } from "@kintsugi/ui/components/button";
@@ -6,6 +7,7 @@ import { Dialog, DialogContent, DialogTitle } from "@kintsugi/ui/components/dial
 import { toast } from "sonner";
 import { discuss } from "@/lib/chat";
 import { registerStashTarget } from "@/lib/stash";
+import { trackStashWrite } from "@/lib/stashFlush";
 import { snippet } from "@/lib/chips";
 import { StashTab } from "./StashTab";
 import { useStash } from "./useStash";
@@ -16,6 +18,8 @@ type Props = { root: string | null; path: string; viewRef: RefObject<EditorView 
 /** The editor owns undoable items. The host owns the sidecar and shared arrivals. */
 export function useWritingStash({ root, path, viewRef, readOnly = false, show }: Props) {
   const store = useStash(root, path, readOnly);
+  const current = useRef({ root, path, readOnly });
+  current.current = { root, path, readOnly };
   const [picker, setPicker] = useState(false);
   const items = store.items;
   const openPicker = useCallback(() => { show(); setPicker(true); }, [show]);
@@ -39,12 +43,14 @@ export function useWritingStash({ root, path, viewRef, readOnly = false, show }:
     return () => cancelAnimationFrame(frame);
   }, [store.loaded, store.recoveryItems, readOnly, root, path, viewRef]);
   useEffect(() => {
-    if (readOnly || !store.loaded) return;
-    return registerStashTarget(path, (text) => {
+    if (readOnly || !store.loaded || !root) return;
+    return registerStashTarget(path, (text) => trackStashWrite(root, async () => {
       const view = viewRef.current;
-      if (!view || !stashKinReply(view, text)) return false;
-      return true;
-    });
+      if (!view) return false;
+      await invoke("stash_validate_reply", { text, expectedRoot: root });
+      if (viewRef.current !== view || current.current.path !== path || current.current.root !== root || current.current.readOnly) return false;
+      return !!stashKinReply(view, text);
+    }));
   }, [path, root, readOnly, viewRef, store.loaded]);
 
   const insert = (item: StashItem) => {

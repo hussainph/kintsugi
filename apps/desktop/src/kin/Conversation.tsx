@@ -144,7 +144,10 @@ function ReplyActions({ entry, latest }: { entry: Entry; latest: boolean }) {
           {copied ? <Check /> : <Copy />}
         </MessageAction>
       )}
-      {!entry.error && !entry.interrupted && target && <MessageAction label="Stash" onClick={() => { if (stashReply(entry.text)) toast("Added to stash"); else toast.error("Couldn’t add to stash"); }}><Bookmark /></MessageAction>}
+      {!entry.error && !entry.interrupted && target && <MessageAction label="Stash" onClick={async () => {
+        try { if (await stashReply(entry.text)) toast("Added to stash"); else toast.error("Couldn’t add to stash"); }
+        catch (error) { toast.error(String(error)); }
+      }}><Bookmark /></MessageAction>}
       {meta && <span className="ki-message-meta" data-model={entry.model}>{meta}</span>}
     </MessageActions>
   );

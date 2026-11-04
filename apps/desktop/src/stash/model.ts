@@ -30,13 +30,20 @@ export function mergeEditorItems(base: StashItem[], edited: StashItem[], current
     }
     return [{ ...item, ...patch }];
   });
+  // A local addition (a new note, or an undo restoring an inserted or
+  // dismissed row) keeps its editor position: directly after its nearest
+  // surviving earlier neighbour, else before the nearest later one. Unseen
+  // shared arrivals keep their disk positions around it.
   const known = new Set(current.map((item) => item.id));
-  for (const item of edited) {
-    if (!before.has(item.id) && !known.has(item.id)) {
-      next.push(item);
-      known.add(item.id);
-    }
-  }
+  const indexOf = (id: string) => next.findIndex((entry) => entry.id === id);
+  edited.forEach((item, index) => {
+    if (before.has(item.id) || known.has(item.id)) return;
+    let at = -1;
+    for (let j = index - 1; j >= 0 && at < 0; j--) { const found = indexOf(edited[j].id); if (found >= 0) at = found + 1; }
+    for (let j = index + 1; j < edited.length && at < 0; j++) at = indexOf(edited[j].id);
+    next.splice(at < 0 ? next.length : at, 0, item);
+    known.add(item.id);
+  });
   const inBoth = (items: StashItem[]) => items.filter((item) => before.has(item.id) && after.has(item.id)).map((item) => item.id);
   if (JSON.stringify(inBoth(base)) !== JSON.stringify(inBoth(edited))) {
     const order = new Map(edited.map((item, index) => [item.id, index]));

@@ -193,8 +193,11 @@ never re-wraps the draft.
 
 Stash files are plain Markdown at `.kintsugi/stash/<document path>.md`, with
 items separated by `---` and metadata comments for authors and anchors.
-They move with document and folder renames. They never enter the document,
-search results, publishing or exports.
+They move with document and folder renames. Draft saves, renames and vault
+switches wait for pending stash writes, never for Kin's answer. A failed write
+can be retried or discarded with the draft's unsaved changes. Discard restores
+the disk copy, including any unsaved cuts. Stash files never enter search
+results, publishing or exports.
 
 ## Alternatives
 

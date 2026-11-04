@@ -123,9 +123,9 @@ const transitions: { name: string; run: () => Promise<void> }[] = [
     await page.mouse.click(at.x, at.y, { button: "right" });
     await closeSelectionMenu();
   } },
-  { name: "alternatives", run: async () => {
+  { name: "versions", run: async () => {
     await page.keyboard.press("Meta+Alt+KeyA");
-    await page.getByRole("textbox", { name: "Add an alternative" }).and(page.locator(":focus")).waitFor();
+    await page.getByRole("textbox", { name: "Add a version" }).and(page.locator(":focus")).waitFor();
     await escape(page.locator(".cm-alt-panel"));
   } },
   { name: "dim and undo", run: async () => {
@@ -266,7 +266,7 @@ test("the direct edits and editor shortcuts still work through the same transiti
       await page.keyboard.press("Meta+z");
       await page.locator(".cm-dimmed").waitFor({ state: "detached" });
       await page.keyboard.press("Meta+Alt+KeyA");
-      await page.getByRole("textbox", { name: "Add an alternative" }).and(page.locator(":focus")).waitFor();
+      await page.getByRole("textbox", { name: "Add a version" }).and(page.locator(":focus")).waitFor();
       await escape(page.locator(".cm-alt-panel"));
       await page.keyboard.press("Meta+j");
       await kin().getByRole("textbox", { name: "Message Kin" }).waitFor();

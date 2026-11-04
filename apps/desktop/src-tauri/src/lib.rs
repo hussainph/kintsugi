@@ -160,6 +160,7 @@ fn builder() -> tauri::Builder<Runtime> {
             stash::stash_load,
             stash::stash_save,
             stash::stash_dismiss,
+            stash::stash_validate_reply,
             ai::stash::stash_ask,
             ai::chat::comments::kin_comments,
             ai::chat::comments::kin_comment_create,

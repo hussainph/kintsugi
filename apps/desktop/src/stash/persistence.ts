@@ -41,16 +41,20 @@ export class StashSession {
   readonly path: string;
   private api: StashApi;
   private active: () => boolean;
+  private retired = false;
   private writable: () => boolean;
   private onError: (error: unknown) => void;
 
   constructor(path: string, api: StashApi, active: () => boolean, writable: () => boolean, onError: (error: unknown) => void) {
     this.path = path;
     this.api = api;
-    this.active = active;
+    this.active = () => !this.retired && active();
     this.writable = writable;
     this.onError = onError;
   }
+
+  /** Its saved sidecar moved. Ignore late model replies and old editor echoes. */
+  retire = () => { this.retired = true; };
 
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -167,7 +171,7 @@ export class StashSession {
   /** UI updates do not become the config's initial/disk items. Newly loaded
    * IDs are acknowledged without accepting local mutations as a baseline. */
   onUpdate = (path: string, items: StashItem[]) => {
-    if (path !== this.path || !this.active() || !this.state.file) return;
+    if (path !== this.path || !this.active() || !this.writable() || !this.state.file) return;
     const incoming = new Set(items.map((item) => item.id));
     for (const intent of this.pendingRemovals) {
       if (!incoming.has(intent.id)) { intent.observedAbsent = true; intent.restored = false; }
@@ -193,16 +197,36 @@ export class StashSession {
   };
   onChange = (items: StashItem[]) => this.onUpdate(this.path, items);
   onSave = (path: string, items: StashItem[]) => {
-    if (path === this.path) void this.saveEditor(this.editorBase, items);
+    // A navigation barrier can save before CodeMirror's delayed callback.
+    // Its identical late echo must not write the old path after a rename.
+    if (path === this.path && (this.dirty() || JSON.stringify(items) !== JSON.stringify(this.editorBase))) void this.saveEditor(this.editorBase, items);
   };
-  flush = () => {
-    if (!this.editorItems) return this.tail;
+  /** Editor changes not yet on disk, including restores and recoveries. */
+  private dirty() {
+    if (!this.editorItems) return false;
     const disk = new Set(this.state.file?.items.map((item) => item.id));
     const missingRestore = this.editorItems.some((item) => this.restoredIds.has(item.id) && !disk.has(item.id));
     const missingRecovery = [...this.recoveries.keys()].some((id) => !disk.has(id));
-    return missingRestore || missingRecovery || JSON.stringify(this.editorItems) !== JSON.stringify(this.editorBase)
-      ? this.saveEditor(this.editorBase, this.editorItems)
-      : this.tail;
+    return missingRestore || missingRecovery || JSON.stringify(this.editorItems) !== JSON.stringify(this.editorBase);
+  }
+
+  /** A barrier, never called from inside the queue. It waits for every queued
+   * command, including a Kin turn, and for editor changes made meanwhile.
+   * `true` means the current editor stash is on disk; an earlier failed
+   * reload or dismissal does not count against it once nothing is unsaved. */
+  flush = async () => {
+    for (let pass = 0; pass < 8; pass++) {
+      if (!this.active()) return false;
+      const saving = this.dirty();
+      // Queue a dirty save now, in order, so it captures the current snapshot.
+      const waited = saving ? this.saveEditor(this.editorBase, this.editorItems!) : this.tail;
+      const saved = await waited;
+      if (!this.active()) return false;
+      if (saving && !saved) return false;
+      if (!this.dirty() && waited === this.tail) return true;
+    }
+    // A continuously changing queue has not reached a safe navigation point.
+    return false;
   };
 
   add = (item: StashItem) => this.change((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]);
@@ -256,19 +280,20 @@ export class StashSession {
   };
 
   /** Explicit only. Flush first so Kin sees the newest set-aside text.
-   * The turn also occupies the queue: an editor save cannot race a Kin append
-   * between its read and write. Live editor changes still show immediately. */
+   * The model never holds the save queue. Compare-and-save rebases editor
+   * writes over its appends, so a slow provider cannot block draft saves. */
   ask = async (text?: string) => {
     if (!this.canWrite() || this.state.asking) return false;
     this.publish({ asking: true });
     try {
       if (!await this.flush() || !this.canWrite()) return false;
-      return await this.enqueue(async () => {
-        if (!this.canWrite()) return false;
-        await this.api.ask(this.path, text);
-        if (!this.active()) return false;
-        this.publishFile(await this.latest());
-      }, "Couldn't ask Kin. Try again.");
+      await this.api.ask(this.path, text);
+      if (!this.active()) return false;
+      return await this.reload();
+    } catch (error) {
+      this.publish({ error: "Couldn't ask Kin. Try again." });
+      if (this.active()) this.onError(error);
+      return false;
     } finally { this.publish({ asking: false }); }
   };
 }

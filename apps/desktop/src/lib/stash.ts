@@ -1,6 +1,6 @@
 import { onScreenChanged, screenChips } from "./chat";
 
-type Target = { path: string; addReply: (text: string) => boolean };
+type Target = { path: string; addReply: (text: string) => boolean | Promise<boolean> };
 let target: Target | null = null;
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((listener) => listener());
@@ -20,7 +20,7 @@ export function onStashTarget(listener: () => void) {
 export function stashTarget(): string | null {
   return target && screenChips().some((chip) => chip.path === target!.path) ? target.path : null;
 }
-/** An explicit owner action, unlike the rewrite-only proactive entry point. */
-export function stashReply(text: string): boolean {
-  return !!text.trim() && !!stashTarget() && !!target?.addReply(text);
+/** An explicit owner action. Validation finishes before the editor changes. */
+export async function stashReply(text: string): Promise<boolean> {
+  return !!text.trim() && !!stashTarget() && !!target && await target.addReply(text);
 }
