@@ -61,6 +61,7 @@ before(async () => {
   page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await openApp(page, app.url, app.output);
   await open();
+  await page.evaluate(() => document.fonts.ready);
 }, { timeout: TIMEOUT });
 
 after(async () => {
@@ -329,6 +330,14 @@ test("in a flowed paragraph: the cursor finds a sentence across a soft break, an
   await click("of the bowl", 2);
   await cardOf("flowed").waitFor();
   assert.equal(await count().textContent(), "1 of 2");
+  // Visibility precedes CodeMirror's requestMeasure write. A reused card
+  // can still have the previous span's x for a frame on a busy CI runner.
+  // Wait for the same geometry requirement we assert below, not a delay.
+  await until(async () => {
+    const box = await cardOf("flowed").boundingBox();
+    const end = await at("of the bowl.", 12);
+    return !!box && Math.abs(box.x - end.x) <= 2;
+  }, "the flowed sentence's card finishes aligning within 2px");
   const box = (await card().boundingBox())!;
   const end = await at("of the bowl.", 12);
   assert.ok(Math.abs(box.x - end.x) <= 2, `card at ${box.x}, the sentence ends at ${end.x}`);

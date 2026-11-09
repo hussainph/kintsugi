@@ -46,7 +46,10 @@ The shared editor typography and controls are preserved. List-shaped indented co
 - `cargo build -p kintsugi --bin kintsugi --no-default-features --features headless -j "$VOLLI_CONCURRENCY_HINT"` with `CARGO_BUILD_JOBS=2` and `VOLLI_CONCURRENCY_HINT=2`: passed.
 - `CARGO_BUILD_JOBS=2 VOLLI_CONCURRENCY_HINT=2 KINTSUGI_INDENT_EVIDENCE=1 pnpm --filter @kintsugi/desktop exec node --test --test-concurrency=1 test/runtime-indent.test.ts test/runtime-editor.test.ts`: 28 passed; one baseline-only test skipped.
 - `CARGO_BUILD_JOBS=2 VOLLI_CONCURRENCY_HINT=2 pnpm --filter @kintsugi/desktop exec node --test --test-concurrency=1 test/runtime-indent.test.ts test/runtime-export.test.ts`: 11 passed; one baseline-only test skipped. Real PDF compilation passed; HTML kept four nested list containers; LinkedIn text kept three indentation levels.
+- `CARGO_BUILD_JOBS=2 VOLLI_CONCURRENCY_HINT=2 pnpm --filter @kintsugi/desktop exec node --test --test-concurrency=1 test/runtime-versions.test.ts`: 14 passed.
 - `cargo fmt --all --check`: passed.
 - `git diff --check`: passed.
+
+The first CI run passed TypeScript, Rust, packaged macOS smoke and the iOS Release build. Its runtime job found a Versions-card geometry race: visibility was observed before CodeMirror's queued alignment write. The test now waits for fonts and the original two-pixel alignment condition before asserting it. No product code or tolerance changed; the focused 14-test suite passed locally before and after the fix.
 
 The first runtime run found a test locator that also matched the new fixture headings. The locator was narrowed and both suites passed on rerun. Light-mode screenshots and the 8.44-second video were inspected. A separate Volli Browser Tab check showed multi-level source indentation in the existing editorial font and no console errors.
