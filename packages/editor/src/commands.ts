@@ -288,7 +288,7 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
     const menu = view.state.field(menuField);
     if (!menu) return false;
     const length = menu.items.length;
-    view.dispatch({ effects: setMenu.of({ ...menu, index: (menu.index + direction + length) % length }) });
+    view.dispatch({ effects: setMenu.of({ ...menu, index: length ? (menu.index + direction + length) % length : 0 }) });
     return true;
   }
 
@@ -298,7 +298,12 @@ export function commandExtensions(getCommands: () => Commands | undefined): Exte
       { key: "ArrowDown", run: (view) => move(view, 1) },
       { key: "ArrowUp", run: (view) => move(view, -1) },
       { key: "Enter", run: (view) => choose(view) },
-      { key: "Tab", run: (view) => choose(view) },
+      { key: "Tab", run: (view) => {
+        if (!view.state.field(menuField)) return false;
+        choose(view);
+        return true; // An empty popup must not fall through to indentation.
+      } },
+      { key: "Shift-Tab", run: (view) => move(view, -1) },
       { key: "Escape", run: (view) => { const menu = view.state.field(menuField); if (!menu) return false; view.dispatch({ effects: [setMenu.of(null), dismissMenu.of(menu.from)] }); return true; } },
     ])),
     menuTheme,

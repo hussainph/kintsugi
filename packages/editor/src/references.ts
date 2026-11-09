@@ -486,7 +486,12 @@ export function referenceExtensions(getConfig: () => References | undefined): Ex
       { key: "ArrowUp", run: (view) => move(view, -1) },
       { key: "Enter", run: (view) => choose(view) },
       { key: "Shift-Enter", run: (view) => choose(view, undefined, true) },
-      { key: "Tab", run: (view) => choose(view) },
+      { key: "Tab", run: (view) => {
+        if (!view.state.field(pickerField)) return false;
+        choose(view);
+        return true; // An empty popup must not fall through to indentation.
+      } },
+      { key: "Shift-Tab", run: (view) => move(view, -1) },
       { key: "Escape", run: (view) => { const picker = view.state.field(pickerField); if (!picker) return false; view.dispatch({ effects: [setPicker.of(null), dismissPicker.of(picker.from)] }); return true; } },
     ])),
     EditorView.domEventHandlers({
