@@ -6,6 +6,8 @@ import { Shortcut, ShortcutHint } from "@/components/Shortcuts";
 import { DocTags } from "@/components/Tags";
 import type { ShortcutId } from "@/lib/shortcuts";
 import { ExportMenu } from "@/export/ExportMenu";
+import type { DocumentCount } from "@kintsugi/editor/Editor";
+import { documentCountLabel } from "@/lib/documentCount";
 
 type Save = "saved" | "editing" | "error";
 
@@ -20,7 +22,7 @@ export function DocumentBar({
   onToggleStatus,
   onPublish,
   onIdeas,
-  words,
+  count,
   save,
   onShortcuts,
 }: {
@@ -33,7 +35,7 @@ export function DocumentBar({
   onToggleStatus: () => void;
   onPublish: () => void;
   onIdeas: () => void;
-  words: number;
+  count: DocumentCount;
   save: Save;
   onShortcuts: () => void;
 }) {
@@ -83,7 +85,7 @@ export function DocumentBar({
         </BarButton>
       </Toolbar.Root>
       <div className="ki-document-bar-info">
-        <span className="ki-document-bar-words">{words.toLocaleString()} {words === 1 ? "word" : "words"}</span>
+        <span className="ki-document-bar-words">{documentCountLabel(count)}</span>
         <span role="status" className="ki-document-bar-save" data-save={save}>
           {save === "error" ? <AlertCircle /> : save === "editing" ? <NotebookPen /> : <CircleCheckIcon />}
           {{ saved: "Saved", editing: "Editing", error: "Not saved" }[save]}

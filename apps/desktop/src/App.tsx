@@ -16,7 +16,7 @@ import { matches } from "@/lib/keys";
 import { EDIT_KEYS, SHORTCUTS, type ShortcutId } from "@/lib/shortcuts";
 import { SidebarInset, SidebarProvider } from "@kintsugi/ui/components/sidebar";
 import { Toaster } from "@kintsugi/ui/components/sonner";
-import { External, paragraphRange, replaceText } from "@kintsugi/editor/Editor";
+import { External, paragraphRange, replaceText, type DocumentCount } from "@kintsugi/editor/Editor";
 import { setTextSize, textSizeForKey } from "@/lib/textSize";
 import { Writing } from "@/references/Writing";
 import { UsedIn } from "@/references/UsedIn";
@@ -42,7 +42,7 @@ import { ideasForDraft, onOpenIdeas } from "@/ideas/api";
 import { Publish } from "@/publish/Publish";
 import { openPublish } from "@/lib/blog";
 import { Export } from "@/export/Export";
-import { field, setField, wordCount } from "@kintsugi/core/frontmatter";
+import { field, setField } from "@kintsugi/core/frontmatter";
 import { setTags, tags as tagsOf, vocabulary } from "@kintsugi/core/tags";
 import { canMove, type FolderStyle, type FolderStyles } from "@kintsugi/core/folders";
 import { Changed, phone, PhoneStatus } from "@/lib/phone";
@@ -91,6 +91,13 @@ export default function App() {
   const [folderStyles, setFolderStyles] = useState<FolderStyles>({});
   const [doc, setDoc] = useState<{ path: string; text: string } | null>(null);
   const [text, setText] = useState("");
+  const [count, setCount] = useState<{ path: string; value: DocumentCount } | null>(null);
+  const onCount = useCallback((path: string, value: DocumentCount) => setCount((now) => {
+    if (now?.path === path && now.value.words === value.words &&
+      now.value.selection?.words === value.selection?.words &&
+      now.value.selection?.characters === value.selection?.characters) return now;
+    return { path, value };
+  }), []);
   const [selectedDir, setSelectedDir] = useState("");
   const [palette, setPalette] = useState<PaletteMode | null>(null);
   const [save, setSave] = useState<SaveState>("saved");
@@ -1058,6 +1065,7 @@ export default function App() {
             path={doc.path}
             text={doc.text}
             onChange={onChange}
+            onCount={onCount}
             external={external}
             viewRef={viewRef}
             readOnly={!!field(doc.text, "mirror")}
@@ -1084,7 +1092,7 @@ export default function App() {
             onToggleStatus={toggleStatus}
             onPublish={openPublish}
             onIdeas={() => ideasForDraft(doc.path)}
-            words={wordCount(text)}
+            count={count?.path === doc.path ? count.value : { words: 0, selection: null }}
             save={save}
             onShortcuts={() => setCheatsheet(true)}
           />
