@@ -20,6 +20,8 @@ import { dimExtensions } from "./dim";
 import { alternativeExtensions, refreshAlternatives, type Alternatives } from "./alternatives";
 import { stashExtensions, refreshStash, type Stash } from "./stash";
 import { markExtensions, type Marks } from "./marks";
+import { documentCounts, type DocumentCount } from "./counts.ts";
+export type { DocumentCount } from "./counts.ts";
 
 export type { KinAnchor, References } from "./references";
 export type { CommandAction, CommandSkill, Commands } from "./commands";
@@ -49,6 +51,7 @@ type Props = {
    *  Each call reads the whole document; leave it out to read the text on
    *  your own schedule from `viewRef` instead (the phone does). */
   onChange?: (path: string, text: string, external: boolean) => void;
+  onCount?: (path: string, count: DocumentCount) => void;
   external?: External | null;
   viewRef: RefObject<EditorView | null>;
   references?: References;
@@ -73,12 +76,14 @@ type Props = {
 
 /** One EditorView for the app. Each document keeps its own EditorState (and so
  *  its own undo history) for as long as this component lives. */
-export function Editor({ path, text, onChange, external, viewRef, references, commands, comments, alternatives, stash, marks, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
+export function Editor({ path, text, onChange, onCount, external, viewRef, references, commands, comments, alternatives, stash, marks, readOnly = false, extensions = [], focusOnOpen = true }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const states = useRef(new Map<string, EditorState>());
   const current = useRef<string | null>(null);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onCountRef = useRef(onCount);
+  onCountRef.current = onCount;
   const referencesRef = useRef(references);
   referencesRef.current = references;
   const commandsRef = useRef(commands);
@@ -100,6 +105,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
       selection: EditorSelection.cursor(bodyStart(doc)),
       extensions: [
         history(),
+        EditorState.allowMultipleSelections.of(true),
         drawSelection(),
         EditorView.lineWrapping,
         search({ top: true }),
@@ -111,6 +117,7 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         softBreaks,
         underlines,
         dimExtensions(docPath),
+        onCountRef.current ? documentCounts : [],
         theme,
         placeholder("Start writing…"),
         EditorState.readOnly.of(readOnly),
@@ -122,7 +129,11 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
         stashExtensions(() => stashRef.current && { ...stashRef.current, currentPath: docPath }),
         markExtensions(() => marksRef.current),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged || update.selectionSet) referencesRef.current?.onParagraph?.(currentParagraph(update.state));
+          if (update.docChanged || update.selectionSet) {
+            referencesRef.current?.onParagraph?.(currentParagraph(update.state));
+            const counts = update.state.field(documentCounts, false);
+            if (counts) onCountRef.current?.(docPath, counts);
+          }
           if (!update.docChanged || !onChangeRef.current) return;
           const fromElsewhere = update.transactions.some((tr) => tr.annotation(Transaction.remote));
           onChangeRef.current(docPath, update.state.doc.toString(), fromElsewhere);
@@ -147,6 +158,8 @@ export function Editor({ path, text, onChange, external, viewRef, references, co
     if (current.current) states.current.set(current.current, view.state);
     view.setState(states.current.get(path) ?? create(path, text));
     current.current = path;
+    const counts = view.state.field(documentCounts, false);
+    if (counts) onCountRef.current?.(path, counts);
     view.dispatch({ effects: refreshReferences.of(null) });
     referencesRef.current?.onParagraph?.(currentParagraph(view.state));
     if (focusOnOpen) view.focus();

@@ -55,7 +55,12 @@ export function body(text: string): string {
 
 /** Words in the body, leaving out dimmed text (comments). */
 export function wordCount(text: string): number {
-  return withoutDimmed(body(text)).match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
+  return countWords(withoutDimmed(body(text)));
+}
+
+/** The shared word rule, for text whose frontmatter/comments are already removed. */
+export function countWords(text: string): number {
+  return text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu)?.length ?? 0;
 }
 
 /** The frontmatter block plus the blank line after it, and the writing
