@@ -4,6 +4,7 @@
 
 import { ASSET, longDate, type Piece, type RenderContext, type Rendered } from "./export.ts";
 import { plain, smartQuotes, type Block, type Inline } from "./markdown.ts";
+import { phantomItem } from "./normalize.ts";
 import type { Check } from "./publish.ts";
 
 export const escapeHtml = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -23,6 +24,7 @@ h2 { font-size: 1.35rem; } h3 { font-size: 1.12rem; } h4, h5, h6 { font-size: 1r
 p, ul, ol, blockquote, figure, pre, table, aside { margin: 0 0 1.15em; }
 ul, ol { padding-left: 1.4em; } li + li { margin-top: .25em; } li > ul, li > ol { margin: .25em 0 0; }
 li.task { list-style: none; } li.task::marker { content: none; }
+li.phantom { list-style: none; } li.phantom::marker { content: none; }
 a { color: var(--gold); text-decoration: underline; text-decoration-color: var(--gold-line); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 code, pre { font: .84em/1.55 ui-monospace, "SF Mono", Menlo, monospace; }
 :not(pre) > code { background: var(--wash); border-radius: 4px; padding: .1em .3em; }
@@ -90,8 +92,11 @@ export function renderHtml(piece: Piece, context: RenderContext): Rendered {
         const start = b.ordered && b.start !== 1 ? ` start="${b.start}"` : "";
         const items = b.items.map((item) => {
           const tight = item.c.length === 1 && item.c[0].t === "p" ? inline(item.c[0].c) : blocks(item.c);
+          // A synthetic parent (KI-112) only carries nested lists: hide its
+          // marker so no stray empty bullet shows; children keep their indent.
+          const phantom = phantomItem(item);
           return item.task === null
-            ? `<li>${tight}</li>`
+            ? `<li${phantom ? ` class="phantom"` : ""}>${tight}</li>`
             : `<li class="task"><input type="checkbox" disabled${item.task ? " checked" : ""}> ${tight}</li>`;
         });
         return `<${tag}${start}>\n${items.join("\n")}\n</${tag}>`;

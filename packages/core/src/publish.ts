@@ -4,6 +4,7 @@
  *  desktop backend checks the plan against the repository and writes it. */
 
 import { cutRange, scanSpans } from "./dim.ts";
+import { normalizeMarkdown } from "./normalize.ts";
 import { frontmatter, splitFrontmatter } from "./frontmatter.ts";
 import { parseWikilinks, resolveReference, type ReferenceSource } from "./references.ts";
 
@@ -326,7 +327,8 @@ export function planPublish(input: PublishInput): PublishPlan {
   checks.push(...links.checks);
 
   const rewritten = applyEdits(original, edits);
-  let body = rewritten.replace(/^\s*\n/, "").replace(/\s+$/, "") + "\n";
+  // List indentation normalized (KI-112): the blog gets CommonMark-valid nesting.
+  let body = normalizeMarkdown(rewritten).replace(/^\s*\n/, "").replace(/\s+$/, "") + "\n";
 
   // MDX: components need imports, and imports need to exist in the repo.
   const { code: finalCode } = protectedSpans(body);

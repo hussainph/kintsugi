@@ -1,5 +1,7 @@
 # KI-112: Tab indentation
 
+PR #70's original evidence follows. [Repeated indentation](multilevel.md) supersedes its first-item no-op decision and adds multi-level evidence.
+
 Tab and Shift-Tab now indent and outdent in the shared editor. List items move with their continuation lines and children. Ordered lists renumber in the same undo step. The phone uses this keymap too.
 
 ## Evidence

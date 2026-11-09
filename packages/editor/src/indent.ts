@@ -82,7 +82,7 @@ function items(state: EditorState) {
     }
     const prefix = /^(?:[ \t]*>[ \t]?)*[ \t]*/.exec(line.text)![0];
     const raw = line.text.slice(prefix.length);
-    if (!/^([-+*]|\d+[.)])(?:[ \t]+.*|)$/.test(raw) || /^(?:[-*][ \t]*){3,}$/.test(raw)) {
+    if (!/^([-+*]|\d+[.)])(?:[ \t]+.*|)$/.test(raw) || /^(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,})$/.test(raw)) {
       if (raw.trim() && !/^[ \t>]/.test(line.text)) { prior = null; stack.length = 0; }
       continue;
     }
@@ -94,6 +94,17 @@ function items(state: EditorState) {
       stack.pop();
     }
     if (!found.has(n)) {
+      // `2024. ...` cannot interrupt a prose paragraph. Don't silently turn
+      // its continuation into a list and renumber it. A lazy marker inside
+      // an actual list, however, can be a skip-level child that we must keep.
+      let paragraphLine = n;
+      let insideList = false;
+      const parsed = syntaxTree(state);
+      for (let node: ReturnType<typeof parsed.resolveInner> | null = parsed.resolveInner(from, 1); node; node = node.parent) {
+        if (node.name === "Paragraph") paragraphLine = state.doc.lineAt(node.from).number;
+        if (node.name === "ListItem") insideList = true;
+      }
+      if (paragraphLine < n && !insideList) continue;
       const parent = stack.at(-1) ?? null;
       const previous = prior && found.get(prior)!;
       const sibling = previous && previous.quotes === quotes && column(state, previous.from) === column(state, from) &&
@@ -158,7 +169,12 @@ function indentation(outdent: boolean): StateCommand {
         let previous = item.previous ? listItems.get(item.previous) : undefined;
         if (!previous && !outdent) {
           let above = n - 1;
-          while (above > 0 && !state.doc.line(above).text.trim()) above--;
+          while (above > 0) {
+            const text = state.doc.line(above).text;
+            const end = quoteEnd(text, item.quotes);
+            if (text.trim() && (quoteDepth(state, state.doc.line(above).from + end) !== item.quotes || text.slice(end).trim())) break;
+            above--;
+          }
           // A different list directly above may be the destination (e.g. an
           // ordered sublist under a bullet). Don't jump across prose or quotes.
           const candidates = [...listItems.entries()].filter(([line, candidate]) => line < n && candidate.quotes === item.quotes &&
@@ -173,7 +189,9 @@ function indentation(outdent: boolean): StateCommand {
           step = parent ? current > contentColumn(state, parent)
             ? Math.min(step, current - contentColumn(state, parent))
             : current - column(state, parent.from)
-            : Math.min(step, current - base);
+            // Up to three spaces can still be a top-level CommonMark item.
+            // Clear that last level, including its optional alignment space.
+            : current - base < step * 2 ? current - base : step;
         } else if (item.previous && destinations.has(item.previous)) {
           step = destinations.get(item.previous)! - column(state, item.from);
         } else if (previous) {

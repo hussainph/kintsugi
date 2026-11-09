@@ -7,7 +7,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { openApp, startApp, type App } from "./headless-app.ts";
 
 const DOC = "drafts/indentation.md";
-const TEXT = "---\ntitle: Indentation\nstatus: draft\n---\n\n# Indentation\n\n1. Parent\n2. Child\n3. Last\n\n- [ ] Task parent\n- [x] Task child\n\nPlain line\nSecond line\n\n## First item\n\n- First item\n- Following item\n\n## Single item\n\n- Only item\n\n## Mixed lists\n\n- Bullet parent\n\n1. Numbered child\n\n";
+const TEXT = "---\ntitle: Indentation\nstatus: draft\n---\n\n# Indentation\n\n1. Parent\n2. Child\n3. Last\n\n- [ ] Task parent\n- [x] Task child\n\nPlain line\nSecond line\n\n## First item\n\n- First item\n- Following item\n\n## Single item\n\n- Only item\n\n## Mixed lists\n\n- Bullet parent\n\n1. Numbered child\n\n## Prose\n\nSome intro\n2024. The year\n\n";
 const baseline = process.env.KINTSUGI_INDENT_BEFORE === "1";
 let app: App, browser: Browser, page: Page;
 let videoStarted = 0, clipStarted = 0, clipEnded = 0;
@@ -160,6 +160,11 @@ test("tasks, plain lines and selected lines indent without losing focus", { skip
   await page.keyboard.press("Shift+End");
   await page.keyboard.press("Tab");
   await saved(TEXT.replace("Plain line\nSecond line", "  Plain line\n  Second line"));
+  await page.keyboard.press("Shift+Tab");
+  await saved(TEXT);
+  await endOf("2024. The year");
+  await page.keyboard.press("Tab");
+  await saved(TEXT.replace("2024. The year", "  2024. The year"));
   await page.keyboard.press("Shift+Tab");
   await saved(TEXT);
   await shots("after-outdent");

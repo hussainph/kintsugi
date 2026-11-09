@@ -88,7 +88,7 @@ before(async () => {
   writeFileSync(resolve(vault, "media/bowl.png"), png());
   writeFileSync(resolve(vault, DOC), onDisk(DOC).replace(
     "## Practice",
-    "Notes to self stay private. <!-- tighten the opening -->\n\n![A mended bowl](../media/bowl.png \"The seam, in gold.\")\n\n## Practice",
+    "Notes to self stay private. <!-- tighten the opening -->\n\n![A mended bowl](../media/bowl.png \"The seam, in gold.\")\n\n      - Deep orphan\n\n1. Ordered parent\n       1. Deep ordered\n\n## Practice",
   ));
 
   const [frontend, backend] = [await freePort(), await freePort()];
@@ -207,6 +207,8 @@ test("LinkedIn: plain text with links spelled out, copied to the clipboard", { t
   assert.ok(copied.startsWith("On craft and repair\n\nThere is a moment, somewhere in the second hour of sanding,"));
   assert.ok(copied.includes("I wrote about this before in Repair is a kind of attention, and I keep returning to\nGolden joinery (https://www.britannica.com/art/kintsugi)") || copied.includes("Golden joinery (https://www.britannica.com/art/kintsugi)"));
   assert.ok(copied.includes("“The gold seam is not the flaw."), "quotes are quoted, not >");
+  assert.ok(copied.includes("         ◦ Deep orphan"), "orphan depth survives as text, not an empty marker");
+  assert.ok(copied.includes("         1. Deep ordered"), "skip-level ordered depth survives");
   assert.ok(copied.includes("\n\nSources\n• Golden joinery"));
   assert.ok(copied.trimEnd().endsWith(STATEMENT));
   assert.ok(!/\[\[|\]\(|^#{1,6} |^> |\*\*|tighten the opening/m.test(copied), "no Markdown and no private notes");
@@ -220,6 +222,14 @@ test("HTML: one self-contained file, previewed in a sandboxed frame", { timeout:
   await frame.getByRole("heading", { name: "On craft and repair" }).waitFor();
   await frame.getByText("Fig. 1").waitFor();
   await frame.getByText(STATEMENT).waitFor();
+  for (const text of ["Deep orphan", "Deep ordered"]) {
+    const item = frame.locator("li").filter({ hasText: text }).last();
+    assert.equal(await item.evaluate((el) => {
+      let levels = 0;
+      for (let parent = el.parentElement; parent; parent = parent.parentElement) if (["UL", "OL"].includes(parent.tagName)) levels++;
+      return levels;
+    }), 4, `${text} retains three indentation levels`);
+  }
   await shot("5-export-html");
 
   const target = resolve(config, "on-craft-and-repair.html");

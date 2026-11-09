@@ -5,6 +5,7 @@
 
 import type { Piece, RenderContext, Rendered } from "./export.ts";
 import { plain, type Block, type Inline } from "./markdown.ts";
+import { phantomItem } from "./normalize.ts";
 import type { Check } from "./publish.ts";
 
 /** LinkedIn's limit for a post. */
@@ -57,8 +58,13 @@ function blocks(content: readonly Block[], images: { count: number }, depth = 0)
       }
       case "list": {
         const pad = "   ".repeat(depth);
-        const lines = b.items.map((item, n) => {
-          const marker = item.task !== null ? (item.task ? "☑" : "☐") : b.ordered ? `${b.start + n}.` : depth ? "◦" : "•";
+        let number = b.start;
+        const lines = b.items.map((item) => {
+          // A synthetic parent (KI-112) only carries nested lists: no bullet
+          // line, children at their own depth. Ordered numbering skips it, so
+          // no gap shows.
+          if (phantomItem(item)) return item.c.map((child) => blocks([child], images, depth + 1).join("\n")).join("\n");
+          const marker = item.task !== null ? (item.task ? "☑" : "☐") : b.ordered ? `${number++}.` : depth ? "◦" : "•";
           const [first, ...rest] = item.c;
           const head = first?.t === "p" ? inline(first.c, images) : first ? blocks([first], images, depth + 1).join("\n") : "";
           const tail = (first?.t === "p" ? rest : []).flatMap((child) => child.t === "list" ? blocks([child], images, depth + 1) : blocks([child], images, depth + 1).map((t) => `${pad}   ${t}`));
