@@ -41,7 +41,7 @@ function ReaderBlock({ block }: { block: Block }) {
     case 'list':
       return <View style={styles.list}>{block.items.map((item, i) => (
         <View key={i} style={styles.listRow}>
-          <Text style={[styles.body, styles.bullet, { color: theme.muted }]}>{item.task !== null ? (item.task ? '☑' : '☐') : block.ordered ? `${block.start + i}.` : '•'}</Text>
+          <Text style={[styles.body, styles.bullet, { color: theme.muted }]}>{item.task === null && item.c.length > 0 && item.c.every((child) => child.t === 'list') ? '' : item.task !== null ? (item.task ? '☑' : '☐') : block.ordered ? `${block.start + i}.` : '•'}</Text>
           <View style={[styles.listContent, styles.blocks]}><ReaderBlocks blocks={item.c} /></View>
         </View>
       ))}</View>;

@@ -4,6 +4,8 @@
 
 import { GFM, parser } from "@lezer/markdown";
 
+import { normalizeMarkdown } from "./normalize.ts";
+
 export type Inline =
   | { t: "text"; v: string }
   | { t: "em"; c: Inline[] }
@@ -213,9 +215,12 @@ function blocks(src: string, node: SyntaxNode): Block[] {
   return out;
 }
 
-/** Reads Markdown into blocks. */
+/** Reads Markdown into blocks. List indentation is normalized first (KI-112):
+ *  a first item Tab-indented past what CommonMark can nest gets synthetic
+ *  empty parents, so the depth survives instead of turning into code. */
 export function parseMarkdown(src: string): Block[] {
-  return blocks(src, markdown.parse(src).topNode);
+  const normalized = normalizeMarkdown(src);
+  return blocks(normalized, markdown.parse(normalized).topNode);
 }
 
 /** Every inline image (figures included) in reading order. */

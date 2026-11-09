@@ -204,3 +204,32 @@ test("several orphan siblings move together after losing CommonMark list syntax"
   assert.equal(state.doc.toString(), "      - One\n      - Two\n\nAfter");
   assert.equal(run(state, outdentLines).doc.toString(), "    - One\n    - Two\n\nAfter");
 });
+
+test("an adjacent list's last item remains the destination after continuation text", () => {
+  const before = "- Parent\n- Last parent\n  continuation\n\n4. Ch|ild";
+  assert.equal(marked(run(start(before), indentLines)), "- Parent\n- Last parent\n  continuation\n\n  1. Ch|ild");
+});
+
+test("quote-only blank lines do not block an adjacent list destination", () => {
+  const before = "> 10. Parent\n>\n> - Ch|ild";
+  const state = run(start(before), indentLines);
+  assert.equal(marked(state), "> 10. Parent\n>\n>     - Ch|ild");
+  assert.equal(marked(run(state, outdentLines)), before);
+});
+
+test("top-level list alignment spaces outdent to column zero", () => {
+  for (const spaces of [1, 2, 3]) {
+    assert.equal(marked(run(start(" ".repeat(spaces) + "- On|ly"), outdentLines)), "- On|ly");
+  }
+  assert.equal(marked(run(start("     - On|ly"), outdentLines)), "   - On|ly");
+});
+
+test("numbered prose continuations keep plain-line behavior without renumbering", () => {
+  for (const prefix of ["", "> "]) {
+    const before = `${prefix}Some intro\n${prefix}2024. The year in revi|ew`;
+    const state = run(start(before), indentLines);
+    // Plain lines indent before any quote prefix, as they did before KI-112.
+    assert.equal(marked(state), before.replace(`${prefix}2024.`, `  ${prefix}2024.`));
+    assert.equal(marked(run(state, undo)), before);
+  }
+});

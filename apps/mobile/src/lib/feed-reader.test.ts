@@ -106,3 +106,20 @@ const longLine = 123;
   assert.ok(list.items[0].c.some((b) => b.t === 'list'));
   assert.deepEqual(blocks[4], { t: 'figure', src: 'https://example.com/river.png', alt: 'A river', caption: 'The river at dusk' });
 });
+
+test('orphan and skip-level list items keep three levels in the phone reader', () => {
+  for (const text of ['      - Only', '- Parent\n      - Child', '1. Parent\n       1. Child']) {
+    const doc = readerDocument(text);
+    let blocks = doc.blocks;
+    let levels = 0;
+    while (blocks.some((block) => block.t === 'list')) {
+      const list = blocks.find((block) => block.t === 'list');
+      assert.ok(list?.t === 'list');
+      levels++;
+      blocks = list.items[0].c;
+      assert.ok(!blocks.some((block) => block.t === 'code'));
+    }
+    assert.equal(levels, 4, text);
+    assert.ok(blocks.some((block) => block.t === 'p'));
+  }
+});
