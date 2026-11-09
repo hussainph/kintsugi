@@ -59,6 +59,9 @@ export const theme = EditorView.theme({
   // content padding. Keep the gutter on each line (and CodeMirror's 6/2 px
   // insets) so wrapped ranges and the final newline stay in the text column.
   ".cm-line": { paddingLeft: "calc(var(--editor-gutter) + 6px)", paddingRight: "calc(var(--editor-gutter) + 2px)" },
+  // An orphan/skip-level list marker is source, not indented code. The
+  // Markdown parser otherwise gives it the monospace code font.
+  ".cm-line.cm-list-source span": { ...body },
   ".cm-line.cm-blank": { paddingBottom: "var(--editor-paragraph-gap)" },
   ".cm-line.cm-heading": { paddingTop: "calc(var(--editor-size) * 0.5)" },
   ".cm-underline": { textDecoration: "underline", textUnderlineOffset: "0.15em" },
@@ -130,6 +133,7 @@ export const frontmatterLines = ViewPlugin.fromClass(
 
 const blankLine = Decoration.line({ class: "cm-blank" });
 const headingLine = Decoration.line({ class: "cm-heading" });
+const listSourceLine = Decoration.line({ class: "cm-list-source" });
 
 /** Blank lines (the gap between paragraphs) and headings, for spacing. */
 function spacingDecorations(view: EditorView): DecorationSet {
@@ -139,6 +143,12 @@ function spacingDecorations(view: EditorView): DecorationSet {
     for (let pos = from; pos <= to;) {
       const line = view.state.doc.lineAt(pos);
       if (!line.text.trim()) builder.add(line.from, line.from, blankLine);
+      else if (/^(?:[ \t]*>[ \t]?)*[ \t]+(?:[-+*]|\d+[.)])(?:[ \t]+|$)/.test(line.text)) {
+        // Fenced code is a different syntax node and stays monospace.
+        for (let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(line.to, -1); node; node = node.parent) {
+          if (node.name === "CodeBlock") { builder.add(line.from, line.from, listSourceLine); break; }
+        }
+      }
       else if (line.text.startsWith("#")) {
         for (let node: ReturnType<typeof tree.resolveInner> | null = tree.resolveInner(line.from, 1); node; node = node.parent) {
           if (node.name.startsWith("ATXHeading")) { builder.add(line.from, line.from, headingLine); break; }

@@ -47,7 +47,85 @@ function items(state: EditorState) {
       previous: previous ? state.doc.lineAt(previous.from).number : null,
     });
   } });
-  return found;
+  // CommonMark drops orphan/skip-level markers into CodeBlock or paragraph
+  // text. They are still editable list items here. Fenced examples, HTML and
+  // frontmatter remain literal; indented list-looking text uses list semantics.
+  const excluded: { from: number; to: number }[] = [];
+  tree(state).iterate({ enter(node) {
+    if (["FencedCode", "HTMLBlock", "Frontmatter"].includes(node.name)) {
+      excluded.push({ from: node.from, to: node.to });
+      return false;
+    }
+  } });
+  // A fence inside an orphan item's indentation can itself be parsed as
+  // indented code. Protect its literal examples independently of that parse.
+  let fence: { char: string; size: number; from: number } | null = null;
+  for (let n = 1; n <= state.doc.lines; n++) {
+    const line = state.doc.line(n);
+    const match = /^(?:[ \t]*>[ \t]?)*[ \t]*(`{3,}|~{3,})(.*)$/.exec(line.text);
+    if (!match) continue;
+    if (!fence) fence = { char: match[1][0], size: match[1].length, from: line.from };
+    else if (match[1][0] === fence.char && match[1].length >= fence.size && !match[2].trim()) {
+      excluded.push({ from: fence.from, to: line.to });
+      fence = null;
+    }
+  }
+  if (fence) excluded.push({ from: fence.from, to: state.doc.length });
+  let prior: number | null = null;
+  const stack: number[] = [];
+  for (let n = 1; n <= state.doc.lines; n++) {
+    const line = state.doc.line(n);
+    if (excluded.some((range) => line.from >= range.from && line.from < range.to)) {
+      prior = null;
+      stack.length = 0;
+      continue;
+    }
+    const prefix = /^(?:[ \t]*>[ \t]?)*[ \t]*/.exec(line.text)![0];
+    const raw = line.text.slice(prefix.length);
+    if (!/^([-+*]|\d+[.)])(?:[ \t]+.*|)$/.test(raw) || /^(?:[-*][ \t]*){3,}$/.test(raw)) {
+      if (raw.trim() && !/^[ \t>]/.test(line.text)) { prior = null; stack.length = 0; }
+      continue;
+    }
+    const from = line.from + prefix.length;
+    const quotes = quoteDepth(state, from);
+    while (stack.length) {
+      const top = found.get(stack[stack.length - 1])!;
+      if (top.quotes === quotes && column(state, top.from) < column(state, from)) break;
+      stack.pop();
+    }
+    if (!found.has(n)) {
+      const parent = stack.at(-1) ?? null;
+      const previous = prior && found.get(prior)!;
+      const sibling = previous && previous.quotes === quotes && column(state, previous.from) === column(state, from) &&
+        /^\d/.test(state.doc.sliceString(previous.from, previous.from + 1)) === /^\d/.test(raw) ? prior : null;
+      found.set(n, { from, to: line.to, quotes, parent, previous: sibling, list: sibling ? found.get(sibling)!.list : from });
+    }
+    stack.push(n);
+    prior = n;
+  }
+  // Include descendants and continuation lines even when the Markdown parser
+  // stopped recognizing their over-indented marker as a list.
+  for (const [n, item] of found) {
+    for (let i = state.doc.lineAt(item.to).number + 1; i <= state.doc.lines; i++) {
+      const line = state.doc.line(i);
+      if (!line.text.trim()) continue;
+      const end = quoteEnd(line.text, item.quotes);
+      if (quoteDepth(state, line.from + end) !== item.quotes) break;
+      const whitespace = /^[ \t]*/.exec(line.text.slice(end))![0];
+      if (column(state, line.from + end + whitespace.length) <= column(state, item.from)) break;
+      item.to = line.to;
+    }
+    // A parser's lazy paragraph can include a shallower raw marker. Don't
+    // accidentally move that sibling with this item.
+    for (let i = n + 1; i <= state.doc.lineAt(item.to).number; i++) {
+      const next = found.get(i);
+      if (next && next.quotes === item.quotes && column(state, next.from) <= column(state, item.from)) {
+        item.to = state.doc.line(i - 1).to;
+        break;
+      }
+    }
+  }
+  return new Map([...found].sort(([a], [b]) => a - b));
 }
 
 /** Indent selected lines, moving a list item's continuation and children with it.
@@ -77,18 +155,34 @@ function indentation(outdent: boolean): StateCommand {
       let end = n;
       if (item) {
         end = state.doc.lineAt(item.to).number;
-        const previous = item.previous && listItems.get(item.previous);
+        let previous = item.previous ? listItems.get(item.previous) : undefined;
+        if (!previous && !outdent) {
+          let above = n - 1;
+          while (above > 0 && !state.doc.line(above).text.trim()) above--;
+          // A different list directly above may be the destination (e.g. an
+          // ordered sublist under a bullet). Don't jump across prose or quotes.
+          const candidates = [...listItems.entries()].filter(([line, candidate]) => line < n && candidate.quotes === item.quotes &&
+            state.doc.lineAt(candidate.to).number >= above && column(state, candidate.from) >= column(state, item.from));
+          previous = candidates.at(-1)?.[1];
+          while (previous?.parent && column(state, listItems.get(previous.parent)!.from) >= column(state, item.from)) previous = listItems.get(previous.parent);
+        }
         if (outdent) {
           const parent = item.parent && listItems.get(item.parent);
-          step = parent ? column(state, item.from) - column(state, parent.from) : 0;
+          const current = column(state, item.from);
+          const base = column(state, state.doc.lineAt(item.from).from + quoteEnd(state.doc.lineAt(item.from).text, item.quotes));
+          step = parent ? current > contentColumn(state, parent)
+            ? Math.min(step, current - contentColumn(state, parent))
+            : current - column(state, parent.from)
+            : Math.min(step, current - base);
         } else if (item.previous && destinations.has(item.previous)) {
           step = destinations.get(item.previous)! - column(state, item.from);
         } else if (previous) {
           step = contentColumn(state, previous) - column(state, item.from);
         } else {
-          // There is no preceding sibling to nest under.
-          step = 0;
+          // First children and orphan items can always move another level.
+          step = getIndentUnit(state);
         }
+        if (!outdent && step <= 0) step = getIndentUnit(state);
         destinations.set(n, column(state, item.from) + step);
         if (step > 0) {
           moved.add(item.from);
@@ -120,16 +214,14 @@ function indentation(outdent: boolean): StateCommand {
       const renumber: ChangeSpec[] = [];
       const lists = new Map<number, { from: number; to: number; quotes: number }[]>();
       const padding = new Map<string, { line: number; quotes: number; delta: number }>();
-      // Use the reparsed tree so a newly nested item joins its destination list.
-      tree(indented).iterate({ enter(node) {
-        if (node.name !== "ListItem" || node.node.parent?.name !== "OrderedList") return;
-        const parent = node.node.parent;
-        const mark = node.node.getChild("ListMark");
-        if (!mark) return;
-        const list = lists.get(parent.from) ?? [];
-        list.push({ from: mark.from, to: node.to, quotes: quoteDepth(indented, mark.from) });
-        lists.set(parent.from, list);
-      } });
+      // Re-read after moving, including markers CommonMark calls code, so a
+      // newly nested ordered list starts at one at every indentation level.
+      for (const item of items(indented).values()) {
+        if (!/^\d/.test(indented.doc.sliceString(item.from, item.from + 1))) continue;
+        const list = lists.get(item.list) ?? [];
+        list.push({ from: item.from, to: item.to, quotes: item.quotes });
+        lists.set(item.list, list);
+      }
       const mappedTouched = [...touched].map((pos) => combined.mapPos(pos, 1));
       const mappedMoved = new Set([...moved].map((pos) => combined.mapPos(pos, 1)));
       for (const list of lists.values()) {
