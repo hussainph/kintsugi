@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { history, undo, redo } from "@codemirror/commands";
 import { EditorSelection, EditorState, type TransactionSpec } from "@codemirror/state";
 import { EditorView, keymap, showTooltip } from "@codemirror/view";
+import { builtinKeymap } from "../src/keymaps.ts";
 import { currentParagraph, referenceExtensions, refreshReferences, type References } from "../src/references.ts";
 
 const document = { kind: "document", path: "posts/craft.mdx", title: "Craft", status: "draft" } as const;
@@ -10,7 +11,7 @@ const clip = { kind: "clip", path: "inspiration/craft.md", title: "Craft clippin
 const config: References = { sources: [clip, document], onOpen: () => {} };
 
 function editor(text = "", references: References = config) {
-  let state = EditorState.create({ doc: text, selection: EditorSelection.cursor(text.length), extensions: [history(), referenceExtensions(() => references)] });
+  let state = EditorState.create({ doc: text, selection: EditorSelection.cursor(text.length), extensions: [history(), keymap.of(builtinKeymap.filter((binding) => binding.key === "Tab")), referenceExtensions(() => references)] });
   const view = {
     get state() { return state; },
     dispatch(spec: TransactionSpec) { state = state.update(spec).state; },
@@ -20,8 +21,7 @@ function editor(text = "", references: References = config) {
     view,
     type(text: string) { const head = state.selection.main.head; view.dispatch({ changes: { from: head, insert: text }, selection: EditorSelection.cursor(head + text.length), userEvent: "input.type" }); },
     key(key: string) {
-      const binding = state.facet(keymap).flat().find((binding) => binding.key === key);
-      return binding?.run?.(view) ?? false;
+      return state.facet(keymap).flat().filter((binding) => binding.key === key).some((binding) => binding.run?.(view) ?? false);
     },
     picker() { return state.facet(showTooltip).some(Boolean); },
     text() { return state.doc.toString(); },
@@ -150,4 +150,19 @@ test("a delayed quote cannot insert after the writer changes documents or moves 
   resolve("Should not appear");
   await Promise.resolve();
   assert.equal(e.text(), "A different thought");
+});
+
+test("Tab chooses references before indentation; an empty picker keeps both Tab keys", () => {
+  const e = editor();
+  e.type("@craft");
+  assert.equal(e.key("Shift-Tab"), true);
+  assert.equal(e.key("Tab"), true);
+  assert.ok(e.text().startsWith("[["));
+  const empty = editor();
+  empty.type("@no-match-ki112");
+  const before = empty.text();
+  assert.equal(empty.key("Tab"), true);
+  assert.equal(empty.key("Shift-Tab"), true);
+  assert.equal(empty.text(), before);
+  assert.equal(empty.picker(), true);
 });

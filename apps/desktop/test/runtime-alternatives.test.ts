@@ -109,6 +109,13 @@ test("⌥⌘A on a word: typing adds a version and shows it in place; only the s
   await cursorIn("old");
   await page.keyboard.press("Meta+Alt+KeyA");
   await field().waitFor();
+  // KI-112: a hardware Tab in the inline card is focus traversal, not a draft edit.
+  const beforeTab = await page.locator(".cm-line").allTextContents();
+  await field().focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  assert.deepEqual(await page.locator(".cm-line").allTextContents(), beforeTab);
+  await field().focus();
   assert.equal(await panel().getByRole("tab", { selected: true }).textContent(), "Word");
   assert.deepEqual(await options().allTextContents(), ["old"]);
   await field().fill("ancient");

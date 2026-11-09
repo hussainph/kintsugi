@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { history, undo } from "@codemirror/commands";
 import { EditorSelection, EditorState, type TransactionSpec } from "@codemirror/state";
 import { EditorView, keymap, showTooltip } from "@codemirror/view";
+import { builtinKeymap } from "../src/keymaps.ts";
 import { commandExtensions, menuItems, type Commands, type CommandSkill } from "../src/commands.ts";
 import { referenceExtensions, paragraphNear, paragraphRange, type KinAnchor, type References } from "../src/references.ts";
 
@@ -14,7 +15,7 @@ function editor(text = "", options: { references?: References; commands?: Comman
   let state = EditorState.create({
     doc: text,
     selection: EditorSelection.cursor(text.length),
-    extensions: [history(), referenceExtensions(() => options.references), commandExtensions(() => options.commands)],
+    extensions: [history(), keymap.of(builtinKeymap.filter((binding) => binding.key === "Tab")), referenceExtensions(() => options.references), commandExtensions(() => options.commands)],
   });
   const view = {
     get state() { return state; },
@@ -221,4 +222,15 @@ test("the / menu's blocks show the formatting key that does the same", async () 
   assert.equal(keysOf(blockKey("bullets")!), "⇧⌘8");
   assert.equal(keysOf(blockKey("quote")!), "⇧⌘.");
   assert.equal(blockKey("table"), undefined);
+});
+
+test("Tab chooses the slash popup before indenting; Shift-Tab moves backward", () => {
+  const e = editor();
+  e.type("/");
+  const before = e.text();
+  assert.equal(e.key("Shift-Tab"), true);
+  assert.equal(e.text(), before);
+  assert.equal(e.key("Tab"), true);
+  assert.equal(e.menu(), false);
+  assert.ok(!e.text().startsWith("  "));
 });
