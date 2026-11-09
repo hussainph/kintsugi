@@ -24,6 +24,11 @@ function marked(state: EditorState) {
 
 for (const [before, after] of [
   ["A li|ne", "  A li|ne"],
+  ["- Fi|rst\n- Second", "  - Fi|rst\n- Second"],
+  ["- On|ly", "  - On|ly"],
+  ["- Parent\n\n7. Ch|ild", "- Parent\n\n  1. Ch|ild"],
+  ["> - Parent\n>\n> 7. Ch|ild", "> - Parent\n>\n>   1. Ch|ild"],
+  ["- Parent\n  - Existing\n\n7. Ch|ild", "- Parent\n  - Existing\n\n  1. Ch|ild"],
   ["|", "  |"],
   ["- Parent\n- Ch|ild\n- Last", "- Parent\n  - Ch|ild\n- Last"],
   ["- [ ] Parent\n- [x] Ch|ild", "- [ ] Parent\n  - [x] Ch|ild"],
@@ -50,8 +55,8 @@ for (const [before, after] of [
   ["10. Parent\n    1. Ch|ild\n11. Last", "10. Parent\n11. Ch|ild\n12. Last"],
 ]) test(`Shift-Tab: ${JSON.stringify(before)}`, () => assert.equal(marked(run(start(before), outdentLines)), after));
 
-test("top-level outdent and first-item indent consume Tab without changing text", () => {
-  for (const command of [indentLines, outdentLines]) assert.equal(marked(run(start("- Fi|rst\n- Second"), command)), "- Fi|rst\n- Second");
+test("top-level outdent consumes Tab without changing text", () => {
+  assert.equal(marked(run(start("- Fi|rst\n- Second"), outdentLines)), "- Fi|rst\n- Second");
   assert.equal(marked(run(start("Te|xt"), outdentLines)), "Te|xt");
 });
 
@@ -142,4 +147,60 @@ test("selected siblings with optional indentation share a destination column", (
   let state = start("1. Parent\n  2. One\n3. Two\n4. Last|");
   state = state.update({ selection: EditorSelection.range(10, 24) }).state;
   assert.equal(run(state, indentLines).doc.toString(), "1. Parent\n   1. One\n   2. Two\n2. Last");
+});
+
+for (const [before, levels] of [
+  ["- On|ly", ["  - On|ly", "    - On|ly", "      - On|ly"]],
+  ["- Fi|rst\n- Second", ["  - Fi|rst\n- Second", "    - Fi|rst\n- Second", "      - Fi|rst\n- Second"]],
+  ["- Parent\n- Ch|ild", ["- Parent\n  - Ch|ild", "- Parent\n    - Ch|ild", "- Parent\n      - Ch|ild"]],
+  ["1. Parent\n2. Ch|ild\n3. Last", ["1. Parent\n   1. Ch|ild\n2. Last", "1. Parent\n     1. Ch|ild\n2. Last", "1. Parent\n       1. Ch|ild\n2. Last"]],
+  ["> - On|ly\n>   - Child", [">   - On|ly\n>     - Child", ">     - On|ly\n>       - Child", ">       - On|ly\n>         - Child"]],
+] as const) test(`three levels and back: ${JSON.stringify(before)}`, () => {
+  let state = start(before);
+  for (const expected of levels) {
+    const previous = state;
+    state = run(state, indentLines);
+    assert.equal(marked(state), expected);
+    assert.equal(marked(run(state, undo)), marked(previous), "one undo per Tab");
+  }
+  for (const expected of [levels[1], levels[0], before]) {
+    state = run(state, outdentLines);
+    assert.equal(marked(state), expected);
+  }
+});
+
+for (const before of [" - On|ly", "  - On|ly", "    - On|ly", "\t- On|ly"]) test(`outdent orphan: ${JSON.stringify(before)}`, () => {
+  let state = start(before);
+  for (let i = 0; i < 3; i++) state = run(state, outdentLines);
+  assert.equal(marked(state), "- On|ly");
+});
+
+test("a different quote or intervening prose is not a parent", () => {
+  for (const before of ["- Parent\n\nText\n\n7. Ch|ild", "> - Parent\n\n7. Ch|ild"]) {
+    assert.equal(marked(run(start(before), indentLines)), before.replace("7. Ch", "  1. Ch"));
+  }
+});
+
+test("a literal list inside an orphan item's fenced block stays literal", () => {
+  const before = "    - Orphan\n      ```md\n      - li|teral\n      ```";
+  assert.equal(marked(run(start(before), indentLines)), before.replace("      - li", "        - li"));
+});
+
+test("newly nested over-indented ordered items start at one", () => {
+  assert.equal(marked(run(start("    7. On|ly"), indentLines)), "      1. On|ly");
+});
+
+test("over-indented orphan children and continuation lines move with the item", () => {
+  const before = "    - On|ly\n      continuation\n      - Child\n\nAfter";
+  const indented = run(start(before), indentLines);
+  assert.equal(marked(indented), "      - On|ly\n        continuation\n        - Child\n\nAfter");
+  assert.equal(marked(run(indented, outdentLines)), before);
+});
+
+test("several orphan siblings move together after losing CommonMark list syntax", () => {
+  let state = start("    - One\n    - Two|\n\nAfter");
+  state = state.update({ selection: EditorSelection.range(4, state.doc.line(2).to) }).state;
+  state = run(state, indentLines);
+  assert.equal(state.doc.toString(), "      - One\n      - Two\n\nAfter");
+  assert.equal(run(state, outdentLines).doc.toString(), "    - One\n    - Two\n\nAfter");
 });
