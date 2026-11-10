@@ -284,30 +284,28 @@ mod tests {
     fn the_watcher_reports_another_apps_save_but_not_kintsugis() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().canonicalize().unwrap();
-        fs::write(root.join("note.md"), "first").unwrap();
-        let written: Written = Arc::default();
+        // FSEvents may replay the initial write at any time after startup.
+        // Use the same known save for setup and the atomic write below, so
+        // neither replay latency nor a sleep/drain decides what is asserted.
+        fs::write(root.join("note.md"), "from kintsugi").unwrap();
+        let written: Written = Arc::new(Mutex::new(written(&[("note.md", "from kintsugi")])));
         let (tx, rx) = mpsc::channel();
         let _watcher = watch(&root, written.clone(), move |o| {
             let _ = tx.send(o);
         })
         .unwrap();
-        // FSEvents can replay events from just before the stream started.
-        std::thread::sleep(Duration::from_millis(300));
-        while rx.try_recv().is_ok() {}
-
-        written
-            .lock()
-            .unwrap()
-            .insert("note.md".into(), vault::version("from kintsugi"));
         vault::write_atomic(&root.join("note.md"), "from kintsugi").unwrap();
         assert!(
-            rx.recv_timeout(Duration::from_secs(2)).is_err(),
+            matches!(
+                rx.recv_timeout(Duration::from_secs(2)),
+                Err(mpsc::RecvTimeoutError::Timeout)
+            ),
             "Kintsugi's own save is not reported"
         );
 
         fs::write(root.join("note.md"), "from another app").unwrap();
         let got = rx
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(Duration::from_secs(30))
             .expect("an outside edit is reported");
         assert_eq!(
             got.docs,
@@ -319,7 +317,7 @@ mod tests {
 
         fs::remove_file(root.join("note.md")).unwrap();
         let got = rx
-            .recv_timeout(Duration::from_secs(5))
+            .recv_timeout(Duration::from_secs(30))
             .expect("a delete is reported");
         assert_eq!(got.gone, vec!["note.md".to_string()]);
     }
