@@ -565,11 +565,16 @@ as a shortened document. Text files retain their complete UTF-8 content within
 the 20 MiB file cap. `read` takes line `offset` and `limit`, with up to 32 KiB
 per window and a continuation offset. A line too long for a window is refused
 explicitly. Text and PDF content enter as bounded `<data>` blocks. Images are untrusted data too, including any
-instructions visible in them. `read` returns image parts for an attachment
-reference or an image inside the vault, such as clip artwork. Recent history
-keeps file references, so a later turn can read the image again rather than
-sending every earlier image on every turn. Reading an older thread also
-returns its file references.
+instructions visible in them. Attachment text protects private quotes even
+with Web off, but grants no URL provenance. Owner-chosen attachments alone do
+not make memory or skills read-only. Attachment spills retain that origin;
+missing spill metadata keeps writes locked.
+
+`read` returns image parts for an attachment reference or an image inside the
+vault, such as clip artwork. Replay strips image bytes before its 128 KiB
+budget check and before saving. Recent history keeps file references and tool
+results, so a later turn can read the image again rather than resending it.
+Reading an older thread also returns its file references.
 
 `KINTSUGI_HEADLESS_KIN=mock` acknowledges received images. The attachment
 runtime test covers clipboard paste, drop, the file picker, sending, a backend
@@ -595,7 +600,8 @@ tracked in KI-117; the existing phone API is unchanged.
    tool loops fall back to question and answer together; results are never
    silently clipped or separated from their calls. Interrupted and failed
    replies stay on disk but aren't replayed. Old logs without replay still
-   work. Replay is separate from the display trace and excludes reasoning.
+   work. Replay is separate from the display trace and excludes reasoning
+   and image bytes.
 3. **Dynamic context**, at the end of the newest user message: date, chips,
    thread anchor, current chipped paragraphs and documents under 16 KiB.
    File text is JSON inside `<data>`, within a 64 KiB escaped-text budget;
