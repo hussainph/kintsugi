@@ -1143,6 +1143,34 @@ pub(crate) mod tests {
                 .system
                 .contains("A new preference.")
         );
+        // Request-time image eviction must not change that same frozen
+        // prefix or Anthropic's system cache marker after the agent returns.
+        let second = second.seen.lock().unwrap();
+        let seen = &second[0];
+        let fixture: serde_json::Value =
+            serde_json::from_str(&wire::testing::fixture("images.json")).unwrap();
+        let image: wire::Image = serde_json::from_value(fixture["image"].clone()).unwrap();
+        let mut items = seen.items.clone();
+        items.push(Item::Images(vec![image.clone()]));
+        let mut route = wire::testing::route("anthropic", "claude-sonnet-5-5");
+        let exchange = Exchange {
+            system: &seen.system,
+            ..wire::testing::exchange("claude-sonnet-5-5", &items, crate::ai::tools::specs())
+        };
+        let before = wire::testing::prepared_anthropic_body(&route, &exchange);
+        assert!(before.to_string().contains(&image.data));
+        let mut model = route.model.unwrap().clone();
+        model.input_limits = serde_json::from_value(json!({"images":{"maxPerRequest":0}})).unwrap();
+        route.model = Some(Box::leak(Box::new(model)));
+        let evicted = wire::testing::prepared_anthropic_body(&route, &exchange);
+        assert_eq!(before["system"], evicted["system"]);
+        assert_eq!(evicted["system"][0]["text"], seen.system);
+        assert_eq!(
+            evicted["system"][0]["cache_control"],
+            json!({"type":"ephemeral"})
+        );
+        assert!(evicted.to_string().contains("Older images omitted"));
+        assert!(!evicted.to_string().contains(&image.data));
     }
 
     #[test]

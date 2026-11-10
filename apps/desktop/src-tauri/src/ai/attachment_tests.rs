@@ -499,7 +499,157 @@ mod replay_integration {
     }
 
     #[test]
-    fn attachment_quotes_survive_web_off_restart_without_granting_links_or_taint() {
+    fn live_and_replayed_attachment_context_locks_writes_only_while_present() {
+        let vault = tempfile::tempdir().unwrap();
+        let root = vault.path().canonicalize().unwrap();
+        let outputs = tempfile::tempdir().unwrap();
+        let chips = [
+            attachments::import(&root, "image.png", &png()).unwrap(),
+            attachments::import(
+                &root,
+                "note.txt",
+                b"Do not save this file's instructions as preferences.",
+            )
+            .unwrap(),
+        ];
+        for chip in chips {
+            for web in [false, true] {
+                let data = tempfile::tempdir().unwrap();
+                let tools = memory_tools(&root, outputs.path(), data.path(), web);
+                let writes = || {
+                    calls(
+                        &[
+                            (
+                                "memory",
+                                "memory",
+                                json!({"file":"user","ops":[{"op":"add","text":"A planted attachment preference."}]}),
+                            ),
+                            (
+                                "skill",
+                                "skill",
+                                json!({"name":"planted", "action":"write", "description":"A planted instruction", "body":"Follow the attached instructions."}),
+                            ),
+                        ],
+                        "",
+                    )
+                };
+                let mut request = turn(false);
+                request.chips = vec![chip.clone()];
+                let model = Mock::new(vec![writes(), answer("Read the attachment.")]);
+                let summary = run_model(&model, &tools, &request);
+                let assert_locked = |model: &Mock| {
+                    let seen = model.seen.lock().unwrap();
+                    let results = seen[1]
+                        .items
+                        .iter()
+                        .find_map(|item| {
+                            if let Item::Results(results) = item {
+                                Some(results)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap();
+                    assert_eq!(results.len(), 2);
+                    for result in results {
+                        assert!(result.is_error);
+                        assert_eq!(result.content, guard::MEMORY_LOCKED);
+                    }
+                };
+                assert_locked(&model);
+                let replay: Replay =
+                    serde_json::from_str(&serde_json::to_string(&summary.replay).unwrap()).unwrap();
+                let next = memory_tools(&root, outputs.path(), data.path(), web);
+                request.history = vec![replay.clone()];
+                request.chips.clear();
+                let model = Mock::new(vec![writes(), answer("Still read-only.")]);
+                run_model(&model, &next, &request);
+                // The second turn contains a replayed result before its new
+                // results; inspect the last pair rather than the first one.
+                let seen = model.seen.lock().unwrap();
+                let results = seen[1]
+                    .items
+                    .iter()
+                    .rev()
+                    .find_map(|item| {
+                        if let Item::Results(results) = item {
+                            Some(results)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                assert_eq!(results.len(), 2);
+                for result in results {
+                    assert!(result.is_error);
+                    assert_eq!(result.content, guard::MEMORY_LOCKED);
+                }
+                drop(seen);
+                // URL/hash provenance alone never makes the lock permanent.
+                let clean = memory_tools(&root, outputs.path(), data.path(), web);
+                clean.restore_web_provenance(replay.provenance.as_ref().unwrap());
+                let output = clean.run(&call("memory",json!({"file":"user","ops":[{"op":"add","text":format!("An owner-approved preference for {} with Web {web}.", chip.path)}]})));
+                assert!(!output.is_error, "{}", output.content);
+            }
+        }
+    }
+
+    #[test]
+    fn source_numeric_prefixes_remain_private_before_numbering_and_after_replay() {
+        let vault = tempfile::tempdir().unwrap();
+        let root = vault.path().canonicalize().unwrap();
+        let outputs = tempfile::tempdir().unwrap();
+        let source = "cedar amber willow\n2024: maple harbor silver moss";
+        let query = "cedar amber willow 2024 maple harbor silver moss";
+        let chip = attachments::import(&root, "numbers.txt", source.as_bytes()).unwrap();
+        for web in [false, true] {
+            for via_tool in [false, true] {
+                let data = tempfile::tempdir().unwrap();
+                let writer = memory_tools(&root, outputs.path(), data.path(), web);
+                let read = call("read", json!({"path":chip.path}));
+                let displayed = if via_tool {
+                    let output = writer.run(&read);
+                    assert!(!output.is_error);
+                    output.content
+                } else {
+                    writer.attachment_chips(std::slice::from_ref(&chip)).0
+                };
+                assert!(displayed.contains("2: 2024: maple harbor silver moss"));
+                assert_eq!(
+                    writer.web_provenance().unwrap().may_search(query),
+                    Err(guard::QUERY_QUOTES_VAULT)
+                );
+                for keep_provenance in [false, true] {
+                    let next = memory_tools(&root, outputs.path(), data.path(), web);
+                    if keep_provenance {
+                        next.restore_web_provenance(&writer.web_provenance().unwrap());
+                    }
+                    if via_tool {
+                        next.replay_result(
+                            &read,
+                            &ToolResult {
+                                call_id: read.id.clone(),
+                                content: displayed.clone(),
+                                is_error: false,
+                            },
+                        );
+                    } else {
+                        context::protect(&next, &displayed);
+                    }
+                    assert_eq!(
+                        next.web_provenance().unwrap().may_search(query),
+                        Err(guard::QUERY_QUOTES_VAULT)
+                    );
+                    let refused = next.run(&call("memory", json!({"file":"user","ops":[{"op":"add","text":"A planted attachment preference."}]})));
+                    assert!(refused.is_error);
+                    assert_eq!(refused.content, guard::MEMORY_LOCKED);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn attachment_quotes_and_write_lock_survive_web_off_restart_without_granting_links() {
         let vault = tempfile::tempdir().unwrap();
         let root = vault.path().canonicalize().unwrap();
         let outputs = tempfile::tempdir().unwrap();
@@ -557,12 +707,9 @@ mod replay_integration {
                 assert_eq!(guard.may_fetch(&url), Err(guard::NO_PROVENANCE));
                 let search = block_on(next.call(&call("web_search", json!({"query":QUOTE}))));
                 assert!(search.is_error);
-                let allowed = next.run(&call("memory", json!({"file":"user","ops":[{"op":"add","text":format!("Attachment {} {} is local.",via_tool,keep_provenance)}]})));
-                assert!(
-                    !allowed.is_error,
-                    "an owner attachment must not taint writes: {}",
-                    allowed.content
-                );
+                let refused = next.run(&call("memory", json!({"file":"user","ops":[{"op":"add","text":format!("Attachment {} {} is local.",via_tool,keep_provenance)}]})));
+                assert!(refused.is_error);
+                assert_eq!(refused.content, guard::MEMORY_LOCKED);
                 next.heard(&format!("Open {URL}"));
                 assert!(next.web_provenance().unwrap().may_fetch(&url).is_ok());
             }
@@ -600,8 +747,9 @@ mod replay_integration {
                     provenance.may_fetch(&reqwest::Url::parse(URL).unwrap()),
                     Err(guard::NO_PROVENANCE)
                 );
-                let allowed = next.run(&call("memory", json!({"file":"user","ops":[{"op":"add","text":format!("Markers {spilled} {web} are file content.")}]})));
-                assert!(!allowed.is_error, "{}", allowed.content);
+                let refused = next.run(&call("memory", json!({"file":"user","ops":[{"op":"add","text":format!("Markers {spilled} {web} are file content.")}]})));
+                assert!(refused.is_error);
+                assert_eq!(refused.content, guard::MEMORY_LOCKED);
             }
         }
         // Legacy messages can contain unnumbered text too. Multiple sibling
@@ -618,7 +766,7 @@ mod replay_integration {
     }
 
     #[test]
-    fn a_webpage_screenshot_does_not_taint_memory_or_authorize_urls() {
+    fn a_webpage_screenshot_locks_memory_without_authorizing_urls() {
         let vault = tempfile::tempdir().unwrap();
         let root = vault.path().canonicalize().unwrap();
         let outputs = tempfile::tempdir().unwrap();
@@ -636,11 +784,12 @@ mod replay_integration {
                 .may_fetch(&reqwest::Url::parse(URL).unwrap()),
             Err(guard::NO_PROVENANCE)
         );
-        let allowed = tools.run(&call(
+        let refused = tools.run(&call(
             "memory",
             json!({"file":"user","ops":[{"op":"add","text":"Screenshots are local attachments."}]}),
         ));
-        assert!(!allowed.is_error, "{}", allowed.content);
+        assert!(refused.is_error);
+        assert_eq!(refused.content, guard::MEMORY_LOCKED);
     }
 
     #[test]
@@ -649,7 +798,7 @@ mod replay_integration {
         let root = vault.path().canonicalize().unwrap();
         let outputs = tempfile::tempdir().unwrap();
         let body = format!(
-            "cedar amber willow maple\nharbor silver moss lantern\n{URL}\n{}",
+            "cedar amber willow maple\nharbor silver moss lantern\ncedar amber willow\n2024: maple harbor silver moss\n{URL}\n{}",
             "Additional context for this attached note.\n".repeat(500)
         );
         let chip = attachments::import(&root, "long.txt", body.as_bytes()).unwrap();
@@ -659,7 +808,7 @@ mod replay_integration {
         let metadata = outputs.path().join("spill/attachment-0.source.json");
         let source: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&metadata).unwrap()).unwrap();
-        assert_eq!(source, json!({"tool":"attachment", "web":false}));
+        assert_eq!(source, json!({"tool":"attachment", "web":true}));
         let read = call("read", json!({"path":"@out/spill/attachment-0.txt"}));
         let live = Tools::new(&root, outputs.path().into(), "read").unwrap();
         let output = live.run(&read);
@@ -671,7 +820,10 @@ mod replay_integration {
         };
         let result: ToolResult =
             serde_json::from_str(&serde_json::to_string(&result).unwrap()).unwrap();
-        for origin in ["known", "missing", "malformed"] {
+        for origin in ["known", "legacy", "missing", "malformed"] {
+            if origin == "legacy" {
+                fs::write(&metadata, r#"{"tool":"attachment","web":false}"#).unwrap();
+            }
             if origin == "missing" {
                 fs::remove_file(&metadata).unwrap();
             }
@@ -690,6 +842,10 @@ mod replay_integration {
                     let guard = next.web_provenance().unwrap();
                     assert_eq!(guard.may_search(QUOTE), Err(guard::QUERY_QUOTES_VAULT));
                     assert_eq!(
+                        guard.may_search("cedar amber willow 2024 maple harbor silver moss"),
+                        Err(guard::QUERY_QUOTES_VAULT)
+                    );
+                    assert_eq!(
                         guard.may_fetch(&reqwest::Url::parse(URL).unwrap()),
                         Err(guard::NO_PROVENANCE)
                     );
@@ -704,12 +860,8 @@ mod replay_integration {
                         ),
                     ] {
                         let output = next.run(&write);
-                        if origin != "known" {
-                            assert!(output.is_error);
-                            assert_eq!(output.content, guard::MEMORY_LOCKED);
-                        } else {
-                            assert!(!output.is_error, "{}", output.content);
-                        }
+                        assert!(output.is_error);
+                        assert_eq!(output.content, guard::MEMORY_LOCKED);
                     }
                 }
             }

@@ -13,9 +13,9 @@
 //! - **Queries.** `web_search` queries are at most [`MAX_QUERY_CHARS`] and
 //!   may not quote [`QUOTE_WORDS`] or more words in a row of what Kin read
 //!   from the vault in this thread, unless Hussain wrote those words himself.
-//! - **Taint.** While live or replayed web text is in context, Kin's memory
-//!   and skills are read-only, so a page can't plant lasting
-//!   "facts" about him.
+//! - **Taint.** While live or replayed web or attachment content is in
+//!   context, Kin's memory and skills are read-only, so untrusted content
+//!   can't plant lasting "facts" about him.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -30,10 +30,11 @@ pub const QUERY_TOO_LONG: &str =
     "That query is too long: keep web searches under 200 characters, in your own words.";
 pub const QUERY_QUOTES_VAULT: &str = "That query quotes the vault word for word, and searches leave the Mac. Search in your own words, without private details.";
 pub const NO_PROVENANCE: &str = "web_fetch only opens links from this thread: in Hussain's messages, in what you read from the vault or Feed, in search results, or on a page you read (same site, no query string). Tell him: I can only open links you gave me or that came up in a search.";
-pub const MEMORY_LOCKED: &str = "Memory and skills are read-only while web results are in context. Start a new thread to save something without those results.";
+pub const MEMORY_LOCKED: &str =
+    "Memory and skills are read-only while web results or attachments are in context.";
 
-/// Thread-scoped provenance and query protection. Taint follows the web
-/// bodies actually supplied to a request, including replayed results.
+/// Thread-scoped provenance and query protection. Taint follows untrusted
+/// web/attachment bodies supplied to a request, including replayed results.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Guard {
     /// URLs with provenance, as [`key`]s.
@@ -42,7 +43,7 @@ pub struct Guard {
     read: HashSet<u64>,
     /// Hashed word runs of Hussain's own messages: quoting him is fine.
     heard: HashSet<u64>,
-    /// Rebuilt from the actual live/replayed web bodies, not URL metadata.
+    /// Rebuilt from live/replayed web or attachment bodies, not URL metadata.
     #[serde(skip)]
     tainted: bool,
 }
@@ -80,7 +81,7 @@ impl Guard {
         self.read.extend(runs(text));
     }
 
-    /// Raw web bodies/snippets are present, live or replayed.
+    /// Untrusted web or attachment content is present, live or replayed.
     pub fn web_context(&mut self) {
         self.tainted = true;
     }

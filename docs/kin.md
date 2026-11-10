@@ -566,9 +566,10 @@ the 20 MiB file cap. `read` takes line `offset` and `limit`, with up to 32 KiB
 per window and a continuation offset. A line too long for a window is refused
 explicitly. Text and PDF content enter as bounded `<data>` blocks. Images are untrusted data too, including any
 instructions visible in them. Attachment text protects private quotes even
-with Web off, but grants no URL provenance. Owner-chosen attachments alone do
-not make memory or skills read-only. Attachment spills retain that origin;
-missing spill metadata keeps writes locked.
+with Web off, but grants no URL provenance. Images, PDF text, text files and
+their spills make memory and skills read-only while that content is in context,
+live or replayed. Spill metadata retains the lock after the original call leaves
+replay; missing metadata also keeps writes locked.
 
 `read` returns image parts for an attachment reference or an image inside the
 vault, such as clip artwork. Replay strips image bytes before its 128 KiB

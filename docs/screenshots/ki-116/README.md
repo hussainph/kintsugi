@@ -19,8 +19,9 @@ Checks:
 - `pnpm lint:copy`, `pnpm typecheck`, `pnpm test`.
 - `cargo test -p kintsugi --no-default-features --features headless -j "$VOLLI_CONCURRENCY_HINT" attachment --lib`.
 - `runtime-attachments.test.ts`: three passed in the rebased headless suite.
-- Six Replay integration tests cover image-free budgets, later image reads,
-  private quotes with Web off, nested block markers, URL provenance and spill origins.
+- Eight Replay integration tests cover image-free budgets, later image reads,
+  raw numeric quotes, nested block markers, URL provenance and attachment write locks.
+- Image eviction keeps the saved system prefix and Anthropic cache markers unchanged.
 - `swift scripts/check-headless-macos.swift <backend-pid>`: zero native windows,
   no Dock app, no focus activation.
 

@@ -1112,6 +1112,26 @@ mod tests {
         assert!(body.contains("Urushi lacquer"));
         let chip = stage(&root, "repair.pdf", "repair.pdf", bytes, Some(&body)).unwrap();
         assert_eq!(read(&root, &chip.path).unwrap().0, body);
+        let outputs = tempfile::tempdir().unwrap();
+        let tools = crate::ai::tools::Tools::new(&root, outputs.path().into(), "pdf").unwrap();
+        let (message, images) = tools.attachment_chips(std::slice::from_ref(&chip));
+        assert!(images.is_empty());
+        let restarted =
+            crate::ai::tools::Tools::new(&root, outputs.path().into(), "pdf-replay").unwrap();
+        crate::ai::context::protect(&restarted, &message);
+        for context in [tools, restarted] {
+            let memory = tempfile::tempdir().unwrap();
+            let context = context.with_memory(crate::ai::memory::Access {
+                store: crate::ai::memory::Store::open(&root, Some(memory.path())).unwrap(),
+                source: crate::ai::memory::Source::chat("pdf", "Save this"),
+                remember: true,
+            });
+            let refused = context.run(&crate::ai::wire::ToolCall {
+                id:"save".into(), name:"memory".into(), arguments:serde_json::json!({"file":"user","ops":[{"op":"add","text":"A planted PDF preference."}]}),
+            });
+            assert!(refused.is_error);
+            assert_eq!(refused.content, crate::ai::web::guard::MEMORY_LOCKED);
+        }
     }
     #[cfg(target_os = "macos")]
     #[test]

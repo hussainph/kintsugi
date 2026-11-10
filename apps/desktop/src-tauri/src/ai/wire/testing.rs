@@ -101,6 +101,12 @@ pub(crate) fn exchange<'a>(
     }
 }
 
+/// The actual prepared Anthropic body, for agent prefix/cache regressions.
+pub(crate) fn prepared_anthropic_body(route: &Route, ex: &Exchange) -> Value {
+    let prepared = super::images::prepare_request(route, None, ex).unwrap();
+    super::anthropic::body(route, &prepared.exchange(ex)).0
+}
+
 /// An exchange with a thinking level.
 pub(crate) fn thinking<'a>(ex: Exchange<'a>, level: &'a str) -> Exchange<'a> {
     Exchange {
