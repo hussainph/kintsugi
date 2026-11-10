@@ -1,0 +1,114 @@
+[
+  {
+    "name": "2000-light-expanded",
+    "contentLeft": 568.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 619.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "2000-light-collapsed",
+    "contentLeft": 464.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 515.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "2000-dark-expanded",
+    "contentLeft": 568.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 619.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "2000-dark-collapsed",
+    "contentLeft": 464.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 515.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1440-light-expanded",
+    "contentLeft": 288.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 339.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1440-light-collapsed",
+    "contentLeft": 184.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 235.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1440-dark-expanded",
+    "contentLeft": 288.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 339.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1440-dark-collapsed",
+    "contentLeft": 184.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 235.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1280-light-expanded-auto-folded",
+    "contentLeft": 104.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 155.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1280-light-collapsed",
+    "contentLeft": 104.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 155.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1280-dark-expanded-auto-folded",
+    "contentLeft": 104.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 155.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "1280-dark-collapsed",
+    "contentLeft": 104.90625,
+    "contentWidth": 758.15625,
+    "textLeft": 155.90625,
+    "textWidth": 660.15625
+  },
+  {
+    "name": "800-light-expanded",
+    "contentLeft": 256,
+    "contentWidth": 544,
+    "textLeft": 307,
+    "textWidth": 446
+  },
+  {
+    "name": "800-light-collapsed",
+    "contentLeft": 48,
+    "contentWidth": 752,
+    "textLeft": 99,
+    "textWidth": 654
+  },
+  {
+    "name": "800-dark-expanded",
+    "contentLeft": 256,
+    "contentWidth": 544,
+    "textLeft": 307,
+    "textWidth": 446
+  },
+  {
+    "name": "800-dark-collapsed",
+    "contentLeft": 48,
+    "contentWidth": 752,
+    "textLeft": 99,
+    "textWidth": 654
+  }
+]

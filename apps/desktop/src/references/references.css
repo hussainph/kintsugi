@@ -7,19 +7,18 @@
 }
 .reference-writing > :first-child { min-width: 0; }
 .reference-writing .cm-scroller { scrollbar-color: var(--neutral-4) transparent; scrollbar-width: thin; }
-/* A fixed measure (KI-103). The column is centred when the margin fits
-   beside it, else moved left just enough for it to fit, and never closer to
-   the sidebar than its own padding. Where it sits depends on the window
-   and the text size, never on what's open, so the margin slides over empty
-   gutter and no line moves. When even that can't fit, the margin overlays
-   the page (and opening it folds the sidebar to icons first; App.tsx). */
+/* A fixed measure (KI-103), centred in the room BEFORE the reserved margin
+   (KI-114). The sidebar's animated gap moves the column as one piece; the
+   margin's state and tab never enter this calculation. Clamp at the left
+   gutter when space runs out, then let the margin overlay the page (folding
+   the sidebar first when that would help; App.tsx). Keep line padding and
+   CodeMirror's selection layers in the same coordinate system (KI-107). */
 .reference-writing .cm-editor .cm-content {
   --ki-column: calc(var(--editor-measure) + 2 * var(--space-xxl));
-  --ki-margin-room: calc(var(--ki-margin-width) + var(--ki-margin-gap) - var(--space-xxl));
   flex: 0 0 auto;
   width: min(100%, var(--ki-column));
   max-width: none;
-  margin-left: max(0px, min((100% - var(--ki-column)) / 2, 100% - var(--ki-column) - var(--ki-margin-room)));
+  margin-left: max(0px, (100% - var(--ki-column) - var(--ki-margin-width)) / 2);
   margin-right: 0;
   /* The editor's top padding, less what full screen gives back. */
   padding-top: calc(var(--space-xxl) + var(--space-l) - var(--ki-titlebar-lift));
