@@ -3,12 +3,12 @@
 //! extend the transcript without changing the thread's UI trace.
 
 use super::prompt::Chip;
-use super::tools::Tools;
+use super::tools::{Tools, document_key};
 use super::web::guard::Guard;
 use super::wire::Item;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 #[cfg(test)]
@@ -84,6 +84,110 @@ pub fn revision(text: &str) -> String {
     format!("{:016x}", hash.finish())
 }
 
+/// Validate each exchange's own read stamps, not just the latest stamp for
+/// a path. A newer partial read must not make an older full body current.
+/// Keep the old stamps for changed notices, and preserve thread metadata.
+pub fn fresh(tools: &Tools, previous: &[Replay]) -> Vec<Replay> {
+    let mut revisions = BTreeMap::new();
+    previous
+        .iter()
+        .map(|earlier| {
+            let mut replay = earlier.clone();
+            for (path, stamp) in &replay.reads {
+                let current = revisions
+                    .entry(document_key(path))
+                    .or_insert_with(|| tools.document(path).ok().map(|text| revision(&text)));
+                if current.as_ref() != Some(stamp) {
+                    invalidate(&mut replay.items, path);
+                }
+            }
+            replay
+        })
+        .collect()
+}
+
+const OUTDATED: &str = "This text changed or is unavailable. Read the document again.";
+
+/// A retry notice with a safely escaped path, never a partial source body.
+pub fn outdated(path: &str) -> String {
+    format!(
+        "<data tool=\"read\">\n{}\n</data>",
+        escaped_json(&json!({"path": path, "state": "outdated", "notice": OUTDATED}))
+    )
+}
+
+/// Remove source bodies without removing their calls/results or the owner's
+/// question. Also used before a new read changes a path's stamp mid-turn.
+pub fn invalidate(items: &mut [Item], path: &str) {
+    let stub = outdated(path);
+    let mut reads = BTreeSet::new();
+    for item in items {
+        match item {
+            Item::Assistant { calls, .. } => {
+                // IDs can repeat across historical exchanges. Only match
+                // results to the current batch, never to another file's call.
+                reads = calls
+                    .iter()
+                    .filter(|call| {
+                        call.name == "read"
+                            && call.arguments["path"]
+                                .as_str()
+                                .is_some_and(|read| document_key(read) == document_key(path))
+                    })
+                    .map(|call| call.id.clone())
+                    .collect();
+            }
+            Item::Results(results) => {
+                for result in results {
+                    if reads.contains(&result.call_id) {
+                        result.content = stub.clone();
+                    }
+                }
+            }
+            Item::User(message) => invalidate_context(message, path),
+            Item::Reasoning(_) => {}
+        }
+    }
+}
+
+fn invalidate_context(message: &mut String, path: &str) {
+    let Some((before, tail)) = message.rsplit_once("<data tool=\"context\">\n") else {
+        return;
+    };
+    let Some((data, after)) = tail.split_once("\n</data>") else {
+        return;
+    };
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(data) else {
+        return;
+    };
+    let Some(documents) = value
+        .get_mut("documents")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    let mut changed = false;
+    for document in documents {
+        if document["path"]
+            .as_str()
+            .is_some_and(|read| document_key(read) == document_key(path))
+            && let Some(document) = document.as_object_mut()
+        {
+            document.remove("text");
+            document.remove("paragraphs");
+            document.insert("state".into(), json!("outdated"));
+            document.insert("notice".into(), json!(OUTDATED));
+            changed = true;
+        }
+    }
+    if changed {
+        *message = format!(
+            "{before}<data tool=\"context\">\n{}\n</data>{after}",
+            escaped_json(&value)
+        );
+    }
+}
+
 /// Resolve only exact saved quotes here. The editor owns fuzzy re-anchoring;
 /// when it hasn't done that yet, a stale notice is safer than a wrong passage.
 fn resolve_anchor(text: &str, anchor: &super::threads::Anchor) -> Option<[u32; 2]> {
@@ -121,10 +225,14 @@ pub fn current(
 ) -> (String, BTreeMap<String, String>) {
     let mut known = BTreeMap::new();
     for turn in previous {
-        known.extend(turn.reads.clone());
+        known.extend(
+            turn.reads
+                .iter()
+                .map(|(path, stamp)| (document_key(path), stamp.clone())),
+        );
     }
-    let mut paths: Vec<String> = chips.iter().map(|c| c.path.clone()).collect();
-    paths.extend(anchor.map(|a| a.path.clone()));
+    let mut paths: Vec<String> = chips.iter().map(|c| document_key(&c.path)).collect();
+    paths.extend(anchor.map(|a| document_key(&a.path)));
     paths.extend(known.keys().cloned());
     paths.sort();
     paths.dedup();
@@ -153,12 +261,12 @@ pub fn current(
         };
         let mut view = json!({"path": path, "revision": stamp, "state": state});
         let mut paragraphs = Vec::new();
-        let anchored = anchor.filter(|a| a.kind == "paragraph" && a.path == path);
+        let anchored = anchor.filter(|a| a.kind == "paragraph" && document_key(&a.path) == path);
         let resolved = anchored.and_then(|a| resolve_anchor(&text, a));
         let saved_lines = anchored.and_then(|a| a.chip().lines);
         let mut ranges: Vec<[u32; 2]> = chips
             .iter()
-            .filter(|c| c.path == path)
+            .filter(|c| document_key(&c.path) == path)
             .filter_map(|c| c.lines)
             .filter(|range| anchored.is_none() || Some(*range) != saved_lines)
             .collect();
@@ -194,7 +302,8 @@ pub fn current(
             }
             view["paragraphs"] = json!(paragraphs);
         }
-        if chips.iter().any(|c| c.path == path) && text.len() <= SMALL_DOCUMENT_BYTES {
+        if chips.iter().any(|c| document_key(&c.path) == path) && text.len() <= SMALL_DOCUMENT_BYTES
+        {
             let size = escaped_json(&json!(text)).len();
             if size <= remaining {
                 remaining -= size;

@@ -446,6 +446,11 @@ impl Web {
         self.guard.lock().unwrap().read(text);
     }
 
+    /// Quote protection for saved private material without trusting its URLs.
+    pub(crate) fn private(&self, text: &str) {
+        self.guard.lock().unwrap().private(text);
+    }
+
     /// Web text came into this turn: memory and skills are read-only.
     pub fn tainted(&self) -> bool {
         self.guard.lock().unwrap().tainted()
