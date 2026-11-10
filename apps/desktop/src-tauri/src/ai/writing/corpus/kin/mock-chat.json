@@ -2,7 +2,7 @@
   {
     "from": "mock",
     "kind": "chat",
-    "text": "You said: “What did I write about repair?”. I looked with search {\"query\":\"repair\"}. This thread has 0 earlier exchange(s). This reply comes from the headless mock model, so nothing was sent to a provider. It returned: <data tool=\"search\"> [ {\"id\":\"posts/on-craft.mdx\",\"kind\":\"writing\",\"title\":\"On craft and repair\",\"snippet\":\"# On craft A repair is not a cover-up. It is a recor"
+    "text": "You said: “What did I write about repair?”. I looked with search {\"query\":\"repair\"}. This thread has 0 earlier exchange(s). This reply comes from the headless mock model, so nothing was sent to a provider. It returned: <data tool=\"search\"> [ {\"id\":\"posts/on-craft.mdx\",\"kind\":\"writing\",\"score\":1.0,\"snippet\":\"# On craft A repair is not a cover-up. It is a record of care. The pra"
   },
   {
     "from": "mock",

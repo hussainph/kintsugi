@@ -670,12 +670,21 @@ impl<B: Brain> Engine<B> {
         // The newest message's chips first; the same chip once; then what
         // the thread is about.
         let mut chips: Vec<Chip> = Vec::new();
-        let anchor_chip = meta.anchor.as_ref().map(Anchor::chip);
+        let mut anchor_chips: Vec<Chip> =
+            meta.anchor.as_ref().map(Anchor::chip).into_iter().collect();
+        if let Some(anchor) = meta.anchor.as_ref().filter(|a| a.kind == "paragraph") {
+            anchor_chips.push(Chip {
+                kind: "doc".into(),
+                path: anchor.path.clone(),
+                label: None,
+                lines: None,
+            });
+        }
         for chip in pending
             .iter()
             .rev()
             .flat_map(|e| e.chips.iter())
-            .chain(anchor_chip.iter())
+            .chain(anchor_chips.iter())
         {
             if !chips
                 .iter()
@@ -703,6 +712,7 @@ impl<B: Brain> Engine<B> {
             remember: true,
             history,
             about: meta.anchor.as_ref().map(Anchor::describe),
+            anchor: meta.anchor.clone(),
         };
         // The model he picked for this thread, in the vault the turn started in (KI-61).
         let pick = vault
@@ -723,6 +733,7 @@ impl<B: Brain> Engine<B> {
             .is_some_and(|r| r.stopped);
         let through = info.answers.last().copied().unwrap_or_default();
         let base = Draft {
+            replay: result.as_ref().ok().map(|summary| summary.replay.clone()),
             answers: info.answers.clone(),
             web: trace.web,
             tools: trace.uses.into_iter().map(|(_, used)| used).collect(),
@@ -1061,6 +1072,7 @@ impl<B: Brain> Engine<B> {
             remember: true,
             history: vec![],
             about: None,
+            anchor: None,
         };
         let (_, result, trace) = self
             .execute(&job.id, "", &request, &cancel, false, None)

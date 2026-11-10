@@ -362,6 +362,7 @@ fn plan(
                     model: e.model.clone(),
                     cap_reached: e.cap_reached,
                     was: Some(e.seq),
+                    replay: None,
                 }
             })
             .collect();

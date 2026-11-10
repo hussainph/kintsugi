@@ -18,7 +18,8 @@ HTTP provider.
 
 Every wire format carries tool calls and streams text (below, Providers
 and wire formats). A step's reasoning is sent back within the turn, in the
-form its wire needs; across turns only the visible text is sent. Keys are
+form its wire needs. Recent turns also retain tool calls and results;
+reasoning stays within its turn. Keys are
 resolved in Rust (below, Credentials) and never reach the webview.
 
 Every model call (`wire::send`, Kin's steps and the webview's `ai_stream`)
@@ -358,21 +359,27 @@ short schemas:
 | Tool | Does |
 | --- | --- |
 | `search` | Hybrid search ([search.md](search.md)) over writing, `inbox/`, `inspiration/` and Feed items: `{query, k?, in?, kind?}` → a JSON array of `{id, kind, title?, source?, snippet, score}`, best first, never full text |
-| `read` | A file with line numbers; `offset`/`limit` for long files. `feed:<id>` reads a Feed item (Discuss's chip, a `search` or `shortlist` hit). A long clip's whole source is `inspiration/sources/<slug>.txt` (its `full_source`); the prompt says so |
+| `read` | Whole lines with line numbers, at most 2,000 lines or 50 KiB. Continue with `offset`/`limit`. `feed:<id>` reads a Feed item. A clip's `full_source` points to its whole source |
 | `list` | A folder's subfolders and documents, with titles |
 | `memory` | Batched add / patch / remove on `USER.md` or `NOTES.md` |
 | `skill` | Loads a skill's body by name; `write` / `delete` change one |
-| `tool` | Runs an extra tool by name; with only a name, returns its usage |
+| `outline` | A document's headings and line numbers |
+| `recent` | Recently changed documents |
+| `threads` | Find earlier threads with `query`, list by `about`, or read by `id`; excludes the current thread |
+| `tool` | Runs an extra by name and `args`; its description includes every extra's arguments |
 
-Extra tools, loaded on demand through `tool`: `outline` (a document's
-headings), `recent` (recently changed documents), the Feed's ranking tools
-`shortlist`, `similar_to`, `top_topics`, `taste_profile` and `explain`
-(compact JSON, ranked locally with no model calls; see
-[ranking.md](ranking.md)) and `threads` (searches the open vault's earlier
-threads with `{"query"}`, lists the ones about a path or `feed:<id>` with
-`{"about"}`, or reads one with `{"id"}`; never the thread it's asked from). New tools join this
-list, so the tool array (part of the cached prefix) never changes mid-turn.
+Extras through `tool`: `stash` (a document's saved stash), `idea` (one
+idea), and the Feed's local ranking tools `shortlist`, `similar_to`,
+`top_topics`, `taste_profile` and `explain` (see [ranking.md](ranking.md)).
+The tool array stays fixed within a turn.
 
+- `read` never clips a paragraph or spills its output. Limits apply to
+  complete UTF-8 lines. A page ends with the next `offset`; a single line
+  larger than 50 KiB gets an explicit notice, not a partial quote.
+  Line-number prefixes are metadata, not words to copy into an edit.
+  `outline` and search snippets still shorten long lines and mark the cut.
+  The stash has its own call, so it never displaces a document or repeats
+  on every page.
 - `search` uses the app's shared index (`Tools::with_searcher`). Without
   one, as in tests, it indexes the vault in memory, by words only.
 - `search`'s `in` is a vault-relative folder however it's written
@@ -391,7 +398,8 @@ list, so the tool array (part of the cached prefix) never changes mid-turn.
   **Ask Kin** in a draft's Stash tab grants one turn the narrow `stash_add`
   tool, scoped to that draft's stash file. It cannot choose another file or
   write the draft. Items pass the memory injection scan; a turn adds at most
-  five. Outputs over 8,000 characters are saved to
+  five. The turn must read both the draft and its separate stash before
+  additions are allowed. Non-paging tool outputs over 8,000 characters are saved to
   `<config>/kin/outputs/<turn>/<call>.txt` and previewed; Kin reads the rest
   with `read @out/<turn>/<call>.txt`.
 - Everything a tool returns is wrapped in `<data>…</data>`, with closing tags
@@ -459,25 +467,29 @@ next turn.
 
 ### Prompt injection (KI-81)
 
-Code: `ai/web/guard.rs`, one `Guard` per turn's `Web`. A page or a search
+Code: `ai/web/guard.rs`. Provenance and hashed private phrases are kept
+with the thread, even while web tools are off; each turn restores them
+into its `Web`. Successful tool-emitted source URLs survive a later turn
+failure too. A page or a search
 snippet can tell Kin to do things. The prompt says not to; these rules
 hold even when Kin does as told:
 
 - **Links need provenance.** `web_fetch` opens a URL only if it appeared in
-  Hussain's own messages (this one and the earlier ones the turn carries,
-  bare `example.com/post` included), in what Kin read from the vault or the
-  Feed this turn (`search`, `read`, `list` and the vault and Feed extras;
+  Hussain's own messages in this thread (bare `example.com/post` included),
+  in what Kin read from the vault or the Feed in this thread (`search`,
+  `read`, `list`, current-document context, and the vault and Feed extras;
   not `threads`, `idea` or spilled outputs, since Kin's own words may carry
-  a planted link), or in this turn's search results; or it's a link on a
-  page fetched this turn, on the same host (`www.` aside) and without a
+  a planted link), or in this thread's search results; or it's a link on a
+  page fetched in this thread, on the same host (`www.` aside) and without a
   query string. URLs compare without scheme, `www.`, fragment or trailing
   slash. Anything else is refused before a request is made, and Kin is told
   to say "I can only open links you gave me or that came up in a search".
   So a URL Kin composes (`https://attacker.example/?q=<vault text>`) never
   leaves the Mac. Pages already fetched this turn can be paged through.
 - **Queries.** At most 200 characters, and no run of 8 words in a row
-  (lowercased, punctuation ignored) from what Kin read in the vault this
-  turn, unless Hussain wrote those words in his messages. Refused queries
+  (lowercased, punctuation ignored) from what Kin read in the vault in this
+  thread, unless Hussain wrote those words in his messages. File text in
+  dynamic context never counts as his own message. Refused queries
   are never sent.
 - **Memory locks after the web.** Once a `web_search` or `web_fetch` has
   brought text into the turn, `memory` and skill writes and deletes are
@@ -493,7 +505,8 @@ hold even when Kin does as told:
 Each `web_search` or `web_fetch` that works also emits its results on the
 `toolResult` event (`web: {tool, query?, provider?, results: [{url, title,
 snippet?, date?, favicon?}]}`), and the reply keeps up to 12 of them in the
-message's `web` field. They are never sent back to the model.
+message's `web` field for display. The separate bounded replay retains
+recent tool results for the model.
 
 `WebSources` (self-contained) shows them under the
 reply and while Kin works: a "3 sources" toggle with favicons, then what was
@@ -520,26 +533,35 @@ the first result, then answers. `test/runtime-kin.test.ts` drives it.
 
 ## Context
 
-1. **Prefix** (`prompt::system`): instructions, the extra-tool list, then
-   memory: About Hussain, your notes and the skills index. Identical on every request; tests check it across steps and turns.
+1. **Prefix** (`prompt::system`): concise instructions, unchanged writing
+   rules, the extra-tool list, then memory: About Hussain, notes and skills.
+   Tool-specific guidance lives with its schema. A thread saves its frozen
+   memory snapshot with replay, across app restarts too; tests compare
+   prefix bytes across steps and turns.
    Anthropic gets `cache_control` on the system block and a rolling breakpoint
    on the newest message; OpenAI and Codex get `prompt_cache_key: "kin"`.
    The instructions say each conversation is a short thread about one
    thing, that only this thread is in context, and to use the `threads`
    tool for earlier ones.
-2. **The thread** (KI-104): its latest answered exchanges (at most 12), then
-   the new message. Only appended to within a turn. Interrupted and failed
-   replies stay in the thread but are never sent back to the model. A note
-   Kin started the thread with (Discuss on a review's suggestion, or an old
-   review's note) is sent as the reply to "Kin, review this draft"; a
-   helper's report as the reply to "(A helper reported back.)".
-3. **Dynamic context**, at the end of the user message: the date, on-screen
-   chips as paths to read on demand (a selected paragraph carries its line
-   range), then "This thread is about …": the document, clip, Feed item or
-   idea it's anchored to, or for a paragraph thread the paragraph's current
-   text, inside `<data>`. Reading a draft also returns its stash as data,
-   never instructions, so Kin avoids repeating an idea or rewrite that is
-   already waiting.
+2. **The thread**: at most 12 answered exchanges within a 128 KiB
+   serialized transcript budget. The newest four may keep complete tool
+   calls and results, plus the original question's chips and context.
+   Older exchanges keep questions, chip references and answers. Oversized
+   tool loops fall back to question and answer together; results are never
+   silently clipped or separated from their calls. Interrupted and failed
+   replies stay on disk but aren't replayed. Old logs without replay still
+   work. Replay is separate from the display trace and excludes reasoning.
+3. **Dynamic context**, at the end of the newest user message: date, chips,
+   thread anchor, current chipped paragraphs and documents under 16 KiB.
+   File text is JSON inside `<data>`, within a 64 KiB escaped-text budget;
+   a passage that won't fit gets a notice to read it. A paragraph anchor's
+   saved quote is matched against current text, relocating moved passages.
+   An unmatched quote is marked stale, never replaced by unrelated text
+   at its old line. Content hashes mark previously
+   read files as unchanged, changed or unavailable. Kin reuses unchanged
+   text; it reads changed or missing passages when needed. The open or
+   thread document isn't named in replies. Other vault sources use
+   `[[path]]`; requested edit blocks still carry their target path.
 
 There is no running summary and no topic inference: continuity across
 threads comes from memory and the `threads` tool.
@@ -599,8 +621,8 @@ For helper jobs (KI-31): `about::snapshot(app, root)` returns the snapshot
 that updates memory runs the loop with that snapshot and
 `Tools::with_memory(Access { store, source: Source::Review { .. }, remember: true })`,
 and skips conversations marked "don't remember this". Today each dev-panel
-turn takes its own snapshot; a thread should take one when it starts
-and reuse it.
+turn takes its own snapshot; threads save one on their first answered turn
+and reuse it, including after app restarts.
 
 ### About you
 
@@ -894,8 +916,8 @@ Shimmer), rebuilt on the Graphical theme and Base UI parts.
   status, then streams the reply with a caret. Done, the steps fold into
   one line ("3 steps · 6s", or "Thought for 4s" with none), which opens to
   the list. The reply keeps them: `tools` (name, arguments with long strings
-  cut, whether it failed; at most 24), `ms`, `model` and `capReached`. None
-  of it is sent back to the model.
+  cut, whether it failed; at most 24), `ms`, `model` and `capReached`. This
+  display trace is separate from the model's bounded tool-result replay.
 - **Under a reply**: its web sources, Copy, **Stash** while a writable draft
   is open, and the model and cost, shown on hover (always on the latest reply).
   Stash saves the reply as Kin's item beside the draft, never in its prose;
@@ -1229,7 +1251,7 @@ and answers like any thread, in the Kin tab.
 - **Kin's note.** A paragraph thread's turns tell Kin it's replying in a
   comment thread anchored to a paragraph, with the paragraph's text in the
   context: brief, specific and plain, a few sentences, no praise, never his
-  prose, anything it found named as a `[[path]]` link.
+  prose unless he asks for an edit. Only other sources get a `[[path]]` link.
 - **Anchors.** A text quote of the paragraph with up to 48 characters of
   context either side and its first line, kept in the thread's index entry,
   never in the document. On open it's re-resolved: the exact quote (the

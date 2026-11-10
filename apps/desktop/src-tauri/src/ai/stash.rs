@@ -27,6 +27,7 @@ static ASKING: Mutex<Option<HashSet<PathBuf>>> = Mutex::new(None);
 #[derive(Default)]
 struct TurnAccess {
     read_draft: bool,
+    read_stash: bool,
     added: usize,
 }
 
@@ -96,10 +97,16 @@ impl Access {
         self
     }
 
-    /// A successful read of this draft also carries its stash as data.
+    /// A successful read of this draft, separate from its stash.
     pub fn read(&self, path: &str) {
         if path.trim() == self.doc {
             self.state.lock().unwrap().read_draft = true;
+        }
+    }
+
+    pub fn read_stash(&self, path: &str) {
+        if path.trim() == self.doc {
+            self.state.lock().unwrap().read_stash = true;
         }
     }
 
@@ -107,7 +114,7 @@ impl Access {
         let batch: Add = serde_json::from_value(args.clone())
             .map_err(|_| "stash_add needs only items: kind, text and optional anchor.")?;
         let mut state = self.state.lock().unwrap();
-        if !state.read_draft {
+        if !state.read_draft || !state.read_stash {
             return Err("Read the draft and its stash before adding anything.".into());
         }
         if batch.items.is_empty() || batch.items.len() + state.added > MAX_ADDITIONS {
@@ -174,9 +181,9 @@ fn draft_context(draft: &str, mut anchor: super::threads::Quote) -> super::threa
     anchor
 }
 
-/// Draft reads carry the current stash too, including ordinary chat turns.
-/// Hand-edited instruction-like text never becomes model context. The read
-/// tool wraps this again as data and spills large results for paging.
+/// The separate stash tool reads saved material without displacing a draft.
+/// Hand-edited instruction-like text never becomes model context; the tool
+/// wraps this as data.
 pub fn context(root: &Path, doc: &str) -> Result<String> {
     let file = stash::load(root, doc)?;
     let items: Vec<_> = file
@@ -281,7 +288,7 @@ pub async fn stash_ask(
         task: Task::Chat,
         background: false,
         question: format!(
-            "{BRIEF}: {path}. Read the draft first; read also returns its stash. Search and read his writing and clips where useful. Add up to five useful, distinct items with stash_add, avoiding what's already saved or dismissed. An idea is a short note with [[links]] to sources. A rewrite must quote its original words exactly in anchor.exact (plus nearby prefix, suffix and line). You may propose prose here because he explicitly asked for stash suggestions. Nothing goes into the draft until he inserts it. Use only the narrow stash tool; no memory or skill changes. Finish with a brief count.{}",
+            "{BRIEF}: {path}. Read the draft and use the separate stash extra tool with this draft's path before adding anything. Search and read his writing and clips where useful. Add up to five useful, distinct items with stash_add, avoiding what's already saved or dismissed. An idea is a short note with [[links]] to sources. A rewrite must quote its original words exactly in anchor.exact (plus nearby prefix, suffix and line). You may propose prose here because he explicitly asked for stash suggestions. Nothing goes into the draft until he inserts it. Use only the narrow stash tool; no memory or skill changes. Finish with a brief count.{}",
             dismissals(&app, &root, &path)
         ),
         chips: vec![Chip {
@@ -294,6 +301,7 @@ pub async fn stash_ask(
         remember: false,
         history: vec![],
         about: None,
+        anchor: None,
     };
     let cancel = Cancel::default();
     let harness = Harness {
@@ -390,6 +398,18 @@ mod tests {
                 ))
                 .is_error
         );
+        assert!(
+            scoped.run(&call("stash_add", args.clone())).is_error,
+            "draft read alone doesn't grant additions"
+        );
+        assert!(
+            !scoped
+                .run(&call(
+                    "tool",
+                    json!({"name":"stash", "args":{"path":"drafts/tools.mdx"}})
+                ))
+                .is_error
+        );
         let saved = scoped.run(&call("stash_add", args));
         assert!(!saved.is_error, "{}", saved.content);
         let file = stash::load(vault.path(), "drafts/tools.mdx").unwrap();
@@ -422,6 +442,10 @@ mod tests {
         let outputs = tempfile::tempdir().unwrap();
         let scoped = tools(vault.path(), outputs.path());
         scoped.run(&call("read", json!({ "path": "drafts/tools.mdx" })));
+        scoped.run(&call(
+            "tool",
+            json!({"name":"stash", "args":{"path":"drafts/tools.mdx"}}),
+        ));
         let add = |items| scoped.run(&call("stash_add", json!({ "items": items })));
         assert!(
             add(
@@ -450,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn draft_reads_include_stash_but_exclude_hand_edited_instructions() {
+    fn separate_stash_reads_exclude_hand_edited_instructions() {
         let vault = scratch_vault();
         let outputs = tempfile::tempdir().unwrap();
         stash::save(
@@ -477,7 +501,12 @@ mod tests {
         )
         .unwrap();
         let normal = Tools::new(vault.path(), outputs.path().into(), "chat").unwrap();
-        let read = normal.run(&call("read", json!({ "path": "drafts/tools.mdx" })));
+        let draft = normal.run(&call("read", json!({ "path": "drafts/tools.mdx" })));
+        assert!(!draft.content.contains("A saved passage about pencils."));
+        let read = normal.run(&call(
+            "tool",
+            json!({"name":"stash", "args":{"path":"drafts/tools.mdx"}}),
+        ));
         assert!(
             read.content.contains("A saved passage about pencils."),
             "{}",
@@ -503,6 +532,7 @@ mod tests {
         let read = tools.run(&call("read", json!({ "path": path })));
         assert!(read.content.contains("An unsaved paragraph."));
         assert!(!read.content.contains("A pencil is a tool"));
+        tools.run(&call("tool", json!({"name":"stash", "args":{"path":path}})));
         let added = tools.run(&call(
             "stash_add",
             json!({ "items": [{
@@ -534,6 +564,7 @@ mod tests {
             .unwrap()
             .with_stash(access);
         tools.run(&call("read", json!({ "path": path })));
+        tools.run(&call("tool", json!({"name":"stash", "args":{"path":path}})));
         let add = |text: &str, exact: &str, prefix: &str, suffix: &str| {
             tools.run(&call(
                 "stash_add",
@@ -609,6 +640,7 @@ mod tests {
             remember: false,
             history: vec![],
             about: None,
+            anchor: None,
         };
         let result = super::super::agent::tests::block_on(agent::run(
             &super::super::scripted::Scripted::default(),

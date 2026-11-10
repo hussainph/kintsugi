@@ -247,7 +247,7 @@ pub struct ToolSpec {
     pub parameters: Value,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCall {
     pub id: String,
     pub name: String,
@@ -255,7 +255,7 @@ pub struct ToolCall {
     pub arguments: Value,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolResult {
     pub call_id: String,
     pub content: String,
@@ -263,7 +263,7 @@ pub struct ToolResult {
 }
 
 /// One entry in a conversation, in the order the provider saw it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Item {
     User(String),
     Assistant {

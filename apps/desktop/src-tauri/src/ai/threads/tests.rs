@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::json;
 
 fn at(minute: i64) -> DateTime<FixedOffset> {
     DateTime::parse_from_rfc3339("2026-11-04T10:00:00+00:00").unwrap()
@@ -406,12 +407,181 @@ fn context_is_the_threads_answered_exchanges() {
     kin(&mut store, "Half an ans", vec![3, 4], true);
     kin(&mut store, "Both answered", vec![3, 4], false);
     assert_eq!(
-        store.context(&t.id, HISTORY_PAIRS),
+        store
+            .context(&t.id, HISTORY_PAIRS)
+            .into_iter()
+            .map(|r| r.items)
+            .collect::<Vec<_>>(),
         [
-            ("First question".to_string(), "First answer".to_string()),
-            ("Second\n\nand third".into(), "Both answered".into())
+            vec![
+                super::super::wire::Item::User("First question".into()),
+                super::super::wire::Item::Assistant {
+                    text: "First answer".into(),
+                    calls: vec![]
+                }
+            ],
+            vec![
+                super::super::wire::Item::User("Second\n\nand third".into()),
+                super::super::wire::Item::Assistant {
+                    text: "Both answered".into(),
+                    calls: vec![]
+                }
+            ],
         ]
     );
     assert_eq!(store.context(&t.id, 1).len(), 1);
+    assert_eq!(store.context(&t.id, 1)[0].heard, ["Second", "and third"]);
     assert_eq!(store.last_said(&t.id).unwrap().text, "and third");
+}
+
+#[test]
+fn recent_tool_results_survive_reopen_and_history_stays_within_budget() {
+    use crate::ai::context::{HISTORY_BYTES, Replay, TOOL_TURNS};
+    use crate::ai::wire::{Item, ToolCall, ToolResult};
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(Some(dir.path().into()));
+    let chip = Chip {
+        kind: "paragraph".into(),
+        path: "drafts/x.md".into(),
+        label: Some("a pointed-at paragraph".into()),
+        lines: Some([9, 9]),
+    };
+    let (thread, _) = store
+        .start(
+            New::default(),
+            Role::Owner,
+            Draft::said("First", vec![chip.clone()]),
+        )
+        .unwrap();
+    for n in 0..8 {
+        let asked = if n == 0 {
+            1
+        } else {
+            store
+                .append(
+                    &thread.id,
+                    Role::Owner,
+                    Draft::said(&format!("Question {n}"), vec![chip.clone()]),
+                )
+                .unwrap()
+                .seq
+        };
+        let replay = Replay {
+            items: vec![
+                Item::User(crate::ai::context::question(
+                    &format!("Question {n}"),
+                    &[chip.clone()],
+                )),
+                Item::Assistant {
+                    text: String::new(),
+                    calls: vec![ToolCall {
+                        id: format!("read-{n}"),
+                        name: "read".into(),
+                        arguments: json!({"path":"drafts/x.md"}),
+                    }],
+                },
+                Item::Results(vec![ToolResult {
+                    call_id: format!("read-{n}"),
+                    content: format!(
+                        "<data tool=\"read\">{} whole paragraph end {n}</data>",
+                        "x".repeat(36_000)
+                    ),
+                    is_error: false,
+                }]),
+                Item::Assistant {
+                    text: format!("Answer {n}"),
+                    calls: vec![],
+                },
+            ],
+            ..Default::default()
+        };
+        store
+            .append(
+                &thread.id,
+                Role::Kin,
+                Draft {
+                    text: format!("Answer {n}"),
+                    answers: vec![asked],
+                    replay: Some(replay),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+    }
+    let reopened = Store::open(Some(dir.path().into()));
+    let history = reopened.context(&thread.id, HISTORY_PAIRS);
+    assert!(history.iter().map(Replay::bytes).sum::<usize>() <= HISTORY_BYTES);
+    let tool_turns = history
+        .iter()
+        .filter(|h| h.items.iter().any(|i| matches!(i, Item::Results(_))))
+        .count();
+    assert!(tool_turns > 0 && tool_turns <= TOOL_TURNS);
+    assert!(history.last().unwrap().items.iter().any(
+        |i| matches!(i, Item::Results(r) if r[0].content.ends_with("whole paragraph end 7</data>"))
+    ));
+    for turn in &history {
+        assert!(
+            matches!(&turn.items[0], Item::User(s) if s.contains("\"lines\":[9,9]")),
+            "old questions keep their chips"
+        );
+        for pair in turn.items.windows(2) {
+            if let Item::Results(results) = &pair[1] {
+                assert!(
+                    matches!(&pair[0], Item::Assistant { calls, .. } if calls.len() == results.len() && calls[0].id == results[0].call_id)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn failed_turns_keep_tool_emitted_web_provenance_but_not_links_from_kin_prose() {
+    let mut store = Store::open(None);
+    let (thread, owner) = store
+        .start(
+            New::default(),
+            Role::Owner,
+            Draft::said("Find a source", vec![]),
+        )
+        .unwrap();
+    store
+        .append(
+            &thread.id,
+            Role::Kin,
+            Draft {
+                text: "Try https://invented.example/private".into(),
+                answers: vec![owner.seq],
+                error: Some("Provider failed after searching".into()),
+                web: vec![crate::ai::web::WebCall {
+                    tool: "search".into(),
+                    query: Some("kiln".into()),
+                    provider: None,
+                    results: vec![crate::ai::web::Source {
+                        url: "https://source.example/article".into(),
+                        title: "A source".into(),
+                        snippet: None,
+                        date: None,
+                        favicon: None,
+                    }],
+                }],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    let context = store.context(&thread.id, HISTORY_PAIRS);
+    assert!(
+        context.iter().all(|c| c.items.is_empty()),
+        "failed replies aren't replayed"
+    );
+    let guard = context.last().unwrap().provenance.as_ref().unwrap();
+    assert!(
+        guard
+            .may_fetch(&reqwest::Url::parse("https://source.example/article").unwrap())
+            .is_ok()
+    );
+    assert!(
+        guard
+            .may_fetch(&reqwest::Url::parse("https://invented.example/private").unwrap())
+            .is_err()
+    );
 }

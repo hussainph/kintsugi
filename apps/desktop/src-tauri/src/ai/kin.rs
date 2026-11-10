@@ -270,6 +270,7 @@ async fn start(
         remember: turn.remember,
         history: vec![],
         about: None,
+        anchor: None,
     };
     // The loop emits its own error event; don't send a second one.
     let harness = agent::Harness {

@@ -65,7 +65,7 @@ pub(super) fn doc_chips(doc: &str, chips: Vec<Chip>) -> Vec<Chip> {
     chips
 }
 
-pub(super) fn note(doc: &str, chips: &[Chip]) -> String {
+pub(super) fn note(_doc: &str, chips: &[Chip]) -> String {
     let lines = chips
         .iter()
         .find_map(|c| c.lines)
@@ -78,9 +78,9 @@ pub(super) fn note(doc: &str, chips: &[Chip]) -> String {
         })
         .unwrap_or_default();
     format!(
-        "{COMMENT_NOTE} of {doc}{lines}; its text is in the context below. Reply the way a reviewer does in the margin: brief, specific and plain, \
-         a few sentences, no praise. Never write or rewrite his prose, not even as an example: question, point, find. Name anything you found \
-         as a [[path]] link so he can drag it into the draft.)"
+        "{COMMENT_NOTE}{lines}; use its current text in the context below. Reply briefly and specifically, without praise. \
+         Don't write his prose unless he explicitly asks for an edit. Don't name the open document or this thread's document. \
+         Link only other sources as [[path]].)"
     )
 }
 
@@ -272,6 +272,7 @@ impl<B: Brain> Engine<B> {
             remember: true,
             history: vec![],
             about: None,
+            anchor: None,
         };
         let (_, result, _) = self.execute(&turn, "", &ask, &cancel, true, None).await;
         let (suggestions, error, stopped) = match result {
@@ -471,6 +472,11 @@ mod tests {
             chips.iter().map(|c| c.kind.as_str()).collect::<Vec<_>>(),
             ["paragraph", "doc"]
         );
-        assert!(note("drafts/a.md", &chips).contains("drafts/a.md, lines 3-4"));
+        let note = note("drafts/a.md", &chips);
+        assert!(note.contains("lines 3-4"));
+        assert!(
+            !note.contains("drafts/a.md"),
+            "do not prompt Kin to recite the open path"
+        );
     }
 }

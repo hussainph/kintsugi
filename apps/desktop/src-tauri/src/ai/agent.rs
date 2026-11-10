@@ -116,11 +116,13 @@ pub struct Turn {
     pub today: String,
     /// False when the conversation is marked "don't remember this".
     pub remember: bool,
-    /// Earlier exchanges in this conversation, oldest first: what the owner
-    /// said and what Kin answered. Sent as plain messages after the prefix.
-    pub history: Vec<(String, String)>,
-    /// The running summary of the conversation, older than `history`.
+    /// Bounded earlier exchanges, including recent tool calls/results and
+    /// paragraph context. Reasoning never crosses a turn boundary.
+    pub history: Vec<super::context::Replay>,
+    /// What the thread is anchored to, rendered only in dynamic context.
     pub about: Option<String>,
+    /// The paragraph's saved quote validates its current line range.
+    pub anchor: Option<super::threads::Anchor>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -189,6 +191,9 @@ pub struct Summary {
     pub model: String,
     /// The month's cap is reached (a foreground turn still ran).
     pub cap_reached: bool,
+    /// Internal replay for the next turn, not part of streamed UI events.
+    #[serde(skip)]
+    pub replay: super::context::Replay,
 }
 
 /// What the webview sees while a turn runs.
@@ -280,25 +285,84 @@ async fn steps(
         limits,
     } = *harness;
     let reference = model.model();
+    let memory = turn
+        .history
+        .iter()
+        .find_map(|h| h.memory.as_ref())
+        .unwrap_or(memory);
     let system = prompt::system(memory);
-    let mut items = Vec::with_capacity(turn.history.len() * 2 + 1);
-    // His words are where web links may come from (KI-81); Kin's answers aren't.
-    tools.heard(&turn.question);
-    for (said, answered) in &turn.history {
-        tools.heard(said);
-        items.push(Item::User(said.clone()));
-        items.push(Item::Assistant {
-            text: answered.clone(),
-            calls: vec![],
-        });
+    let mut items = Vec::new();
+    // Only the owner's words grant exceptions for private web queries.
+    // Previous dynamic file context is data, never something he said.
+    if let Some(previous) = turn
+        .history
+        .iter()
+        .rev()
+        .find_map(|h| h.provenance.as_ref())
+    {
+        tools.restore_web_provenance(previous);
     }
-    items.push(Item::User(prompt::user_message(
+    tools.heard(&turn.question);
+    for earlier in &turn.history {
+        // Web may have been off when these vault results were read. Rebuild
+        // their quote protection/provenance without trusting Kin's own text.
+        for pair in earlier.items.windows(2) {
+            if let [Item::Assistant { calls, .. }, Item::Results(results)] = pair {
+                for result in results {
+                    if let Some(call) = calls.iter().find(|c| c.id == result.call_id) {
+                        let trusted_source = match call.name.as_str() {
+                            "search" | "list" | "outline" | "recent" => true,
+                            "read" => !call.arguments["path"]
+                                .as_str()
+                                .unwrap_or_default()
+                                .starts_with("@out/"),
+                            "tool" => matches!(
+                                call.arguments["name"].as_str(),
+                                Some(
+                                    "shortlist"
+                                        | "similar_to"
+                                        | "top_topics"
+                                        | "taste_profile"
+                                        | "explain"
+                                        | "outline"
+                                        | "recent"
+                                )
+                            ),
+                            _ => false,
+                        };
+                        if trusted_source && !result.is_error {
+                            tools.note_context(&result.content);
+                        }
+                    }
+                }
+            }
+        }
+        for said in &earlier.heard {
+            tools.heard(said);
+        }
+        for item in &earlier.items {
+            if let Item::User(message) = item {
+                super::context::protect(tools, message);
+            }
+        }
+        items.extend(earlier.items.clone());
+    }
+    let history_end = items.len();
+    let (current, reads) =
+        super::context::current(tools, &turn.chips, &turn.history, turn.anchor.as_ref());
+    let mut message = prompt::user_message(
         &turn.question,
         &turn.chips,
         &turn.today,
         turn.remember,
         turn.about.as_deref(),
-    )));
+    );
+    if !current.is_empty() {
+        message.truncate(message.len() - "\n</context>".len());
+        message.push_str(&current);
+        message.push_str("\n</context>");
+    }
+    items.push(Item::User(message));
     let mut summary = Summary {
         text: String::new(),
         stop: Stop::StepLimit,
@@ -308,6 +372,12 @@ async fn steps(
         usd: 0.0,
         model: format!("{}/{}", reference.provider, reference.model),
         cap_reached: false,
+        replay: super::context::Replay {
+            reads,
+            heard: vec![turn.question.clone()],
+            memory: Some(memory.clone()),
+            ..Default::default()
+        },
     };
     let mut nudged_empty = false;
     for step in 1..=limits.max_steps {
@@ -376,6 +446,10 @@ async fn steps(
                 items.push(Item::User(EMPTY_REPLY.into()));
                 continue;
             }
+            items.push(Item::Assistant {
+                text: reply.text.clone(),
+                calls: vec![],
+            });
             summary.stop = Stop::Answered;
             break;
         }
@@ -387,6 +461,15 @@ async fn steps(
                 name: call.name.clone(),
                 arguments: call.arguments.clone(),
             });
+            let reading = (call.name == "read")
+                .then(|| call.arguments["path"].as_str())
+                .flatten()
+                .and_then(|path| {
+                    tools
+                        .document(path)
+                        .ok()
+                        .map(|text| (path.to_string(), super::context::revision(&text)))
+                });
             // A web call can take seconds; Stop doesn't wait for it.
             let output = match select(pin!(tools.call(call)), pin!(cancel.cancelled())).await {
                 Either::Left((output, _)) => output,
@@ -395,6 +478,17 @@ async fn steps(
                     break;
                 }
             };
+            if !output.is_error
+                && let Some((path, stamp)) = reading
+            {
+                // Don't claim a version if it changed while the read ran.
+                if tools
+                    .document(&path)
+                    .is_ok_and(|text| super::context::revision(&text) == stamp)
+                {
+                    summary.replay.reads.insert(path, stamp);
+                }
+            }
             emit(KinEvent::ToolResult {
                 id: call.id.clone(),
                 is_error: output.is_error,
@@ -424,6 +518,15 @@ async fn steps(
         items.push(Item::Results(results));
     }
     summary.cap_reached = meter.cap_reached();
+    summary.replay.items = items[history_end..]
+        .iter()
+        .filter(|item| !matches!(item, Item::Reasoning(_)))
+        .cloned()
+        .collect();
+    summary.replay.provenance = tools
+        .web_provenance()
+        .or_else(|| turn.history.iter().rev().find_map(|h| h.provenance.clone()));
+    summary.replay.bound();
     Ok(summary)
 }
 
@@ -563,6 +666,7 @@ pub(crate) mod tests {
             remember: true,
             history: vec![],
             about: None,
+            anchor: None,
         }
     }
 
@@ -631,6 +735,20 @@ pub(crate) mod tests {
         (result, events)
     }
 
+    fn has_kintsugi_hit(content: &str) -> bool {
+        let body = content
+            .strip_prefix("<data tool=\"search\">\n")
+            .unwrap()
+            .strip_suffix("\n</data>")
+            .unwrap();
+        let hits: Value = serde_json::from_str(body).unwrap();
+        hits.as_array().unwrap().iter().any(|hit| {
+            hit["id"] == "posts/kintsugi.md"
+                && hit["kind"] == "writing"
+                && hit["title"] == "On Kintsugi"
+        })
+    }
+
     #[test]
     fn answers_a_question_by_searching_and_reading_the_vault() {
         let f = fixture();
@@ -663,13 +781,7 @@ pub(crate) mod tests {
         let Item::Results(found) = &seen[1].items[2] else {
             panic!("expected results")
         };
-        assert!(
-            found[0]
-                .content
-                .contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#),
-            "{}",
-            found[0].content
-        );
+        assert!(has_kintsugi_hit(&found[0].content), "{}", found[0].content);
         let Item::Results(read) = &seen[2].items[4] else {
             panic!("expected results")
         };
@@ -769,9 +881,197 @@ pub(crate) mod tests {
         let Item::User(message) = &other.seen.lock().unwrap()[0].items[0] else {
             panic!()
         };
+        assert!(message.contains("- doc drafts/tools.mdx"), "{message}");
+        assert!(message.ends_with("</context>"), "{message}");
+    }
+
+    #[test]
+    fn follow_up_replays_tool_results_and_current_paragraph_without_rereading() {
+        let f = fixture();
+        let paragraph = format!("{} this is the end.", "Long paragraph words ".repeat(60));
+        std::fs::write(
+            f.vault.path().join("posts/kintsugi.md"),
+            format!("# Title\n\n{paragraph}\n"),
+        )
+        .unwrap();
+        let mut first = turn(false);
+        first.chips = vec![Chip {
+            kind: "paragraph".into(),
+            path: "posts/kintsugi.md".into(),
+            label: Some("Long paragraph".into()),
+            lines: Some([3, 3]),
+        }];
+        let mock = Mock::new(vec![
+            calls(
+                &[("read-1", "read", json!({"path":"posts/kintsugi.md"}))],
+                "",
+            ),
+            answer("The end makes the point."),
+        ]);
+        let summary = run_turn(&f, &mock, &first, &Cancel::default()).0.unwrap();
         assert!(
-            message.ends_with("- doc drafts/tools.mdx\n</context>"),
-            "{message}"
+            summary.replay.items.iter().any(
+                |i| matches!(i, Item::Results(r) if r[0].content.contains("this is the end."))
+            )
+        );
+        let mut next = first.clone();
+        next.question = "better?".into();
+        next.history = vec![summary.replay];
+        let later = Mock::new(vec![answer("Yes.")]);
+        let second = run_turn(&f, &later, &next, &Cancel::default()).0.unwrap();
+        assert_eq!(second.tool_calls, 0);
+        let seen = later.seen.lock().unwrap();
+        assert!(seen[0].items.iter().any(|i| matches!(i, Item::Results(_))));
+        let Item::User(current) = seen[0].items.last().unwrap() else {
+            panic!()
+        };
+        assert!(
+            current.contains("\\\"state\\\":\\\"unchanged\\\"")
+                || current.contains("\"state\":\"unchanged\""),
+            "{current}"
+        );
+        assert!(current.contains("this is the end."));
+        assert!(current.ends_with("</context>"));
+        assert_eq!(seen[0].system, mock.seen.lock().unwrap()[0].system);
+    }
+
+    #[test]
+    fn saved_thread_prefix_stays_fixed_when_memory_changes_between_turns() {
+        let f = fixture();
+        let first = Mock::new(vec![answer("First.")]);
+        let summary = run_turn(&f, &first, &turn(false), &Cancel::default())
+            .0
+            .unwrap();
+        let persisted = serde_json::to_string(&summary.replay).unwrap();
+        let mut next = turn(false);
+        next.history = vec![serde_json::from_str(&persisted).unwrap()];
+        let changed = Memory {
+            about: vec!["A new preference.".into()],
+            ..Default::default()
+        };
+        let second = Mock::new(vec![answer("Second.")]);
+        let harness = Harness {
+            tools: &f.tools,
+            meter: &f.meter,
+            memory: &changed,
+            cancel: &Cancel::default(),
+            limits: Limits::default(),
+        };
+        block_on(run(&second, &harness, &next, &mut |_| {})).unwrap();
+        assert_eq!(
+            first.seen.lock().unwrap()[0].system,
+            second.seen.lock().unwrap()[0].system
+        );
+        assert!(
+            !second.seen.lock().unwrap()[0]
+                .system
+                .contains("A new preference.")
+        );
+    }
+
+    #[test]
+    fn previous_web_search_can_be_fetched_in_a_follow_up_without_a_new_search() {
+        let f = fixture();
+        let web = std::sync::Arc::new(crate::ai::web::Web::scripted());
+        let tools = Tools::new(f.vault.path(), f._outputs.path().into(), "web1")
+            .unwrap()
+            .with_web(web);
+        let harness = Harness {
+            tools: &tools,
+            meter: &f.meter,
+            memory: &NO_MEMORY,
+            cancel: &Cancel::default(),
+            limits: Limits::default(),
+        };
+        let first = Mock::new(vec![
+            calls(&[("s", "web_search", json!({"query":"kilns"}))], ""),
+            answer("Found a source."),
+        ]);
+        let summary = block_on(run(&first, &harness, &turn(false), &mut |_| {})).unwrap();
+        let url = first.seen.lock().unwrap()[1]
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Results(r) => {
+                    let body = &r[0].content;
+                    let value: Value =
+                        serde_json::from_str(body.split_once('\n')?.1.strip_suffix("\n</data>")?)
+                            .ok()?;
+                    value
+                        .as_array()?
+                        .first()?
+                        .get("url")?
+                        .as_str()
+                        .map(String::from)
+                }
+                _ => None,
+            })
+            .unwrap();
+        let mut next = turn(false);
+        next.history = vec![summary.replay];
+        let new_tools = Tools::new(f.vault.path(), f._outputs.path().into(), "web2")
+            .unwrap()
+            .with_web(std::sync::Arc::new(crate::ai::web::Web::scripted()));
+        let second = Mock::new(vec![
+            calls(&[("f", "web_fetch", json!({"url":url}))], ""),
+            answer("Read it."),
+        ]);
+        let harness = Harness {
+            tools: &new_tools,
+            ..harness
+        };
+        block_on(run(&second, &harness, &next, &mut |_| {})).unwrap();
+        let seen = second.seen.lock().unwrap();
+        assert!(
+            matches!(seen[1].items.last(), Some(Item::Results(r)) if !r[0].is_error),
+            "{:?}",
+            seen[1].items
+        );
+    }
+
+    #[test]
+    fn retained_file_context_is_not_reclassified_as_the_owners_words() {
+        let f = fixture();
+        let private =
+            "Private sentences about this unpublished project must stay inside the vault.";
+        std::fs::write(f.vault.path().join("posts/kintsugi.md"), private).unwrap();
+        let mut first = turn(false);
+        first.question = "Review the paragraph".into();
+        first.chips = vec![Chip {
+            kind: "paragraph".into(),
+            path: "posts/kintsugi.md".into(),
+            label: None,
+            lines: Some([1, 1]),
+        }];
+        let summary = run_turn(
+            &f,
+            &Mock::new(vec![answer("Read it.")]),
+            &first,
+            &Cancel::default(),
+        )
+        .0
+        .unwrap();
+        let mut next = turn(false);
+        next.question = "Find a source".into();
+        next.history = vec![summary.replay];
+        let tools = Tools::new(f.vault.path(), f._outputs.path().into(), "private-web")
+            .unwrap()
+            .with_web(std::sync::Arc::new(crate::ai::web::Web::scripted()));
+        let mock = Mock::new(vec![
+            calls(&[("query", "web_search", json!({"query": private}))], ""),
+            answer("I'll search without quoting it."),
+        ]);
+        let harness = Harness {
+            tools: &tools,
+            meter: &f.meter,
+            memory: &NO_MEMORY,
+            cancel: &Cancel::default(),
+            limits: Limits::default(),
+        };
+        block_on(run(&mock, &harness, &next, &mut |_| {})).unwrap();
+        let seen = mock.seen.lock().unwrap();
+        assert!(
+            matches!(seen[1].items.last(), Some(Item::Results(r)) if r[0].is_error && r[0].content == crate::ai::web::guard::QUERY_QUOTES_VAULT)
         );
     }
 
@@ -1275,12 +1575,7 @@ pub(crate) mod tests {
                 "{\"query\":\"kiln\"}"
             );
             assert_eq!(messages[3]["role"], "tool");
-            assert!(
-                messages[3]["content"]
-                    .as_str()
-                    .unwrap()
-                    .contains(r#""id":"posts/kintsugi.md","kind":"writing","title":"On Kintsugi""#)
-            );
+            assert!(has_kintsugi_hit(messages[3]["content"].as_str().unwrap()));
             // Same prefix on both requests.
             assert_eq!(requests[0].1["messages"][0], requests[1].1["messages"][0]);
             assert_eq!(requests[0].1["tools"], requests[1].1["tools"]);
