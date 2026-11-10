@@ -141,7 +141,12 @@ fn vision_helper_reads_the_fixture() {
         eprintln!("skipping: no Swift toolchain");
         return;
     }
-    let adapter = ImageAdapter::new(Arc::new(VisionReader::new(&program)));
+    // A cold Vision model startup can exceed the production 60 s budget on
+    // a busy Mac (75 s observed, versus <1 s warm). Compilation finishes
+    // before this timer starts. Keep a bounded test-only cold-start allowance;
+    // the fake-helper test above still checks that a hung process times out.
+    let reader = VisionReader::new(&program).with_timeout(Duration::from_secs(180));
+    let adapter = ImageAdapter::new(Arc::new(reader));
     let item =
         run(adapter.capture(&Target::File(FIXTURE.into()), CaptureOptions::default())).unwrap();
     assert!(item.body.contains("Golden seams"), "{}", item.body);
