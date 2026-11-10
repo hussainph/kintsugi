@@ -18,6 +18,7 @@ use serde_json::json;
 use std::time::Duration;
 
 mod marks;
+mod memory;
 
 type Result<T> = std::result::Result<T, String>;
 
@@ -166,17 +167,7 @@ fn proposed_edit(question: &str, items: &[Item]) -> Option<String> {
         return None;
     }
     let (path, ..) = paragraph_chip(question)?;
-    let content = last_results(items).into_iter().next()?;
-    let body = content.split_once('\n')?.1;
-    let passage: Vec<&str> = body
-        .lines()
-        .skip(1)
-        .filter_map(|l| {
-            let (n, text) = l.split_once(": ")?;
-            n.trim().parse::<u64>().ok().map(|_| text)
-        })
-        .collect();
-    let old = passage.join("\n").trim().to_string();
+    let old = memory::passage(question, items)?;
     if old.is_empty() {
         return None;
     }
@@ -321,7 +312,14 @@ fn stash_step(question: &str, items: &[Item]) -> (String, Vec<ToolCall>) {
     if steps == 0 {
         return (
             String::new(),
-            vec![call("read", json!({ "path": doc, "limit": 80 }))],
+            vec![
+                call("read", json!({ "path": doc, "limit": 80 })),
+                ToolCall {
+                    id: "mock-stash-context".into(),
+                    name: "tool".into(),
+                    arguments: json!({ "name": "stash", "args": { "path": doc } }),
+                },
+            ],
         );
     }
     let read = this_turn(items)
@@ -435,6 +433,13 @@ impl Model for Scripted {
         if question.contains(COMMENT_NOTE) || question.starts_with(REVIEW_BRIEF) {
             return Ok(comments::step(question, ex.items, on_text).await);
         }
+        // Evidence-based follow-ups and full inline paragraph edits need no
+        // tool step. Otherwise the normal scenarios below still read/search.
+        if let Some(text) =
+            memory::followup(question, ex.items).or_else(|| proposed_edit(question, ex.items))
+        {
+            return Ok(stream_answer(text, on_text).await);
+        }
         let text = if let Some(Item::User(message)) = ex.items.last() {
             // First step of a turn: look something up.
             let asked = said(message).to_lowercase();
@@ -534,11 +539,21 @@ impl Model for Scripted {
             // The start of what the tool returned, so a test can see Kin got it.
             let returned = ex.items.iter().rev().find_map(|i| match i {
                 Item::Results(results) => results.first().map(|r| {
-                    let text = r
-                        .content
-                        .replace("<data tool=\"read\">", "")
-                        .replace("<data tool=\"tool\">", "")
-                        .replace("<data tool=\"web_fetch\">", "");
+                    let feed_read = this_turn(ex.items).iter().any(|item| matches!(item,
+                        Item::Assistant { calls, .. } if calls.iter().any(|call| call.id == r.call_id
+                            && call.name == "read" && call.arguments["path"].as_str().is_some_and(|p| p.starts_with("feed:")))));
+                    let text = if feed_read {
+                        // Keep the diagnostic preview about the article, not
+                        // the reader's new paging header and line metadata.
+                        r.content.lines().skip(2).filter_map(|line| {
+                            let (number, text) = line.split_once(": ")?;
+                            number.parse::<u64>().ok().map(|_| text)
+                        }).collect::<Vec<_>>().join("\n")
+                    } else {
+                        r.content.replace("<data tool=\"read\">", "")
+                            .replace("<data tool=\"tool\">", "")
+                            .replace("<data tool=\"web_fetch\">", "")
+                    };
                     text.split_whitespace()
                         .collect::<Vec<_>>()
                         .join(" ")
@@ -573,15 +588,19 @@ impl Model for Scripted {
                     .unwrap_or_default(),
             )
         };
-        let mut words = text.split_inclusive(' ').peekable();
-        while let Some(word) = words.next() {
-            on_text(word);
-            if words.peek().is_some() {
-                tokio::time::sleep(WORD_DELAY).await;
-            }
-        }
-        Ok(reply(text, vec![]))
+        Ok(stream_answer(text, on_text).await)
     }
+}
+
+async fn stream_answer(text: String, on_text: &mut (dyn FnMut(&str) + Send)) -> Reply {
+    let mut words = text.split_inclusive(' ').peekable();
+    while let Some(word) = words.next() {
+        on_text(word);
+        if words.peek().is_some() {
+            tokio::time::sleep(WORD_DELAY).await;
+        }
+    }
+    reply(text, vec![])
 }
 
 /// "Search the web for golden joinery" asks the scripted provider for
@@ -1164,6 +1183,7 @@ mod tests {
             remember: true,
             history: vec![],
             about: None,
+            anchor: None,
         };
         let mut trace = Trace::default();
         let summary = block_on(agent::run(
@@ -1517,6 +1537,7 @@ mod web_tests {
             remember: true,
             history: vec![],
             about: None,
+            anchor: None,
         };
         let mut events = vec![];
         let summary = block_on(agent::run(
@@ -1623,6 +1644,7 @@ mod scenario_tests {
             remember: true,
             history: vec![],
             about: None,
+            anchor: None,
         };
         let mut calls = vec![];
         let summary = block_on(agent::run(
@@ -1671,7 +1693,7 @@ mod scenario_tests {
             lines: Some([3, 3]),
         };
         let (calls, summary) = run(vault.path(), "Tighten this", vec![chip]);
-        assert_eq!(calls, ["read"]);
+        assert!(calls.is_empty(), "the full current paragraph is inline");
         let text = summary.unwrap().text;
         assert!(
             text.contains("```edit drafts/a.md\n<<<<<<< SEARCH\nRepair is really slow work.\n=======\nRepair is slow work.\n>>>>>>> REPLACE\n```"),
@@ -1705,7 +1727,7 @@ mod writing_tests {
     use super::super::jobs::{Job, Trace};
     use super::super::prompt::{Chip, Memory};
     use super::super::tools::Tools;
-    use super::super::wire::{Exchange, Message, Role};
+    use super::super::wire::{Message, Role};
     use super::super::writing::{
         Tone,
         lint::{Sample, freeze},
@@ -1764,6 +1786,7 @@ mod writing_tests {
             remember: true,
             history: vec![],
             about: None,
+            anchor: None,
         };
         let mut trace = Trace::default();
         let summary = block_on(agent::run(

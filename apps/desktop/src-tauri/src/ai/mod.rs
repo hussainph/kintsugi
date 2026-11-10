@@ -27,6 +27,7 @@ mod agent;
 pub(crate) mod catalog;
 pub mod chat;
 pub mod cost;
+mod context;
 mod credentials;
 pub mod ideas;
 mod jobs;

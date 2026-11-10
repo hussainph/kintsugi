@@ -24,6 +24,10 @@ export function describeStep(name: string, args: unknown): StepView {
       return { label: "Updated its notes", icon: Brain };
     case "skill":
       return { label: a.name ? `Used the ${String(a.name)} skill` : "Used a skill", icon: Sparkles };
+    case "outline":
+    case "recent":
+    case "threads":
+      return describeStep("tool", { name, args: a });
     case "tool": {
       const inner = (a.args ?? {}) as Record<string, unknown>;
       if (a.name === "threads") return { label: inner.query ? `Searched earlier threads for ${quoted(inner.query)}` : "Read an earlier thread", icon: Search };

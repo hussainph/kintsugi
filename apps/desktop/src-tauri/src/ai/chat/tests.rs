@@ -439,7 +439,9 @@ fn each_ask_starts_its_own_thread_with_its_own_context() {
     assert_eq!(seen[2].items.len(), 1);
     let items = &seen[3].items;
     assert_eq!(items.len(), 3, "{items:?}");
-    assert_eq!(items[0], Item::User("What's weak in this draft?".into()));
+    assert!(
+        matches!(&items[0], Item::User(message) if message.starts_with("What's weak in this draft?\n\n<context>") && message.contains("- doc drafts/x.md"))
+    );
     assert_eq!(
         items[1],
         Item::Assistant {
@@ -552,9 +554,17 @@ fn typing_interrupts_kin_and_the_next_turn_answers_everything_waiting() {
     let slow = answer(
         "one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen",
     );
-    let f = fixture(
+    let f = fixture_in(
+        None,
         vec![slow, answer("Answered both.")],
         Duration::from_millis(60),
+        // This case sends another message, rather than testing the typing
+        // timeout. Don't let a loaded test machine start an automatic retry
+        // between observing cancellation and sending that message.
+        Timing {
+            typing: Duration::from_secs(5),
+            ..FAST
+        },
     );
     let first = f.ask("Tell me about kilns", vec![]);
     let id = first.thread.id.clone();
@@ -1195,10 +1205,9 @@ mod paragraphs {
         );
         assert!(message.contains("- doc drafts/tools.mdx"), "{message}");
         assert!(
-            message.contains(
-                "This thread is about a paragraph of drafts/tools.mdx: <data>A pencil is a tool for thinking.</data>"
-            ),
-            "the anchor's content goes with it: {message}"
+            message.contains("This thread is about a paragraph of drafts/tools.mdx, line 6")
+                && message.contains("\"text\":\"A pencil is a tool for thinking."),
+            "the anchor's current text goes with it: {message}"
         );
         // Kept outside the document.
         assert_eq!(
@@ -1227,6 +1236,43 @@ mod paragraphs {
                     }
                 )
                 .is_err()
+        );
+    }
+
+    #[test]
+    fn a_reopened_paragraph_thread_keeps_its_current_passage_without_new_chips() {
+        let f = fixture(
+            vec![answer("First."), answer("Still clear.")],
+            Duration::ZERO,
+        );
+        let path = f.vault().join("drafts/tools.mdx");
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(
+            &path,
+            format!("{text}\n{}", "Another paragraph.\n\n".repeat(1_000)),
+        )
+        .unwrap();
+        let id = ask(&f, "Is this clear?").thread.id;
+        f.wait_replies(1);
+        f.engine
+            .send(Some(&id), "better?", vec![], Start::default())
+            .unwrap();
+        f.wait_replies(2);
+        let seen = f.script.seen();
+        let message = last_user(seen.last().unwrap());
+        assert!(
+            message.contains("- paragraph drafts/tools.mdx lines 6-6"),
+            "{message}"
+        );
+        assert!(
+            message.contains(
+                "\"paragraphs\":[{\"lines\":[6,6],\"text\":\"A pencil is a tool for thinking."
+            ),
+            "{message}"
+        );
+        assert!(
+            !message.contains("Another paragraph."),
+            "large document isn't pasted whole"
         );
     }
 

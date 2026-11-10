@@ -425,6 +425,15 @@ impl Web {
         }
     }
 
+    /// The thread keeps provenance and hashed private phrases, not page bodies.
+    pub(crate) fn provenance(&self) -> guard::Guard {
+        self.guard.lock().unwrap().clone()
+    }
+
+    pub(crate) fn restore_provenance(&self, previous: &guard::Guard) {
+        self.guard.lock().unwrap().restore(previous);
+    }
+
     /// Hussain's own words this turn: his links may be opened, his phrases
     /// searched as written.
     pub fn heard(&self, text: &str) {

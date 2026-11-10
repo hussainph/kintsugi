@@ -137,6 +137,10 @@ pub struct Entry {
     /// Moved from the old single log (KI-104): its `seq` there.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub was: Option<u64>,
+    /// Internal model transcript, separate from the display trace. Optional
+    /// for logs written before KI-115 and for imported messages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replay: Option<super::context::Replay>,
 }
 
 /// One tool call in a reply (KI-79): its name and arguments (long strings
@@ -195,6 +199,7 @@ pub struct Draft {
     pub ms: Option<u64>,
     pub model: Option<String>,
     pub cap_reached: bool,
+    pub replay: Option<super::context::Replay>,
 }
 
 impl Draft {
@@ -329,14 +334,20 @@ impl Anchor {
     /// The chip that tells Kin what the thread is about.
     pub fn chip(&self) -> Chip {
         Chip {
-            kind: if self.kind == "paragraph" {
+            kind: if self.orphaned {
                 "doc".into()
             } else {
                 self.kind.clone()
             },
             path: self.path.clone(),
             label: self.label.clone(),
-            lines: None,
+            lines: self.quote.as_ref().filter(|_| !self.orphaned).map(|q| {
+                let from = q.line.max(1);
+                [
+                    from,
+                    from.saturating_add(q.exact.lines().count().max(1) as u32 - 1),
+                ]
+            }),
         }
     }
 
@@ -349,21 +360,20 @@ impl Anchor {
             .unwrap_or_default();
         match self.kind.as_str() {
             "paragraph" => {
-                let quote = self.quote.as_ref().map_or("", |q| q.exact.as_str());
-                let flat: String = quote.split_whitespace().collect::<Vec<_>>().join(" ");
-                let gone = if self.orphaned {
-                    " (since deleted from the document)"
+                let line = self.quote.as_ref().map_or(1, |q| q.line.max(1));
+                if self.orphaned {
+                    let quote = self.quote.as_ref().map_or("", |q| q.exact.as_str());
+                    format!(
+                        "a deleted paragraph of {} (last saved anchor, possibly incomplete): <data>{}</data>",
+                        self.path,
+                        quote.replace("</data", "<\\/data")
+                    )
                 } else {
-                    ""
-                };
-                format!(
-                    "a paragraph of {}{gone}: <data>{}</data>",
-                    self.path,
-                    flat.chars()
-                        .take(1_500)
-                        .collect::<String>()
-                        .replace("</data", "<\\/data")
-                )
+                    format!(
+                        "a paragraph of {}, line {line}; use its current text below",
+                        self.path
+                    )
+                }
             }
             "feed" => format!(
                 "the Feed item feed:{}{label}",
@@ -802,6 +812,7 @@ impl Store {
             model: draft.model,
             cap_reached: draft.cap_reached,
             was: None,
+            replay: draft.replay,
         };
         self.write_line(id, &entry)?;
         let thread = self.threads.get_mut(id).ok_or("That thread is gone.")?;
@@ -869,7 +880,7 @@ impl Store {
     /// Interrupted and failed replies stay in the thread, out of the
     /// model's context. A note Kin started the thread with (a review's)
     /// stands on its own.
-    pub fn context(&self, id: &str, max_pairs: usize) -> Vec<(String, String)> {
+    pub fn context(&self, id: &str, max_pairs: usize) -> Vec<super::context::Replay> {
         let Some(thread) = self.threads.get(id) else {
             return vec![];
         };
@@ -878,30 +889,100 @@ impl Store {
                 .entries
                 .iter()
                 .find(|e| e.seq == *seq)
-                .map(|e| e.text.as_str())
+                .map(|e| super::context::question(&e.text, &e.chips))
         };
-        let mut pairs: Vec<(String, String)> = thread
+        let replies: Vec<&Entry> = thread
             .entries
             .iter()
             .filter(|e| e.role != Role::Owner)
             .filter(|e| !e.interrupted && e.error.is_none() && !e.text.trim().is_empty())
-            .map(|reply| {
-                let asked: Vec<&str> = reply.answers.iter().filter_map(said).collect();
-                let asked = if !asked.is_empty() {
-                    asked.join("\n\n")
-                } else if reply.role == Role::Helper {
-                    "(A helper reported back.)".into()
-                } else if reply.review {
-                    format!("{}\n(You left this note on the paragraph.)", REVIEW_REQUEST)
-                } else {
-                    String::new()
-                };
-                (asked, reply.text.clone())
-            })
-            .filter(|(asked, _)| !asked.trim().is_empty())
             .collect();
-        if pairs.len() > max_pairs {
-            pairs.drain(..pairs.len() - max_pairs);
+        let count = replies.len();
+        let mut bytes: usize = 0;
+        let mut pairs = Vec::new();
+        for (i, reply) in replies.into_iter().enumerate().rev().take(max_pairs) {
+            let asked: Vec<String> = reply.answers.iter().filter_map(said).collect();
+            let asked = if !asked.is_empty() {
+                asked.join("\n\n")
+            } else if reply.role == Role::Helper {
+                "(A helper reported back.)".into()
+            } else if reply.review {
+                format!("{}\n(You left this note on the paragraph.)", REVIEW_REQUEST)
+            } else {
+                String::new()
+            };
+            if asked.trim().is_empty() {
+                continue;
+            }
+            let heard: Vec<String> = reply
+                .answers
+                .iter()
+                .filter_map(|seq| {
+                    thread
+                        .entries
+                        .iter()
+                        .find(|e| e.seq == *seq)
+                        .map(|e| e.text.clone())
+                })
+                .collect();
+            let fallback = || super::context::Replay {
+                heard: heard.clone(),
+                items: vec![
+                    super::wire::Item::User(asked.clone()),
+                    super::wire::Item::Assistant {
+                        text: reply.text.clone(),
+                        calls: vec![],
+                    },
+                ],
+                provenance: reply.replay.as_ref().and_then(|r| r.provenance.clone()),
+                memory: reply.replay.as_ref().and_then(|r| r.memory.clone()),
+                ..Default::default()
+            };
+            let mut replay = if count - i <= super::context::TOOL_TURNS {
+                reply.replay.clone().unwrap_or_else(fallback)
+            } else {
+                fallback()
+            };
+            if replay.heard.is_empty() {
+                replay.heard = heard.clone();
+            }
+            if replay.items.is_empty()
+                || bytes.saturating_add(replay.bytes()) > super::context::HISTORY_BYTES
+            {
+                replay = fallback();
+            }
+            if bytes.saturating_add(replay.bytes()) > super::context::HISTORY_BYTES {
+                break;
+            }
+            bytes += replay.bytes();
+            pairs.push(replay);
+        }
+        pairs.reverse();
+        // Provenance outlives the replay budget, and also survives a turn
+        // that searched successfully but failed before its final answer.
+        // WebCall is tool-emitted metadata, never URLs from Kin's prose.
+        let latest = thread.entries.iter().rev().find_map(|entry| {
+            entry
+                .replay
+                .as_ref()?
+                .provenance
+                .as_ref()
+                .map(|p| (entry.seq, p.clone()))
+        });
+        let (through, mut provenance) = latest.unwrap_or_default();
+        for entry in thread.entries.iter().filter(|e| e.seq > through) {
+            if entry.role == Role::Owner {
+                provenance.heard(&entry.text);
+            }
+            for call in &entry.web {
+                provenance.searched(call.results.iter().map(|source| source.url.as_str()));
+            }
+        }
+        if provenance != super::web::guard::Guard::default() {
+            if pairs.is_empty() {
+                pairs.push(super::context::Replay::default());
+            }
+            pairs.last_mut().unwrap().provenance = Some(provenance);
         }
         pairs
     }
