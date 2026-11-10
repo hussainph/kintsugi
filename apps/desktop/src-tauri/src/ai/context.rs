@@ -335,10 +335,14 @@ pub fn current(
 pub fn protect(tools: &Tools, message: &str) {
     // Owner-supplied files protect private quotes even when Web was off.
     // They grant no URLs and do not inherit web taint from their subject.
-    for block in message.split("<data tool=\"attachment\">\n").skip(1) {
-        if let Some((text, _)) = block.split_once("\n</data>") {
-            tools.note_attachment(text);
-        }
+    let mut remaining = message;
+    while let Some((_, body)) = remaining.split_once("<data tool=\"attachment\">\n") {
+        // Content can contain opening markers. Consume the whole outer block
+        // rather than splitting its private text into apparently new blocks.
+        // A spill preview can end without a closing marker; protect it too.
+        let (text, rest) = body.split_once("\n</data>").unwrap_or((body, ""));
+        tools.note_attachment(text);
+        remaining = rest;
     }
     let Some((_, tail)) = message.rsplit_once("<data tool=\"context\">\n") else {
         return;
