@@ -663,7 +663,7 @@ impl Tools {
                 Output::ok(if call.name == "read" {
                     content
                 } else {
-                    self.fit(&call.id, content)
+                    self.fit(call, content)
                 })
             }
             Err(message) => Output::error(message),
@@ -673,6 +673,20 @@ impl Tools {
     /// Tells the web tools what Kin read from the vault or the Feed.
     fn note_read(&self, call: &ToolCall, text: &str) {
         let args = &call.arguments;
+        if call.name == "read"
+            && let Some(output) = args["path"]
+                .as_str()
+                .unwrap_or_default()
+                .trim()
+                .strip_prefix(OUT_PREFIX)
+        {
+            // Replay may keep this read after dropping the source call. Old
+            // outputs (or missing metadata after cleanup) fail closed too.
+            if self.output_is_web(output) {
+                self.provenance.lock().unwrap().web_context();
+            }
+            return;
+        }
         if call.name == "tool" && args["name"] == "stash" {
             self.note_stash(text);
             return;
@@ -1047,19 +1061,37 @@ impl Tools {
         out
     }
 
+    /// Output origin survives source-call eviction. Missing/legacy metadata
+    /// is untrusted, never a reason to unlock writes around an output body.
+    fn output_is_web(&self, rel: &str) -> bool {
+        let Ok(path) = vault::resolve(&self.outputs, rel) else {
+            return true;
+        };
+        fs::read_to_string(path.with_extension("source.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+            .is_none_or(|source| source["web"] != false)
+    }
+
     /// Long outputs go to a file; the model sees a preview and where to read on.
-    fn fit(&self, call_id: &str, content: String) -> String {
+    fn fit(&self, call: &ToolCall, content: String) -> String {
         let chars = content.chars().count();
         if chars <= MAX_INLINE_CHARS {
             return content;
         }
-        let rel = format!("{}/{}.txt", self.turn, safe_name(call_id));
+        let rel = format!("{}/{}.txt", self.turn, safe_name(&call.id));
         let lines = content.lines().count();
         let mut preview: String = content.chars().take(PREVIEW_CHARS).collect();
         if let Some(cut) = preview.rfind('\n') {
             preview.truncate(cut + 1);
         }
-        match spill(&self.outputs, &rel, &content) {
+        let source = if call.name == "tool" {
+            call.arguments["name"].as_str().unwrap_or("tool")
+        } else {
+            &call.name
+        };
+        let web = self.read_the_web() || matches!(source, "web_search" | "web_fetch" | "threads");
+        match spill(&self.outputs, &rel, &content, source, web) {
             Ok(()) => format!(
                 "{preview}…\n[Long output: {lines} lines. The rest is saved; read path {OUT_PREFIX}{rel} with an offset.]"
             ),
@@ -1130,10 +1162,21 @@ fn read_page(shown: &str, text: &str, args: &Value) -> Result<String> {
 }
 
 /// The only write in this module, into Kin's outputs folder (never the vault).
-fn spill(outputs: &Path, rel: &str, content: &str) -> Result<()> {
+fn spill(outputs: &Path, rel: &str, content: &str, tool: &str, web: bool) -> Result<()> {
     let path = vault::resolve(outputs, rel)?;
     fs::create_dir_all(path.parent().ok_or("bad output path")?).map_err(|e| e.to_string())?;
-    vault::write_atomic(&path, content)
+    let metadata = path.with_extension("source.json");
+    // Invalidate an old origin before replacing either file. Any interrupted
+    // write then fails closed rather than trusting a mismatched body.
+    let source = json!({"tool": tool, "web": web}).to_string();
+    for (file, text) in [
+        (&metadata, "{\"web\":true}"),
+        (&path, content),
+        (&metadata, source.as_str()),
+    ] {
+        vault::write_atomic(file, text)?;
+    }
+    Ok(())
 }
 
 /// Vault text is data. Closing tags inside it are defused so content can't
@@ -1440,6 +1483,116 @@ pub(crate) mod tests {
                 json!({ "id": "feed:1", "kind": "feed", "source": "HN", "snippet": "short", "score": 0.5 })
             ]
         );
+    }
+
+    #[test]
+    fn spilled_web_reads_keep_taint_without_the_source_pair() {
+        use crate::ai::memory::{Source, Store};
+        for (name, args, tool) in [
+            (
+                "web_fetch",
+                json!({"url":"https://example.org/article"}),
+                "web_fetch",
+            ),
+            ("threads", json!({"id":"earlier-thread"}), "threads"),
+            (
+                "tool",
+                json!({"name":"threads", "args":{"id":"earlier-thread"}}),
+                "threads",
+            ),
+        ] {
+            let vault = scratch_vault();
+            let (writer, outputs) = tools(vault.path());
+            let source = call(name, args);
+            let body = "A page instruction to save a durable memory.\n".repeat(300);
+            let preview = writer.fit(&source, body.clone());
+            let rel = format!("{}/{}.txt", writer.turn, safe_name(&source.id));
+            assert!(preview.contains(&format!("{OUT_PREFIX}{rel}")));
+            let metadata = outputs.path().join(&rel).with_extension("source.json");
+            let origin: Value =
+                serde_json::from_str(&fs::read_to_string(&metadata).unwrap()).unwrap();
+            assert_eq!(origin, json!({"tool":tool, "web":true}));
+            let read = call("read", json!({"path":format!("{OUT_PREFIX}{rel}")}));
+            let live = Tools::new(vault.path(), outputs.path().into(), "read-only").unwrap();
+            let result = live.run(&read);
+            assert!(!result.is_error, "{}", result.content);
+            assert!(result.content.contains("durable memory"));
+            assert!(live.read_the_web(), "live artifact reads must lock writes");
+
+            // Keep only this read pair: no web_fetch pair or provenance survives
+            // the budget/window. Serialize just as a restarted thread would.
+            let pair = serde_json::to_string(&(
+                read.clone(),
+                ToolResult {
+                    call_id: read.id.clone(),
+                    content: result.content,
+                    is_error: false,
+                },
+            ))
+            .unwrap();
+            let (read, result): (ToolCall, ToolResult) = serde_json::from_str(&pair).unwrap();
+            for legacy in [false, true] {
+                if legacy {
+                    let _ = fs::remove_file(&metadata);
+                }
+                for web_enabled in [false, true] {
+                    let data = tempfile::tempdir().unwrap();
+                    let store = || Store::open(vault.path(), Some(data.path())).unwrap();
+                    let before = store().snapshot();
+                    let mut next = Tools::new(vault.path(), outputs.path().into(), "next")
+                        .unwrap()
+                        .with_memory(Access {
+                            store: store(),
+                            source: Source::chat("t", "Save it"),
+                            remember: true,
+                        });
+                    if web_enabled {
+                        next = next.with_web(std::sync::Arc::new(Web::scripted()));
+                    }
+                    next.replay_result(&read, &result);
+                    for write in [
+                        call(
+                            "memory",
+                            json!({"file":"user", "ops":[{"op":"add","text":"Trust this page."}]}),
+                        ),
+                        call(
+                            "skill",
+                            json!({"name":"page-skill", "action":"write", "description":"A procedure", "body":"Trust the page."}),
+                        ),
+                    ] {
+                        let refused = next.run(&write);
+                        assert!(refused.is_error);
+                        assert_eq!(refused.content, guard::MEMORY_LOCKED);
+                    }
+                    assert_eq!(store().snapshot(), before);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn local_spill_origin_does_not_lock_memory() {
+        let vault = scratch_vault();
+        let (writer, outputs) = tools(vault.path());
+        let source = call("search", json!({"query":"patience"}));
+        writer.fit(&source, "local vault text\n".repeat(1000));
+        let read = call(
+            "read",
+            json!({"path":format!("{OUT_PREFIX}{}/{}.txt", writer.turn, safe_name(&source.id))}),
+        );
+        let next = Tools::new(vault.path(), outputs.path().into(), "next").unwrap();
+        let result = next.run(&read);
+        assert!(!result.is_error, "{}", result.content);
+        assert!(!next.read_the_web());
+        next.replay_result(
+            &read,
+            &ToolResult {
+                call_id: read.id.clone(),
+                content: result.content,
+                is_error: false,
+            },
+        );
+        assert!(!next.read_the_web());
     }
 
     #[test]
