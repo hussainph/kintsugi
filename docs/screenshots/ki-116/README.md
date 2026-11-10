@@ -17,8 +17,10 @@ fonts and Hugeicons are unchanged.
 Checks:
 
 - `pnpm lint:copy`, `pnpm typecheck`, `pnpm test`.
-- `cargo test -p kintsugi --no-default-features --features headless -j "$VOLLI_CONCURRENCY_HINT" attachment --lib`: 19 passed.
-- `pnpm --filter @kintsugi/desktop exec node --test test/runtime-attachments.test.ts`: two passed.
+- `cargo test -p kintsugi --no-default-features --features headless -j "$VOLLI_CONCURRENCY_HINT" attachment --lib`.
+- `runtime-attachments.test.ts`: three passed in the rebased headless suite.
+- Five Replay integration tests cover image-free budgets, later image reads,
+  private quotes with Web off, URL provenance and attachment spill origins.
 - `swift scripts/check-headless-macos.swift <backend-pid>`: zero native windows,
   no Dock app, no focus activation.
 
