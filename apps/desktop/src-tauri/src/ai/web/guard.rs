@@ -13,8 +13,8 @@
 //! - **Queries.** `web_search` queries are at most [`MAX_QUERY_CHARS`] and
 //!   may not quote [`QUOTE_WORDS`] or more words in a row of what Kin read
 //!   from the vault in this thread, unless Hussain wrote those words himself.
-//! - **Taint.** Once web text is in the turn, Kin's memory and skills are
-//!   read-only until his next message, so a page can't plant lasting
+//! - **Taint.** While live or replayed web text is in context, Kin's memory
+//!   and skills are read-only, so a page can't plant lasting
 //!   "facts" about him.
 
 use serde::{Deserialize, Serialize};
@@ -30,9 +30,10 @@ pub const QUERY_TOO_LONG: &str =
     "That query is too long: keep web searches under 200 characters, in your own words.";
 pub const QUERY_QUOTES_VAULT: &str = "That query quotes the vault word for word, and searches leave the Mac. Search in your own words, without private details.";
 pub const NO_PROVENANCE: &str = "web_fetch only opens links from this thread: in Hussain's messages, in what you read from the vault or Feed, in search results, or on a page you read (same site, no query string). Tell him: I can only open links you gave me or that came up in a search.";
-pub const MEMORY_LOCKED: &str = "Memory and skills are read-only for the rest of this turn because it read the web. If something is worth keeping, say so; Hussain can ask you to remember it in his next message.";
+pub const MEMORY_LOCKED: &str = "Memory and skills are read-only while web results are in context. Start a new thread to save something without those results.";
 
-/// Thread-scoped provenance and query protection, with a turn-scoped taint.
+/// Thread-scoped provenance and query protection. Taint follows the web
+/// bodies actually supplied to a request, including replayed results.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Guard {
     /// URLs with provenance, as [`key`]s.
@@ -41,7 +42,7 @@ pub struct Guard {
     read: HashSet<u64>,
     /// Hashed word runs of Hussain's own messages: quoting him is fine.
     heard: HashSet<u64>,
-    /// Web text came into the turn.
+    /// Rebuilt from the actual live/replayed web bodies, not URL metadata.
     #[serde(skip)]
     tainted: bool,
 }
@@ -53,8 +54,8 @@ impl Guard {
         self.known.extend(previous.known.iter().cloned());
         self.read.extend(previous.read.iter().copied());
         self.heard.extend(previous.heard.iter().copied());
-        // Retained web results are untrusted too. The write lock deliberately
-        // resets on the owner's next message, as KI-81 requires.
+        // Provenance alone has no bodies. Tools reapply the lock for every
+        // retained web result before the model sees it.
     }
 
     /// Hussain's own words: his links (bare `example.com/post` too) and the
@@ -71,7 +72,17 @@ impl Guard {
         for url in urls(text) {
             self.known.insert(key(&url));
         }
+        self.private(text);
+    }
+
+    /// Private material such as the stash grants no link provenance.
+    pub fn private(&mut self, text: &str) {
         self.read.extend(runs(text));
+    }
+
+    /// Raw web bodies/snippets are present, live or replayed.
+    pub fn web_context(&mut self) {
+        self.tainted = true;
     }
 
     /// A search's result links: each may be fetched.
@@ -270,7 +281,7 @@ mod tests {
         second.restore(&restored);
         assert!(
             !second.tainted(),
-            "the owner's next message releases the write lock"
+            "restoring URL metadata alone does not replay a web body"
         );
         for allowed in [
             "https://vault.example/source",

@@ -478,7 +478,7 @@ hold even when Kin does as told:
   Hussain's own messages in this thread (bare `example.com/post` included),
   in what Kin read from the vault or the Feed in this thread (`search`,
   `read`, `list`, current-document context, and the vault and Feed extras;
-  not `threads`, `idea` or spilled outputs, since Kin's own words may carry
+  not `stash`, `threads`, `idea` or spilled outputs, since Kin's own words may carry
   a planted link), or in this thread's search results; or it's a link on a
   page fetched in this thread, on the same host (`www.` aside) and without a
   query string. URLs compare without scheme, `www.`, fragment or trailing
@@ -488,14 +488,15 @@ hold even when Kin does as told:
   leaves the Mac. Pages already fetched this turn can be paged through.
 - **Queries.** At most 200 characters, and no run of 8 words in a row
   (lowercased, punctuation ignored) from what Kin read in the vault in this
-  thread, unless Hussain wrote those words in his messages. File text in
-  dynamic context never counts as his own message. Refused queries
-  are never sent.
-- **Memory locks after the web.** Once a `web_search` or `web_fetch` has
-  brought text into the turn, `memory` and skill writes and deletes are
-  refused for the rest of it, with a message saying Hussain can ask Kin to
-  remember it in his next message. Reading skills still works. A refused
-  web call brings no text, so it doesn't lock anything.
+  thread, including saved stash passages, unless Hussain wrote those words
+  in his messages. Stash text grants quote protection but never URL
+  provenance. File text in dynamic context never counts as his own message.
+  Refused queries are never sent.
+- **Memory locks with web text.** Live and replayed `web_search` and
+  `web_fetch` results lock memory and skill writes and deletes while those
+  bodies remain in context, even with web tools switched off. Reading skills
+  still works. A new thread without those results can save memory. URL
+  provenance alone doesn't lock writes; refused calls bring no web text.
 - **Helpers.** Unattended helper jobs get no web tools unless Settings ›
   Web allows it (`web.json` `helpers`, off by default). A helper's brief
   counts as its "message".
@@ -558,8 +559,10 @@ the first result, then answers. `test/runtime-kin.test.ts` drives it.
    saved quote is matched against current text, relocating moved passages.
    An unmatched quote is marked stale, never replaced by unrelated text
    at its old line. Content hashes mark previously
-   read files as unchanged, changed or unavailable. Kin reuses unchanged
-   text; it reads changed or missing passages when needed. The open or
+   read files as unchanged, changed or unavailable. Older-version read
+   results and inline snapshots are replaced by explicit stale notices, so
+   a newer partial read cannot make an old full read look current. Kin reuses
+   unchanged text; it reads changed or missing passages when needed. The open or
    thread document isn't named in replies. Other vault sources use
    `[[path]]`; requested edit blocks still carry their target path.
 

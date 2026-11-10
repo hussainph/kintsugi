@@ -533,6 +533,9 @@ mod tests {
         let read = tools.run(&call("read", json!({ "path": path })));
         assert!(read.content.contains("An unsaved paragraph."));
         assert!(!read.content.contains("A pencil is a tool"));
+        let alias = tools.run(&call("read", json!({"path":"./drafts/./tools.mdx"})));
+        assert!(alias.content.contains("An unsaved paragraph."));
+        assert!(!alias.content.contains("A pencil is a tool"));
         tools.run(&call("tool", json!({"name":"stash", "args":{"path":path}})));
         let added = tools.run(&call(
             "stash_add",
