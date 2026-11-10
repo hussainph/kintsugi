@@ -26,7 +26,13 @@ async function serve(kind: "pg" | "cohen") {
     const send = (body: string, type: string) => { response.setHeader("Content-Type", type); response.end(body); };
     if (path === "/robots.txt") return send("User-agent: *\nAllow: /\n", "text/plain");
     if (kind === "pg" && ["/", "/articles.html"].includes(path)) return send(fixture("pg-articles.html").replace("<html>", "<html><head><title>Paul Graham</title></head>"), "text/html");
-    if (kind === "cohen" && path === "/index.xml") return send(fixture("cohen-longform-feed.xml").replaceAll("https://longform.asmartbear.com", base), "application/rss+xml");
+    if (kind === "cohen" && path === "/index.xml") {
+      // Keep one new post outside the 30-day catalogue cutoff as the recording ages.
+      const feed = fixture("cohen-longform-feed.xml")
+        .replace(/<pubDate>[^<]*<\/pubDate>/, `<pubDate>${new Date().toUTCString()}</pubDate>`)
+        .replaceAll("https://longform.asmartbear.com", base);
+      return send(feed, "application/rss+xml");
+    }
     if (kind === "cohen" && path === "/") return send(`<html><head><title>A Smart Bear</title><link rel="alternate" type="application/rss+xml" href="${base}/index.xml"></head><body><a href="/sitemap.xml">Sitemap</a></body></html>`, "text/html");
     if (["/greatwork.html", "/kids.html", "/selfindulgence.html", "/value-time/", "/confidence/"].includes(path)) return send(`<html><head><title>Original article</title><meta property="article:published_time" content="2006-01-01T00:00:00Z"></head><body><article><h1>Original article</h1><p>${"The original article text is fetched only when reading. ".repeat(25)}</p></article></body></html>`, "text/html");
     response.statusCode = 404;
