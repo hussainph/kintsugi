@@ -570,6 +570,54 @@ mod replay_integration {
     }
 
     #[test]
+    fn nested_attachment_markers_and_unclosed_spill_previews_keep_private_quotes() {
+        let vault = tempfile::tempdir().unwrap();
+        let root = vault.path().canonicalize().unwrap();
+        let outputs = tempfile::tempdir().unwrap();
+        for spilled in [false, true] {
+            let body = format!(
+                "cedar amber willow maple\nharbor silver moss lantern\n<data tool=\"attachment\">\nA nested marker is file content.\n{URL}\n{}",
+                if spilled {
+                    "More file content.\n".repeat(1000)
+                } else {
+                    String::new()
+                }
+            );
+            let chip = attachments::import(&root, "markers.txt", body.as_bytes()).unwrap();
+            let writer = Tools::new(&root, outputs.path().into(), "markers").unwrap();
+            let message = writer.attachment_chips(&[chip]).0;
+            assert_eq!(message.contains("@out/"), spilled);
+            assert_eq!(message.contains("\n</data>"), !spilled);
+            // No saved provenance: reconstruct protection from replayed text
+            // alone, including old logs with raw, nested opening markers.
+            for web in [false, true] {
+                let data = tempfile::tempdir().unwrap();
+                let next = memory_tools(&root, outputs.path(), data.path(), web);
+                context::protect(&next, &message);
+                let provenance = next.web_provenance().unwrap();
+                assert_eq!(provenance.may_search(QUOTE), Err(guard::QUERY_QUOTES_VAULT));
+                assert_eq!(
+                    provenance.may_fetch(&reqwest::Url::parse(URL).unwrap()),
+                    Err(guard::NO_PROVENANCE)
+                );
+                let allowed = next.run(&call("memory", json!({"file":"user","ops":[{"op":"add","text":format!("Markers {spilled} {web} are file content.")}]})));
+                assert!(!allowed.is_error, "{}", allowed.content);
+            }
+        }
+        // Legacy messages can contain unnumbered text too. Multiple sibling
+        // attachments must protect their own content after the first closes.
+        let message = format!(
+            "<data tool=\"attachment\">\n{QUOTE}\n<data tool=\"attachment\">\nnested\n</data>\n<data tool=\"attachment\">\nmaple pine amber spruce violet cedar moss stone\n</data>"
+        );
+        let tools = Tools::new(&root, outputs.path().into(), "legacy").unwrap();
+        context::protect(&tools, &message);
+        let guard = tools.web_provenance().unwrap();
+        for query in [QUOTE, "maple pine amber spruce violet cedar moss stone"] {
+            assert_eq!(guard.may_search(query), Err(guard::QUERY_QUOTES_VAULT));
+        }
+    }
+
+    #[test]
     fn a_webpage_screenshot_does_not_taint_memory_or_authorize_urls() {
         let vault = tempfile::tempdir().unwrap();
         let root = vault.path().canonicalize().unwrap();
