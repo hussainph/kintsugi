@@ -497,6 +497,9 @@ hold even when Kin does as told:
   bodies remain in context, even with web tools switched off. Reading skills
   still works. A new thread without those results can save memory. URL
   provenance alone doesn't lock writes; refused calls bring no web text.
+  Spilled outputs record their source tool and web origin. Live and replayed
+  `read @out/…` results retain that lock without the original fetch pair.
+  Missing or legacy origin metadata is treated as untrusted.
 - **Helpers.** Unattended helper jobs get no web tools unless Settings ›
   Web allows it (`web.json` `helpers`, off by default). A helper's brief
   counts as its "message".
