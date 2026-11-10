@@ -355,7 +355,8 @@ fn router(bridge: Bridge) -> Router {
             "/health",
             get(|| async { Json(json!({ "runtime": "mock", "nativeWindows": 0 })) }),
         )
-        .layer(DefaultBodyLimit::max(16 * 1024 * 1024))
+        // A 20 MiB attachment arrives as a JSON byte array (up to 4×).
+        .layer(DefaultBodyLimit::max(96 * 1024 * 1024))
         .layer(middleware::from_fn_with_state(bridge.clone(), secure))
         .with_state(bridge)
 }

@@ -82,12 +82,22 @@ fn affinity(route: &Route) -> &'static str {
 
 /// The history as Responses input items. Reasoning items are replayed
 /// verbatim (id, summary, encrypted content) where they came back.
-fn input(ex: &Exchange) -> Vec<Value> {
+fn input(route: &Route, ex: &Exchange) -> Vec<Value> {
     let mut input = Vec::new();
     for item in ex.items {
         match item {
             Item::User(text) => input.push(
                 json!({ "role": "user", "content": [{ "type": "input_text", "text": text }] }),
+            ),
+            Item::Images(images) => super::append_user_parts(
+                &mut input,
+                "content",
+                super::image_parts(
+                    route,
+                    images,
+                    |image| json!({ "type": "input_image", "image_url": image.data_url(), "detail": "auto" }),
+                    |note| json!({ "type": "input_text", "text": note }),
+                ),
             ),
             Item::Assistant { text, calls } => {
                 if !text.is_empty() {
@@ -160,7 +170,7 @@ pub(super) fn body(route: &Route, auth: Option<&Auth>, ex: &Exchange) -> Value {
         let role = if developer { "developer" } else { "system" };
         input.push(json!({ "role": role, "content": ex.system }));
     }
-    input.extend(self::input(ex));
+    input.extend(self::input(route, ex));
     let mut body = json!({
         "model": ex.model,
         "input": input,
@@ -213,7 +223,7 @@ pub(super) fn codex_body(route: &Route, ex: &Exchange) -> Value {
         "store": false,
         "stream": true,
         "instructions": instructions,
-        "input": input(ex),
+        "input": input(route, ex),
         "text": { "verbosity": "low" },
         "include": ["reasoning.encrypted_content"],
         "tool_choice": "auto",

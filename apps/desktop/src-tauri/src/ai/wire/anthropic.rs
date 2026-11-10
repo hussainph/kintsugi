@@ -106,6 +106,19 @@ pub(super) fn body(route: &Route, ex: &Exchange) -> (Value, Vec<&'static str>) {
             Item::User(text) => {
                 messages.push(json!({ "role": "user", "content": [{ "type": "text", "text": text }] }))
             }
+            Item::Images(images) => super::append_user_parts(
+                &mut messages,
+                "content",
+                super::image_parts(
+                    route,
+                    images,
+                    |image| json!({
+                        "type": "image",
+                        "source": { "type": "base64", "media_type": image.mime_type, "data": image.data },
+                    }),
+                    |note| json!({ "type": "text", "text": note }),
+                ),
+            ),
             Item::Reasoning(values) => {
                 pending = reasoning_of(values, &["thinking", "redacted_thinking"])
                     .filter_map(|b| replayed(b, empty_signature_ok))

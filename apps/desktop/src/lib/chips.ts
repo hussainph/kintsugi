@@ -5,9 +5,9 @@
 
 /** Mirrors `prompt::Chip` in src-tauri/src/ai/prompt.rs. */
 export type Chip = {
-  /** "doc", "clip", "feed", "paragraph"… */
+  /** "doc", "clip", "feed", "paragraph", "attachment"… */
   kind: string;
-  /** A vault path Kin can read (a feed item's id for "feed"). */
+  /** A vault path, a feed item's id, or an opaque @attachment reference. */
   path: string;
   label?: string;
   /** For a paragraph or selection: first and last line, from 1. */

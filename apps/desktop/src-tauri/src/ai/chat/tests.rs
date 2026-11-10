@@ -1615,3 +1615,103 @@ mod vaults {
         assert!(f.engine.thread(&id).unwrap().pending.is_empty());
     }
 }
+
+#[test]
+fn a_burst_keeps_every_attachment_reference() {
+    let f = fixture(vec![answer("I have the files.")], Duration::ZERO);
+    let root = f.vault().canonicalize().unwrap();
+    *f.engine.0.brain.vault.lock().unwrap() = root.clone();
+    let mut files: Vec<Chip> = (0..16)
+        .map(|n| {
+            crate::ai::attachments::import(
+                &root,
+                &format!("note-{n}.txt"),
+                format!("Note {n}").as_bytes(),
+            )
+            .unwrap()
+        })
+        .collect();
+    let newer = files.split_off(8);
+    // Lots of screen context cannot crowd out the first message's files.
+    let mut first = (0..8)
+        .map(|n| doc(&format!("drafts/doc-{n}.md"), "Draft"))
+        .collect::<Vec<_>>();
+    first.extend(files);
+    let sent = f
+        .engine
+        .send(None, "First files", first, Start::default())
+        .unwrap();
+    assert_eq!(
+        sent.entry
+            .chips
+            .iter()
+            .filter(|c| c.kind == "attachment")
+            .count(),
+        8
+    );
+    let next = f
+        .engine
+        .send(Some(&sent.thread.id), "More files", newer, Start::default())
+        .unwrap();
+    f.wait_replies(1);
+    let seen = f.script.seen();
+    let request = seen[0]
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::User(text) => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<String>();
+    for chip in sent
+        .entry
+        .chips
+        .iter()
+        .chain(&next.entry.chips)
+        .filter(|c| c.kind == "attachment")
+    {
+        assert!(request.contains(&chip.path), "missing {}", chip.path);
+    }
+    assert!(request.contains("Not loaded in this step:"));
+}
+
+#[test]
+fn an_empty_attachment_reference_cannot_send_a_blank_message() {
+    let f = fixture(vec![], Duration::ZERO);
+    let chip = Chip {
+        kind: "attachment".into(),
+        path: String::new(),
+        label: None,
+        lines: None,
+    };
+    assert_eq!(
+        f.engine
+            .send(None, "", vec![chip], Start::default())
+            .unwrap_err(),
+        "Say something to Kin."
+    );
+    assert!(f.entries().is_empty());
+}
+
+#[test]
+fn opening_the_vault_collects_old_staging_without_an_import() {
+    let f = fixture(vec![], Duration::ZERO);
+    let root = f.vault().canonicalize().unwrap();
+    *f.engine.0.brain.vault.lock().unwrap() = root.clone();
+    let chip = crate::ai::attachments::import(&root, "abandoned.txt", b"old staging").unwrap();
+    let directory = chip
+        .path
+        .strip_prefix("@attachment/")
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap();
+    let dir = root.join(".kintsugi/kin/attachments").join(directory);
+    let old = std::time::SystemTime::now() - Duration::from_secs(8 * 24 * 60 * 60);
+    std::fs::File::open(&dir)
+        .unwrap()
+        .set_times(std::fs::FileTimes::new().set_modified(old))
+        .unwrap();
+    f.engine.follow_vault();
+    assert!(!dir.exists());
+}

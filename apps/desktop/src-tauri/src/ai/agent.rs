@@ -347,6 +347,7 @@ async fn steps(
     let history_end = items.len();
     let (current, reads) =
         super::context::current(tools, &turn.chips, &history, turn.anchor.as_ref());
+    let (attachment_text, images) = tools.attachment_chips(&turn.chips);
     let mut message = prompt::user_message(
         &turn.question,
         &turn.chips,
@@ -359,7 +360,11 @@ async fn steps(
         message.push_str(&current);
         message.push_str("\n</context>");
     }
+    message.push_str(&attachment_text);
     items.push(Item::User(message));
+    if !images.is_empty() {
+        items.push(Item::Images(images));
+    }
     let mut versions: std::collections::BTreeMap<String, String> = history
         .iter()
         .flat_map(|h| {
@@ -460,6 +465,7 @@ async fn steps(
             break;
         }
         let mut results = Vec::with_capacity(reply.calls.len());
+        let mut images = Vec::new();
         let mut stopped = false;
         for call in &reply.calls {
             emit(KinEvent::ToolCall {
@@ -516,6 +522,7 @@ async fn steps(
                 preview: output.content.chars().take(PREVIEW_CHARS).collect(),
                 web: output.web,
             });
+            images.extend(output.images);
             results.push(ToolResult {
                 call_id: call.id.clone(),
                 content: output.content,
@@ -537,11 +544,15 @@ async fn steps(
             calls: reply.calls,
         });
         items.push(Item::Results(results));
+        if !images.is_empty() {
+            items.push(Item::Images(images));
+        }
     }
     summary.cap_reached = meter.cap_reached();
     summary.replay.items = items[history_end..]
         .iter()
-        .filter(|item| !matches!(item, Item::Reasoning(_)))
+        // Keep file references and tool text, never image bytes, across turns.
+        .filter(|item| !matches!(item, Item::Reasoning(_) | Item::Images(_)))
         .cloned()
         .collect();
     summary.replay.provenance = tools

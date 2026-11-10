@@ -3148,6 +3148,7 @@ dependencies = [
  "chrono",
  "futures-util",
  "getrandom 0.3.4",
+ "image",
  "kintsugi-ingest",
  "kintsugi-rank",
  "kintsugi-search",

@@ -48,6 +48,10 @@ impl Replay {
     /// Don't persist an oversized tool loop. Keep the owner's contextual
     /// question and final answer; never silently clip a result or paragraph.
     pub fn bound(&mut self) {
+        // Transient image parts never consume the replay budget or enter a
+        // thread log. References remain in user context and read arguments.
+        self.items
+            .retain(|item| !matches!(item, Item::Images(_) | Item::Reasoning(_)));
         if self.bytes() > HISTORY_BYTES {
             let first = self
                 .items
@@ -145,7 +149,7 @@ pub fn invalidate(items: &mut [Item], path: &str) {
                 }
             }
             Item::User(message) => invalidate_context(message, path),
-            Item::Reasoning(_) => {}
+            Item::Reasoning(_) | Item::Images(_) => {}
         }
     }
 }
@@ -329,6 +333,13 @@ pub fn current(
 /// Register historical dynamic file text if web tools were off when it was
 /// first shown. It is never an owner-message exception to query protection.
 pub fn protect(tools: &Tools, message: &str) {
+    // Owner-supplied files protect private quotes even when Web was off.
+    // They grant no URLs and do not inherit web taint from their subject.
+    for block in message.split("<data tool=\"attachment\">\n").skip(1) {
+        if let Some((text, _)) = block.split_once("\n</data>") {
+            tools.note_attachment(text);
+        }
+    }
     let Some((_, tail)) = message.rsplit_once("<data tool=\"context\">\n") else {
         return;
     };

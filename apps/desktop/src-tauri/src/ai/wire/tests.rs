@@ -611,3 +611,64 @@ fn an_unlisted_mistral_model_still_reaches_v1() {
     headers.insert(reqwest::header::RETRY_AFTER, "1e300".parse().unwrap());
     assert_eq!(retry_after(&headers), None);
 }
+
+#[test]
+fn aggregate_image_preparation_is_request_local_and_identical_on_retry() {
+    runtime().block_on(async {
+        let (base, seen) = mock(vec![Reply_::Status(503, None), answer("Done.")]).await;
+        let fixture: Value = serde_json::from_str(&fixture("images.json")).unwrap();
+        let image: Image = serde_json::from_value(fixture["image"].clone()).unwrap();
+        let items = [
+            Item::User("Look.".into()),
+            Item::Images(vec![image.clone(), image]),
+        ];
+        let original = items.clone();
+        let mut route = route("openai", "gpt-4o");
+        route.base_url = base;
+        route.wire = Wire::OpenAiChat;
+        let mut model = route.model.unwrap().clone();
+        model.input_limits =
+            serde_json::from_value(json!({"images": {"maxPerRequest": 1}})).unwrap();
+        route.model = Some(Box::leak(Box::new(model)));
+        let ex = exchange("gpt-4o", &items, &[]);
+        let reply = send_with(Endpoint { route, auth: None }, &ex, |_| {}, QUICK)
+            .await
+            .unwrap();
+        assert_eq!(reply.text, "Done.");
+        assert_eq!(items, original);
+        let requests = seen.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        let bodies: Vec<&str> = requests
+            .iter()
+            .map(|request| request.split_once("\r\n\r\n").unwrap().1)
+            .collect();
+        assert_eq!(bodies[0], bodies[1]);
+        assert_eq!(bodies[0].matches("image_url\":{").count(), 1);
+        assert_eq!(bodies[0].matches("Older images omitted").count(), 1);
+        assert_eq!(ex.system, "sys");
+    });
+}
+
+#[test]
+fn nonimage_request_over_budget_is_refused_without_contacting_provider() {
+    runtime().block_on(async {
+        let (base, seen) = mock(vec![answer("Should not be called.")]).await;
+        let mut route = route("openai", "gpt-4o");
+        route.base_url = base;
+        let mut model = route.model.unwrap().clone();
+        model.input_limits = serde_json::from_value(json!({"maxRequestBytes": 1})).unwrap();
+        route.model = Some(Box::leak(Box::new(model)));
+        let items = [Item::User("Too large.".into())];
+        let ex = exchange("gpt-4o", &items, &[]);
+        let error = send_with(
+            Endpoint { route, auth: None },
+            &ex,
+            |_| panic!("unexpected stream"),
+            QUICK,
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("without images"));
+        assert!(seen.lock().unwrap().is_empty());
+    });
+}

@@ -775,6 +775,9 @@ impl Store {
             Ok(entry) => Ok((self.threads[&id].meta.clone(), entry)),
             Err(error) => {
                 self.threads.remove(&id);
+                if let Some(kin) = self.dir.as_deref().and_then(Path::parent) {
+                    let _ = super::attachments::rollback(kin, &id);
+                }
                 Err(error)
             }
         }
@@ -789,9 +792,25 @@ impl Store {
         &mut self,
         id: &str,
         role: Role,
-        draft: Draft,
+        mut draft: Draft,
         now: DateTime<FixedOffset>,
     ) -> Result<Entry> {
+        if !self.threads.contains_key(id) {
+            return Err("That thread is gone.".into());
+        }
+        if draft.chips.iter().any(|c| c.kind == "attachment") {
+            let kin = self
+                .dir
+                .as_deref()
+                .and_then(Path::parent)
+                .ok_or("Attachments need a saved thread.")?;
+            // The thread id, not its document anchor, owns these files. A
+            // renamed document keeps the same id and attachment references.
+            super::attachments::commit(kin, id, &mut draft.chips)?;
+        }
+        if let Some(replay) = &mut draft.replay {
+            replay.bound();
+        }
         let thread = self.threads.get(id).ok_or("That thread is gone.")?;
         let entry = Entry {
             seq: thread.entries.last().map_or(1, |e| e.seq + 1),
@@ -844,6 +863,31 @@ impl Store {
 
     pub fn meta(&self, id: &str) -> Option<&Meta> {
         self.threads.get(id).map(|t| &t.meta)
+    }
+
+    /// Removes a thread and the files owned by it, not its source document.
+    pub fn delete(&mut self, id: &str) -> Result<()> {
+        if !valid_id(id) || !self.threads.contains_key(id) {
+            return Err("That thread is gone.".into());
+        }
+        if let Some(dir) = &self.dir {
+            if fs::symlink_metadata(dir).is_ok_and(|m| m.file_type().is_symlink()) {
+                return Err("Thread links are not followed.".into());
+            }
+            let kin = dir.parent().ok_or("Invalid thread folder.")?;
+            let path = dir.join(format!("{id}.jsonl"));
+            if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+                return Err("Thread links are not followed.".into());
+            }
+            super::attachments::remove(kin, id)?;
+            match fs::remove_file(path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.to_string()),
+            }
+        }
+        self.threads.remove(id);
+        self.save_index()
     }
 
     /// His messages in a thread still waiting for Kin, oldest first.
@@ -946,6 +990,8 @@ impl Store {
             if replay.heard.is_empty() {
                 replay.heard = heard.clone();
             }
+            // Sanitize older/malformed replay before measuring its byte budget.
+            replay.bound();
             if replay.items.is_empty()
                 || bytes.saturating_add(replay.bytes()) > super::context::HISTORY_BYTES
             {
@@ -1163,13 +1209,20 @@ impl Store {
                 .iter()
                 .filter(|e| e.error.is_none())
                 .map(|e| {
+                    let references = e
+                        .chips
+                        .iter()
+                        .filter(|c| c.kind == "attachment")
+                        .map(|c| format!("\nAttached file: {}", c.path))
+                        .collect::<String>();
                     format!(
-                        "\n#{} {} {}{}:\n{}\n",
+                        "\n#{} {} {}{}:\n{}{}\n",
                         e.seq,
                         &e.at[..e.at.len().min(16)],
                         e.role.name(),
                         if e.interrupted { " (interrupted)" } else { "" },
-                        e.text.trim()
+                        e.text.trim(),
+                        references
                     )
                 })
                 .collect();

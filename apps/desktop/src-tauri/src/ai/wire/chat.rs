@@ -288,6 +288,16 @@ pub(super) fn body(route: &Route, compat: &Compat, ex: &Exchange) -> Value {
     for item in ex.items {
         match item {
             Item::User(text) => messages.push(json!({ "role": "user", "content": text })),
+            Item::Images(images) => super::append_user_parts(
+                &mut messages,
+                "content",
+                super::image_parts(
+                    route,
+                    images,
+                    |image| json!({ "type": "image_url", "image_url": { "url": image.data_url() } }),
+                    |note| json!({ "type": "text", "text": note }),
+                ),
+            ),
             Item::Reasoning(values) => {
                 pending = reasoning_of(values, &["chat.reasoning", "chat.reasoning_details"])
                     .cloned()

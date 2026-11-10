@@ -102,6 +102,7 @@ const FIELDS = [
   "baseUrl",
   "reasoning",
   "input",
+  "inputLimits",
   "contextWindow",
   "maxTokens",
   "cost",

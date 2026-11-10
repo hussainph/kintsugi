@@ -1,0 +1,5 @@
+.ki-kin-composer[data-dropping] { background: var(--neutral-2); box-shadow: 0 0 0 var(--border-l) var(--neutral-8), var(--shadow-s); }
+.ki-kin-attachment { padding-block: var(--space-xxs); padding-inline-start: var(--space-xxs); }
+.ki-kin-attachment-image { display: block; flex-shrink: 0; width: calc(var(--space-xl) + var(--space-s)); height: calc(var(--space-xl) + var(--space-s)); object-fit: cover; border-radius: var(--radius-xs); }
+.ki-kin-attachment-status, .ki-kin-attachment-warning { padding-inline: var(--space-xs); color: var(--neutral-7); font-family: var(--font-ui); font-size: var(--size-xs); line-height: var(--line-xs); letter-spacing: var(--letter-spacing-xs); }
+.ki-kin-attachment-warning { color: var(--warning); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

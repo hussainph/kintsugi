@@ -24,6 +24,9 @@
 
 pub mod about;
 mod agent;
+#[cfg(test)]
+mod attachment_tests;
+pub(crate) mod attachments;
 pub(crate) mod catalog;
 pub mod chat;
 mod context;

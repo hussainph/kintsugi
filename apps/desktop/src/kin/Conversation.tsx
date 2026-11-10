@@ -1,6 +1,6 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Bookmark, Brain, Check, Clock, Coins, Copy, FileText, Hourglass, Lightbulb, Loader2, Pilcrow, Rss, Unplug, AlertCircle, X } from "@kintsugi/ui/icons";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { Bookmark, Brain, Check, Clock, Coins, Copy, FileText, Hourglass, Lightbulb, Loader2, Paperclip, Pilcrow, Rss, Unplug, AlertCircle, X } from "@kintsugi/ui/icons";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { toast } from "sonner";
 import {
   ChainOfThought,
@@ -45,15 +45,19 @@ import { EditProposal } from "./EditProposal";
 import { openLink, splitPaths } from "./links";
 import { ChatModelPicker } from "./ModelPicker";
 import { cost, describeStep, isTimeout, modelShort, stepsSummary } from "./steps";
-import { again, chipsOf, type KinState, type Live, removeChip, send, setDraft, stop, stopHelper } from "./useKin";
+import { addAttachments, again, chipsOf, type KinState, type Live, removeChip, send, setDraft, stop, stopHelper } from "./useKin";
 import { WebSources } from "./WebSources";
+import { AttachmentChip } from "./AttachmentChip";
+import { ATTACHMENT_ACCEPT } from "./attachments";
+import "./attachments.css";
 
 const chipIcon = (kind: string) =>
   kind === "clip" ? Bookmark : kind === "feed" ? Rss : kind === "idea" ? Lightbulb : kind === "paragraph" || kind === "selection" ? Pilcrow : FileText;
 
 const chipTooltip = (chip: Chip) => `${chip.kind} · ${chip.path}${chip.lines ? ` · lines ${chip.lines[0]}–${chip.lines[1]}` : ""}`;
 
-function ChipView({ chip, onRemove }: { chip: Chip; onRemove?: () => void }) {
+function ChipView({ chip, vault, onRemove }: { chip: Chip; vault: number; onRemove?: () => void }) {
+  if (chip.kind === "attachment") return <AttachmentChip chip={chip} vault={vault} onRemove={onRemove} />;
   return <PromptInputChip data-chip={chipKey(chip)} icon={chipIcon(chip.kind)} label={chipTitle(chip)} title={chipTooltip(chip)} onRemove={onRemove} />;
 }
 
@@ -208,16 +212,16 @@ function HelperReport({ entry, fresh }: { entry: Entry; fresh: boolean }) {
   );
 }
 
-type EntryProps = { entry: Entry; waiting: boolean; fresh: boolean; latest: boolean; onRetry: (entry: Entry) => void };
+type EntryProps = { entry: Entry; waiting: boolean; fresh: boolean; latest: boolean; vault: number; onRetry: (entry: Entry) => void };
 
-function KinEntry({ entry, waiting, fresh, latest, onRetry }: EntryProps) {
+function KinEntry({ entry, waiting, fresh, latest, vault, onRetry }: EntryProps) {
   if (entry.role === "owner") {
     return (
       <Message from="owner" fresh={fresh} data-entry={entry.seq} data-role="owner">
         <MessageContent>{entry.text}</MessageContent>
         {(entry.chips?.length || waiting) && (
           <MessageFooter>
-            {entry.chips?.map((c) => <ChipView key={chipKey(c)} chip={c} />)}
+            {entry.chips?.map((c) => <ChipView key={chipKey(c)} chip={c} vault={vault} />)}
             {waiting && (
               <MessageStatus data-waiting>
                 <Clock aria-hidden /> Waiting
@@ -331,7 +335,7 @@ export function KinLog({ s }: { s: KinState }) {
           const fresh = s.seenThrough !== null && entry.seq > s.seenThrough && entry.role !== "kin";
           return (
             <div key={entry.seq} className="ki-kin-entry">
-              <KinEntry entry={entry} fresh={fresh} latest={entry.seq === lastKin && !live} waiting={pending.includes(entry.seq) && !answering.has(entry.seq)} onRetry={(e) => again(e.thread)} />
+              <KinEntry entry={entry} vault={s.vaultSeq} fresh={fresh} latest={entry.seq === lastKin && !live} waiting={pending.includes(entry.seq) && !answering.has(entry.seq)} onRetry={(e) => again(e.thread)} />
             </div>
           );
         })}
@@ -373,22 +377,74 @@ export function KinHelpers({ helpers }: { helpers: Job[] }) {
 /** The composer: what goes with the message, the field, the model and send. */
 export function KinComposer({ s, onManage }: { s: KinState; onManage: () => void }) {
   const input = useRef<HTMLTextAreaElement>(null);
+  const files = useRef<HTMLInputElement>(null);
+  const [dropping, setDropping] = useState(false);
   const thread = s.mode.kind === "thread" ? s.mode.id : null;
+  const scope = JSON.stringify([s.vaultSeq, thread]);
+  const [imageWarning, setImageWarning] = useState<{ scope: string; text: string | null } | null>(null);
+  const onAttachmentWarning = useCallback((text: string | null) => setImageWarning({ scope, text }), [scope]);
+  const warning = imageWarning?.scope === scope ? imageWarning.text : null;
   const talking = !!(thread && s.live[thread]);
-  const streaming = talking && !s.draft.trim();
   const chips = chipsOf(s);
+  const hasAttachments = chips.some((c) => c.kind === "attachment");
+  const streaming = talking && !s.draft.trim() && !hasAttachments && !s.importing;
+  const busy = s.importing || s.sending;
+  useEffect(() => { setDropping(false); }, [s.vaultSeq, s.composerSeq]);
   useEffect(() => {
     if (s.focus) requestAnimationFrame(() => input.current?.focus());
   }, [s.focus]);
   return (
-    <PromptInput className="ki-kin-composer" onSubmit={() => void send()}>
+    <PromptInput
+      className="ki-kin-composer"
+      data-dropping={dropping || undefined}
+      aria-busy={busy || undefined}
+      onSubmit={() => void send()}
+      onPaste={(event) => {
+        const pasted = Array.from(event.clipboardData.files);
+        if (!pasted.length) return;
+        event.preventDefault();
+        void addAttachments(pasted);
+      }}
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "copy";
+        setDropping(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(event) => {
+        setDropping(false);
+        if (!event.dataTransfer.files.length) return;
+        event.preventDefault();
+        event.stopPropagation();
+        void addAttachments(Array.from(event.dataTransfer.files));
+      }}
+    >
+      <input
+        ref={files}
+        type="file"
+        hidden
+        multiple
+        accept={ATTACHMENT_ACCEPT}
+        aria-label="Attach files"
+        onChange={(event) => {
+          const picked = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          void addAttachments(picked);
+        }}
+      />
       {chips.length > 0 && (
         <PromptInputHeader aria-label="Context">
           {chips.map((c) => (
-            <ChipView key={chipKey(c)} chip={c} onRemove={() => removeChip(c)} />
+            <ChipView key={chipKey(c)} chip={c} vault={s.vaultSeq} onRemove={s.sending ? undefined : () => removeChip(c)} />
           ))}
         </PromptInputHeader>
       )}
+      {warning && <span className="ki-kin-attachment-warning" role="status" title={warning}>{warning}</span>}
+      {s.importing && <span className="ki-kin-attachment-status" role="status">Adding files…</span>}
       <PromptInputTextarea
         ref={input}
         aria-label="Message Kin"
@@ -398,9 +454,10 @@ export function KinComposer({ s, onManage }: { s: KinState; onManage: () => void
       />
       <PromptInputToolbar>
         <PromptInputTools>
-          <ChatModelPicker conversation={thread ?? ""} vault={s.vaultSeq} onManage={onManage} />
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Attach files" title="Attach files" disabled={s.sending} onClick={() => files.current?.click()}><Paperclip /></Button>
+          <ChatModelPicker conversation={thread ?? ""} vault={s.vaultSeq} onManage={onManage} chips={chips} onAttachmentWarning={onAttachmentWarning} />
         </PromptInputTools>
-        <PromptInputSubmit status={streaming ? "streaming" : "ready"} onStop={stop} disabled={!s.draft.trim()} aria-label={streaming ? "Stop Kin" : "Send"} title={streaming ? "Stop Kin" : "Send"} />
+        <PromptInputSubmit status={streaming ? "streaming" : "ready"} onStop={stop} disabled={s.importing || (!s.draft.trim() && (!hasAttachments || s.sending))} aria-label={streaming ? "Stop Kin" : "Send"} title={streaming ? "Stop Kin" : "Send"} />
       </PromptInputToolbar>
     </PromptInput>
   );
