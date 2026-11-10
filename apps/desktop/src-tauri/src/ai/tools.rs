@@ -1406,7 +1406,7 @@ pub(crate) mod tests {
         assert!(text.len() > MAX_INLINE_CHARS);
         fs::write(vault.path().join("drafts/paragraphs.md"), &text).unwrap();
         let saved = format!("Saved detail {}", "s".repeat(5_000));
-        crate::stash::save(
+        crate::stash::save_if_unchanged(
             vault.path(),
             "drafts/paragraphs.md",
             vec![crate::stash::StashItem {
@@ -1417,6 +1417,7 @@ pub(crate) mod tests {
                 created: String::new(),
                 anchor: None,
             }],
+            None,
         )
         .unwrap();
         let (tools, outputs) = tools(vault.path());
@@ -1593,7 +1594,7 @@ pub(crate) mod tests {
     #[test]
     fn stash_does_not_grant_web_provenance() {
         let vault = scratch_vault();
-        crate::stash::save(
+        crate::stash::save_if_unchanged(
             vault.path(),
             "drafts/tools.mdx",
             vec![crate::stash::StashItem {
@@ -1604,6 +1605,7 @@ pub(crate) mod tests {
                 created: String::new(),
                 anchor: None,
             }],
+            None,
         )
         .unwrap();
         let (tools, _out) = tools(vault.path());

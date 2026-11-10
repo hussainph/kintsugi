@@ -271,12 +271,6 @@ impl Store {
             .map_err(err)
     }
 
-    /// An undated archive entry can learn its real date on lazy full-text
-    /// capture. Rediscovery never changes a date already supplied by metadata.
-    pub fn set_original_date(&self, id: i64, published: Option<i64>) -> Result<()> {
-        self.set_catalogue_metadata(id, None, None, published)
-    }
-
     /// Lazy capture replaces slug-derived titles, fills a missing author and
     /// learns an unknown publication date. Dates already known remain exact.
     pub fn set_catalogue_metadata(

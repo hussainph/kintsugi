@@ -733,7 +733,10 @@ impl<B: Brain> Engine<B> {
             .is_some_and(|r| r.stopped);
         let through = info.answers.last().copied().unwrap_or_default();
         let base = Draft {
-            replay: result.as_ref().ok().map(|summary| summary.replay.clone()),
+            replay: result
+                .as_ref()
+                .ok()
+                .map(|summary| summary.replay.as_ref().clone()),
             answers: info.answers.clone(),
             web: trace.web,
             tools: trace.uses.into_iter().map(|(_, used)| used).collect(),

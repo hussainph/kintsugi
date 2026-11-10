@@ -193,7 +193,7 @@ pub struct Summary {
     pub cap_reached: bool,
     /// Internal replay for the next turn, not part of streamed UI events.
     #[serde(skip)]
-    pub replay: super::context::Replay,
+    pub replay: Box<super::context::Replay>,
 }
 
 /// What the webview sees while a turn runs.
@@ -372,12 +372,12 @@ async fn steps(
         usd: 0.0,
         model: format!("{}/{}", reference.provider, reference.model),
         cap_reached: false,
-        replay: super::context::Replay {
+        replay: Box::new(super::context::Replay {
             reads,
             heard: vec![turn.question.clone()],
             memory: Some(memory.clone()),
             ..Default::default()
-        },
+        }),
     };
     let mut nudged_empty = false;
     for step in 1..=limits.max_steps {
@@ -916,7 +916,7 @@ pub(crate) mod tests {
         );
         let mut next = first.clone();
         next.question = "better?".into();
-        next.history = vec![summary.replay];
+        next.history = vec![*summary.replay];
         let later = Mock::new(vec![answer("Yes.")]);
         let second = run_turn(&f, &later, &next, &Cancel::default()).0.unwrap();
         assert_eq!(second.tool_calls, 0);
@@ -1008,7 +1008,7 @@ pub(crate) mod tests {
             })
             .unwrap();
         let mut next = turn(false);
-        next.history = vec![summary.replay];
+        next.history = vec![*summary.replay];
         let new_tools = Tools::new(f.vault.path(), f._outputs.path().into(), "web2")
             .unwrap()
             .with_web(std::sync::Arc::new(crate::ai::web::Web::scripted()));
@@ -1053,7 +1053,7 @@ pub(crate) mod tests {
         .unwrap();
         let mut next = turn(false);
         next.question = "Find a source".into();
-        next.history = vec![summary.replay];
+        next.history = vec![*summary.replay];
         let tools = Tools::new(f.vault.path(), f._outputs.path().into(), "private-web")
             .unwrap()
             .with_web(std::sync::Arc::new(crate::ai::web::Web::scripted()));

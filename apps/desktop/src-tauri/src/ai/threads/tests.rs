@@ -470,7 +470,7 @@ fn recent_tool_results_survive_reopen_and_history_stays_within_budget() {
             items: vec![
                 Item::User(crate::ai::context::question(
                     &format!("Question {n}"),
-                    &[chip.clone()],
+                    std::slice::from_ref(&chip),
                 )),
                 Item::Assistant {
                     text: String::new(),
