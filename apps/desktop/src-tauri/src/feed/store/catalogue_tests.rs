@@ -585,7 +585,9 @@ fn lazy_catalogue_metadata_fills_unknown_date_without_replacing_known_dates() {
         .unwrap();
     assert_eq!(store.item(unknown).unwrap().published_at, item.published_at);
     assert_eq!(store.item(unknown).unwrap().author, item.author);
-    store.set_original_date(order[1], Some(NOW)).unwrap();
+    store
+        .set_catalogue_metadata(order[1], None, None, Some(NOW))
+        .unwrap();
     assert_eq!(
         store.item(order[1]).unwrap().published_at,
         Some(NOW - 500 * DAY)

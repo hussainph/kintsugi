@@ -233,10 +233,6 @@ fn save_unlocked(root: &Path, doc: &str, items: &[StashItem]) -> Result<()> {
     write_atomic(&path, &text)
 }
 
-pub fn save(root: &Path, doc: &str, items: Vec<StashItem>) -> Result<()> {
-    save_if_unchanged(root, doc, items, None)
-}
-
 /// An editor can pass the last loaded items as its base. The comparison
 /// and save share the append lock, so a model addition cannot be lost
 /// between a frontend load and save. A conflict requires a reload/retry.
@@ -373,6 +369,10 @@ pub fn stash_dismiss(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn save(root: &Path, doc: &str, items: Vec<StashItem>) -> Result<()> {
+        save_if_unchanged(root, doc, items, None)
+    }
 
     pub fn item(id: &str, text: &str) -> StashItem {
         StashItem {

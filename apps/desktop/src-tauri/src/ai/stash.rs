@@ -477,7 +477,7 @@ mod tests {
     fn separate_stash_reads_exclude_hand_edited_instructions() {
         let vault = scratch_vault();
         let outputs = tempfile::tempdir().unwrap();
-        stash::save(
+        stash::save_if_unchanged(
             vault.path(),
             "drafts/tools.mdx",
             vec![
@@ -498,6 +498,7 @@ mod tests {
                     anchor: None,
                 },
             ],
+            None,
         )
         .unwrap();
         let normal = Tools::new(vault.path(), outputs.path().into(), "chat").unwrap();
