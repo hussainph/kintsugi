@@ -138,13 +138,15 @@ but it never applies one; only the writer edits `tags`.
 
 ## The page and the margin
 
-The draft keeps a fixed measure (KI-103). Its line length and left edge depend
-only on the window's width and the text size, so opening or closing anything
-never re-wraps a line.
+The draft keeps a fixed measure (KI-103). The margin never re-wraps a line.
+Its state and tab don't set the column's position; the sidebar does. Moving
+the sidebar keeps the measure, unless the window is too narrow to hold it.
 
-- **The column** is centred when the margin fits beside it. Otherwise it moves
-  left just enough for the margin to fit, and never closer to the sidebar than
-  its own padding (`references/references.css`).
+- **The column** is centred in the space between the sidebar and the reserved
+  margin (KI-114), even when the margin is closed. Closing the sidebar moves
+  the column left, keeping the space on either side of the text balanced.
+  Narrow windows keep the column beside the sidebar with its usual padding
+  (`references/references.css`).
 - **The margin** is one 360 px panel on the right with three tabs: Kin,
   References and Stash. It slides in over the empty gutter in 240 ms, with no
   line moving. Under reduced motion it fades instead.

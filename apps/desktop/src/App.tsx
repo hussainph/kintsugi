@@ -1004,6 +1004,7 @@ export default function App() {
 
   return (
     <SidebarProvider
+      data-writing={writing || undefined}
       inert={movingVaultFiles}
       open={navOpen && !folded.active}
       onOpenChange={(next) => {

@@ -420,6 +420,10 @@ button.ki-kin-title:hover { background: var(--neutral-3); }
 [data-headless-dialog] :is(input, button):focus-visible { outline: 2px solid var(--neutral-10); outline-offset: var(--space-xxs); }
 
 @media (prefers-reduced-motion: reduce) {
+  /* The writing column follows the sidebar's gap. Skip that travel too,
+     not only the sidebar surface, and leave the margin's fade intact. */
+  [data-writing] [data-slot="sidebar-gap"],
+  [data-writing] [data-slot="sidebar-container"] { transition: none; }
   .ki-tree-chevron, .ki-tree-folder, .ki-clip-card, .ki-refine-choice, .ki-source-link, .ki-chip, .ki-model-trigger, [data-headless-dialog] button, .ki-kin-launcher, .ki-kin-row, .ki-kin-title, .ki-kin-path, .ki-kin-helper-row button { transition: none; }
   .ki-kin-launcher:hover, .ki-kin-launcher:active { transform: none; }
   .ki-kin-launcher-dot-busy, .ki-kin-row-busy, .ki-kin-reviewing > svg { animation: none; }
