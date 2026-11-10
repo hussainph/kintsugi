@@ -22,6 +22,7 @@ const OMITTED: &str = "[Harness: Older images omitted to fit this model's limits
 pub(super) struct Prepared<'a> {
     pub items: Cow<'a, [Item]>,
     pub system: Cow<'a, str>,
+    omission_noted: bool,
 }
 
 impl Prepared<'_> {
@@ -33,7 +34,7 @@ impl Prepared<'_> {
         }
     }
 
-    fn omit(&mut self, remove: &[bool], system: &str) {
+    fn omit(&mut self, remove: &[bool]) {
         let mut index = 0;
         for item in self.items.to_mut() {
             if let Item::Images(images) = item {
@@ -44,11 +45,29 @@ impl Prepared<'_> {
                 });
             }
         }
-        self.system = Cow::Owned(if system.is_empty() {
-            OMITTED.into()
-        } else {
-            format!("{system}\n\n{OMITTED}")
-        });
+        if !self.omission_noted {
+            // Keep the system/tool cache prefix byte-stable. Editing the
+            // newest user text or tool output also preserves image grouping.
+            let text = self
+                .items
+                .to_mut()
+                .iter_mut()
+                .rev()
+                .find_map(|item| match item {
+                    Item::User(text) => Some(text),
+                    Item::Results(results) => results.last_mut().map(|result| &mut result.content),
+                    _ => None,
+                });
+            if let Some(text) = text {
+                text.push_str("\n\n");
+                text.push_str(OMITTED);
+            } else {
+                // Image-only input has no text to annotate. Append after the
+                // images so this cannot split an existing image group.
+                self.items.to_mut().push(Item::User(OMITTED.into()));
+            }
+            self.omission_noted = true;
+        }
     }
 }
 
@@ -74,6 +93,7 @@ pub(super) fn prepare_request<'a>(
     let mut prepared = Prepared {
         items: prepare(route, ex.items)?,
         system: Cow::Borrowed(ex.system),
+        omission_noted: false,
     };
     let mut encoded = body(route, auth, &prepared.exchange(ex));
     let groups = image_groups(route.wire, &encoded);
@@ -110,7 +130,7 @@ pub(super) fn prepare_request<'a>(
         }
     }
     if remove.iter().any(|&drop| drop) {
-        prepared.omit(&remove, ex.system);
+        prepared.omit(&remove);
         drop(encoded);
         encoded = body(route, auth, &prepared.exchange(ex));
     }
@@ -132,7 +152,7 @@ pub(super) fn prepare_request<'a>(
         }
         let mut remove = vec![false; count];
         remove[0] = true;
-        prepared.omit(&remove, ex.system);
+        prepared.omit(&remove);
         encoded = body(route, auth, &prepared.exchange(ex));
     }
 }

@@ -390,7 +390,7 @@ fn aggregate_counts_keep_newest_across_tool_reads_without_changing_history() {
         let ex = exchange("gpt-4o", &items, &[]);
         let prepared = images::prepare_request(&route, None, &ex).unwrap();
         assert_eq!(retained(&prepared.items), images[4..], "{wire:?}");
-        assert!(prepared.system.contains("Older images omitted"));
+        assert_eq!(prepared.system, ex.system);
         assert_eq!(items, original);
         let encoded: Value = serde_json::from_slice(&request_bytes(
             &route,
@@ -508,6 +508,14 @@ fn encoded_byte_budget_is_exact_for_every_wire_and_keeps_newest() {
                 bytes.len()
             );
             assert_eq!(retained(&prepared.items), expected, "{wire:?}");
+            assert_eq!(prepared.system.as_bytes(), ex.system.as_bytes());
+            assert_eq!(
+                String::from_utf8_lossy(&bytes)
+                    .matches("Older images omitted")
+                    .count(),
+                1,
+                "{wire:?} duplicated the note during byte eviction"
+            );
         }
         // The untouched request fits at its exact byte boundary, without a note.
         let boundary = request_bytes(&reference, Some(test_auth()), &ex).len();
@@ -516,6 +524,140 @@ fn encoded_byte_budget_is_exact_for_every_wire_and_keeps_newest() {
         assert_eq!(prepared.items.as_ref(), items);
         assert_eq!(prepared.system, ex.system);
         assert_eq!(items, original);
+    }
+}
+
+/// The stable provider-encoded prefix, including system cache markers and
+/// tool definitions. Conversation breakpoints are intentionally not fixed.
+fn fixed_prefix(wire: Wire, body: &Value) -> Vec<u8> {
+    let system = match wire {
+        Wire::Anthropic => body["system"].clone(),
+        Wire::OpenAiChat => body["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|message| matches!(message["role"].as_str(), Some("system" | "developer")))
+            .cloned()
+            .collect(),
+        Wire::OpenAiResponses => body["input"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|message| matches!(message["role"].as_str(), Some("system" | "developer")))
+            .cloned()
+            .collect(),
+        Wire::Codex => body["instructions"].clone(),
+        Wire::Google | Wire::Vertex => body["systemInstruction"].clone(),
+    };
+    serde_json::to_vec(&json!({
+        "system": system,
+        "tools": body["tools"],
+        "cache_key": body["prompt_cache_key"],
+    }))
+    .unwrap()
+}
+
+#[test]
+fn eviction_preserves_system_and_cached_prefix_and_notices_only_newest_content() {
+    let images: Vec<Image> = (1..=3)
+        .map(|width| generated_image(width * 10, 4))
+        .collect();
+    let mut tool_history = sample_items();
+    tool_history.push(Item::Images(images.clone()));
+    let histories = [
+        vec![Item::Images(images.clone())],
+        vec![
+            Item::User("Earlier user text.".into()),
+            Item::User("Newest user text.".into()),
+            Item::Images(images.clone()),
+        ],
+        tool_history,
+    ];
+    let tools = [tool()];
+    for wire in WIRES {
+        for items in &histories {
+            for system in ["", "Fixed system \"\n雪"] {
+                for tools in [&tools[..], &[][..]] {
+                    let ex = Exchange {
+                        system,
+                        ..exchange("gpt-4o", items, tools)
+                    };
+                    let reference = limited_route(wire, json!({"images": {"maxPerRequest": 1}}));
+                    let original: Value =
+                        serde_json::from_slice(&request_bytes(&reference, Some(test_auth()), &ex))
+                            .unwrap();
+                    let prefix = fixed_prefix(wire, &original);
+                    if wire == Wire::Anthropic && !system.is_empty() && !tools.is_empty() {
+                        assert_eq!(
+                            original["system"][0]["cache_control"],
+                            json!({"type": "ephemeral"})
+                        );
+                    }
+                    let counted =
+                        images::prepare_request(&reference, Some(&test_auth()), &ex).unwrap();
+                    let boundary =
+                        request_bytes(&reference, Some(test_auth()), &counted.exchange(&ex)).len();
+                    for limits in [
+                        json!({"images": {"maxPerMessage": 1}}),
+                        json!({"images": {"maxPerRequest": 1}}),
+                        // Three images require repeated byte evictions. The
+                        // fourth case adds byte eviction after count eviction.
+                        json!({"maxRequestBytes": boundary}),
+                        json!({"maxRequestBytes": boundary, "images": {"maxPerRequest": 2}}),
+                    ] {
+                        let route = limited_route(wire, limits);
+                        let prepared =
+                            images::prepare_request(&route, Some(&test_auth()), &ex).unwrap();
+                        assert!(matches!(prepared.system, std::borrow::Cow::Borrowed(_)));
+                        assert_eq!(
+                            prepared.exchange(&ex).system.as_bytes(),
+                            system.as_bytes(),
+                            "{wire:?}"
+                        );
+                        assert_eq!(retained(&prepared.items), images[2..], "{wire:?}");
+                        let bytes =
+                            request_bytes(&route, Some(test_auth()), &prepared.exchange(&ex));
+                        let encoded: Value = serde_json::from_slice(&bytes).unwrap();
+                        assert_eq!(fixed_prefix(wire, &encoded), prefix, "{wire:?}");
+                        assert_eq!(
+                            String::from_utf8_lossy(&bytes)
+                                .matches("Older images omitted")
+                                .count(),
+                            1,
+                            "{wire:?}"
+                        );
+                        // Aside from image removal, only the latest user/tool
+                        // content changes; image-only histories get a tail note.
+                        let mut expected = items.clone();
+                        for item in &mut expected {
+                            if let Item::Images(batch) = item {
+                                *batch = images[2..].to_vec();
+                            }
+                        }
+                        let note = "[Harness: Older images omitted to fit this model's limits.]";
+                        match expected
+                            .iter_mut()
+                            .rev()
+                            .find(|item| matches!(item, Item::User(_) | Item::Results(_)))
+                        {
+                            Some(Item::User(text)) => text.push_str(&format!("\n\n{note}")),
+                            Some(Item::Results(results)) => results
+                                .last_mut()
+                                .unwrap()
+                                .content
+                                .push_str(&format!("\n\n{note}")),
+                            None => expected.push(Item::User(note.into())),
+                            _ => unreachable!(),
+                        }
+                        assert_eq!(prepared.items.as_ref(), expected, "{wire:?}");
+                        if let Some(max_bytes) = route.model.unwrap().input_limits.max_request_bytes
+                        {
+                            assert!(bytes.len() <= max_bytes, "{wire:?}");
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
