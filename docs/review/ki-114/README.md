@@ -33,11 +33,12 @@ Scoped theme review preserves the editor's type, line padding, colors, margin ta
 - `pnpm test`: passed.
 - `pnpm --filter @kintsugi/desktop build`: passed; existing bundle-size warning.
 - `node --test --test-concurrency=1 --test-reporter=./test/reporter.ts test/runtime-writing-layout.test.ts` in `apps/desktop`: four passed. Covers the left edge, fixed width, sidebar restoration, auto-fold, narrow overlay, selection bounds, interruptible travel and reduced motion.
-- `node --test test/runtime-catalogue.test.ts` in `apps/desktop`: two passed after the fixture correction below.
+- `pnpm test:headless`: the full runtime run reached every existing suite and failed only at `runtime-catalogue.test.ts:102` (`new posts are not muted`), a pre-existing main failure tracked by KI-118. The KI-103/107/108/110/111 regressions passed. The four new layout tests passed separately.
+- `cargo test -p kintsugi --no-default-features --features headless -j "$VOLLI_CONCURRENCY_HINT"`: passed (479 unit tests plus the registry integration test; 43 ignored).
 - `git diff --check`: passed.
 - Review links: all screenshot and measurement files are present.
 
-The first full headless run exposed an expired date in the catalogue fixture. Its recorded newest post crossed the 30-day archive cutoff on November 10, 2026. The fixture now gives that post a clock-relative recent date; the older entries keep their recorded dates. No feed behavior changed.
+The catalogue fixture's recorded newest post crossed the 30-day archive cutoff on November 10, 2026. A temporary diagnostic correction was reverted at the board's direction: KI-118 owns that fix. The catalogue test is unchanged from main. A second full run was stopped at that direction rather than repeating the known failure.
 
 In a Volli Browser Tab, toggled the sidebar, opened the margin, selected the draft and switched to Stash and its versions section. The selection stayed inside the text padding. The console had no errors. `swift scripts/check-headless-macos.swift` reported zero native windows, no Dock registration and no focus activation. The visual-review backend was stopped.
 
