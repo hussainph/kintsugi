@@ -314,10 +314,15 @@ fn clean(text: &str) -> Result<&str> {
 }
 
 fn clean_chips(chips: Vec<Chip>) -> Vec<Chip> {
-    chips
+    // Keep every attached file; screen context must not crowd files out.
+    let (attachments, context): (Vec<_>, Vec<_>) = chips
         .into_iter()
         .filter(|c| !c.path.trim().is_empty())
-        .take(MAX_CHIPS)
+        .partition(|c| c.kind == "attachment");
+    let left = MAX_CHIPS.saturating_sub(attachments.len());
+    attachments
+        .into_iter()
+        .chain(context.into_iter().take(left))
         .collect()
 }
 
@@ -377,6 +382,9 @@ impl<B: Brain> Engine<B> {
     /// Opens a vault's threads. The first vault opened adopts the global log
     /// from before KI-59; a vault's old log and comments become threads.
     fn open_store(&self, vault: &Path) -> Store {
+        // Startup and every vault switch collect imports abandoned by an
+        // earlier composer, even if no new file is attached this session.
+        let _ = super::attachments::collect_staging(vault);
         let kin = self.0.brain.kin_dir(vault);
         if let (Some(old), Some(kin)) = (&self.0.old_log, &kin)
             && !self.0.migrated.swap(true, Ordering::SeqCst)
@@ -455,8 +463,15 @@ impl<B: Brain> Engine<B> {
         chips: Vec<Chip>,
         start: Start,
     ) -> Result<Sent> {
-        let text = clean(text)?;
+        if chips.iter().filter(|c| c.kind == "attachment").count() > 8 {
+            return Err("Attach up to 8 files.".into());
+        }
         let chips = clean_chips(chips);
+        let text = if text.trim().is_empty() && chips.iter().any(|c| c.kind == "attachment") {
+            ""
+        } else {
+            clean(text)?
+        };
         let (meta, entry, changed) = {
             let mut store = self.store();
             match thread {
@@ -477,7 +492,13 @@ impl<B: Brain> Engine<B> {
                     let new = New {
                         anchor: start.anchor,
                         origin: origin(start.origin.as_deref()),
-                        title: None,
+                        title: text.is_empty().then(|| {
+                            chips
+                                .iter()
+                                .find(|c| c.kind == "attachment")
+                                .and_then(|c| c.label.clone())
+                                .unwrap_or_else(|| "Attachments".into())
+                        }),
                     };
                     let (meta, entry) = store.start(new, Role::Owner, Draft::said(text, chips))?;
                     // What he picked in the new thread's composer is this thread's now.
@@ -693,7 +714,14 @@ impl<B: Brain> Engine<B> {
                 chips.push(chip.clone());
             }
         }
-        chips.truncate(MAX_CHIPS);
+        // A burst may include several valid eight-file messages. Keep all
+        // their references, even when only the first eight are loaded now.
+        let (files, context): (Vec<_>, Vec<_>) =
+            chips.into_iter().partition(|c| c.kind == "attachment");
+        let chips = files
+            .into_iter()
+            .chain(context.into_iter().take(MAX_CHIPS))
+            .collect::<Vec<_>>();
         let paragraph = meta
             .anchor
             .as_ref()
@@ -1345,6 +1373,46 @@ pub fn kin_threads(chat: State<Chat>, filter: Option<Filter>) -> Result<List> {
 #[tauri::command]
 pub fn kin_thread(chat: State<Chat>, id: String) -> Result<View> {
     chat.engine()?.thread(&id)
+}
+
+/// Copies a composer file into this vault's private Kin storage.
+#[tauri::command]
+pub async fn kin_attachment_import(
+    chat: State<'_, Chat>,
+    name: String,
+    bytes: Vec<u8>,
+) -> Result<Chip> {
+    let root = chat.engine()?.0.brain.vault()?;
+    async_runtime::spawn_blocking(move || super::attachments::import(&root, &name, &bytes))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn kin_attachment_preview(chat: State<'_, Chat>, path: String) -> Result<Option<String>> {
+    let root = chat.engine()?.0.brain.vault()?;
+    async_runtime::spawn_blocking(move || super::attachments::preview(&root, &path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn kin_attachment_discard(chat: State<'_, Chat>, path: String) -> Result<()> {
+    let root = chat.engine()?.0.brain.vault()?;
+    async_runtime::spawn_blocking(move || super::attachments::discard(&root, &path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn kin_thread_delete(chat: State<Chat>, id: String) -> Result<()> {
+    let engine = chat.engine()?;
+    engine.stop(&id);
+    // Do not let an in-flight completion resurrect a deleted thread.
+    engine.0.live.lock().unwrap().threads.remove(&id);
+    engine.store().delete(&id)?;
+    engine.emit(ChatEvent::Threads);
+    Ok(())
 }
 
 /// His message: in `thread`, or in a new thread about `start.anchor`.

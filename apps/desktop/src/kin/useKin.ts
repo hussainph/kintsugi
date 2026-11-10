@@ -3,6 +3,7 @@ import { useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import {
   anchorOf,
+  attachments,
   type Anchor,
   type ChatEvent,
   type Entry,
@@ -21,6 +22,7 @@ import {
 } from "@/lib/chat";
 import { type Chip, chipKey, mergeChips, throttle } from "@/lib/chips";
 import type { WebCall } from "@/lib/web";
+import { attachmentFailure, createAttachmentQueue, createComposerSendQueue, failedSubmissionDraft, type AttachmentFile } from "./attachments";
 
 export const ACTIVE: Job["status"][] = ["queued", "running", "waiting"];
 
@@ -51,6 +53,11 @@ export type KinState = {
   /** Chips he took off. */
   removed: ReadonlySet<string>;
   draft: string;
+  /** Async file imports and sends belong to this composer, not the next one. */
+  composerSeq: number;
+  /** Includes every accepted batch still reading, importing or queued. */
+  importing: boolean;
+  sending: boolean;
   /** The screen's threads, and which are running. */
   list: ThreadList;
   /** Away from the editor: recent threads about other things. */
@@ -82,6 +89,9 @@ let state: KinState = {
   pinned: [],
   removed: new Set(),
   draft: "",
+  composerSeq: 0,
+  importing: false,
+  sending: false,
   list: EMPTY,
   recent: [],
   all: null,
@@ -241,7 +251,10 @@ function onEvent(event: ChatEvent) {
       return set((s) => ({ helpers: [event.job, ...s.helpers.filter((j) => j.id !== event.job.id)] }));
     case "switched":
       // Each vault has its own threads, and its own picks.
-      set((s) => ({ live: {}, unread: new Set(), vaultSeq: s.vaultSeq + 1, mode: { kind: "list" }, view: null, all: null }));
+      ++viewSeq;
+      ++listSeq;
+      ++allSeq;
+      set((s) => ({ ...resetComposer(), live: {}, unread: new Set(), vaultSeq: s.vaultSeq + 1, mode: { kind: "list" }, view: null, all: null, draft: "", pinned: [], removed: new Set(), screen: [], list: EMPTY, recent: [], helpers: [] }));
       return reloadLists();
   }
 }
@@ -266,7 +279,7 @@ function start() {
   // brought goes, and a new thread he never wrote in isn't kept waiting.
   onOpenKin((show) => {
     readScreen();
-    set((s) => ({ pinned: [], removed: new Set(), ...(s.mode.kind === "new" && !s.draft.trim() ? { mode: { kind: "list" } as Mode } : {}) }));
+    set((s) => ({ pinned: s.pinned.filter((c) => c.kind === "attachment"), removed: new Set(), ...(s.mode.kind === "new" && !s.draft.trim() && !s.pinned.some((c) => c.kind === "attachment") ? { mode: { kind: "list" } as Mode } : {}) }));
     if (show === "list") showList();
     else if (state.mode.kind === "list") void loadList();
     set((s) => ({ focus: s.focus + 1 }));
@@ -304,13 +317,22 @@ const without = (set: ReadonlySet<string>, id: string) => {
   return next;
 };
 
+let attachmentQueue: ReturnType<typeof createAttachmentQueue> | null = null;
+let sendQueue: ReturnType<typeof createComposerSendQueue> | null = null;
+
+function resetComposer() {
+  attachmentQueue = null;
+  sendQueue = null;
+  return { composerSeq: state.composerSeq + 1, importing: false, sending: false };
+}
+
 export function showList() {
-  set({ mode: { kind: "list" }, view: null, draft: "", pinned: [] });
+  set({ ...resetComposer(), mode: { kind: "list" }, view: null, draft: "", pinned: [] });
   void loadList();
 }
 
 export function showAll() {
-  set({ mode: { kind: "all" }, view: null, query: "", all: null });
+  set({ ...resetComposer(), mode: { kind: "all" }, view: null, query: "", all: null, draft: "", pinned: [] });
   void loadAll();
 }
 
@@ -322,14 +344,14 @@ export function search(query: string) {
 }
 
 export function openThread(id: string) {
-  if (state.mode.kind !== "thread" || state.mode.id !== id) set({ mode: { kind: "thread", id }, view: null, draft: "", seenThrough: null });
+  if (state.mode.kind !== "thread" || state.mode.id !== id) set({ ...resetComposer(), mode: { kind: "thread", id }, view: null, draft: "", seenThrough: null, pinned: state.pinned.filter((c) => c.kind !== "attachment") });
   set((s) => ({ unread: without(s.unread, id), focus: s.focus + 1 }));
   void loadView(id, true);
 }
 
 /** A new thread's composer, about `anchor` (null: nothing in particular). */
 export function newThread(anchor: Anchor | null, origin: NonNullable<Start["origin"]> = "chat") {
-  set((s) => ({ mode: { kind: "new", anchor, origin }, view: null, draft: "", seenThrough: 0, focus: s.focus + 1 }));
+  set((s) => ({ ...resetComposer(), mode: { kind: "new", anchor, origin }, view: null, draft: "", seenThrough: 0, focus: s.focus + 1, pinned: s.pinned.filter((c) => c.kind !== "attachment") }));
 }
 
 export function setDraft(text: string) {
@@ -341,8 +363,32 @@ const ping = throttle(() => {
   if (state.mode.kind === "thread") void api.typing(state.mode.id).catch(() => {});
 }, 400);
 
+/** The file picker, clipboard and HTML drop all enter through the same limit. */
+export async function addAttachments(files: readonly AttachmentFile[]) {
+  if (!files.length) return;
+  if (state.sending) {
+    toast.error("Wait for this message to send.");
+    return;
+  }
+  if (!attachmentQueue) {
+    const { vaultSeq, composerSeq } = state;
+    attachmentQueue = createAttachmentQueue({
+      current: () => state.vaultSeq === vaultSeq && state.composerSeq === composerSeq,
+      pendingCount: () => chipsOf(state).filter((c) => c.kind === "attachment").length,
+      importFile: attachments.import,
+      append: (chip) => set((s) => ({ pinned: [...s.pinned, chip] })),
+      importing: (importing) => set({ importing }),
+      error: (error) => toast.error(attachmentFailure(error)),
+    });
+  }
+  if (state.mode.kind === "thread") ping();
+  await attachmentQueue.enqueue(files);
+}
+
 export function removeChip(chip: Chip) {
+  if (state.sending) return;
   set((s) => ({ removed: new Set(s.removed).add(chipKey(chip)), pinned: s.pinned.filter((p) => chipKey(p) !== chipKey(chip)) }));
+  if (chip.kind === "attachment") void attachments.discard(chip.path).catch((error) => toast.error(attachmentFailure(error)));
 }
 
 /** What a new thread would be about now: Discuss's or the paragraph's
@@ -359,40 +405,50 @@ export function newAnchor(s: KinState): Anchor | null {
 
 async function sendNew(text: string, chips: Chip[]) {
   const mode = state.mode;
-  const anchor = newAnchor(state);
+  const anchor = mode.kind === "new" ? newAnchor(state) : subject(chips);
   const origin = mode.kind === "new" ? mode.origin : "chat";
+  const { vaultSeq, composerSeq } = state;
+  const current = () => state.vaultSeq === vaultSeq && state.composerSeq === composerSeq;
   try {
     const sent = await api.send(null, text, chips, { anchor, origin });
+    if (!current()) return true;
     set({ mode: { kind: "thread", id: sent.thread.id }, view: { thread: sent.thread, entries: [sent.entry], pending: [sent.entry.seq], running: null }, seenThrough: 0, pinned: [] });
     void loadView(sent.thread.id);
     reloadLists();
     return true;
   } catch (error) {
-    toast.error(String(error));
+    if (current()) toast.error(attachmentFailure(error));
     return false;
   }
 }
 
-/** Sends the composer's message: in the thread open, or as a new thread. */
+/** Keep drafts and staged files until accepted; distinct Enter presses queue. */
 export async function send(text = state.draft) {
   const message = text.trim();
-  if (!message) return;
   const chips = chipsOf(state);
-  set({ draft: "" });
-  let ok: boolean;
-  if (state.mode.kind === "thread") {
-    try {
-      await api.send(state.mode.id, message, chips);
-      ok = true;
-    } catch (error) {
-      toast.error(String(error));
-      ok = false;
-    }
-  } else {
-    if (state.mode.kind !== "new") newThread(subject(chips));
-    ok = await sendNew(message, chips);
+  if ((!message && (!chips.some((c) => c.kind === "attachment") || state.sending)) || state.importing) return;
+  if (!sendQueue) {
+    const { vaultSeq, composerSeq } = state;
+    sendQueue = createComposerSendQueue({
+      current: () => state.vaultSeq === vaultSeq && state.composerSeq === composerSeq,
+      sending: (sending) => set({ sending }),
+      submit: async ({ text, chips }) => {
+        // Resolve the thread at execution, after an earlier submit may create it.
+        if (state.mode.kind !== "thread") return sendNew(text, chips);
+        await api.send(state.mode.id, text, chips);
+        return true;
+      },
+      accepted: ({ draft, chips }) => {
+        const sent = new Set(chips.filter((chip) => chip.kind === "attachment").map((chip) => chip.path));
+        set((s) => ({ draft: s.draft === draft ? "" : s.draft, pinned: s.pinned.filter((chip) => chip.kind !== "attachment" || !sent.has(chip.path)) }));
+      },
+      failed: (unsent, error) => {
+        set((s) => ({ draft: failedSubmissionDraft(unsent, s.draft) }));
+        if (error !== undefined) toast.error(attachmentFailure(error));
+      },
+    });
   }
-  if (!ok && !state.draft) set({ draft: message });
+  await sendQueue.enqueue({ text: message, draft: state.draft, chips });
 }
 
 export function stop() {

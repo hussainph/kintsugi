@@ -23,6 +23,7 @@
 mod anthropic;
 mod chat;
 mod google;
+mod images;
 mod responses;
 
 use super::catalog::{self, Level};
@@ -262,10 +263,28 @@ pub struct ToolResult {
     pub is_error: bool,
 }
 
+/// An image prepared for model input. `data` is standard base64 without a
+/// data-URL prefix; callers decode, orient and resize before sending.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Image {
+    pub mime_type: String,
+    pub data: String,
+}
+
+impl Image {
+    fn data_url(&self) -> String {
+        format!("data:{};base64,{}", self.mime_type, self.data)
+    }
+}
+
 /// One entry in a conversation, in the order the provider saw it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Item {
     User(String),
+    /// User image parts immediately following `User` or `Results`. Wires
+    /// append them to that user message where supported; tool-only wires
+    /// send a separate user message after the tool outputs.
+    Images(Vec<Image>),
     Assistant {
         text: String,
         calls: Vec<ToolCall>,
@@ -465,6 +484,8 @@ pub(crate) async fn send_with(
     mut on_text: impl FnMut(&str),
     patience: Patience,
 ) -> Result<Reply> {
+    let prepared = images::prepare_request(&endpoint.route, endpoint.auth.as_ref(), ex)?;
+    let ex = &prepared.exchange(ex);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .user_agent(USER_AGENT)
@@ -566,11 +587,17 @@ fn common_headers(
         // is "user", the agent's own follow-ups "agent" (Copilot bills
         // them differently). Kin's wrap-up and empty-reply notes are user
         // messages, but follow tool results or an empty reply.
-        let n = ex.items.len();
-        let owner = matches!(ex.items.last(), Some(Item::User(_)))
+        let mut history = ex
+            .items
+            .iter()
+            .rev()
+            .filter(|i| !matches!(i, Item::Images(_)));
+        let last = history.next();
+        let previous = history.next();
+        let owner = matches!(last, Some(Item::User(_)))
             && !ex.items.iter().any(|i| matches!(i, Item::Results(_)))
             && !matches!(
-                n.checked_sub(2).map(|i| &ex.items[i]),
+                previous,
                 Some(Item::Assistant { text, calls }) if text.is_empty() && calls.is_empty()
             );
         let initiator = if owner { "user" } else { "agent" };
@@ -678,6 +705,7 @@ fn shape(route: &Route, ex: &Exchange, reply: &Reply) -> String {
         .iter()
         .map(|item| match item {
             Item::User(_) => "user".into(),
+            Item::Images(images) => format!("images{}", images.len()),
             Item::Assistant { calls, .. } => format!("assistant+{}calls", calls.len()),
             Item::Results(results) => format!("results{}", results.len()),
             Item::Reasoning(items) => format!("reasoning{}", items.len()),
@@ -740,6 +768,52 @@ fn parse_arguments(raw: &str) -> Value {
         return json!({});
     }
     serde_json::from_str(raw).unwrap_or_else(|_| Value::String(raw.into()))
+}
+
+/// Encode images only when the catalog allows them. Unknown/local models
+/// can accept images: an absent catalog entry does not prove text-only input.
+/// The fallback tells Kin what was omitted without exposing the image bytes.
+fn image_parts(
+    route: &Route,
+    images: &[Image],
+    image: impl FnMut(&Image) -> Value,
+    text: impl FnOnce(&str) -> Value,
+) -> Vec<Value> {
+    if images.is_empty() {
+        return Vec::new();
+    }
+    if route.model.is_none_or(|m| m.images()) {
+        return images.iter().map(image).collect();
+    }
+    let alternative = catalog::models(route.provider.id)
+        .find(|m| m.images() && Wire::from_api(&m.api) == Some(route.wire))
+        .or_else(|| catalog::models(route.provider.id).find(|m| m.images()));
+    let note = match alternative {
+        Some(model) => format!("This model cannot read images. Try {}.", model.id),
+        None => "This model cannot read images.".into(),
+    };
+    vec![text(&note)]
+}
+
+/// Keep user images next to their prompt or tool results. Chat-completion
+/// tool messages and Responses function outputs cannot contain user images,
+/// so those get a following user message instead. Empty batches add nothing.
+fn append_user_parts(messages: &mut Vec<Value>, key: &str, parts: Vec<Value>) {
+    if parts.is_empty() {
+        return;
+    }
+    if let Some(last) = messages.last_mut().filter(|m| m["role"] == "user") {
+        if let Some(text) = last[key].as_str() {
+            last[key] = json!([{ "type": "text", "text": text }]);
+        }
+        if let Some(content) = last[key].as_array_mut() {
+            content.extend(parts);
+            return;
+        }
+    }
+    let mut message = json!({ "role": "user" });
+    message[key] = json!(parts);
+    messages.push(message);
 }
 
 /// The text of a tool result as the model sees it: never empty (Pi).
@@ -906,3 +980,6 @@ pub(crate) mod testing;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod images_tests;

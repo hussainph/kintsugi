@@ -413,6 +413,48 @@ impl Model for Scripted {
         }) else {
             return Err("nothing to answer".into());
         };
+        let image_count: usize = ex
+            .items
+            .iter()
+            .map(|item| match item {
+                Item::Images(images) => images.len(),
+                _ => 0,
+            })
+            .sum();
+        if image_count > 0 {
+            let text = format!(
+                "I received {image_count} image{}. The image is available in this thread.",
+                if image_count == 1 { "" } else { "s" }
+            );
+            on_text(&text);
+            return Ok(reply(text, vec![]));
+        }
+        if said(question).to_lowercase().contains("image") {
+            let reference = ex.items.iter().rev().find_map(|item| match item {
+                Item::User(text) => text
+                    .split("@attachment/")
+                    .nth(1)
+                    .map(|rest| {
+                        rest.chars()
+                            .take_while(|c| {
+                                c.is_ascii_alphanumeric() || matches!(c, '/' | '.' | '-' | '_')
+                            })
+                            .collect::<String>()
+                    })
+                    .map(|rest| format!("@attachment/{rest}")),
+                _ => None,
+            });
+            if let Some(path) = reference {
+                return Ok(reply(
+                    String::new(),
+                    vec![ToolCall {
+                        id: "mock-image-read".into(),
+                        name: "read".into(),
+                        arguments: json!({"path": path}),
+                    }],
+                ));
+            }
+        }
         if ex.system.starts_with(crate::feed::STORY_SUMMARIZER) {
             let text = story_summary(ex.system, question);
             on_text(&text);

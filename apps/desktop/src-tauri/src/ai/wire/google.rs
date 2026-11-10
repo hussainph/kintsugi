@@ -159,6 +159,16 @@ pub(super) fn body(route: &Route, ex: &Exchange) -> Value {
             Item::User(text) => {
                 contents.push(json!({ "role": "user", "parts": [{ "text": text }] }))
             }
+            Item::Images(images) => super::append_user_parts(
+                &mut contents,
+                "parts",
+                super::image_parts(
+                    route,
+                    images,
+                    |image| json!({ "inlineData": { "mimeType": image.mime_type, "data": image.data } }),
+                    |note| json!({ "text": note }),
+                ),
+            ),
             Item::Reasoning(values) => {
                 pending = reasoning_of(values, &["gemini.parts"])
                     .next()

@@ -124,9 +124,17 @@ export type ChatEvent =
   /** Another vault was opened: its threads are the ones now. */
   | { type: "switched" };
 
+/** Files selected or pasted into Kin, staged until a message owns them. */
+export const attachments = {
+  import: (name: string, bytes: number[]) => invoke<Chip>("kin_attachment_import", { name, bytes }),
+  preview: (path: string) => invoke<string | null>("kin_attachment_preview", { path }),
+  discard: (path: string) => invoke<void>("kin_attachment_discard", { path }),
+};
+
 export const threads = {
   list: (filter: Filter = {}) => invoke<ThreadList>("kin_threads", { filter }),
   get: (id: string) => invoke<ThreadView>("kin_thread", { id }),
+  delete: (id: string) => invoke<void>("kin_thread_delete", { id }),
   /** In `thread`, or (null) in a new thread about `start.anchor`. On disk at
    *  once; Kin answers once he pauses. */
   send: (thread: string | null, text: string, chips: Chip[], start: Start = {}) =>

@@ -535,6 +535,47 @@ results for any query and a short page for any URL that passes the guard,
 with no key and nothing sent. Asked about "the web" or "online", the scripted model searches, reads
 the first result, then answers. `test/runtime-kin.test.ts` drives it.
 
+## Attachments (KI-116)
+
+On the Mac, paste an image, drop files onto the composer, or choose **Attach files**.
+Images have removable thumbnails before sending and stay with the sent message.
+PDFs, Markdown and UTF-8 text files have file chips. A message can carry up to
+eight files, each at most 20 MiB.
+
+Files are copied into `.kintsugi/kin/attachments/<thread>/`, not the vault's
+documents. Messages keep `attachment` chips with `@attachment/…` references,
+not image bytes. Thumbnails survive a restart. Moving the thread's document
+keeps its attachments; deleting a thread removes its files. Imports waiting to
+be sent use a staging folder in the same app-data directory. Removing an
+unsent chip deletes its staged file; other staged imports expire after seven days.
+Expired staging is collected when a vault opens and on later imports.
+
+PNG, JPEG, GIF and WebP are decoded locally; HEIC is converted on the Mac.
+Images are bounded before sending, then encoded as image parts for Messages,
+Responses, chat completions and Gemini. Catalog image counts and the complete
+encoded request's byte limit are enforced too. Older images are omitted first,
+with a note to Kin; stored files and history references stay unchanged. A catalog model without image input
+gets a note instead of image bytes; the composer names image-capable models.
+Provider-reported image input tokens are included in the normal usage meter
+and monthly cap, including cached input.
+
+PDF text comes from the ingest PDF adapter. PDFs are not uploaded natively.
+Incomplete extraction or text over 250,000 characters is refused, not cached
+as a shortened document. Text files retain their complete UTF-8 content within
+the 20 MiB file cap. `read` takes line `offset` and `limit`, with up to 32 KiB
+per window and a continuation offset. A line too long for a window is refused
+explicitly. Text and PDF content enter as bounded `<data>` blocks. Images are untrusted data too, including any
+instructions visible in them. `read` returns image parts for an attachment
+reference or an image inside the vault, such as clip artwork. Recent history
+keeps file references, so a later turn can read the image again rather than
+sending every earlier image on every turn. Reading an older thread also
+returns its file references.
+
+`KINTSUGI_HEADLESS_KIN=mock` acknowledges received images. The attachment
+runtime test covers clipboard paste, drop, the file picker, sending, a backend
+restart and reading an earlier image. Phone upload and composer support are
+tracked in KI-117; the existing phone API is unchanged.
+
 ## Context
 
 1. **Prefix** (`prompt::system`): concise instructions, unchanged writing

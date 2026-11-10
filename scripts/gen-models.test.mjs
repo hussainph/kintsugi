@@ -24,12 +24,20 @@ const model = (over = {}) => ({
 
 test("keeps chat models of supported providers and APIs, with only the fields Kin reads", () => {
   const e = entry(model({ compat: { supportsStore: false } }));
-  assert.deepEqual(Object.keys(e), ["provider", "id", "name", "api", "baseUrl", "reasoning", "input", "contextWindow", "maxTokens", "cost", "compat"]);
+  assert.deepEqual(Object.keys(e), ["provider", "id", "name", "api", "baseUrl", "reasoning", "input", "inputLimits", "contextWindow", "maxTokens", "cost", "compat"]);
   assert.equal(entry(model({ type: "image" })), null);
   assert.equal(entry(model({ provider: "amazon-bedrock" })), null);
   assert.equal(entry(model({ api: "bedrock-converse-stream" })), null);
   assert.throws(() => entry(model({ maxTokens: 0 })), /maxTokens/);
   assert.throws(() => entry(model({ cost: { input: 1 } })), /cost.output/);
+});
+
+test("retains all input-limit metadata from Pi", () => {
+  const inputLimits = {
+    maxRequestBytes: 20 * 1024 * 1024,
+    images: { resize: { maxWidth: 512, maxHeight: 768, maxBytes: 50000, jpegQuality: 70 }, maxPerMessage: 8, maxPerRequest: 100 },
+  };
+  assert.deepEqual(entry(model({ inputLimits })).inputLimits, inputLimits);
 });
 
 test("extras fill gaps but never replace Pi's entries, and the output is sorted", () => {

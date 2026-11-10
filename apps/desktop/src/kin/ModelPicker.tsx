@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { effortLevels, modelInfo, models as listModels, type ModelRef, type ProviderModels, type ThinkingLevel } from "@/lib/ai";
+import { effortLevels, modelInfo, models as listModels, sameEntry, shown, type ModelRef, type ProviderModels, type ThinkingLevel } from "@/lib/ai";
 import { kin, type ChatModel } from "@/lib/kin";
 import { Effort } from "./Effort";
 import { ModelMenu } from "./ModelMenu";
+import type { Chip } from "@/lib/chips";
+import { imageModelWarning } from "./attachments";
 
 type Props = {
   /** The conversation it applies to: a thread's key, "" for general. */
@@ -12,6 +14,8 @@ type Props = {
   vault: number;
   /** "Choose models" opens Settings; the chat gets out of the way. */
   onManage: () => void;
+  chips?: Chip[];
+  onAttachmentWarning?: (warning: string | null) => void;
 };
 
 /**
@@ -19,10 +23,14 @@ type Props = {
  * KI-77): the models turned on in Settings, and how hard the one in use
  * thinks. Loads and saves its own state; mounted while the chat is open.
  */
-export function ChatModelPicker({ conversation, vault, onManage }: Props) {
+export function ChatModelPicker({ conversation, vault, onManage, chips = [], onAttachmentWarning }: Props) {
   const [providers, setProviders] = useState<ProviderModels[] | null>(null);
   const [enabled, setEnabled] = useState<ModelRef[] | null>(null);
-  const [model, setModel] = useState<ChatModel | null>(null);
+  const scope = JSON.stringify([vault, conversation]);
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  const [loaded, setLoaded] = useState<{ scope: string; model: ChatModel } | null>(null);
+  const model = loaded?.scope === scope ? loaded.model : null;
 
   useEffect(() => {
     listModels().then(setProviders).catch(() => setProviders([]));
@@ -30,21 +38,30 @@ export function ChatModelPicker({ conversation, vault, onManage }: Props) {
   }, []);
   useEffect(() => {
     let current = true;
-    kin.chatModel(conversation).then((m) => current && setModel(m)).catch(() => current && setModel(null));
+    kin.chatModel(conversation).then((model) => current && setLoaded({ scope, model })).catch(() => current && setLoaded(null));
     return () => {
       current = false;
     };
-  }, [conversation, vault]);
+  }, [conversation, scope]);
 
   const save = async (change: Promise<ChatModel>) => {
     try {
-      setModel(await change);
+      const model = await change;
+      if (currentScope.current === scope) setLoaded({ scope, model });
     } catch (e) {
-      toast.error(String(e));
+      if (currentScope.current === scope) toast.error(String(e));
     }
   };
   const resolved = model?.resolved ?? null;
-  const levels = effortLevels(modelInfo(providers, resolved));
+  const info = modelInfo(providers, resolved);
+  const levels = effortLevels(info);
+  const warning = imageModelWarning(chips, info?.images, (providers ?? []).filter(shown).flatMap((provider) => provider.models.map((candidate) => ({
+    name: candidate.name,
+    images: candidate.images,
+    usable: provider.usable,
+    enabled: !!enabled?.some((entry) => sameEntry(entry, { provider: provider.id, model: candidate.id })),
+  }))));
+  useEffect(() => { onAttachmentWarning?.(warning); }, [warning, onAttachmentWarning]);
 
   return (
     <div className="ki-model-picker" data-testid="chat-model">

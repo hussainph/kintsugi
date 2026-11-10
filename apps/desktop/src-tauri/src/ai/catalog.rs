@@ -81,6 +81,32 @@ impl Cost {
     };
 }
 
+/// Pi's optional image resize profile. `max_bytes` measures base64 bytes,
+/// not the decoded file size. Missing fields use wire-safe defaults.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageResize {
+    pub max_width: Option<u32>,
+    pub max_height: Option<u32>,
+    pub max_bytes: Option<usize>,
+    pub jpeg_quality: Option<u8>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageInputLimits {
+    pub resize: Option<ImageResize>,
+    pub max_per_message: Option<usize>,
+    pub max_per_request: Option<usize>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputLimits {
+    pub max_request_bytes: Option<usize>,
+    pub images: Option<ImageInputLimits>,
+}
+
 /// One chat model, as Pi describes it.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,6 +122,8 @@ pub struct Model {
     pub reasoning: bool,
     /// `text`, and `image` when it reads images.
     pub input: Vec<String>,
+    #[serde(default)]
+    pub input_limits: InputLimits,
     pub context_window: u64,
     /// The most output tokens one request may ask for.
     pub max_tokens: u64,
